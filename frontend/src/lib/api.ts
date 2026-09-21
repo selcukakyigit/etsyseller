@@ -96,7 +96,32 @@ export type Listing = {
   should_auto_renew?: boolean;
   ending_timestamp?: number | null;
   last_modified_timestamp?: number | null;
+  /** Henüz Etsy'de olmayan, yalnızca yerelde var olan yeni listing (negatif geçici kimlik). */
+  is_new?: boolean;
 };
+
+export type BulkTextOp = {
+  mode: "prefix" | "suffix" | "find_replace" | "set";
+  text?: string;
+  find?: string;
+  replace?: string;
+};
+
+export type BulkChanges = {
+  state?: "active" | "inactive";
+  title?: BulkTextOp;
+  description?: BulkTextOp;
+  tags?: { add?: string[]; remove?: string[] };
+  price?: { mode: "percent" | "amount" | "set"; value: number; rounding?: "none" | "x.99" | "x.00" };
+  shop_section_id?: number;
+  shipping_profile_id?: number;
+  return_policy_id?: number;
+  readiness_state_id?: number;
+  should_auto_renew?: boolean;
+  production_partner_ids?: number[];
+};
+
+export type BulkResult = { id: number; ok: boolean; changed: boolean; error: string | null };
 
 export type KeywordPoolItem = {
   tag: string;
@@ -106,11 +131,30 @@ export type KeywordPoolItem = {
   google_score?: number;
 };
 
+export type OrderVariation = { name: string; value: string; personalization: boolean };
+
 export type OrderItem = {
   listing_id: number | null;
   title: string;
   quantity: number;
+  sku?: string | null;
+  price?: string | null;
+  image_url?: string | null;
+  variations?: OrderVariation[];
 };
+
+export type OrderAddress = {
+  name: string;
+  first_line: string;
+  second_line: string;
+  city: string;
+  state: string;
+  zip: string;
+  country_iso: string;
+  formatted: string;
+};
+
+export type OrderShipment = { carrier: string | null; tracking_code: string | null; notified_at: string | null };
 
 export type Order = {
   receipt_id: number;
@@ -123,6 +167,47 @@ export type Order = {
   expected_ship_date: string | null;
   items: OrderItem[];
   tracking_codes: string[];
+  channel: "etsy" | "pattern";
+  address: OrderAddress;
+  buyer_email: string | null;
+  buyer_note: string | null;
+  is_gift: boolean;
+  gift_message: string | null;
+  gift_sender: string | null;
+  coupon: string | null;
+  subtotal: string | null;
+  shipping_cost: string | null;
+  tax: string | null;
+  shipping_method: string | null;
+  shipping_upgrade: string | null;
+  shipments: OrderShipment[];
+  has_personalization: boolean;
+  is_canceled: boolean;
+};
+
+export type OrdersPage = {
+  items: Order[];
+  total: number;
+  counts: { toship: number; completed: number; canceled: number; all: number };
+  destinations: { iso: string; count: number }[];
+};
+
+export type OrdersSyncStatus = { local: number; remote_total: number | null; backfilling: boolean };
+
+export type OrderQuery = {
+  tab: string;
+  q?: string;
+  ship_by?: string;
+  destination?: string;
+  channel?: string;
+  note?: boolean;
+  gift?: boolean;
+  personalized?: boolean;
+  upgrade?: boolean;
+  sort?: string;
+  page?: number;
+  per_page?: number;
+  today?: string;
 };
 
 export type OrderInsights = {
@@ -237,6 +322,12 @@ export type ListingEdit = {
   ecgt_other_commercial_guarantee_details: string | null;
   ecgt_after_sales_service_info: string | null;
   ecgt_software_update_details: string | null;
+  // Başlık bilgileri (state dışında salt okunur)
+  state?: string | null;
+  listing_type?: string | null;
+  url?: string | null;
+  original_creation_timestamp?: number | null;
+  ending_timestamp?: number | null;
 };
 
 export type VariationLinks = { property_id: number | null; images: Record<string, number> };
@@ -250,9 +341,15 @@ export type WorkingCopy = ListingEdit & {
 
 export type PublishResult = {
   ok: boolean;
-  steps: { name: string; ok: boolean; error?: string }[];
+  steps: { name: string; ok: boolean; changed?: boolean; error?: string }[];
   error: string | null;
   edit: ListingEdit | null;
+  /** Etsy'de sen kaydettikten sonra değişmiş alanlar; doluysa hiçbir şey yazılmadı. */
+  conflicts?: { key: string; label: string }[];
+  /** Yeni listing yayınında Etsy'deki gerçek kimlik (geçici kimlik artık geçersiz). */
+  listing_id?: number;
+  /** Yapılamayan ama sessizce yutulmaması gereken şeyler (ör. Etsy'den boşaltılamayan alanlar). */
+  warnings?: string[];
 };
 
 export type ListingUpdate = Partial<{
@@ -288,6 +385,7 @@ export type ListingUpdate = Partial<{
   ecgt_other_commercial_guarantee_details: string | null;
   ecgt_after_sales_service_info: string | null;
   ecgt_software_update_details: string | null;
+  state?: string | null;
 }>;
 
 export type ShopSection = {
@@ -305,6 +403,39 @@ export type ReadinessStateDefinition = {
   readiness_state_id: number;
   readiness_state: string;
   processing_days_display_label: string;
+  min_processing_days?: number;
+  max_processing_days?: number;
+  active_listings_count?: number;
+};
+
+export type ProcessingProfileInput = {
+  readiness_state: "ready_to_ship" | "made_to_order";
+  min_processing_time: number;
+  max_processing_time: number;
+  processing_time_unit: "days" | "weeks";
+};
+
+export type ReturnPolicyInput = {
+  accepts_returns: boolean;
+  accepts_exchanges: boolean;
+  return_deadline: number | null;
+};
+
+export type DestinationInput = {
+  id?: number | null;
+  destination_country_iso?: string | null;
+  destination_region?: "eu" | "non_eu" | null;
+  primary_cost: number;
+  secondary_cost: number;
+  min_delivery_days?: number | null;
+  max_delivery_days?: number | null;
+};
+
+export type ShippingProfileInput = {
+  title: string;
+  origin_country_iso: string;
+  origin_postal_code: string | null;
+  destinations: DestinationInput[];
 };
 
 export type PersonalizationQuestionType = "text_input" | "dropdown" | "unlabeled_upload" | "labeled_upload";
@@ -322,6 +453,8 @@ export type PersonalizationQuestion = {
 };
 
 // Etsy "Custom options": en fazla 5 soru.
+export type PersonalizationLibraryItem = PersonalizationQuestion & { count: number };
+
 export type Personalization = {
   questions: PersonalizationQuestion[];
 };
@@ -356,6 +489,21 @@ export type TaxonomyProperty = {
 export type ShippingProfile = {
   shipping_profile_id: number;
   title: string;
+  origin_country_iso?: string;
+  origin_postal_code?: string | null;
+  profile_type?: string;
+  active_listings_count?: number;
+  shipping_profile_destinations?: {
+    destination_country_iso?: string | null;
+    destination_region?: string | null;
+    primary_cost: { amount: number; divisor: number; currency_code: string } | null;
+    secondary_cost?: { amount: number; divisor: number; currency_code: string } | null;
+    min_delivery_days: number | null;
+    max_delivery_days: number | null;
+    shipping_profile_destination_id?: number;
+    shipping_carrier_id?: number | null;
+    mail_class?: string | null;
+  }[];
 };
 
 export type ReturnPolicy = {
@@ -363,6 +511,7 @@ export type ReturnPolicy = {
   accepts_returns: boolean;
   accepts_exchanges: boolean;
   return_deadline: number | null;
+  active_listings_count?: number;
 };
 
 export class ApiError extends Error {
@@ -373,6 +522,12 @@ export class ApiError extends Error {
   }
 }
 
+function detailText(detail: unknown): string | undefined {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) return detail.map((d) => (d && typeof d === "object" && "msg" in d ? String(d.msg) : String(d))).join("; ");
+  return undefined;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
@@ -381,7 +536,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, body.detail ?? `İstek başarısız: ${res.status}`);
+    throw new ApiError(res.status, detailText(body.detail) ?? `İstek başarısız: ${res.status}`);
   }
   if (res.status === 204) return undefined as T;
   return res.json();
@@ -396,6 +551,166 @@ async function requestForm<T>(path: string, formData: FormData): Promise<T> {
     throw new ApiError(res.status, body.detail ?? `İstek başarısız: ${res.status}`);
   }
   return res.json();
+}
+
+export interface FinKpi {
+  orders: number;
+  units: number;
+  sales: number;
+  refunds: number;
+  fees: number;
+  overhead: number;
+  cogs: number;
+  profit: number;
+  margin: number;
+  aov: number;
+  etsy_share: number;
+  ads: number;
+  ads_pct: number;
+  all_orders: number;
+  canceled: number;
+  refunded_orders: number;
+  problem_pct: number;
+  fee_types: Record<string, number>;
+  overhead_types: Record<string, number>;
+}
+export interface FinSeriesPoint {
+  cmp: { offset: number; sales: number; orders: number; profit: number }[];
+  month: string;
+  sales: number;
+  fees: number;
+  overhead: number;
+  cogs: number;
+  profit: number;
+  orders: number;
+  prev_sales: number;
+  prev_fees: number;
+  prev_orders: number;
+  prev_profit: number;
+}
+export interface FinCountry {
+  iso: string;
+  orders: number;
+  sales: number;
+  prev_orders: number;
+  prev_sales: number;
+}
+export interface FinCustomer {
+  name: string;
+  country: string;
+  orders: number;
+  sales: number;
+  last: string;
+}
+export interface FinProduct {
+  listing_id: number;
+  title: string;
+  image: string;
+  units: number;
+  sales: number;
+  fees: number;
+  refunds: number;
+  cogs: number;
+  profit: number;
+  margin: number;
+  unit_cost: number | null;
+  shipping_cost: number | null;
+  cost_pct: number | null;
+  variants: FinVariant[];
+}
+export interface FinVariant {
+  key: string;
+  units: number;
+  sales: number;
+  fees: number;
+  cogs: number;
+  unit_cost: number | null;
+  shipping_cost: number | null;
+  cost_pct: number | null;
+}
+export interface FinOrderCost {
+  receipt_id: number;
+  date: string;
+  buyer: string;
+  country: string;
+  total: number;
+  items: { title: string; quantity: number; variant: string; defined: boolean }[];
+  auto_cost: number;
+  override: number | null;
+  note: string;
+}
+export interface FinOrderDetail {
+  receipt_id: number;
+  currency: string;
+  created: string;
+  status: string;
+  is_gift: boolean;
+  gift_message: string;
+  buyer: string;
+  buyer_message: string;
+  seller_note: string;
+  address: { name: string; lines: string[]; city: string; state: string; zip: string; country_iso: string };
+  expected_ship: string | null;
+  shipments: { carrier: string; tracking: string }[];
+  items: {
+    transaction_id: number | null;
+    listing_id: number | null;
+    title: string;
+    image: string;
+    quantity: number;
+    price: number;
+    shipping: number;
+    sku: string;
+    variations: { name: string; value: string }[];
+    unit_cost: number;
+    cost_defined: boolean;
+  }[];
+  earnings: {
+    buyer_paid: number;
+    items_price: number;
+    discount: number;
+    shipping: number;
+    gift_wrap: number;
+    subtotal: number;
+    before_tax: number;
+    tax_paid: number;
+    fees: { label: string; type: string; amount: number; original: number; original_currency: string }[];
+    fees_total: number;
+    earned: number;
+    has_ledger: boolean;
+    fx: number | null;
+    refunds: { amount: number; reason: string; status: string }[];
+    cost: number;
+    cost_manual: boolean;
+    auto_cost: number;
+    profit: number;
+  };
+}
+export interface FinOrdersPage {
+  total: number;
+  orders: FinOrderCost[];
+}
+export interface FinReport {
+  offsets: number[];
+  range: { start: string; end: string; prev_start: string; prev_end: string };
+  currency: string;
+  coverage: { orders_in_range: number; orders_without_fees: number; fx_median: number };
+  kpi: FinKpi;
+  prev_kpi: FinKpi;
+  series: FinSeriesPoint[];
+  countries: FinCountry[];
+  customers: FinCustomer[];
+  products: FinProduct[];
+  available_countries: string[];
+  first_year: number;
+}
+export interface FinSyncStatus {
+  running: boolean;
+  entries: number;
+  last_entry: string | null;
+  progress: number;
+  phase: string;
+  error: string | null;
 }
 
 export const api = {
@@ -435,13 +750,34 @@ export const api = {
     sections: (shopId: number) => request<ShopSection[]>(`/api/shops/${shopId}/sections`),
     productionPartners: (shopId: number) =>
       request<ProductionPartner[]>(`/api/shops/${shopId}/production-partners`),
+    createProcessingProfile: (shopId: number, body: ProcessingProfileInput) =>
+      request<unknown>(`/api/shops/${shopId}/readiness-state-definitions`, { method: "POST", body: JSON.stringify(body) }),
+    updateProcessingProfile: (shopId: number, id: number, body: ProcessingProfileInput) =>
+      request<unknown>(`/api/shops/${shopId}/readiness-state-definitions/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+    deleteProcessingProfile: (shopId: number, id: number) =>
+      request<{ ok: boolean }>(`/api/shops/${shopId}/readiness-state-definitions/${id}`, { method: "DELETE" }),
+    createReturnPolicy: (shopId: number, body: ReturnPolicyInput) =>
+      request<unknown>(`/api/shops/${shopId}/return-policies`, { method: "POST", body: JSON.stringify(body) }),
+    updateReturnPolicy: (shopId: number, id: number, body: ReturnPolicyInput) =>
+      request<unknown>(`/api/shops/${shopId}/return-policies/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+    deleteReturnPolicy: (shopId: number, id: number) =>
+      request<{ ok: boolean }>(`/api/shops/${shopId}/return-policies/${id}`, { method: "DELETE" }),
+    createShippingProfile: (shopId: number, body: ShippingProfileInput) =>
+      request<ShippingProfile>(`/api/shops/${shopId}/shipping-profiles`, { method: "POST", body: JSON.stringify(body) }),
+    updateShippingProfile: (shopId: number, id: number, body: ShippingProfileInput) =>
+      request<ShippingProfile>(`/api/shops/${shopId}/shipping-profiles/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+    deleteShippingProfile: (shopId: number, id: number) =>
+      request<{ ok: boolean }>(`/api/shops/${shopId}/shipping-profiles/${id}`, { method: "DELETE" }),
     readinessStateDefinitions: (shopId: number) =>
       request<ReadinessStateDefinition[]>(`/api/shops/${shopId}/readiness-state-definitions`),
   },
   listings: {
     list: (shopId: number) => request<Listing[]>(`/api/shops/${shopId}/listings`),
-    sync: (shopId: number) =>
-      request<{ syncing: boolean; started: boolean }>(`/api/shops/${shopId}/listings/sync`, { method: "POST" }),
+    // full=true: değişmemiş olanlar dahil her şeyi baştan çeker (yavaş; API kotası harcar).
+    sync: (shopId: number, full = false) =>
+      request<{ syncing: boolean; started: boolean }>(`/api/shops/${shopId}/listings/sync${full ? "?full=true" : ""}`, {
+        method: "POST",
+      }),
     syncStatus: (shopId: number) =>
       request<{ syncing: boolean; last_synced_at: string | null }>(`/api/shops/${shopId}/listings/sync-status`),
     history: (shopId: number, listingId: number) =>
@@ -471,6 +807,21 @@ export const api = {
         method: "PUT",
         body: JSON.stringify(payload),
       }),
+    // Toplu değişiklikleri seçili listing'lerin yerel sürümüne işler (Etsy'ye gitmez).
+    bulkStage: (shopId: number, listingIds: number[], changes: BulkChanges) =>
+      request<BulkResult[]>(`/api/shops/${shopId}/listings/bulk-stage`, {
+        method: "POST",
+        body: JSON.stringify({ listing_ids: listingIds, changes }),
+      }),
+    // Yerel yeni listing: sourceId verilirse o listing'in kopyası. Etsy'ye "Yayınla" ile gider.
+    newListing: (shopId: number, sourceId?: number) =>
+      request<{ listing_id: number; warnings?: string[] }>(`/api/shops/${shopId}/listings/new`, {
+        method: "POST",
+        body: JSON.stringify({ source_listing_id: sourceId ?? null }),
+      }),
+    // Etsy'den KALICI siler (geri alınamaz).
+    deleteListing: (shopId: number, listingId: number) =>
+      request<{ ok: boolean }>(`/api/shops/${shopId}/listings/${listingId}`, { method: "DELETE" }),
     topCategories: (shopId: number) =>
       request<{ taxonomy_id: number; count: number }[]>(`/api/shops/${shopId}/listings/top-categories`),
     getDraft: (shopId: number, listingId: number) =>
@@ -501,15 +852,20 @@ export const api = {
       request<{ exists: boolean; data: WorkingCopy | null; updated_at: string | null }>(
         `/api/shops/${shopId}/listings/${listingId}/local`
       ),
-    saveLocal: (shopId: number, listingId: number, data: WorkingCopy) =>
+    // base: yerel kopyanın alındığı Etsy hâli; sunucu ilk kayıtta saklar ve yayında üç yönlü karşılaştırma yapar.
+    saveLocal: (shopId: number, listingId: number, data: WorkingCopy, base?: WorkingCopy | null) =>
       request<{ exists: boolean; updated_at: string }>(`/api/shops/${shopId}/listings/${listingId}/local`, {
         method: "PUT",
-        body: JSON.stringify({ data }),
+        body: JSON.stringify({ data, base: base ?? null }),
       }),
     discardLocal: (shopId: number, listingId: number) =>
       request<{ ok: boolean }>(`/api/shops/${shopId}/listings/${listingId}/local`, { method: "DELETE" }),
-    publishLocal: (shopId: number, listingId: number) =>
-      request<PublishResult>(`/api/shops/${shopId}/listings/${listingId}/local/publish`, { method: "POST" }),
+    publishLocal: (shopId: number, listingId: number, force = false) =>
+      request<PublishResult>(`/api/shops/${shopId}/listings/${listingId}/local/publish${force ? "?force=true" : ""}`, {
+        method: "POST",
+      }),
+    personalizationLibrary: (shopId: number) =>
+      request<PersonalizationLibraryItem[]>(`/api/shops/${shopId}/listings/personalization-library`),
     variationImages: (shopId: number, listingId: number) =>
       request<VariationImage[]>(`/api/shops/${shopId}/listings/${listingId}/variation-images`),
     updateVariationImages: (shopId: number, listingId: number, items: VariationImage[]) =>
@@ -571,12 +927,55 @@ export const api = {
   orders: {
     list: (shopId: number, needsShipping = false) =>
       request<Order[]>(`/api/shops/${shopId}/orders?needs_shipping=${needsShipping}`),
-    sync: (shopId: number) => request<Order[]>(`/api/shops/${shopId}/orders/sync`, { method: "POST" }),
+    sync: (shopId: number) => request<OrdersSyncStatus>(`/api/shops/${shopId}/orders/sync`, { method: "POST" }),
+    syncStatus: (shopId: number) => request<OrdersSyncStatus>(`/api/shops/${shopId}/orders/sync-status`),
+    // Sunucu tarafında filtrelenmiş ve sayfalanmış siparişler (binlerce sipariş tarayıcıya yüklenmez).
+    page: (shopId: number, query: OrderQuery) => {
+      const params = new URLSearchParams();
+      Object.entries(query).forEach(([k, v]) => {
+        if (v !== undefined && v !== "" && v !== false) params.set(k, String(v));
+      });
+      return request<OrdersPage>(`/api/shops/${shopId}/orders/page?${params}`);
+    },
     insights: (shopId: number) => request<OrderInsights>(`/api/shops/${shopId}/orders/insights`),
     ship: (shopId: number, receiptId: number, trackingCode?: string, carrierName?: string) =>
       request<Order>(`/api/shops/${shopId}/orders/${receiptId}/ship`, {
         method: "POST",
         body: JSON.stringify({ tracking_code: trackingCode || null, carrier_name: carrierName || null }),
+      }),
+  },
+  finance: {
+    report: (shopId: number, start: string, end: string, country = "", compare: number[] = [1]) =>
+      request<FinReport>(`/api/shops/${shopId}/finance/report?start=${start}&end=${end}&compare=${compare.join(",")}${country ? `&country=${country}` : ""}`),
+    exportXlsx: async (shopId: number, start: string, end: string, country = "", opts: { scope?: string; q?: string; sort?: string } = {}) => {
+      const params = new URLSearchParams({ start, end, scope: opts.scope ?? "all", sort: opts.sort ?? "sales" });
+      if (country) params.set("country", country);
+      if (opts.q) params.set("q", opts.q);
+      const res = await fetch(`${API_URL}/api/shops/${shopId}/finance/export.xlsx?${params}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Excel oluşturulamadı");
+      return res.blob();
+    },
+    syncStatus: (shopId: number) => request<FinSyncStatus>(`/api/shops/${shopId}/finance/sync-status`),
+    sync: (shopId: number, full = false) => request<FinSyncStatus>(`/api/shops/${shopId}/finance/sync?full=${full}`, { method: "POST" }),
+    setCost: (shopId: number, listingId: number, unitCost: number, shippingCost: number, costPct = 0, fixPast = false) =>
+      request<{ ok: boolean }>(`/api/shops/${shopId}/finance/costs/${listingId}`, {
+        method: "PUT",
+        body: JSON.stringify({ unit_cost: unitCost, shipping_cost: shippingCost, cost_pct: costPct, fix_past: fixPast }),
+      }),
+    setVariantCost: (shopId: number, listingId: number, key: string, unitCost: number, shippingCost: number, costPct = 0, fixPast = false) =>
+      request<{ ok: boolean }>(`/api/shops/${shopId}/finance/costs/${listingId}/variant`, {
+        method: "PUT",
+        body: JSON.stringify({ key, unit_cost: unitCost, shipping_cost: shippingCost, cost_pct: costPct, fix_past: fixPast }),
+      }),
+    orders: (shopId: number, start: string, end: string, q = "", page = 0) =>
+      request<FinOrdersPage>(`/api/shops/${shopId}/finance/orders?start=${start}&end=${end}&q=${encodeURIComponent(q)}&page=${page}`),
+    orderDetail: (shopId: number, receiptId: number) => request<FinOrderDetail>(`/api/shops/${shopId}/finance/orders/${receiptId}`),
+    setOrderCost: (shopId: number, receiptId: number, cost: number | null) =>
+      request<{ ok: boolean }>(`/api/shops/${shopId}/finance/orders/${receiptId}/cost`, {
+        method: "PUT",
+        body: JSON.stringify({ cost }),
       }),
   },
 };

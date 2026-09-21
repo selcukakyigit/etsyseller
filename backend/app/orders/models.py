@@ -31,5 +31,15 @@ class OrderCache(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
     expected_ship_date: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True, index=True)
 
+    # Filtre/arama/sayfalama için raw_json'dan türetilen sütunlar (bkz. orders/derive.py)
+    country_iso: Mapped[str] = mapped_column(String(2), default="", server_default="", index=True)
+    channel: Mapped[str] = mapped_column(String(10), default="etsy", server_default="etsy")
+    is_gift: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    has_note: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    has_personalization: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    has_upgrade: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    is_canceled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", index=True)
+    search_text: Mapped[str] = mapped_column(Text, default="", server_default="")
+
     raw_json: Mapped[str] = mapped_column(Text)
     synced_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)

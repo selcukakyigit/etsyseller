@@ -18,6 +18,26 @@ def list_active_listings(client: EtsyClient, limit: int | None = None) -> list[d
     return results[:limit] if limit is not None else results
 
 
+ALL_STATES = ("active", "inactive", "draft", "expired", "sold_out")
+
+
+def list_listings_by_state(client: EtsyClient, state: str) -> list[dict]:
+    """Bir durumdaki tüm listing'ler (sayfa sayfa, görsel ve videolarıyla)."""
+    results: list[dict] = []
+    offset = 0
+    while True:
+        page = client.request(
+            "GET",
+            f"/shops/{client.shop.etsy_shop_id}/listings",
+            params={"state": state, "limit": 100, "offset": offset, "includes": "Images,Videos"},
+        )
+        results.extend(page["results"])
+        offset += len(page["results"])
+        if offset >= page["count"] or not page["results"]:
+            break
+    return results
+
+
 def get_listing(client: EtsyClient, listing_id: int) -> dict:
     return client.request("GET", f"/listings/{listing_id}", params={"includes": "Images,Videos"})
 

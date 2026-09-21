@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     ai_provider: str = "openai"
 
     frontend_url: str = "http://localhost:3000"
+    # API'nin tarayıcıdan görünen adresi (yerel taslak görsellerinin mutlak URL'leri için).
+    api_public_url: str = "http://localhost:8000"
     database_url: str = "sqlite:///./data.db"
 
     session_cookie_name: str = "session_token"

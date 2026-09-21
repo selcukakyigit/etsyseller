@@ -1,3 +1,4 @@
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
@@ -6,7 +7,7 @@ from app.auth.models import User
 from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.etsy.client import EtsyAuthError
-from app.listings import drafts, service
+from app.listings import bulk, creation, drafts, service
 from app.listings.schemas import (
     DraftSaveIn,
     ImageOrderIn,
@@ -39,18 +40,52 @@ def top_categories(shop: Shop = Depends(get_owned_shop), db: Session = Depends(g
     return service.get_top_categories(db, shop)
 
 
+class NewListingIn(BaseModel):
+    source_listing_id: int | None = None
+
+
+@router.post("/new")
+def new_listing(payload: NewListingIn, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    """Yerelde yeni listing (boş ya da var olan bir listing'in kopyası). Etsy'ye "Yayınla" ile gider."""
+    try:
+        return creation.create_local_new(db, shop, payload.source_listing_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/bulk-stage")
+def bulk_stage(payload: bulk.BulkStageIn, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    """Toplu değişiklikleri seçili listing'lerin yerel sürümüne işler (Etsy'ye gitmez)."""
+    return bulk.bulk_stage(db, shop, payload)
+
+
+@router.delete("/{listing_id}")
+def delete_listing(listing_id: int, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    """Listing'i Etsy'den KALICI siler (geri alınamaz)."""
+    try:
+        bulk.delete_listing(db, shop, listing_id)
+    except EtsyAuthError as exc:
+        raise HTTPException(401, str(exc)) from exc
+    return {"ok": True}
+
+
+@router.get("/personalization-library")
+def personalization_library(shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    return service.get_personalization_library(db, shop)
+
+
 @router.get("/sync-status")
 def sync_status(shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
     return service.get_sync_status(db, shop)
 
 
 @router.post("/sync", status_code=202)
-def sync(shop: Shop = Depends(get_owned_shop)):
+def sync(full: bool = False, shop: Shop = Depends(get_owned_shop)):
     """Fire-and-forget — a full sync can take minutes for a large shop (every
     listing's inventory + properties, paced by the shared Etsy rate limiter),
     so this starts it in the background and returns immediately. Poll
     GET /sync-status to know when it's done."""
-    started = service.start_background_sync(shop)
+    started = service.start_background_sync(shop, full=full)
     return {"syncing": True, "started": started}
 
 
@@ -171,7 +206,7 @@ def save_local(
     shop: Shop = Depends(get_owned_shop),
     db: Session = Depends(get_db),
 ):
-    return drafts.save_local(db, shop, listing_id, payload.data)
+    return drafts.save_local(db, shop, listing_id, payload.data, payload.base)
 
 
 @router.delete("/{listing_id}/local")
@@ -183,12 +218,14 @@ def discard_local(listing_id: int, shop: Shop = Depends(get_owned_shop), db: Ses
 @router.post("/{listing_id}/local/publish")
 def publish_local(
     listing_id: int,
+    force: bool = False,
     shop: Shop = Depends(get_owned_shop),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """force=true: Etsy'de sonradan değişen alanlar da yerel kopyayla ezilir (çakışma onaylandıktan sonra)."""
     try:
-        return drafts.publish_local(db, shop, user.id, listing_id)
+        return drafts.publish_local(db, shop, user.id, listing_id, force)
     except EtsyAuthError as exc:
         raise HTTPException(401, str(exc)) from exc
 

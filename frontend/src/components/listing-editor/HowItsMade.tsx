@@ -31,12 +31,12 @@ export default function HowItsMade({
   onChange: (patch: { who_made?: string; when_made?: string; is_supply?: boolean }) => void;
 }) {
   return (
-    <section className="rounded-xl border border-neutral-200 bg-white p-5">
-      <h2 className="text-sm font-semibold text-neutral-900 mb-4">Nasıl Yapıldı</h2>
+    <section className="rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
+      <h2 className="mb-4 text-sm font-semibold text-neutral-900 dark:text-neutral-100">Nasıl Yapıldı</h2>
 
       <div className="space-y-4">
         <div>
-          <p className="text-xs font-medium text-neutral-500 mb-1.5">Kim yaptı?</p>
+          <p className="mb-1.5 text-xs font-medium text-neutral-500 dark:text-neutral-400">Kim yaptı?</p>
           <div className="flex flex-wrap gap-2">
             {WHO_MADE_OPTIONS.map(([value, label]) => (
               <button
@@ -46,7 +46,7 @@ export default function HowItsMade({
                 className={`text-sm px-3 py-1.5 rounded-lg border transition ${
                   whoMade === value
                     ? "border-[#F1641E] bg-[#F1641E]/10 text-[#c94f16]"
-                    : "border-neutral-200 text-neutral-600 hover:bg-neutral-50"
+                    : "border-neutral-200 text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
                 }`}
               >
                 {label}
@@ -56,11 +56,11 @@ export default function HowItsMade({
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-neutral-500 mb-1.5">Ne zaman yapıldı?</label>
+          <label className="mb-1.5 block text-xs font-medium text-neutral-500 dark:text-neutral-400">Ne zaman yapıldı?</label>
           <select
             value={whenMade ?? ""}
             onChange={(e) => onChange({ when_made: e.target.value })}
-            className="w-full sm:w-64 rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[#F1641E]"
+            className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-[#F1641E] dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100 sm:w-64"
           >
             <option value="" disabled>
               Seç…
@@ -73,7 +73,7 @@ export default function HowItsMade({
           </select>
         </div>
 
-        <label className="flex items-center gap-2 text-sm text-neutral-600">
+        <label className="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-300">
           <input
             type="checkbox"
             checked={isSupply}

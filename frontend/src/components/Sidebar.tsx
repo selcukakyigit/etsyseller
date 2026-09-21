@@ -7,6 +7,8 @@ import { api, API_URL, Shop, User } from "@/lib/api";
 const NAV_ITEMS = [
   { href: "/", label: "Listing'ler" },
   { href: "/orders", label: "Siparişler" },
+  { href: "/finance", label: "Finans" },
+  { href: "/shipping", label: "Kargo ayarları" },
   { href: "/settings", label: "Ayarlar" },
 ];
 

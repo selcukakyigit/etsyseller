@@ -151,12 +151,12 @@ export function useListingWorkingCopy(shopId: number | undefined, listingId: num
     if (shopId === undefined || !work || !live) return false;
     setSaveState("saving");
     try {
-      if (sig(work) === sig(live)) {
+      if (sig(work) === sig(live) && listingId > 0) {  // yeni (negatif kimlikli) listing'in Etsy karşılığı yok; silinmez
         await api.listings.discardLocal(shopId, listingId);
         setLocal(null);
         setLocalAt(null);
       } else {
-        const res = await api.listings.saveLocal(shopId, listingId, work);
+        const res = await api.listings.saveLocal(shopId, listingId, work, live);
         setLocal(work);
         setLocalAt(res.updated_at);
       }
@@ -187,13 +187,13 @@ export function useListingWorkingCopy(shopId: number | undefined, listingId: num
   }
 
   /** "Etsy'de yayınla": önce formu yerel sürüme kaydeder, sonra Etsy'ye uygular. */
-  async function publish(): Promise<PublishResult | null> {
+  async function publish(force = false): Promise<PublishResult | null> {
     if (shopId === undefined || !work) return null;
     setPublishing(true);
     setError(null);
     try {
       if (unsaved && !(await saveLocal())) return null;
-      const result = await api.listings.publishLocal(shopId, listingId);
+      const result = await api.listings.publishLocal(shopId, listingId, force);
       if (result.ok) await load();
       return result;
     } catch (e) {

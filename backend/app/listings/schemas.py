@@ -57,6 +57,7 @@ class ListingOut(BaseModel):
     should_auto_renew: bool = False
     ending_timestamp: int | None = None
     last_modified_timestamp: int | None = None
+    is_new: bool = False  # henüz Etsy'de olmayan, yalnızca yerelde var olan yeni listing
 
 
 class StatSnapshotOut(BaseModel):
@@ -101,6 +102,7 @@ class ListingUpdateIn(BaseModel):
     ecgt_other_commercial_guarantee_details: str | None = None
     ecgt_after_sales_service_info: str | None = None
     ecgt_software_update_details: str | None = None
+    state: str | None = None  # yalnızca active | inactive yazılabilir
 
 
 class ListingEditOut(BaseModel):
@@ -142,6 +144,12 @@ class ListingEditOut(BaseModel):
     ecgt_other_commercial_guarantee_details: str | None = None
     ecgt_after_sales_service_info: str | None = None
     ecgt_software_update_details: str | None = None
+    # Başlık bilgileri (salt okunur; state hariç yazılabilir)
+    state: str | None = None
+    listing_type: str | None = None
+    url: str | None = None
+    original_creation_timestamp: int | None = None
+    ending_timestamp: int | None = None
 
 
 class InventoryUpdateIn(BaseModel):
@@ -168,6 +176,8 @@ class ImageOrderIn(BaseModel):
 
 class DraftSaveIn(BaseModel):
     data: dict
+    # Yerel kopyanın alındığı Etsy hâli (yalnızca ilk Kaydet'te saklanır; sonrakilerde korunur).
+    base: dict | None = None
 
 
 class PersonalizationOption(BaseModel):

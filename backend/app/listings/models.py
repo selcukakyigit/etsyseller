@@ -122,3 +122,5 @@ class ListingLocal(Base):
     listing_id: Mapped[int] = mapped_column(Integer, index=True)
     data_json: Mapped[str] = mapped_column(Text, default="{}")
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    # Yerel kopyanın alındığı Etsy hâli (üç yönlü karşılaştırma için); kayıtlar arasında korunur.
+    base_json: Mapped[str | None] = mapped_column(Text, nullable=True)

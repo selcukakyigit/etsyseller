@@ -1,7 +1,7 @@
 from app.etsy.client import EtsyClient
 
 
-def list_receipts(client: EtsyClient, limit: int = 100) -> list[dict]:
+def list_receipts(client: EtsyClient, limit: int = 100, extra_params: dict | None = None) -> list[dict]:
     results: list[dict] = []
     offset = 0
     while True:
@@ -13,6 +13,7 @@ def list_receipts(client: EtsyClient, limit: int = 100) -> list[dict]:
                 "offset": offset,
                 "sort_on": "created",
                 "sort_order": "desc",
+                **(extra_params or {}),
             },
         )
         results.extend(page["results"])
@@ -20,6 +21,11 @@ def list_receipts(client: EtsyClient, limit: int = 100) -> list[dict]:
         if offset >= page["count"] or len(results) >= limit or not page["results"]:
             break
     return results[:limit]
+
+
+def count_receipts(client: EtsyClient) -> int:
+    page = client.request("GET", f"/shops/{client.shop.etsy_shop_id}/receipts", params={"limit": 1})
+    return int(page["count"])
 
 
 def update_receipt_status(client: EtsyClient, receipt_id: int, data: dict) -> dict:

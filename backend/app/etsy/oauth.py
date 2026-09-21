@@ -14,7 +14,7 @@ TOKEN_URL = "https://api.etsy.com/v3/public/oauth/token"
 # listings_* for the SEO loop, transactions_* for order sync, shops_r for
 # shipping profiles/return policies (listing editor dropdowns) — requesting
 # all of them now avoids forcing a second Etsy re-authorization later.
-SCOPES = "listings_r listings_w transactions_r transactions_w shops_r"
+SCOPES = "listings_r listings_w transactions_r transactions_w shops_r shops_w listings_d"
 
 
 @dataclass

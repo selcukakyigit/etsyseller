@@ -11,6 +11,17 @@ from app.shops.models import OAuthToken, Shop
 
 API_BASE = "https://api.etsy.com/v3/application"
 
+import logging as _logging
+import threading as _threading
+
+_log = _logging.getLogger("etsy")
+_writes = _threading.local()  # istek başına (iş parçacığı başına) Etsy yazma sayacı
+
+
+def write_count() -> int:
+    return getattr(_writes, "n", 0)
+
+
 
 class EtsyAuthError(Exception):
     """No usable OAuth token for this shop (not connected, or refresh failed)."""
@@ -63,7 +74,13 @@ class EtsyClient:
     def request(self, method: str, path: str, **kwargs) -> Any:
         rate_limit.throttle()
         resp = httpx.request(method, f"{API_BASE}{path}", headers=self._headers(), timeout=30, **kwargs)
+        # Okumalar sessiz; Etsy'yi değiştiren (yazma) istekler ve tüm hatalar loglanır.
+        if method != "GET":
+            _writes.n = write_count() + 1
+        if method != "GET" or resp.is_error:
+            _log.info("Etsy %s %s -> %s", method, path, resp.status_code)
         if resp.is_error:
+            _log.warning("Etsy hata: %s", _extract_error_message(resp)[:300])
             raise EtsyApiError(resp.status_code, _extract_error_message(resp))
         return resp.json() if resp.content else None
 

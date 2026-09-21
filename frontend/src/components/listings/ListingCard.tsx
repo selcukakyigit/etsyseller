@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Listing } from "@/lib/api";
 
+export type CardAction = "stats" | "copy" | "activate" | "deactivate" | "renew" | "section" | "delete" | "publish";
+
 export function formatPrice(l: Listing): string | null {
   if (l.price_min == null) return null;
   const fmt = (n: number) =>
@@ -18,14 +20,14 @@ export default function ListingCard({
   listing,
   selected,
   onSelectChange,
-  onPublish,
+  onAction,
   publishing,
   publishError,
 }: {
   listing: Listing;
   selected: boolean;
   onSelectChange: (on: boolean) => void;
-  onPublish: () => void;
+  onAction: (action: CardAction) => void;
   publishing: boolean;
   publishError?: string | null;
 }) {
@@ -41,6 +43,20 @@ export default function ListingCard({
     return () => document.removeEventListener("mousedown", close);
   }, [menuOpen]);
 
+  const state = listing.state ?? "active";
+  const item = (key: CardAction, label: string, danger = false, disabled = false) => (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => {
+        setMenuOpen(false);
+        onAction(key);
+      }}
+      className={`block w-full px-3 py-2 text-left hover:bg-neutral-50 disabled:opacity-50 dark:hover:bg-neutral-800 ${danger ? "text-red-600" : ""}`}
+    >
+      {label}
+    </button>
+  );
   const price = formatPrice(listing);
   const renews = listing.ending_timestamp
     ? new Date(listing.ending_timestamp * 1000).toLocaleDateString("tr-TR", { day: "numeric", month: "short", year: "numeric" })
@@ -59,8 +75,10 @@ export default function ListingCard({
           <img src={listing.image_url} alt="" className="h-full w-full object-cover" />
         )}
         <div className="absolute left-2 top-2 flex flex-col items-start gap-1">
-          {listing.has_local && <span className={`${badge} bg-amber-100 text-amber-800`}>Yayınlanmadı</span>}
+          {listing.is_new && <span className={`${badge} bg-sky-100 text-sky-800`}>Yeni · Etsy&apos;de yok</span>}
+          {listing.has_local && !listing.is_new && <span className={`${badge} bg-amber-100 text-amber-800`}>Yayınlanmadı</span>}
           {listing.has_draft && <span className={`${badge} bg-neutral-200 text-neutral-700`}>Taslak</span>}
+          {state !== "active" && !listing.is_new && <span className={`${badge} bg-neutral-800 text-white`}>{{ inactive: "Pasif", draft: "Etsy taslağı", expired: "Süresi dolmuş", sold_out: "Tükenmiş" }[state] ?? state}</span>}
         </div>
         {listing.has_video && (
           <span className={`${badge} absolute bottom-2 left-2 bg-amber-300 text-neutral-900`}>Video</span>
@@ -110,36 +128,33 @@ export default function ListingCard({
             ⚙ ▾
           </button>
           {menuOpen && (
-            <div className="absolute bottom-full right-0 z-20 mb-1 w-48 overflow-hidden rounded-lg border border-neutral-200 bg-white text-sm shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
-              <Link
-                href={`/listings/${listing.listing_id}/edit`}
-                className="block px-3 py-2 hover:bg-neutral-50 dark:hover:bg-neutral-800"
-              >
-                Düzenle
-              </Link>
-              {listing.has_local && (
-                <button
-                  type="button"
-                  disabled={publishing}
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onPublish();
-                  }}
-                  className="block w-full px-3 py-2 text-left hover:bg-neutral-50 disabled:opacity-50 dark:hover:bg-neutral-800"
-                >
-                  {publishing ? "Yayınlanıyor…" : "Etsy'de yayınla"}
-                </button>
-              )}
-              {listing.url && (
+            <div className="absolute bottom-full right-0 z-20 mb-1 w-52 overflow-hidden rounded-lg border border-neutral-200 bg-white py-1 text-sm shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+              {listing.url && !listing.is_new && (
                 <a
                   href={listing.url}
                   target="_blank"
                   rel="noreferrer"
                   className="block px-3 py-2 hover:bg-neutral-50 dark:hover:bg-neutral-800"
                 >
-                  Etsy&apos;de görüntüle
+                  Etsy&apos;de görüntüle ↗
                 </a>
               )}
+              {!listing.is_new && item("stats", "İstatistikleri gör")}
+              <Link
+                href={`/listings/${listing.listing_id}/edit`}
+                className="block px-3 py-2 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+              >
+                Düzenle
+              </Link>
+              {!listing.is_new && item("copy", "Kopyala")}
+              {listing.has_local && item("publish", publishing ? "Yayınlanıyor…" : listing.is_new ? "Etsy'de oluştur" : "Etsy'de yayınla", false, publishing)}
+              <div className="my-1 border-t border-neutral-100 dark:border-neutral-800" />
+              {!listing.is_new && state === "active" && item("deactivate", "Pasife al")}
+              {!listing.is_new && (state === "inactive" || state === "draft") && item("activate", "Aktif et")}
+              {!listing.is_new && (state === "expired" || state === "sold_out") && item("renew", "Yenile")}
+              {!listing.is_new && item("section", "Bölümü değiştir")}
+              <div className="my-1 border-t border-neutral-100 dark:border-neutral-800" />
+              {item("delete", listing.is_new ? "Vazgeç (yerel listing'i sil)" : "Sil", true)}
             </div>
           )}
         </div>

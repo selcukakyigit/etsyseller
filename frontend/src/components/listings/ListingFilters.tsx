@@ -42,7 +42,7 @@ const STATUSES: [string, string][] = [
 
 export function applyFilters(listings: Listing[], f: Filters): Listing[] {
   return listings.filter((l) => {
-    if (f.status !== "all" && (l.state ?? "active") !== f.status) return false;
+    if (!l.is_new && f.status !== "all" && (l.state ?? "active") !== f.status) return false;
     if (f.local === "unpublished" && !l.has_local) return false;
     if (f.local === "draft" && !l.has_draft) return false;
     if (f.section && String(l.shop_section_id ?? "") !== f.section) return false;
@@ -110,7 +110,7 @@ export default function ListingFilters({
     const tagCounts = new Map<string, number>();
     for (const l of listings) {
       const st = l.state ?? "active";
-      byState[st] = (byState[st] ?? 0) + 1;
+      if (!l.is_new) byState[st] = (byState[st] ?? 0) + 1; // yeni yerel listing'ler Etsy durum sayısını şişirmesin
       if (l.has_video) withVideo++;
       if (l.has_local) unpublished++;
       if (l.has_draft) drafts++;

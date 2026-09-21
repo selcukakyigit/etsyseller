@@ -120,27 +120,61 @@ def _fetch_and_cache_one(db: Session, shop: Shop, client: EtsyClient, listing_id
     return row
 
 
-def sync_listings(db: Session, shop: Shop) -> int:
+STALE_AFTER = dt.timedelta(days=7)  # değişmemiş görünse bile bu süreden eski önbellek yeniden çekilir
+
+
+def sync_listings(db: Session, shop: Shop, full: bool = False) -> int:
     """Explicit full refresh — this is the only place that fetches every
     listing's inventory/properties from Etsy; everything else reads the
-    cache this fills. Runs synchronously; called from a background thread
-    (see start_background_sync) since a many-listing shop can take minutes
-    even with the shared Etsy rate limiter pacing every request."""
+    cache this fills. Tüm durumlar (aktif, pasif, taslak, süresi dolmuş, tükenmiş) çekilir; Etsy'de silinen
+    listing'ler yerelden de kaldırılır. Runs synchronously; called from a background thread
+    (see start_background_sync) since a many-listing shop can take minutes.
+
+    Artımlı: Etsy'nin `last_modified_timestamp`'i değişmemiş ve 7 günden yeni önbellekli listing'lerin envanteri,
+    özellikleri ve ekstraları yeniden ÇEKİLMEZ (yalnızca başlık/görüntülenme/favori/durum listeden güncellenir).
+    `full=True` her şeyi baştan çeker."""
     client = EtsyClient(db, shop)
-    listings = etsy_listings.list_active_listings(client)
+    listings: list[dict] = []
+    complete = True
+    for state in etsy_listings.ALL_STATES:
+        try:
+            listings.extend(etsy_listings.list_listings_by_state(client, state))
+        except Exception:
+            complete = False  # bir durum çekilemediyse silinenleri temizleme (yanlışlıkla silmeyelim)
+            logger.exception("Listing state %s could not be fetched for shop %s", state, shop.id)
 
     synced = 0
+    seen_skipped = 0
+    seen: set[int] = set()
     for item in listings:
         listing_id = item["listing_id"]
+        seen.add(listing_id)
+        existing = _get_cache_row(db, shop, listing_id)
+
+        unchanged = (
+            not full
+            and existing is not None
+            and existing.inventory_json not in ("", "{}")
+            and json.loads(existing.raw_json).get("last_modified_timestamp") == item.get("last_modified_timestamp")
+            and dt.datetime.utcnow() - existing.synced_at < STALE_AFTER
+        )
+        if unchanged:
+            # Sadece listeden gelen hafif alanlar; ağır çağrılar (envanter, özellikler, ekstralar) atlanır.
+            existing.title = item.get("title", "")
+            existing.views = item.get("views") or 0
+            existing.favorites = item.get("num_favorers") or 0
+            existing.raw_json = json.dumps(item, ensure_ascii=False)
+            seen_skipped += 1
+            continue
+
         try:
             inventory = etsy_inventory.get_inventory(client, listing_id)
             properties = etsy_properties.get_listing_properties(client, listing_id)
         except Exception:
-            existing = _get_cache_row(db, shop, listing_id)
             inventory = json.loads(existing.inventory_json) if existing else {}
             properties = json.loads(existing.properties_json) if existing else []
 
-        row = _get_cache_row(db, shop, listing_id)
+        row = existing
         if row is None:
             row = ListingCache(shop_id=shop.id, listing_id=listing_id)
             db.add(row)
@@ -152,21 +186,30 @@ def sync_listings(db: Session, shop: Shop) -> int:
         row.inventory_json = json.dumps(inventory, ensure_ascii=False)
         row.properties_json = json.dumps(properties, ensure_ascii=False)
         row.synced_at = dt.datetime.utcnow()
-        _store_extras(client, row, listing_id)
+        # Süresi dolmuş/tükenmiş listing'lerde ek veriler (varyasyon fotoğrafı, kişiselleştirme) açılınca çekilir; API kotasını korur.
+        if item.get("state") in ("active", "inactive", "draft"):
+            _store_extras(client, row, listing_id)
         synced += 1
+        if synced % 25 == 0:
+            db.commit()
 
+    if complete:
+        for stale in db.scalars(select(ListingCache).where(ListingCache.shop_id == shop.id)).all():
+            if stale.listing_id not in seen:
+                db.delete(stale)
     db.commit()
+    logger.info("Listing sync: %s çekildi, %s değişmediği için atlandı (full=%s)", synced, seen_skipped, full)
     return synced
 
 
-def _run_sync_in_background(shop_id: int) -> None:
+def _run_sync_in_background(shop_id: int, full: bool = False) -> None:
     from app.core.db import SessionLocal
 
     db = SessionLocal()
     try:
         shop = db.get(Shop, shop_id)
         if shop is not None and shop.oauth_token is not None:
-            sync_listings(db, shop)
+            sync_listings(db, shop, full=full)
     except Exception:
         logger.exception("Background listing sync failed for shop %s", shop_id)
     finally:
@@ -174,14 +217,14 @@ def _run_sync_in_background(shop_id: int) -> None:
         db.close()
 
 
-def start_background_sync(shop: Shop) -> bool:
+def start_background_sync(shop: Shop, full: bool = False) -> bool:
     """Fire-and-forget — returns immediately so the request that triggered it
     (a page's first-ever load, or the navbar sync button) doesn't block for
     however long a full sync takes. Returns False if one's already running."""
     if not sync_status.mark_syncing(shop.id):
         return False
     ttl_cache.clear((shop.id,))
-    threading.Thread(target=_run_sync_in_background, args=(shop.id,), daemon=True).start()
+    threading.Thread(target=_run_sync_in_background, args=(shop.id, full), daemon=True).start()
     return True
 
 
@@ -335,16 +378,41 @@ def list_listings(db: Session, shop: Shop) -> list[ListingOut]:
                 **_summary(raw, json.loads(row.inventory_json or "{}"), draft),
             )
         )
+    from app.listings import creation
+
+    for item in creation.local_summaries(db, shop):
+        work, local = item["work"], item["local"]
+        out.append(
+            ListingOut(
+                listing_id=local.listing_id,
+                title=work.get("title") or "(Başlıksız yeni listing)",
+                tags=work.get("tags") or [],
+                description=work.get("description") or "",
+                url=None,
+                image_url=item["image_url"],
+                views=0,
+                favorites=0,
+                pending_suggestion=None,
+                has_local=True,
+                local_updated_at=local.updated_at.isoformat(),
+                is_new=True,
+                **{**_summary({}, work.get("inventory") or {}, work), "state": "draft"},
+            )
+        )
     return out
 
 
 def create_suggestion(
     db: Session, shop: Shop, user_id: int, listing_id: int, overrides: SuggestIn | None = None
 ) -> SuggestionOut:
-    row = _get_cache_row(db, shop, listing_id)
-    if row is None:
-        row = _fetch_and_cache_one(db, shop, EtsyClient(db, shop), listing_id)
-    listing = json.loads(row.raw_json)
+    if listing_id < 0:
+        local = db.scalars(select(ListingLocal).where(ListingLocal.shop_id == shop.id).where(ListingLocal.listing_id == listing_id)).one_or_none()
+        listing = json.loads(local.data_json) if local else {}
+    else:
+        row = _get_cache_row(db, shop, listing_id)
+        if row is None:
+            row = _fetch_and_cache_one(db, shop, EtsyClient(db, shop), listing_id)
+        listing = json.loads(row.raw_json)
     # Formdaki (taslaktaki) güncel değerler verildiyse AI onları iyileştirir.
     if overrides is not None:
         for key, value in overrides.model_dump(exclude_none=True).items():
@@ -463,6 +531,17 @@ def get_top_categories(db: Session, shop: Shop, limit: int = 5) -> list[dict]:
     return [{"taxonomy_id": tid, "count": n} for tid, n in top]
 
 
+def _unescape(value):
+    """Etsy metinleri HTML-escape'li döndürür (&quot; &#39; &amp; …); formda ve karşılaştırmada düz metin kullanılır."""
+    if isinstance(value, str):
+        return html.unescape(value)
+    if isinstance(value, list):
+        return [_unescape(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _unescape(v) for k, v in value.items()}
+    return value
+
+
 def _listing_edit_out(row: ListingCache) -> ListingEditOut:
     raw = json.loads(row.raw_json)
     return ListingEditOut(
@@ -470,8 +549,8 @@ def _listing_edit_out(row: ListingCache) -> ListingEditOut:
         # Etsy metni HTML-escape'li döndürür (&#39; gibi); formda düz metin gösterilir.
         title=html.unescape(raw.get("title", "")),
         description=html.unescape(raw.get("description", "")),
-        tags=raw.get("tags") or [],
-        materials=raw.get("materials") or [],
+        tags=_unescape(raw.get("tags") or []),
+        materials=_unescape(raw.get("materials") or []),
         taxonomy_id=raw.get("taxonomy_id"),
         who_made=raw.get("who_made"),
         when_made=raw.get("when_made"),
@@ -480,8 +559,8 @@ def _listing_edit_out(row: ListingCache) -> ListingEditOut:
         return_policy_id=raw.get("return_policy_id"),
         images=raw.get("images") or [],
         videos=raw.get("videos") or [],
-        inventory=json.loads(row.inventory_json or "{}"),
-        properties=json.loads(row.properties_json or "[]"),
+        inventory=_unescape(json.loads(row.inventory_json or "{}")),
+        properties=_unescape(json.loads(row.properties_json or "[]")),
         shop_section_id=raw.get("shop_section_id"),
         featured_rank=raw.get("featured_rank"),
         should_auto_renew=bool(raw.get("should_auto_renew")),
@@ -500,10 +579,19 @@ def _listing_edit_out(row: ListingCache) -> ListingEditOut:
         ecgt_other_commercial_guarantee_details=raw.get("ecgt_other_commercial_guarantee_details"),
         ecgt_after_sales_service_info=raw.get("ecgt_after_sales_service_info"),
         ecgt_software_update_details=raw.get("ecgt_software_update_details"),
+        state=raw.get("state"),
+        listing_type=raw.get("listing_type"),
+        url=raw.get("url"),
+        original_creation_timestamp=raw.get("original_creation_timestamp"),
+        ending_timestamp=raw.get("ending_timestamp"),
     )
 
 
 def get_listing_for_edit(db: Session, shop: Shop, listing_id: int) -> ListingEditOut:
+    if listing_id < 0:  # yeni (yerel) listing
+        from app.listings import creation
+
+        return creation.edit_from_local(db, shop, listing_id)
     row = _get_cache_row(db, shop, listing_id)
     if row is None:
         row = _fetch_and_cache_one(db, shop, EtsyClient(db, shop), listing_id)
@@ -682,10 +770,30 @@ def _clean_question(q: dict) -> PersonalizationQuestion:
 
 
 def get_listing_personalization(db: Session, shop: Shop, listing_id: int) -> PersonalizationOut:
+    if listing_id < 0:
+        local = db.scalars(select(ListingLocal).where(ListingLocal.shop_id == shop.id).where(ListingLocal.listing_id == listing_id)).one_or_none()
+        pers = (json.loads(local.data_json).get("personalization") or {}) if local else {}
+        return PersonalizationOut(questions=pers.get("questions", []))
     row = _get_cache_row(db, shop, listing_id)
     if row is None or not row.extras_synced:
         row = _fetch_and_cache_one(db, shop, EtsyClient(db, shop), listing_id)
     return PersonalizationOut(questions=[_clean_question(q) for q in json.loads(row.personalization_json or "[]")])
+
+
+def get_personalization_library(db: Session, shop: Shop) -> list[dict]:
+    """Mağazanın diğer listing'lerinde kullanılan benzersiz özel seçenek alanları (Etsy'deki "Recently used").
+    Yalnızca yerel önbellekten okunur; kullanım sayısına göre sıralanır."""
+    found: dict[tuple, dict] = {}
+    for row in db.scalars(select(ListingCache).where(ListingCache.shop_id == shop.id)).all():
+        for raw in json.loads(row.personalization_json or "[]"):
+            q = _clean_question(raw)
+            q.question_id = None
+            for o in q.options:
+                o.option_id = None
+            key = (q.question_text, q.question_type, q.instructions, q.required, tuple(o.label for o in q.options))
+            entry = found.setdefault(key, {**q.model_dump(), "count": 0})
+            entry["count"] += 1
+    return sorted(found.values(), key=lambda e: (-e["count"], e["question_text"]))
 
 
 def _question_payload(q: PersonalizationQuestion) -> dict:
@@ -723,11 +831,13 @@ def update_listing_personalization(
 
 
 def get_variation_images(db: Session, shop: Shop, listing_id: int) -> list[dict]:
+    if listing_id < 0:
+        return []
     """Yerel önbellekten okur; yalnızca hiç senkronize edilmemiş eski satırlarda bir kez Etsy'ye gider."""
     row = _get_cache_row(db, shop, listing_id)
     if row is None or not row.extras_synced:
         row = _fetch_and_cache_one(db, shop, EtsyClient(db, shop), listing_id)
-    return json.loads(row.variation_images_json or "[]")
+    return _unescape(json.loads(row.variation_images_json or "[]"))
 
 
 def update_variation_images(db: Session, shop: Shop, listing_id: int, payload: VariationImagesIn) -> list[dict]:

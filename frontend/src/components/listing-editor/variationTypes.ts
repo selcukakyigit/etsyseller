@@ -16,8 +16,8 @@ export type VarProperty = {
 export type VarSettings = {
   price: number[];
   quantity: number[];
-  skuVaries: boolean;
-  readinessVaries: boolean;
+  sku: number[];
+  readiness: number[];
 };
 
 // Etsy'nin özel (serbest isimli) varyasyon property id'leri.
@@ -40,8 +40,8 @@ export function settingsProblem(propertyCount: number, s: VarSettings): string |
   const lengths = [
     s.price.length,
     s.quantity.length,
-    s.skuVaries ? propertyCount : 0,
-    s.readinessVaries ? propertyCount : 0,
+    s.sku.length,
+    s.readiness.length,
   ];
   if (lengths.some((n) => n > 1 && n < propertyCount)) {
     return "Bir alan yalnızca tek varyasyona ya da tüm varyasyonlara bağlı olabilir.";
@@ -60,3 +60,13 @@ export function comboCount(props: VarProperty[]) {
 
 // Etsy değerlerde parantez kabul etmiyor.
 export const cleanName = (s: string) => s.replace(/[()]/g, "").trim();
+
+/** Varyasyon seçeneğine bağlı fotoğrafın küçük resim adresi (yerel/taslak görseller dahil). */
+export function thumbUrl(
+  images: { listing_image_id: number; url_75x75?: string; url_170x135?: string; url_570xN?: string; url_fullxfull?: string }[],
+  imageId: number | null | undefined
+): string | null {
+  if (imageId == null) return null;
+  const img = images.find((i) => i.listing_image_id === imageId);
+  return img ? (img.url_75x75 ?? img.url_170x135 ?? img.url_570xN ?? img.url_fullxfull ?? null) : null;
+}

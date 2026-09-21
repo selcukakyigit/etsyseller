@@ -13,6 +13,7 @@ import {
   comboCount,
   maxCombos,
   settingsProblem,
+  thumbUrl,
 } from "./variationTypes";
 
 type EditorState = { index: number | null; draft: VarProperty };
@@ -26,21 +27,22 @@ function DependencyRow({
   selected,
   options,
   labelOf,
-  firstId,
+  defaultOn,
   onChange,
 }: {
   title: string;
   selected: number[];
   options: number[][];
   labelOf: (ids: number[]) => string;
-  firstId: number;
+  /** Düğme açılınca seçilecek bağımlılık. */
+  defaultOn: number[];
   onChange: (v: number[]) => void;
 }) {
   const on = selected.length > 0;
   const known = options.some((o) => o.join() === selected.join());
   return (
     <div className="flex flex-wrap items-center gap-4">
-      <Switch label={`${title} değişir`} checked={on} onChange={(v) => onChange(v ? [firstId] : [])} />
+      <Switch label={`${title} değişir`} checked={on} onChange={(v) => onChange(v ? defaultOn : [])} />
       <span className="text-sm text-neutral-800 dark:text-neutral-200">
         <b>{title}</b> her biri için değişir
       </span>
@@ -58,25 +60,6 @@ function DependencyRow({
           ))}
         </select>
       )}
-    </div>
-  );
-}
-
-function ToggleRow({
-  title,
-  checked,
-  onChange,
-}: {
-  title: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <div className="flex items-center gap-4">
-      <Switch label={`${title} değişir`} checked={checked} onChange={onChange} />
-      <span className="text-sm text-neutral-800 dark:text-neutral-200">
-        <b>{title}</b> değişir
-      </span>
     </div>
   );
 }
@@ -106,13 +89,18 @@ export default function VariationManager({
   const labelOf = (list: number[]) =>
     list.map((id) => props.find((p) => p.property_id === id)?.property_name ?? "").join(" ve ");
 
-  const effective: VarSettings = { ...settings, price: keep(settings.price), quantity: keep(settings.quantity) };
+  const effective: VarSettings = {
+    price: keep(settings.price),
+    quantity: keep(settings.quantity),
+    sku: keep(settings.sku),
+    readiness: keep(settings.readiness),
+  };
   const anyAll =
     ids.length >= 2 &&
     (effective.price.length === ids.length ||
       effective.quantity.length === ids.length ||
-      settings.skuVaries ||
-      settings.readinessVaries);
+      effective.sku.length === ids.length ||
+      effective.readiness.length === ids.length);
   const limit = maxCombos(ids.length, anyAll);
   const problem = settingsProblem(ids.length, effective);
   const total = comboCount(props);
@@ -130,8 +118,18 @@ export default function VariationManager({
       return kept.length > 1 && kept.length < nextIds.length ? nextIds : kept;
     };
     setProps(next);
-    setSettings((s) => ({ ...s, price: remap(s.price), quantity: remap(s.quantity) }));
+    setSettings((s) => ({
+      price: remap(s.price),
+      quantity: remap(s.quantity),
+      sku: remap(s.sku),
+      readiness: remap(s.readiness),
+    }));
   }
+
+  // Bir alan açılınca, zaten açık başka bir alanla aynı bağımlılığı seç: Etsy kuralı (biri tümüne bağlıysa hepsi tümüne bağlı)
+  // ihlal edilmesin.
+  const defaultDep =
+    [effective.price, effective.quantity, effective.sku, effective.readiness].find((l) => l.length > 0) ?? [ids[0]];
 
   const usedIds = new Set(ids);
   const taxOptions = taxonomyProps.filter((t) => t.supports_variations && !usedIds.has(t.property_id));
@@ -158,13 +156,7 @@ export default function VariationManager({
               Vazgeç
             </button>
             <button
-              onClick={() =>
-                onApply(props, {
-                  ...settings,
-                  price: keep(settings.price),
-                  quantity: keep(settings.quantity),
-                })
-              }
+              onClick={() => onApply(props, effective)}
               disabled={!dirty || !valid}
               className={btnPrimary}
             >
@@ -184,7 +176,17 @@ export default function VariationManager({
                 <p className="mb-2 text-xs text-neutral-500">{p.values.length} seçenek</p>
                 <div className="flex gap-1.5 overflow-hidden">
                   {p.values.map((v) => (
-                    <span key={v.name} className="shrink-0 rounded-full bg-neutral-100 px-3 py-1 text-xs dark:bg-neutral-800">
+                    <span
+                      key={v.name}
+                      className="flex shrink-0 items-center gap-1.5 rounded-full bg-neutral-100 py-1 pl-1 pr-3 text-xs dark:bg-neutral-800"
+                    >
+                      {p.linkPhotos &&
+                        (thumbUrl(images, v.image_id) ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={thumbUrl(images, v.image_id) as string} alt="" className="h-5 w-5 rounded-full object-cover" />
+                        ) : (
+                          <span className="h-5 w-5 rounded-full bg-neutral-200 dark:bg-neutral-700" />
+                        ))}
                       {v.name}
                     </span>
                   ))}
@@ -226,29 +228,35 @@ export default function VariationManager({
           <div className="mt-6 space-y-5 border-t border-neutral-100 pt-6 dark:border-neutral-800">
             <DependencyRow
               title="Fiyatlar"
-              selected={keep(settings.price)}
+              selected={effective.price}
               options={depOptions}
               labelOf={labelOf}
-              firstId={ids[0]}
+              defaultOn={defaultDep}
               onChange={(v) => setSettings((s) => ({ ...s, price: v }))}
             />
-            <ToggleRow
+            <DependencyRow
               title="İşlem profilleri"
-              checked={settings.readinessVaries}
-              onChange={(v) => setSettings((s) => ({ ...s, readinessVaries: v }))}
+              selected={effective.readiness}
+              options={depOptions}
+              labelOf={labelOf}
+              defaultOn={defaultDep}
+              onChange={(v) => setSettings((s) => ({ ...s, readiness: v }))}
             />
             <DependencyRow
               title="Stok"
-              selected={keep(settings.quantity)}
+              selected={effective.quantity}
               options={depOptions}
               labelOf={labelOf}
-              firstId={ids[0]}
+              defaultOn={defaultDep}
               onChange={(v) => setSettings((s) => ({ ...s, quantity: v }))}
             />
-            <ToggleRow
+            <DependencyRow
               title="SKU'lar"
-              checked={settings.skuVaries}
-              onChange={(v) => setSettings((s) => ({ ...s, skuVaries: v }))}
+              selected={effective.sku}
+              options={depOptions}
+              labelOf={labelOf}
+              defaultOn={defaultDep}
+              onChange={(v) => setSettings((s) => ({ ...s, sku: v }))}
             />
           </div>
         )}
