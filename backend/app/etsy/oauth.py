@@ -11,9 +11,10 @@ from app.core.config import settings
 AUTHORIZE_URL = "https://www.etsy.com/oauth/connect"
 TOKEN_URL = "https://api.etsy.com/v3/public/oauth/token"
 
-# listings_* for the SEO loop, transactions_* for the upcoming order sync (Faz C) —
-# requesting both now avoids forcing a second Etsy re-authorization later.
-SCOPES = "listings_r listings_w transactions_r transactions_w"
+# listings_* for the SEO loop, transactions_* for order sync, shops_r for
+# shipping profiles/return policies (listing editor dropdowns) — requesting
+# all of them now avoids forcing a second Etsy re-authorization later.
+SCOPES = "listings_r listings_w transactions_r transactions_w shops_r"
 
 
 @dataclass

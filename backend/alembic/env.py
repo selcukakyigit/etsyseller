@@ -22,6 +22,8 @@ from app.core.db import Base  # noqa: E402
 from app.auth import models as _auth_models  # noqa: E402,F401
 from app.shops import models as _shop_models  # noqa: E402,F401
 from app.listings import models as _listing_models  # noqa: E402,F401
+from app.orders import models as _order_models  # noqa: E402,F401
+from app.keywords import models as _keyword_models  # noqa: E402,F401
 
 target_metadata = Base.metadata
 config.set_main_option("sqlalchemy.url", settings.database_url)

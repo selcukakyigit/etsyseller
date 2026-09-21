@@ -36,7 +36,8 @@ def complete_connect(db: Session, code: str, state: str) -> Shop:
         "Authorization": f"Bearer {token_set.access_token}",
     }
     resp = httpx.get(f"{API_BASE}/users/{etsy_user_id}/shops", headers=headers, timeout=30)
-    resp.raise_for_status()
+    if resp.is_error:
+        raise ShopConnectError(f"Etsy mağaza bilgisi alınamadı: {resp.text}")
     shop_data = resp.json()
 
     shop = db.query(Shop).filter_by(etsy_shop_id=shop_data["shop_id"]).one_or_none()

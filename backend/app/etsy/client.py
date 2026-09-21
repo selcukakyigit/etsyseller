@@ -6,13 +6,26 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.etsy import oauth as etsy_oauth
+from app.etsy import rate_limit
 from app.shops.models import OAuthToken, Shop
 
 API_BASE = "https://api.etsy.com/v3/application"
 
 
 class EtsyAuthError(Exception):
-    pass
+    """No usable OAuth token for this shop (not connected, or refresh failed)."""
+
+
+class EtsyApiError(Exception):
+    """Etsy returned an HTTP error for an otherwise-authenticated request
+    (bad input, pending app approval, rate limit, etc). Carries Etsy's own
+    status code and error message so the frontend can show something useful
+    instead of a generic 500."""
+
+    def __init__(self, status_code: int, message: str):
+        super().__init__(message)
+        self.status_code = status_code
+        self.message = message
 
 
 class EtsyClient:
@@ -48,6 +61,16 @@ class EtsyClient:
         }
 
     def request(self, method: str, path: str, **kwargs) -> Any:
+        rate_limit.throttle()
         resp = httpx.request(method, f"{API_BASE}{path}", headers=self._headers(), timeout=30, **kwargs)
-        resp.raise_for_status()
+        if resp.is_error:
+            raise EtsyApiError(resp.status_code, _extract_error_message(resp))
         return resp.json() if resp.content else None
+
+
+def _extract_error_message(resp: httpx.Response) -> str:
+    try:
+        body = resp.json()
+        return body.get("error") or body.get("error_description") or resp.text
+    except ValueError:
+        return resp.text or f"Etsy API hatası ({resp.status_code})"

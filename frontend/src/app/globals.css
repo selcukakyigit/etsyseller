@@ -1,8 +1,23 @@
 @import "tailwindcss";
 
+/* Manual light/dark toggle (ThemeToggle sets .dark on <html>) in addition to
+   the system-preference fallback below. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
+  color-scheme: light;
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Chart tokens (see dataviz skill palette) — referenced by TrendChart via CSS vars */
+  --chart-surface: #fcfcfb;
+  --chart-text-primary: #0b0b0b;
+  --chart-text-secondary: #52514e;
+  --chart-text-muted: #898781;
+  --chart-grid: #e1e0d9;
+  --chart-baseline: #c3c2b7;
+  --chart-views: #2a78d6;
+  --chart-favorites: #eb6834;
 }
 
 @theme inline {
@@ -12,10 +27,37 @@
   --font-mono: var(--font-geist-mono);
 }
 
+.dark {
+  color-scheme: dark;
+  --background: #0a0a0a;
+  --foreground: #ededed;
+
+  --chart-surface: #1a1a19;
+  --chart-text-primary: #ffffff;
+  --chart-text-secondary: #c3c2b7;
+  --chart-text-muted: #898781;
+  --chart-grid: #2c2c2a;
+  --chart-baseline: #383835;
+  --chart-views: #3987e5;
+  --chart-favorites: #d95926;
+}
+
+/* Only auto-follow the system when the user hasn't made an explicit choice
+   via ThemeToggle (which sets .light or .dark on <html>). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not(.light):not(.dark) {
+    color-scheme: dark;
     --background: #0a0a0a;
     --foreground: #ededed;
+
+    --chart-surface: #1a1a19;
+    --chart-text-primary: #ffffff;
+    --chart-text-secondary: #c3c2b7;
+    --chart-text-muted: #898781;
+    --chart-grid: #2c2c2a;
+    --chart-baseline: #383835;
+    --chart-views: #3987e5;
+    --chart-favorites: #d95926;
   }
 }
 

@@ -9,6 +9,12 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-4o"
 
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-sonnet-5"
+
+    # Which provider generate_seo_suggestion() actually calls — "openai" or "anthropic".
+    ai_provider: str = "openai"
+
     frontend_url: str = "http://localhost:3000"
     database_url: str = "sqlite:///./data.db"
 

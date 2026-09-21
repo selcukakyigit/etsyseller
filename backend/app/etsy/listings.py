@@ -1,24 +1,25 @@
 from app.etsy.client import EtsyClient
 
 
-def list_active_listings(client: EtsyClient, limit: int = 100) -> list[dict]:
+def list_active_listings(client: EtsyClient, limit: int | None = None) -> list[dict]:
+    """Tüm aktif listing'ler (sayfa sayfa). `limit` verilirse ilk N ile sınırlar."""
     results: list[dict] = []
     offset = 0
     while True:
         page = client.request(
             "GET",
             f"/shops/{client.shop.etsy_shop_id}/listings",
-            params={"state": "active", "limit": min(limit, 100), "offset": offset, "includes": "Images"},
+            params={"state": "active", "limit": 100, "offset": offset, "includes": "Images,Videos"},
         )
         results.extend(page["results"])
         offset += len(page["results"])
-        if offset >= page["count"] or len(results) >= limit or not page["results"]:
+        if offset >= page["count"] or (limit is not None and len(results) >= limit) or not page["results"]:
             break
-    return results[:limit]
+    return results[:limit] if limit is not None else results
 
 
 def get_listing(client: EtsyClient, listing_id: int) -> dict:
-    return client.request("GET", f"/listings/{listing_id}", params={"includes": "Images"})
+    return client.request("GET", f"/listings/{listing_id}", params={"includes": "Images,Videos"})
 
 
 def update_listing(client: EtsyClient, listing_id: int, data: dict) -> dict:

@@ -32,34 +32,37 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex-1 bg-neutral-50 flex items-center justify-center px-6">
+    <main className="flex-1 bg-neutral-50 dark:bg-neutral-950 flex items-center justify-center px-6">
       <div className="w-full max-w-sm">
-        <h1 className="text-lg font-semibold text-neutral-900 mb-1">Etsy SEO Otomasyon</h1>
-        <p className="text-sm text-neutral-400 mb-6">
+        <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-1">Etsy SEO Otomasyon</h1>
+        <p className="text-sm text-neutral-400 dark:text-neutral-500 mb-6">
           {mode === "login" ? "Hesabına giriş yap" : "Yeni hesap oluştur"}
         </p>
 
-        <form onSubmit={handleSubmit} className="space-y-3 rounded-xl border border-neutral-200 bg-white p-6">
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-3 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6"
+        >
           <div>
-            <label className="block text-xs font-medium text-neutral-500 mb-1">E-posta</label>
+            <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">E-posta</label>
             <input
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[#F1641E]"
+              className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#F1641E]"
               placeholder="sen@ornek.com"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-neutral-500 mb-1">Şifre</label>
+            <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Şifre</label>
             <input
               type="password"
               required
               minLength={8}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[#F1641E]"
+              className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#F1641E]"
               placeholder="en az 8 karakter"
             />
           </div>
@@ -77,7 +80,7 @@ export default function LoginPage() {
 
         <button
           onClick={() => setMode(mode === "login" ? "register" : "login")}
-          className="mt-4 text-sm text-neutral-500 hover:text-neutral-800 transition"
+          className="mt-4 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 transition"
         >
           {mode === "login" ? "Hesabın yok mu? Kayıt ol" : "Zaten hesabın var mı? Giriş yap"}
         </button>
