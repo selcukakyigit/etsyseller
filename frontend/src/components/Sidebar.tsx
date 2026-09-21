@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { api, API_URL, Shop, User } from "@/lib/api";
 
 const NAV_ITEMS = [
+  { href: "/dashboard", label: "Dashboard" },
   { href: "/", label: "Listing'ler" },
   { href: "/orders", label: "Siparişler" },
   { href: "/finance", label: "Finans" },

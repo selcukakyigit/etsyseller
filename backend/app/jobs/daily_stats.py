@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.db import SessionLocal
 from app.etsy import listings as etsy_listings
 from app.etsy.client import EtsyAuthError, EtsyClient
+from app.listings import performance
 from app.listings.models import ListingStatSnapshot
 from app.shops.models import Shop
 
@@ -44,17 +45,9 @@ def capture_daily_stats() -> None:
                 logger.exception("Failed to fetch listings for shop %s during daily stats capture", shop.id)
                 continue
 
+            captured = performance.captured_today_ids(db, shop.id)
             for item in listings:
-                if _already_captured_today(db, shop.id, item["listing_id"]):
-                    continue
-                db.add(
-                    ListingStatSnapshot(
-                        shop_id=shop.id,
-                        listing_id=item["listing_id"],
-                        views=item.get("views") or 0,
-                        favorites=item.get("num_favorers") or 0,
-                    )
-                )
+                performance.record_snapshot(db, shop.id, item, captured)
             db.commit()
     finally:
         db.close()

@@ -72,8 +72,6 @@ class ShipRequest(BaseModel):
 class OrderInsightsOut(BaseModel):
     needs_shipping_today: int
     overdue: int
-    top_listing_last_7_days: str | None
-    summary: str
 
 
 class DestinationCount(BaseModel):

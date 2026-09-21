@@ -7,8 +7,6 @@ import threading
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from app.ai.client import get_openai_client
-from app.core.config import settings
 from app.etsy import orders as etsy_orders
 from app.etsy.client import EtsyClient
 from app.listings.models import ListingCache
@@ -375,57 +373,7 @@ def get_insights(db: Session, shop: Shop) -> OrderInsightsOut:
     needs_shipping_today = sum(1 for r in rows if r.expected_ship_date and r.expected_ship_date.date() <= today)
     overdue = sum(1 for r in rows if r.expected_ship_date and r.expected_ship_date.date() < today)
 
-    week_ago = dt.datetime.utcnow() - dt.timedelta(days=7)
-    recent_rows = db.scalars(
-        select(OrderCache).where(OrderCache.shop_id == shop.id).where(OrderCache.created_at >= week_ago)
-    ).all()
-    title_counts: dict[str, int] = {}
-    for r in recent_rows:
-        receipt = json.loads(r.raw_json)
-        for t in receipt.get("transactions", []):
-            title = t.get("title", "")
-            title_counts[title] = title_counts.get(title, 0) + t.get("quantity", 1)
-    top_listing = max(title_counts, key=title_counts.get) if title_counts else None
-
-    summary = _generate_summary(needs_shipping_today, overdue, top_listing, len(recent_rows))
-
     return OrderInsightsOut(
         needs_shipping_today=needs_shipping_today,
         overdue=overdue,
-        top_listing_last_7_days=top_listing,
-        summary=summary,
     )
-
-
-def _generate_summary(needs_shipping_today: int, overdue: int, top_listing: str | None, orders_last_7_days: int) -> str:
-    if not settings.openai_api_key:
-        return _fallback_summary(needs_shipping_today, overdue, top_listing, orders_last_7_days)
-
-    prompt = (
-        f"Bugün kargoya verilmesi gereken sipariş sayısı: {needs_shipping_today}\n"
-        f"Süresi geçmiş (gecikmiş) sipariş sayısı: {overdue}\n"
-        f"Son 7 günde en çok satan ürün: {top_listing or 'veri yok'}\n"
-        f"Son 7 gündeki toplam sipariş sayısı: {orders_last_7_days}\n\n"
-        "Bu verilerden, Etsy satıcısına yönelik 2 cümlelik, aksiyona yönlendiren, Türkçe bir günlük özet yaz. "
-        "Sadece verilen sayılara dayan, uydurma."
-    )
-    try:
-        completion = get_openai_client().chat.completions.create(
-            model=settings.openai_model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=150,
-        )
-        return completion.choices[0].message.content or _fallback_summary(
-            needs_shipping_today, overdue, top_listing, orders_last_7_days
-        )
-    except Exception:
-        return _fallback_summary(needs_shipping_today, overdue, top_listing, orders_last_7_days)
-
-
-def _fallback_summary(needs_shipping_today: int, overdue: int, top_listing: str | None, orders_last_7_days: int) -> str:
-    parts = [f"Bugün {needs_shipping_today} sipariş kargoya verilmeyi bekliyor."]
-    if overdue:
-        parts.append(f"{overdue} sipariş gecikmiş, önceliklendir.")
-    if top_listing:
-        parts.append(f"Son 7 günde en çok satan: {top_listing}.")
-    return " ".join(parts)

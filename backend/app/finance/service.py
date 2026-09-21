@@ -9,7 +9,7 @@ import json
 import logging
 import statistics
 import threading
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -24,15 +24,17 @@ from app.shops.models import Shop
 log = logging.getLogger(__name__)
 
 _state: dict[int, dict] = {}
+ORDER_FIXED_ID = -1  # listing_costs içinde "sipariş başına sabit gider" için ayrılmış sahte listing_id
 WINDOW = 30 * 86400
 
 FEE_LABELS = {
     "transaction": "İşlem ücreti",
     "processing_fee": "Ödeme işleme ücreti",
     "regulatory_fee": "Düzenleyici işletme ücreti",
+    "offsite_ads": "Offsite Ads ücreti",
     "other_fee": "Diğer sipariş ücretleri",
 }
-OVERHEAD_LABELS = {"ads": "Etsy Ads / reklam", "listing_fees": "Listeleme ve yenileme", "other": "Diğer giderler"}
+OVERHEAD_LABELS = {"ads": "Etsy Ads / reklam", "listing_fees": "Listeleme ve yenileme", "other": "Diğer (abonelik, KDV, kredi)"}
 
 
 def variant_key(t: dict) -> str:
@@ -53,45 +55,76 @@ def _load_history(db: Session, shop: Shop) -> dict[tuple[int, str], list[CostHis
     return out
 
 
-def unit_cost_for(t: dict, costs: dict, vcosts: dict, hist: dict, on: dt.date) -> tuple[float, bool]:
+def unit_cost_for(t: dict, costs: dict, vcosts: dict, hist: dict, on: dt.date, kc: float = 1.0) -> tuple[float, bool]:
     """Öncelik: seçenek maliyeti > listing maliyeti. Maliyet sonradan değiştirilmişse siparişin tarihine (`on`) uyan
-    sürüm kullanılır. Döner: (adet başına maliyet+kargo, tanımlı mı)."""
+    sürüm kullanılır. `kc`: siparişin para biriminden rapor para birimine çarpan (fiyat % için). Dijital ürünlerde kargo
+    maliyeti yoktur ve maliyet girilmemiş olması eksik sayılmaz. Döner: (adet başına maliyet+kargo, tanımlı mı)."""
     lid = t.get("listing_id")
+    digital = bool(t.get("is_digital"))
     key = (lid, variant_key(t))
+
+    def is_set(c) -> bool:  # tüm alanları 0 olan kayıt "girilmemiş" sayılır (kutuya 0 yazıp çıkmak seçeneği sıfırlamasın)
+        return c is not None and bool(c.unit_cost or c.shipping_cost or c.cost_pct)
+
     src = vcosts.get(key)
     hist_key = key
-    if src is None:
+    if not is_set(src):
         src = costs.get(lid)
         hist_key = (lid, "")
-    if src is None:
-        return 0.0, False
+    if not is_set(src):
+        return 0.0, digital
     unit, ship, pct = src.unit_cost, src.shipping_cost, src.cost_pct
     for h in hist.get(hist_key, []):  # valid_until artan sırada; ilk uyan en eski sürümdür
         if on < h.valid_until:
             unit, ship, pct = h.unit_cost, h.shipping_cost, h.cost_pct
             break
-    return unit + pct / 100 * _money(t.get("price")) + ship, True
+    if digital:
+        ship = 0.0
+    return unit + pct / 100 * _money(t.get("price")) * kc + ship, True
+
+
+def _fixed_cost_on(costs: dict, hist: dict, on: dt.date) -> float:
+    """Sipariş başına sabit gider (ambalaj, etiket…), siparişin tarihine uyan sürümle."""
+    src = costs.get(ORDER_FIXED_ID)
+    if src is None:
+        return 0.0
+    v = src.unit_cost
+    for h in hist.get((ORDER_FIXED_ID, ""), []):
+        if on < h.valid_until:
+            v = h.unit_cost
+            break
+    return v
+
+
+def _all_digital(txs: list[dict]) -> bool:
+    return bool(txs) and all(t.get("is_digital") for t in txs)
 
 
 def category(ledger_type: str) -> str:
+    """Ledger türünü kategoriye ayırır. `*_refund` (ücret iadesi) satırları asıl türüyle aynı kategoriye girer; böylece
+    işaretli toplamda ücret iadeleri ilgili ücretten düşer. Müşteriye yapılan iade ledger'ı (REFUND*) ayrı tutulur:
+    iadeler siparişlerin kendi iade tutarlarından hesaplanır, aynı iade iki kez sayılmasın."""
     t = ledger_type.lower()
-    if t == "payment_gross":
+    base = t[: -len("_refund")] if t.endswith("_refund") else t
+    if base in ("payment_gross", "payment"):
         return "gross"
-    if t == "sales_tax" or ("tax" in t and "vat" not in t):
+    if base in ("sales_tax", "refund_reversal_sales_tax"):
         return "tax"
-    if t == "transaction":
+    if base in ("transaction", "transaction_quantity", "shipping_transaction", "gift_wrap_fees", "gift_wrap"):
         return "transaction"
-    if t == "payment_processing_fee":
+    if base in ("payment_processing_fee", "vat_on_processing_fees"):
         return "processing_fee"
-    if t == "regulatory_operating_fee":
+    if base == "regulatory_operating_fee":
         return "regulatory_fee"
-    if "refund" in t:
+    if base == "offsite_ads_fee":
+        return "offsite_ads"
+    if t.startswith("refund"):
         return "refund"
-    if t.startswith("disburse") or "disburse" in t:
+    if "disburse" in t or t in ("recoup", "envoy_reversal"):
         return "transfer"
-    if "prolist" in t or "offsite" in t or "ads" in t:
+    if base == "prolist":
         return "ads"
-    if "renew" in t or "listing" in t or "auto_renew" in t:
+    if base.startswith(("renew", "listing", "auto_renew")):
         return "listing_fees"
     return "other"
 
@@ -264,43 +297,113 @@ def _shift_year(d: dt.date, years: int) -> dt.date:
         return d.replace(year=d.year + years, day=28)
 
 
+ORDER_FEE_BUCKETS = ("transaction", "processing_fee", "regulatory_fee", "offsite_ads")
+
+
+def _fx_tables(db: Session, shop: Shop) -> dict:
+    """Kur tabloları (yalnızca sipariş sütunları ve ödeme tutarlarından; JSON açmaz, hızlıdır).
+    Rapor para birimi `R` = en çok sipariş alınan para birimi. `own[rid]` = ödeme hesabı birimi / sipariş para birimi,
+    `med[(para birimi, ay)]` aynı oranın aylık ortancası."""
+    rows = db.execute(
+        select(OrderCache.receipt_id, OrderCache.grandtotal_amount, OrderCache.grandtotal_divisor, OrderCache.currency_code, OrderCache.created_at)
+        .where(OrderCache.shop_id == shop.id)
+    ).all()
+    pays = {r: g for r, g in db.execute(select(FinPayment.receipt_id, FinPayment.gross_minor).where(FinPayment.shop_id == shop.id))}
+    counts = Counter(c for _, _, _, c, _ in rows)
+    report_ccy = counts.most_common(1)[0][0] if counts else "USD"
+    own: dict[int, float] = {}
+    per: dict[tuple[str, str], list[float]] = defaultdict(list)
+    allc: dict[str, list[float]] = defaultdict(list)
+    meta: dict[int, tuple[str, str]] = {}
+    for rid, amt, div, ccy, created in rows:
+        ym = _ym(created)
+        meta[rid] = (ccy, ym)
+        g = pays.get(rid)
+        grand = amt / (div or 100)
+        if g and grand > 0:
+            fx = g / 100 / grand
+            own[rid] = fx
+            per[(ccy, ym)].append(fx)
+            allc[ccy].append(fx)
+    return {
+        "R": report_ccy,
+        "med": {k: statistics.median(v) for k, v in per.items()},
+        "overall": {c: statistics.median(v) for c, v in allc.items()},
+        "own": own,
+        "meta": meta,
+    }
+
+
+def _factors(tbl: dict, rid: int) -> tuple[float, float]:
+    """(kc, kl): kc = sipariş para biriminden rapor para birimine çarpan; kl = ledger ana birimden rapor para birimine.
+    Sipariş rapor para biriminde ise kc=1 ve kl siparişin kendi ödeme kurudur (tam doğru). Başka para birimindeyse
+    ödeme hesabı üzerinden çevrilir: tutar × (hesap/sipariş kuru) ÷ (hesap/rapor kuru, ayın ortancası)."""
+    R = tbl["R"]
+    ccy, ym = tbl["meta"].get(rid, (R, ""))
+    med_r = tbl["med"].get((R, ym)) or tbl["overall"].get(R) or 1.0
+    own = tbl["own"].get(rid)
+    if ccy == R:
+        return 1.0, 1.0 / (own or med_r)
+    fx_c = own or tbl["med"].get((ccy, ym)) or tbl["overall"].get(ccy)
+    return ((fx_c / med_r) if fx_c else 1.0), 1.0 / med_r
+
+
+ORDER_FEE_BUCKETS = ("transaction", "processing_fee", "regulatory_fee", "offsite_ads")
+
+
 def _order_finance(db: Session, shop: Shop) -> tuple[list[dict], dict, dict]:
-    """Her sipariş için kur ve ledger toplamları (mağaza para biriminde). Ayrıca aylık ortanca kur ve kapsam."""
-    pays = {r: (g, c) for r, g, c in db.execute(select(FinPayment.receipt_id, FinPayment.gross_minor, FinPayment.currency).where(FinPayment.shop_id == shop.id))}
+    """Her sipariş için ledger toplamları ve para birimi çarpanları. Ayrıca rapor para biriminde aylık ortanca kur."""
+    tbl = _fx_tables(db, shop)
+    pays = {
+        r: (g, c, f)
+        for r, g, c, f in db.execute(
+            select(FinPayment.receipt_id, FinPayment.gross_minor, FinPayment.currency, FinPayment.fees_minor).where(FinPayment.shop_id == shop.id)
+        )
+    }
     by_receipt: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    has_pp: set[int] = set()
     for rid, lt, s in db.execute(
         select(LedgerEntry.receipt_id, LedgerEntry.ledger_type, func.sum(LedgerEntry.amount))
         .where(LedgerEntry.shop_id == shop.id).where(LedgerEntry.receipt_id.is_not(None))
         .group_by(LedgerEntry.receipt_id, LedgerEntry.ledger_type)
     ):
-        by_receipt[rid][category(lt)] += s
+        cat = category(lt)
+        if cat in ("gross", "tax", "transfer", "refund") or cat in ORDER_FEE_BUCKETS:
+            key = cat
+        else:
+            key = "other_fee"  # siparişe bağlı diğer ücret/kredi (buyer_fee vb.)
+        by_receipt[rid][key] += s
+        if lt == "PAYMENT_PROCESSING_FEE":
+            has_pp.add(rid)
     orders = []
-    fx_by_month: dict[str, list[float]] = defaultdict(list)
     for row in db.scalars(select(OrderCache).where(OrderCache.shop_id == shop.id)):
         raw = json.loads(row.raw_json)
-        grand = _money(raw.get("grandtotal"))
-        fx = None
+        kc, kl = _factors(tbl, row.receipt_id)
         gross = pays.get(row.receipt_id)
-        if gross and grand > 0:
-            fx = (gross[0] / 100) / grand
-            fx_by_month[_ym(row.created_at)].append(fx)
-        orders.append({"row": row, "raw": raw, "grand": grand, "fx": fx, "led": by_receipt.get(row.receipt_id)})
-    med = {m: statistics.median(v) for m, v in fx_by_month.items()}
-    return orders, med, {"linked": len(by_receipt)}
+        led = by_receipt.get(row.receipt_id)
+        if led is not None and row.receipt_id not in has_pp and gross and gross[2]:
+            # Eski tip ödemelerde (ledger'da `PAYMENT`) işleme ücreti ayrı satır değildir; ödeme kaydındaki tutar kullanılır.
+            led = dict(led)
+            led["processing_fee"] = led.get("processing_fee", 0) - gross[2]
+        orders.append({"row": row, "raw": raw, "grand": _money(raw.get("grandtotal")), "fx": tbl["own"].get(row.receipt_id), "kc": kc, "kl": kl, "led": led})
+    R = tbl["R"]
+    med_r = {ym: v for (c, ym), v in tbl["med"].items() if c == R}
+    return orders, med_r, {"R": R, "overall_r": tbl["overall"].get(R) or 1.0}
 
 
-def _overhead(db: Session, shop: Shop, med: dict[str, float], overall_fx: float) -> list[tuple[str, str, float]]:
-    """Siparişe bağlı olmayan giderler: (ay, kategori, tutar[mağaza para birimi, pozitif = gider])."""
-    out: list[tuple[str, str, float]] = []
-    for ts, lt, cur, amt in db.execute(
-        select(LedgerEntry.created_ts, LedgerEntry.ledger_type, LedgerEntry.currency, LedgerEntry.amount)
+def _overhead(db: Session, shop: Shop, med: dict[str, float], overall_fx: float) -> list[tuple[dt.date, str, str, float]]:
+    """Siparişe bağlı olmayan giderler: (tarih, ay, kategori, tutar[mağaza para birimi; pozitif = gider, negatif = kredi/iade]).
+    Banka aktarımları, vergi ve müşteri iadeleri hariçtir (iadeler siparişlerin kendi iade tutarından gelir)."""
+    out: list[tuple[dt.date, str, str, float]] = []
+    for ts, lt, amt in db.execute(
+        select(LedgerEntry.created_ts, LedgerEntry.ledger_type, LedgerEntry.amount)
         .where(LedgerEntry.shop_id == shop.id).where(LedgerEntry.receipt_id.is_(None))
     ):
         cat = category(lt)
-        if cat in ("transfer", "gross", "tax") or amt >= 0:
+        if cat in ("transfer", "gross", "tax", "refund"):
             continue
         d = dt.datetime.utcfromtimestamp(ts)
-        out.append((_ym(d), cat if cat in OVERHEAD_LABELS else "other", (-amt / 100) / med.get(_ym(d), overall_fx)))
+        out.append((d.date(), _ym(d), cat if cat in OVERHEAD_LABELS else "other", (-amt / 100) / med.get(_ym(d), overall_fx)))
     return out
 
 
@@ -308,8 +411,7 @@ def report(db: Session, shop: Shop, start: dt.date, end: dt.date, country: str =
     """`compare`: karşılaştırılacak yıl farkları (1 = geçen yıl); ilki ana karşılaştırmadır (KPI/ülke), en fazla 4 tane.
     `collect` verilirse seçili dönemdeki her siparişin satırı (Excel dışa aktarma için) oraya eklenir."""
     orders, med, cov = _order_finance(db, shop)
-    fxs = [f for o in orders if (f := o["fx"])]
-    overall_fx = statistics.median(fxs) if fxs else 1.0
+    overall_fx = cov["overall_r"]
     costs = {c.listing_id: c for c in db.scalars(select(ListingCost).where(ListingCost.shop_id == shop.id))}
     vcosts = {(v.listing_id, v.variant_key): v for v in db.scalars(select(VariantCost).where(VariantCost.shop_id == shop.id))}
     hist = _load_history(db, shop)
@@ -340,21 +442,24 @@ def report(db: Session, shop: Shop, start: dt.date, end: dt.date, country: str =
             if row.is_canceled:
                 total["canceled"] = total.get("canceled", 0) + 1
                 continue
-            fx = o["fx"] or overall_fx
+            kc, kl = o["kc"], o["kl"]  # kc: sipariş para birimi -> rapor para birimi, kl: ledger -> rapor para birimi
             led = o["led"] or {}
-            grand = o["grand"]
-            tax = -led.get("tax", 0) / 100 / fx if led else _money(raw.get("total_tax_cost"))
+            grand = o["grand"] * kc
+            tax = -led.get("tax", 0) / 100 * kl if led else _money(raw.get("total_tax_cost")) * kc
             sales = grand - tax
-            refunds = sum(_money(r.get("amount")) for r in (raw.get("refunds") or []) if (r.get("status") or "").upper() in ("SUCCESS", "COMPLETED", ""))
+            refunds = sum(_money(r.get("amount")) for r in (raw.get("refunds") or []) if (r.get("status") or "").upper() in ("SUCCESS", "COMPLETED", "")) * kc
             if refunds > 0:
                 total["refunded_orders"] = total.get("refunded_orders", 0) + 1
-            fee_types = {k: -led.get(k, 0) / 100 / fx for k in FEE_LABELS if k in led}
+            fee_types = {k: -led.get(k, 0) / 100 * kl for k in FEE_LABELS if k in led}
             if not led:
                 unknown_fee_orders += 1
             fees = sum(fee_types.values())
             txs = raw.get("transactions") or []
             item_total = sum(_money(t.get("price")) * (t.get("quantity") or 1) for t in txs) or 1.0
-            item_costs = [unit_cost_for(t, costs, vcosts, hist, row.created_at.date())[0] * (t.get("quantity") or 1) for t in txs]
+            item_costs = [unit_cost_for(t, costs, vcosts, hist, row.created_at.date(), kc)[0] * (t.get("quantity") or 1) for t in txs]
+            fixed = 0.0 if _all_digital(txs) else _fixed_cost_on(costs, hist, row.created_at.date())
+            if fixed:  # sipariş başına sabit gider (ambalaj, etiket): kalemlere fiyat payına göre dağıtılır
+                item_costs = [c + fixed * _money(t.get("price")) * (t.get("quantity") or 1) / item_total for t, c in zip(txs, item_costs)]
             override = overrides.get(row.receipt_id)
             if override is not None:
                 item_costs = [override * _money(t.get("price")) * (t.get("quantity") or 1) / item_total for t in txs]
@@ -364,18 +469,21 @@ def report(db: Session, shop: Shop, start: dt.date, end: dt.date, country: str =
                 share = _money(t.get("price")) * qty / item_total
                 p = products.setdefault(
                     t.get("listing_id") or 0,
-                    {"listing_id": t.get("listing_id") or 0, "title": titles.get(t.get("listing_id")) or t.get("title") or "", "units": 0, "sales": 0.0, "fees": 0.0, "refunds": 0.0, "cogs": 0.0, "variants": {}},
+                    {"listing_id": t.get("listing_id") or 0, "title": titles.get(t.get("listing_id")) or t.get("title") or "", "units": 0, "sales": 0.0, "fees": 0.0, "refunds": 0.0, "cogs": 0.0, "variants": {}, "is_digital": False},
                 )
                 p["units"] += qty
+                if t.get("is_digital"):
+                    p["is_digital"] = True
                 p["sales"] += share * sales
                 p["fees"] += fees * share
                 p["refunds"] += refunds * share
                 p["cogs"] += item_cost
                 vk = variant_key(t)
-                v = p["variants"].setdefault(vk, {"key": vk, "units": 0, "sales": 0.0, "fees": 0.0, "cogs": 0.0})
+                v = p["variants"].setdefault(vk, {"key": vk, "units": 0, "sales": 0.0, "fees": 0.0, "refunds": 0.0, "cogs": 0.0, "is_digital": bool(t.get("is_digital"))})
                 v["units"] += qty
                 v["sales"] += share * sales
                 v["fees"] += fees * share
+                v["refunds"] += refunds * share
                 v["cogs"] += item_cost
             if rows_out is not None:
                 rows_out.append(
@@ -395,6 +503,7 @@ def report(db: Session, shop: Shop, start: dt.date, end: dt.date, country: str =
                         "transaction_fee": fee_types.get("transaction", 0.0),
                         "processing_fee": fee_types.get("processing_fee", 0.0),
                         "regulatory_fee": fee_types.get("regulatory_fee", 0.0),
+                        "offsite_ads_fee": fee_types.get("offsite_ads", 0.0),
                         "other_fee": fee_types.get("other_fee", 0.0),
                         "cogs": cogs,
                         "manual_cost": override is not None,
@@ -426,18 +535,14 @@ def report(db: Session, shop: Shop, start: dt.date, end: dt.date, country: str =
     # Siparişe bağlı olmayan giderler (reklam vb.)
     ov = _overhead(db, shop, med, overall_fx)
 
+    if country:
+        ov = []  # reklam/yenileme giderleri ülkeye atanamaz; ülke filtresinde dahil edilmez
+
     def overhead_sum(a: dt.date, b: dt.date):
-        y, m = a.year, a.month
-        keys = set()
-        while (y, m) <= (b.year, b.month):
-            keys.add(f"{y}-{m:02d}")
-            m += 1
-            if m > 12:
-                y, m = y + 1, 1
         by_type: dict[str, float] = defaultdict(float)
         by_month: dict[str, float] = defaultdict(float)
-        for mm, c, v in ov:
-            if mm in keys:
+        for d, mm, c, v in ov:
+            if a <= d <= b:
                 by_type[c] += v
                 by_month[mm] += v
         return by_type, by_month
@@ -464,8 +569,8 @@ def report(db: Session, shop: Shop, start: dt.date, end: dt.date, country: str =
             "margin": (profit / t["sales"] * 100) if t["sales"] else 0.0,
             "aov": (t["sales"] / t["orders"]) if t["orders"] else 0.0,
             "etsy_share": ((t["fees"] + overhead) / t["sales"] * 100) if t["sales"] else 0.0,
-            "ads": ovt.get("ads", 0.0),
-            "ads_pct": (ovt.get("ads", 0.0) / t["sales"] * 100) if t["sales"] else 0.0,
+            "ads": ovt.get("ads", 0.0) + t["fee_types"].get("offsite_ads", 0.0),
+            "ads_pct": ((ovt.get("ads", 0.0) + t["fee_types"].get("offsite_ads", 0.0)) / t["sales"] * 100) if t["sales"] else 0.0,
             "all_orders": t.get("all_orders", 0),
             "canceled": t.get("canceled", 0),
             "refunded_orders": t.get("refunded_orders", 0),
@@ -521,14 +626,16 @@ def report(db: Session, shop: Shop, start: dt.date, end: dt.date, country: str =
     return {
         "offsets": offsets,
         "range": {"start": start.isoformat(), "end": end.isoformat(), "prev_start": pstart.isoformat(), "prev_end": pend.isoformat()},
-        "currency": (orders[0]["raw"]["grandtotal"]["currency_code"] if orders else "USD"),
+        "currency": cov["R"],
+        "settings": {"order_fixed_cost": costs[ORDER_FIXED_ID].unit_cost if ORDER_FIXED_ID in costs else 0.0},
         "coverage": {"orders_in_range": cur[4]["orders"], "orders_without_fees": cur[5], "fx_median": overall_fx},
         "kpi": kpi(cur[4], ov_cur),
         "prev_kpi": kpi(prev[4], ov_prev),
         "series": series,
         "countries": country_rows,
         "customers": customers,
-        "products": prod_rows if collect is not None else prod_rows[:60],
+        "products": prod_rows[:500],
+        "overhead_excluded": bool(country),
         "available_countries": sorted({o["row"].country_iso for o in orders if o["row"].country_iso}),
         "first_year": min((o["row"].created_at.year for o in orders), default=start.year),
     }
@@ -576,6 +683,11 @@ def set_cost(db: Session, shop: Shop, listing_id: int, unit_cost: float, shippin
     db.commit()
 
 
+def set_order_fixed_cost(db: Session, shop: Shop, amount: float, fix_past: bool = False) -> None:
+    """Sipariş başına sabit gider (ambalaj, etiket…); maliyetlerle aynı tarih geçerliliği kuralı geçerlidir."""
+    set_cost(db, shop, ORDER_FIXED_ID, amount, 0.0, 0.0, fix_past)
+
+
 def set_variant_cost(db: Session, shop: Shop, listing_id: int, key: str, unit_cost: float, shipping_cost: float, cost_pct: float, fix_past: bool = False) -> None:
     new = (max(0.0, unit_cost), max(0.0, shipping_cost), min(1000.0, max(0.0, cost_pct)))
     row = db.scalar(select(VariantCost).where(VariantCost.shop_id == shop.id, VariantCost.listing_id == listing_id, VariantCost.variant_key == key))
@@ -609,12 +721,53 @@ def set_order_cost(db: Session, shop: Shop, receipt_id: int, cost: float | None,
     db.commit()
 
 
+def _order_nets(db: Session, shop: Shop, orders: dict[int, tuple[float, float, float]]) -> dict[int, dict]:
+    """Verilen siparişler için Etsy sonrası net kazanç (alıcının ödediği − ücretler − vergi), rapor para biriminde.
+    `orders`: {receipt_id: (sipariş tutarı [sipariş para birimi], kc, kl)}. order_detail ile aynı mantık, toplu sorgu."""
+    if not orders:
+        return {}
+    rids = list(orders)
+    pays = {
+        r: (g, f)
+        for r, g, f in db.execute(
+            select(FinPayment.receipt_id, FinPayment.gross_minor, FinPayment.fees_minor).where(FinPayment.shop_id == shop.id, FinPayment.receipt_id.in_(rids))
+        )
+    }
+    ents: dict[int, list[LedgerEntry]] = defaultdict(list)
+    for e in db.scalars(select(LedgerEntry).where(LedgerEntry.shop_id == shop.id, LedgerEntry.receipt_id.in_(rids))):
+        ents[e.receipt_id].append(e)
+    out: dict[int, dict] = {}
+    for rid, (grand, kc, kl) in orders.items():
+        es = ents.get(rid)
+        if not es:
+            out[rid] = {"earned": grand * kc, "sales": grand * kc, "fees_known": False}
+            continue
+        g = pays.get(rid)
+        total = tax = 0.0  # ledger ana birimi
+        has_pp = False
+        for e in es:
+            cat = category(e.ledger_type)
+            if cat == "gross":
+                continue
+            v = e.amount / 100
+            total += v
+            if cat == "tax":
+                tax += -v
+            if e.ledger_type == "PAYMENT_PROCESSING_FEE":
+                has_pp = True
+        if not has_pp and g and g[1]:
+            total -= g[1] / 100  # eski tip ödeme: işleme ücreti ödeme kaydında
+        out[rid] = {"earned": grand * kc + total * kl, "sales": grand * kc - tax * kl, "fees_known": True}
+    return out
+
+
 def orders_costs(db: Session, shop: Shop, start: dt.date, end: dt.date, q: str = "", page: int = 0, per_page: int = 30) -> dict:
     """Siparişler ve maliyetleri: otomatik hesap (seçenek/listing maliyetinden) ve elle girilmiş düzeltme."""
     costs = {c.listing_id: c for c in db.scalars(select(ListingCost).where(ListingCost.shop_id == shop.id))}
     vcosts = {(v.listing_id, v.variant_key): v for v in db.scalars(select(VariantCost).where(VariantCost.shop_id == shop.id))}
     hist = _load_history(db, shop)
     overrides = {o.receipt_id: o for o in db.scalars(select(OrderCost).where(OrderCost.shop_id == shop.id))}
+    tbl = _fx_tables(db, shop)
     stmt = (
         select(OrderCache)
         .where(OrderCache.shop_id == shop.id, OrderCache.is_canceled.is_(False))
@@ -625,29 +778,46 @@ def orders_costs(db: Session, shop: Shop, start: dt.date, end: dt.date, q: str =
     if q.strip():
         stmt = stmt.where(OrderCache.search_text.like(f"%{q.strip().lower()}%"))
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    page_rows = db.scalars(stmt.offset(page * per_page).limit(per_page)).all()
+    parsed = {r.receipt_id: json.loads(r.raw_json) for r in page_rows}
+    factors = {rid: _factors(tbl, rid) for rid in parsed}
+    nets = _order_nets(db, shop, {rid: (_money(raw.get("grandtotal")), *factors[rid]) for rid, raw in parsed.items()})
     out = []
-    for row in db.scalars(stmt.offset(page * per_page).limit(per_page)):
-        raw = json.loads(row.raw_json)
+    for row in page_rows:
+        raw = parsed[row.receipt_id]
+        kc, _kl = factors[row.receipt_id]
         txs = raw.get("transactions") or []
-        resolved = [unit_cost_for(t, costs, vcosts, hist, row.created_at.date()) for t in txs]
+        on = row.created_at.date()
+        resolved = [unit_cost_for(t, costs, vcosts, hist, on, kc) for t in txs]
+        fixed = 0.0 if _all_digital(txs) else _fixed_cost_on(costs, hist, on)
         o = overrides.get(row.receipt_id)
+        net = nets[row.receipt_id]
+        grand = _money(raw.get("grandtotal"))
         out.append(
             {
                 "receipt_id": row.receipt_id,
                 "date": row.created_at.date().isoformat(),
                 "buyer": row.buyer_name,
                 "country": row.country_iso,
-                "total": _money(raw.get("grandtotal")),
+                "total": grand * kc,
+                "original_currency": tbl["meta"][row.receipt_id][0],
+                "original_total": grand,
                 "items": [
                     {"title": html.unescape(t.get("title") or ""), "quantity": t.get("quantity") or 1, "variant": variant_key(t), "defined": r[1]}
                     for t, r in zip(txs, resolved)
                 ],
-                "auto_cost": sum(r[0] * (t.get("quantity") or 1) for t, r in zip(txs, resolved)),
+                "auto_cost": sum(r[0] * (t.get("quantity") or 1) for t, r in zip(txs, resolved)) + fixed,
+                "fixed_cost": fixed,
+                "auto_defined": bool(resolved) and all(r[1] for r in resolved),
+                "earned": net["earned"],
+                "sales": net["sales"],
+                "refunds": sum(_money(rf.get("amount")) for rf in (raw.get("refunds") or []) if (rf.get("status") or "").upper() in ("SUCCESS", "COMPLETED", "")) * kc,
+                "fees_known": net["fees_known"],
                 "override": o.cost if o else None,
                 "note": o.note if o else "",
             }
         )
-    return {"total": total, "orders": out}
+    return {"total": total, "orders": out, "currency": tbl["R"]}
 
 
 LEDGER_LABELS = {
@@ -655,22 +825,38 @@ LEDGER_LABELS = {
     "processing_fee": "Ödeme işleme ücreti",
     "regulatory_fee": "Düzenleyici işletme ücreti",
     "tax": "Alıcıdan alınan vergi (Etsy tarafından ödenir)",
-    "refund": "İade",
+    "refund": "İade düzeltmesi",
+    "offsite_ads": "Offsite Ads ücreti",
     "ads": "Reklam",
     "listing_fees": "Listeleme / yenileme",
 }
 
+TYPE_LABELS = {
+    "vat_on_processing_fees": "Ödeme işleme ücreti KDV'si",
+    "shipping_transaction": "Kargo işlem ücreti",
+    "transaction_quantity": "İşlem ücreti (ek adet)",
+    "gift_wrap_fees": "Hediye paketi ücreti",
+    "buyer_fee": "Alıcı ücreti",
+    "regulatory_operating_fee_refund": "Düzenleyici ücret iadesi",
+    "transaction_refund": "İşlem ücreti iadesi",
+    "offsite_ads_fee_refund": "Offsite Ads ücreti iadesi",
+    "refund_reversal_sales_tax": "Vergi iadesi düzeltmesi",
+}
+
 
 def order_detail(db: Session, shop: Shop, receipt_id: int) -> dict | None:
-    """Tek siparişin Etsy'deki gibi ayrıntısı: sipariş bilgileri, kalemler ve kazanç (alıcının ödediği, ücretler, net)."""
+    """Tek siparişin Etsy'deki gibi ayrıntısı: sipariş bilgileri, kalemler ve kazanç. Tutarlar rapor para biriminde
+    (sipariş başka para birimindeyse `original_*` alanlarında asıl tutar bulunur)."""
     row = db.scalar(select(OrderCache).where(OrderCache.shop_id == shop.id, OrderCache.receipt_id == receipt_id))
     if row is None:
         return None
     raw = json.loads(row.raw_json)
-    grand = _money(raw.get("grandtotal"))
-    currency = (raw.get("grandtotal") or {}).get("currency_code", "USD")
-    pay = db.execute(select(FinPayment.gross_minor, FinPayment.currency).where(FinPayment.shop_id == shop.id, FinPayment.receipt_id == receipt_id)).first()
-    fx = (pay[0] / 100 / grand) if pay and grand > 0 else None
+    tbl = _fx_tables(db, shop)
+    kc, kl = _factors(tbl, receipt_id)
+    grand_orig = _money(raw.get("grandtotal"))
+    grand = grand_orig * kc
+    orig_ccy = (raw.get("grandtotal") or {}).get("currency_code", tbl["R"])
+    pay = db.execute(select(FinPayment.gross_minor, FinPayment.currency, FinPayment.fees_minor).where(FinPayment.shop_id == shop.id, FinPayment.receipt_id == receipt_id)).first()
     entries = db.scalars(
         select(LedgerEntry).where(LedgerEntry.shop_id == shop.id, LedgerEntry.receipt_id == receipt_id).order_by(LedgerEntry.created_ts, LedgerEntry.id)
     ).all()
@@ -680,13 +866,21 @@ def order_detail(db: Session, shop: Shop, receipt_id: int) -> dict | None:
         cat = category(e.ledger_type)
         if cat == "gross":
             continue
-        rate = fx or 1.0
         fees.append({
-            "label": LEDGER_LABELS.get(cat, e.ledger_type),
+            "label": TYPE_LABELS.get(e.ledger_type.lower()) or LEDGER_LABELS.get(cat, e.ledger_type),
             "type": e.ledger_type,
-            "amount": e.amount / 100 / rate,
+            "amount": e.amount / 100 * kl,
             "original": e.amount / 100,
             "original_currency": e.currency,
+        })
+    if entries and pay and pay[2] and not any(e.ledger_type == "PAYMENT_PROCESSING_FEE" for e in entries):
+        # Eski tip ödeme: işleme ücreti ledger'da ayrı satır değil, ödeme kaydında.
+        fees.append({
+            "label": "Ödeme işleme ücreti",
+            "type": "PAYMENT_PROCESSING_FEE",
+            "amount": -pay[2] / 100 * kl,
+            "original": -pay[2] / 100,
+            "original_currency": pay[1] or "",
         })
     fees_total = sum(f["amount"] for f in fees)
 
@@ -700,21 +894,24 @@ def order_detail(db: Session, shop: Shop, receipt_id: int) -> dict | None:
         if imgs:
             images[lid] = imgs[0].get("url_170x135") or ""
 
+    txs = raw.get("transactions") or []
+    on = row.created_at.date()
     items = []
-    auto_cost = 0.0
-    for t in raw.get("transactions") or []:
+    auto_items = 0.0
+    for t in txs:
         qty = t.get("quantity") or 1
-        unit, defined = unit_cost_for(t, costs, vcosts, hist, row.created_at.date())
-        auto_cost += unit * qty
+        unit, defined = unit_cost_for(t, costs, vcosts, hist, on, kc)
+        auto_items += unit * qty
         items.append({
             "transaction_id": t.get("transaction_id"),
             "listing_id": t.get("listing_id"),
             "title": html.unescape(t.get("title") or ""),
             "image": images.get(t.get("listing_id"), ""),
             "quantity": qty,
-            "price": _money(t.get("price")),
-            "shipping": _money(t.get("shipping_cost")),
+            "price": _money(t.get("price")) * kc,
+            "shipping": _money(t.get("shipping_cost")) * kc,
             "sku": t.get("sku") or "",
+            "is_digital": bool(t.get("is_digital")),
             "variations": [
                 {"name": html.unescape(v.get("formatted_name") or ""), "value": html.unescape(v.get("formatted_value") or "")}
                 for v in t.get("variations") or []
@@ -722,15 +919,18 @@ def order_detail(db: Session, shop: Shop, receipt_id: int) -> dict | None:
             "unit_cost": unit,
             "cost_defined": defined,
         })
+    fixed = 0.0 if _all_digital(txs) else _fixed_cost_on(costs, hist, on)
+    auto_cost = auto_items + fixed
     cogs = override.cost if override else auto_cost
     refunds = [
-        {"amount": _money(r.get("amount")), "reason": r.get("reason") or "", "status": r.get("status") or ""}
+        {"amount": _money(r.get("amount")) * kc, "reason": r.get("reason") or "", "status": r.get("status") or ""}
         for r in raw.get("refunds") or []
     ]
-    items_price = _money(raw.get("total_price"))
-    discount = _money(raw.get("discount_amt"))
-    shipping = _money(raw.get("total_shipping_cost"))
-    gift_wrap = _money(raw.get("gift_wrap_price"))
+    items_price = _money(raw.get("total_price")) * kc
+    discount = _money(raw.get("discount_amt")) * kc
+    shipping = _money(raw.get("total_shipping_cost")) * kc
+    gift_wrap = _money(raw.get("gift_wrap_price")) * kc
+    tax_paid = (_money(raw.get("total_tax_cost")) + _money(raw.get("total_vat_cost"))) * kc
     earned = grand + fees_total
     address = {
         "name": raw.get("name") or "",
@@ -742,7 +942,9 @@ def order_detail(db: Session, shop: Shop, receipt_id: int) -> dict | None:
     }
     return {
         "receipt_id": receipt_id,
-        "currency": currency,
+        "currency": tbl["R"],
+        "original_currency": orig_ccy,
+        "original_total": grand_orig,
         "created": row.created_at.isoformat(),
         "status": raw.get("status") or row.status,
         "is_gift": bool(raw.get("is_gift")),
@@ -764,17 +966,18 @@ def order_detail(db: Session, shop: Shop, receipt_id: int) -> dict | None:
             "shipping": shipping,
             "gift_wrap": gift_wrap,
             "subtotal": items_price - discount,
-            "before_tax": grand - _money(raw.get("total_tax_cost")) - _money(raw.get("total_vat_cost")),
-            "tax_paid": _money(raw.get("total_tax_cost")) + _money(raw.get("total_vat_cost")),
+            "before_tax": grand - tax_paid,
+            "tax_paid": tax_paid,
             "fees": fees,
             "fees_total": fees_total,
             "earned": earned,
             "has_ledger": bool(entries),
-            "fx": fx,
+            "fx": (1 / kl) if kl else None,
             "refunds": refunds,
             "cost": cogs,
             "cost_manual": override is not None,
             "auto_cost": auto_cost,
+            "fixed_cost": fixed,
             "profit": earned - sum(r["amount"] for r in refunds) - cogs,
         },
     }

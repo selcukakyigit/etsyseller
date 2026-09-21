@@ -9,6 +9,7 @@ import ListingRow from "@/components/ListingRow";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import SuccessDialog from "@/components/ui/SuccessDialog";
 import ListingCard, { CardAction } from "@/components/listings/ListingCard";
+import ListingPreviewModal from "@/components/listings/ListingPreviewModal";
 import BulkEditModal, { BulkOp } from "@/components/listings/BulkEditModal";
 import ListingHistoryPanel from "@/components/ListingHistoryPanel";
 import { Modal, btnGhost } from "@/components/listing-editor/Modal";
@@ -113,6 +114,7 @@ export default function Home() {
   const [editModal, setEditModal] = useState<{ ids: number[]; only?: BulkOp } | null>(null);
   const [stageMsg, setStageMsg] = useState<{ text: string; errors: { title: string; error: string }[] } | null>(null);
   const [statsFor, setStatsFor] = useState<Listing | null>(null);
+  const [previewId, setPreviewId] = useState<number | null>(null);
   const [needsReconnect, setNeedsReconnect] = useState(false);
   const [busyAction, setBusyAction] = useState(false);
 
@@ -216,7 +218,8 @@ export default function Home() {
   }
 
   function handleAction(action: CardAction, listing: Listing) {
-    if (action === "stats") setStatsFor(listing);
+    if (action === "preview") setPreviewId(listing.listing_id);
+    else if (action === "stats") setStatsFor(listing);
     else if (action === "copy") void newListing(listing.listing_id);
     else if (action === "publish") void publishOne(listing);
     else if (action === "activate") void changeState([listing], "active");
@@ -608,6 +611,7 @@ export default function Home() {
           }}
         />
       )}
+      {previewId !== null && activeShop && <ListingPreviewModal shopId={activeShop.id} listingId={previewId} shopName={activeShop.shop_name} onClose={() => setPreviewId(null)} />}
       {statsFor && activeShop && (
         <Modal
           z={95}

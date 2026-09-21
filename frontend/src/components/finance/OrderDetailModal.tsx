@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, FinOrderDetail } from "@/lib/api";
+import ProductThumb from "./ProductThumb";
 
 const names = new Intl.DisplayNames(["tr"], { type: "region", fallback: "code" });
 const box = "rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-700 dark:bg-neutral-900";
@@ -138,6 +139,7 @@ export default function OrderDetailModal({ shopId, receiptId, onClose }: { shopI
                   {e.refunds.map((r, i) => (
                     <Row key={i} label={`İade${r.reason ? ` · ${r.reason}` : ""}`} value={`−${money(r.amount)}`} muted />
                   ))}
+                  {!e.cost_manual && e.fixed_cost > 0 && <Row label="  Sipariş başına sabit gider (dahil)" value={money(e.fixed_cost)} muted />}
                   <Row
                     label={`Ürün + kargo maliyeti${e.cost_manual ? " (elle girilmiş)" : ""}`}
                     value={e.cost > 0 ? `−${money(e.cost)}` : <span className="text-amber-600">girilmemiş</span>}
@@ -149,6 +151,11 @@ export default function OrderDetailModal({ shopId, receiptId, onClose }: { shopI
                 </div>
               </section>
 
+              {data.original_currency !== data.currency && (
+                <p className="text-xs text-neutral-400">
+                  Bu sipariş {data.original_currency} ile verildi ({data.original_total.toFixed(2)} {data.original_currency}). Tüm tutarlar rapor para birimi {data.currency} cinsinden gösteriliyor; ödeme hesabı üzerinden çevrilir.
+                </p>
+              )}
               {e.fx && e.fees.some((f) => f.original_currency && f.original_currency !== data.currency) && (
                 <p className="text-xs text-neutral-400">
                   Etsy ücretleri {e.fees.find((f) => f.original_currency)?.original_currency} olarak kesilir. Burada bu siparişin ödeme kuruyla (1 {data.currency} = {e.fx.toFixed(2)}{" "}
@@ -203,12 +210,7 @@ export default function OrderDetailModal({ shopId, receiptId, onClose }: { shopI
                 <div className="space-y-3">
                   {data.items.map((it) => (
                     <div key={it.transaction_id ?? it.title} className="flex gap-3">
-                      {it.image ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={it.image} alt="" className="h-16 w-16 flex-shrink-0 rounded object-cover" />
-                      ) : (
-                        <div className="h-16 w-16 flex-shrink-0 rounded bg-neutral-100 dark:bg-neutral-800" />
-                      )}
+                      <ProductThumb src={it.image} size={64} />
                       <div className="min-w-0 flex-1 text-sm">
                         <div className="font-medium">{it.title}</div>
                         {it.variations.map((v, i) => (

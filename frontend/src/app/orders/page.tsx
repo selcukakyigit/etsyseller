@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, Order, OrderInsights, OrdersPage as OrdersPageData, OrdersSyncStatus } from "@/lib/api";
+import { api, Order, OrdersPage as OrdersPageData, OrdersSyncStatus } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import AppShell from "@/components/AppShell";
 import OrderCard from "@/components/orders/OrderCard";
@@ -27,7 +27,6 @@ export default function OrdersPage() {
   const { user, shops, activeShop, setActiveShopId, error: bootError } = useAuthAndShop();
   const [data, setData] = useState<OrdersPageData | null>(null);
   const [loadedKey, setLoadedKey] = useState<string | null>(null); // hangi sorgunun sonucu ekranda
-  const [insights, setInsights] = useState<OrderInsights | null>(null);
   const [syncInfo, setSyncInfo] = useState<OrdersSyncStatus | null>(null);
   const [tab, setTab] = useState<Tab>("toship");
   const [filters, setFilters] = useState<OrderFilters>(EMPTY_ORDER_FILTERS);
@@ -93,7 +92,6 @@ export default function OrdersPage() {
 
   useEffect(() => {
     if (shopId === undefined) return;
-    api.orders.insights(shopId).then(setInsights).catch(() => undefined);
     api.orders
       .syncStatus(shopId)
       .then(async (status) => {
@@ -147,7 +145,6 @@ export default function OrdersPage() {
     try {
       setSyncInfo(await api.orders.sync(shopId));
       load();
-      api.orders.insights(shopId).then(setInsights).catch(() => undefined);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Bilinmeyen hata");
     } finally {
@@ -180,7 +177,6 @@ export default function OrdersPage() {
       return next;
     });
     load();
-    if (shopId !== undefined) api.orders.insights(shopId).then(setInsights).catch(() => undefined);
   }
 
   async function copyAddresses() {
@@ -252,7 +248,6 @@ export default function OrdersPage() {
                 Etsy&apos;de {syncInfo.remote_total} sipariş var, yerelde {syncInfo.local} tanesi görünüyor. Kalanı için &quot;Etsy ile senkronize et&quot;e bas.
               </p>
             )}
-            {insights && <p className="mb-4 rounded-xl border border-neutral-200 bg-white p-4 text-sm text-neutral-700 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300">{insights.summary}</p>}
 
             <div className="mb-3 flex flex-wrap items-center gap-3">
               <label className="flex cursor-pointer items-center gap-2 text-sm text-neutral-700 dark:text-neutral-200">

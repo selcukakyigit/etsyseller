@@ -77,6 +77,8 @@ class ListingStatSnapshot(Base):
     views: Mapped[int] = mapped_column(Integer, default=0)
     favorites: Mapped[int] = mapped_column(Integer, default=0)
     captured_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+    # Başlık+etiket+açıklamanın kısa parmak izi; değişince içeriğin o gün güncellendiği anlaşılır (bkz. listings/performance.py)
+    content_hash: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
 
 class ListingDraft(Base):

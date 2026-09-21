@@ -7,7 +7,8 @@ import threading
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai import seo
+from app.ai import quality, seo
+from app.listings import performance
 from app.etsy import images as etsy_images
 from app.etsy import inventory as etsy_inventory
 from app.etsy import listings as etsy_listings
@@ -146,9 +147,11 @@ def sync_listings(db: Session, shop: Shop, full: bool = False) -> int:
     synced = 0
     seen_skipped = 0
     seen: set[int] = set()
+    captured_today = performance.captured_today_ids(db, shop.id)
     for item in listings:
         listing_id = item["listing_id"]
         seen.add(listing_id)
+        performance.record_snapshot(db, shop.id, item, captured_today)  # görüntülenme/favori/içerik parmak izi: günde bir
         existing = _get_cache_row(db, shop, listing_id)
 
         unchanged = (
@@ -429,7 +432,7 @@ def create_suggestion(
             item["google_score"] = cached_trends[item["tag"]]
 
     try:
-        suggestion = seo.generate_seo_suggestion(listing, keyword_pool=keyword_pool)
+        suggestion = seo.generate_seo_suggestion(listing, keyword_pool=keyword_pool, others=quality.shop_others(db, shop.id, exclude_id=listing_id))
     except (ValueError, json.JSONDecodeError) as exc:
         raise SuggestionError(f"SEO önerisi üretilemedi: {exc}") from exc
 
@@ -452,6 +455,7 @@ def create_suggestion(
     db.refresh(version_row)
     out = _serialize_suggestion(version_row)
     out.suggested_materials = suggestion.get("materials", [])
+    out.warnings = suggestion.get("warnings", [])
     return out
 
 

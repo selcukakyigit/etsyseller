@@ -1,4 +1,5 @@
-from pydantic import BaseModel
+import datetime as dt
+from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
@@ -7,7 +8,7 @@ from app.auth.models import User
 from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.etsy.client import EtsyAuthError
-from app.listings import bulk, creation, drafts, service
+from app.listings import bulk, creation, drafts, performance, service
 from app.listings.schemas import (
     DraftSaveIn,
     ImageOrderIn,
@@ -87,6 +88,24 @@ def sync(full: bool = False, shop: Shop = Depends(get_owned_shop)):
     GET /sync-status to know when it's done."""
     started = service.start_background_sync(shop, full=full)
     return {"syncing": True, "started": started}
+
+
+@router.get("/{listing_id}/performance")
+def listing_performance(
+    listing_id: int,
+    start: dt.date | None = None,
+    end: dt.date | None = None,
+    shop: Shop = Depends(get_owned_shop),
+    db: Session = Depends(get_db),
+):
+    """Dönem performansı: satış (geriye dönük tam), görüntülenme/favori artışı (günlük anlık görüntülerden), içerik tazeliği."""
+    today = dt.date.today()
+    end = end or today
+    start = start or end - dt.timedelta(days=89)
+    data = performance.listing_performance(db, shop, listing_id, start, end)
+    if data is None:
+        raise HTTPException(404, "Listing yerelde bulunamadı")
+    return data
 
 
 @router.get("/{listing_id}/history", response_model=ListingHistoryOut)
@@ -179,6 +198,30 @@ async def upload_draft_file(
     return drafts.save_file(
         db, shop, listing_id, kind, file.filename or f"{kind}", file.content_type or "", content
     )
+
+
+class AltTextIn(BaseModel):
+    file_ids: list[str] = Field(min_length=1, max_length=10)
+    title: str = ""
+
+
+@router.post("/{listing_id}/draft/alt-text")
+def generate_alt_text(listing_id: int, payload: AltTextIn, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    """Taslak (henüz Etsy'ye yüklenmemiş) fotoğraflar için yapay zekâ ile alt metin önerir. Etsy'ye istek atmaz;
+    Etsy API'si alt metni yalnızca fotoğraf yüklenirken kabul eder, mevcut fotoğrafların alt metni değiştirilemez."""
+    from app.ai import vision
+
+    files = []
+    for fid in payload.file_ids:
+        f = drafts.get_file(db, shop, listing_id, fid)
+        if f is None or f.kind != "image":
+            raise HTTPException(404, "Taslak fotoğraf bulunamadı")
+        files.append(f)
+    try:
+        texts = vision.generate_alt_texts([{"path": f.path, "content_type": f.content_type} for f in files], payload.title)
+    except vision.VisionError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    return {"alt_texts": {f.id: t for f, t in zip(files, texts)}}
 
 
 @router.get("/{listing_id}/draft/files/{file_id}")

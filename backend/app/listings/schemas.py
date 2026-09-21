@@ -16,6 +16,8 @@ class SuggestionOut(BaseModel):
     applied_at: str | None = None
     # Üretildiği anda formu doldurmak için döner; kalıcı saklanmaz.
     suggested_materials: list[str] = []
+    # Kalite/benzersizlik denetiminde giderilemeyen sorunlar (ör. başka listing'le çok benzer etiketler)
+    warnings: list[str] = []
 
 
 class SuggestIn(BaseModel):

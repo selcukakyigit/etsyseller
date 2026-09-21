@@ -46,6 +46,7 @@ export type Suggestion = {
   applied_at: string | null;
   // Üretildiği anda formu doldurmak için döner; kalıcı saklanmaz.
   suggested_materials?: string[];
+  warnings?: string[];
 };
 
 export type SuggestInput = {
@@ -59,6 +60,22 @@ export type StatSnapshot = {
   views: number;
   favorites: number;
   captured_at: string;
+};
+
+export type ListingPerformance = {
+  listing_id: number;
+  title: string;
+  state: string | null;
+  price: number | null;
+  listing_age_days: number | null;
+  period: { start: string; end: string };
+  previous_period: { start: string; end: string };
+  sales: { units: number; revenue: number; prev_units: number; prev_revenue: number };
+  views_now: { available: boolean; reason?: string; views?: number; favorites?: number; partial?: boolean; tracking_started?: string };
+  views_prev: { available: boolean; reason?: string; views?: number; favorites?: number; partial?: boolean };
+  lifetime: { views: number; favorites: number };
+  conversion_percent: number | null;
+  freshness: { tracking_days: number; etsy_last_modified_days: number | null; content_changed_on?: string; days_since_content_change?: number; unchanged_for_at_least_days?: number };
 };
 
 export type ListingHistory = {
@@ -129,6 +146,11 @@ export type KeywordPoolItem = {
   score: number;
   sample_size: number;
   google_score?: number;
+  /** Yalnızca kendi etiketlerinde: bu etiketi taşıyan benzer listing'lerinin son 180 günlük toplam satışı */
+  units?: number;
+  from_listings?: string[];
+  /** Etiket bu listing'de zaten kullanılıyor */
+  in_listing?: boolean;
 };
 
 export type OrderVariation = { name: string; value: string; personalization: boolean };
@@ -213,8 +235,6 @@ export type OrderQuery = {
 export type OrderInsights = {
   needs_shipping_today: number;
   overdue: number;
-  top_listing_last_7_days: string | null;
-  summary: string;
 };
 
 export type ListingImage = {
@@ -616,6 +636,7 @@ export interface FinProduct {
   unit_cost: number | null;
   shipping_cost: number | null;
   cost_pct: number | null;
+  is_digital: boolean;
   variants: FinVariant[];
 }
 export interface FinVariant {
@@ -623,7 +644,9 @@ export interface FinVariant {
   units: number;
   sales: number;
   fees: number;
+  refunds: number;
   cogs: number;
+  is_digital: boolean;
   unit_cost: number | null;
   shipping_cost: number | null;
   cost_pct: number | null;
@@ -636,12 +659,22 @@ export interface FinOrderCost {
   total: number;
   items: { title: string; quantity: number; variant: string; defined: boolean }[];
   auto_cost: number;
+  fixed_cost: number;
+  original_currency: string;
+  original_total: number;
+  auto_defined: boolean;
+  earned: number;
+  sales: number;
+  refunds: number;
+  fees_known: boolean;
   override: number | null;
   note: string;
 }
 export interface FinOrderDetail {
   receipt_id: number;
   currency: string;
+  original_currency: string;
+  original_total: number;
   created: string;
   status: string;
   is_gift: boolean;
@@ -683,15 +716,19 @@ export interface FinOrderDetail {
     cost: number;
     cost_manual: boolean;
     auto_cost: number;
+    fixed_cost: number;
     profit: number;
   };
 }
 export interface FinOrdersPage {
+  currency: string;
   total: number;
   orders: FinOrderCost[];
 }
 export interface FinReport {
   offsets: number[];
+  settings: { order_fixed_cost: number };
+  overhead_excluded: boolean;
   range: { start: string; end: string; prev_start: string; prev_end: string };
   currency: string;
   coverage: { orders_in_range: number; orders_without_fees: number; fx_median: number };
@@ -711,6 +748,49 @@ export interface FinSyncStatus {
   progress: number;
   phase: string;
   error: string | null;
+}
+
+export type ChatCard =
+  | { type: "finance"; title: string; currency: string; kpis: { label: string; value: number; prev: number; count?: boolean; invert?: boolean; highlight?: boolean }[]; countries: { iso: string; sales: number; orders: number }[] }
+  | { type: "pnl"; title: string; currency: string; rows: { month: string; sales: number; fees: number; overhead: number; cogs: number; profit: number; orders: number }[]; totals: { sales: number; fees: number; overhead: number; cogs: number; profit: number; orders: number } }
+  | { type: "products"; title: string; currency: string; rows: { title: string; listing_id: number; units: number; sales: number; profit: number; margin: number; image: string; prev_units?: number; prev_sales?: number }[] }
+  | { type: "movers"; title: string; currency: string; rows: { title: string; listing_id: number; units: number; prev_units: number; sales: number; prev_sales: number; change: number }[] }
+  | { type: "orders"; title: string; rows: { receipt_id: number; buyer: string; country: string; date: string; ship_by: string | null; total: number; items: string[] }[] }
+  | { type: "listing_draft"; listing_id: number; title: string; edit_url: string; price: [number, number]; quantity: number; tags: string[]; combos: number; image: string | null; images: number; problems: string[]; price_assumed?: boolean; quantity_assumed?: boolean }
+  | { type: "listing_update"; listing_id: number; title: string; edit_url: string; changes: string[]; tags: string[] }
+  | { type: "performance"; title: string; listing_id: number; period: { start: string; end: string }; previous_period: { start: string; end: string }; sales: { units: number; revenue: number; prev_units: number; prev_revenue: number }; views_now: ListingPerformance["views_now"]; conversion_percent: number | null; freshness: ListingPerformance["freshness"]; lifetime: { views: number; favorites: number }; price: number | null }
+  | { type: "stale"; title: string; rows: { listing_id: number; title: string; days: number; exact: boolean; units_recent: number; units_previous: number; views: number }[] }
+  | { type: "ad_report"; title: string; spend: number; views: number; clicks: number; orders: number; revenue: number; metrics: { ctr_yuzde: number | null; tiklama_basina_maliyet: number | null; roas: number | null; tiklama_siparis_donusumu_yuzde: number | null }; close: string[]; good: string[] };
+
+export interface ChatMessageOut {
+  id: number;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+  images: { id: string; url: string }[];
+  cards: ChatCard[];
+}
+export interface ChatReply {
+  session_id: number;
+  title: string;
+  user: ChatMessageOut;
+  assistant: ChatMessageOut;
+}
+export interface ChatSessionInfo {
+  id: number;
+  title: string;
+  updated_at: string;
+}
+export interface AssistantProviders {
+  default: string;
+  providers: { id: string; label: string; ready: boolean }[];
+}
+export interface DashboardData {
+  currency: string;
+  today: { orders: number; sales: number };
+  to_ship: number;
+  overdue: number;
+  month: { label: string; sales: number; orders: number; profit: number; fees: number; cogs: number; prev_sales: number; prev_orders: number; prev_profit: number; costs_entered: boolean };
 }
 
 export const api = {
@@ -780,6 +860,8 @@ export const api = {
       }),
     syncStatus: (shopId: number) =>
       request<{ syncing: boolean; last_synced_at: string | null }>(`/api/shops/${shopId}/listings/sync-status`),
+    performance: (shopId: number, listingId: number, start: string, end: string) =>
+      request<ListingPerformance>(`/api/shops/${shopId}/listings/${listingId}/performance?start=${start}&end=${end}`),
     history: (shopId: number, listingId: number) =>
       request<ListingHistory>(`/api/shops/${shopId}/listings/${listingId}/history`),
     suggest: (shopId: number, listingId: number, current?: SuggestInput) =>
@@ -893,6 +975,12 @@ export const api = {
       if (altText) form.append("alt_text", altText);
       return requestForm<ListingImage>(`/api/shops/${shopId}/listings/${listingId}/images`, form);
     },
+    // Taslak (yeni) fotoğraflar için yapay zekâ alt metin önerisi; Etsy'ye istek atmaz.
+    generateAltText: (shopId: number, listingId: number, fileIds: string[], title: string) =>
+      request<{ alt_texts: Record<string, string> }>(`/api/shops/${shopId}/listings/${listingId}/draft/alt-text`, {
+        method: "POST",
+        body: JSON.stringify({ file_ids: fileIds, title }),
+      }),
     reorderImages: (shopId: number, listingId: number, imageIds: number[]) =>
       request<ListingImage[]>(`/api/shops/${shopId}/listings/${listingId}/images/order`, {
         method: "PUT",
@@ -944,6 +1032,26 @@ export const api = {
         body: JSON.stringify({ tracking_code: trackingCode || null, carrier_name: carrierName || null }),
       }),
   },
+  assistant: {
+    providers: (shopId: number) => request<AssistantProviders>(`/api/shops/${shopId}/assistant/providers`),
+    progress: (shopId: number, requestId: string) => request<{ step: string }>(`/api/shops/${shopId}/assistant/progress/${requestId}`),
+    chat: (shopId: number, body: { message: string; session_id?: number | null; image_ids: string[]; provider?: string; today: string; request_id?: string }) =>
+      request<ChatReply>(`/api/shops/${shopId}/assistant/chat`, { method: "POST", body: JSON.stringify(body) }),
+    sessions: (shopId: number) => request<ChatSessionInfo[]>(`/api/shops/${shopId}/assistant/sessions`),
+    session: (shopId: number, id: number) => request<{ id: number; title: string; messages: ChatMessageOut[] }>(`/api/shops/${shopId}/assistant/sessions/${id}`),
+    deleteSessions: (shopId: number, ids: number[] | null) =>
+      request<{ deleted: number }>(`/api/shops/${shopId}/assistant/sessions/bulk-delete`, {
+        method: "POST",
+        body: JSON.stringify(ids === null ? { all: true } : { ids }),
+      }),
+    deleteSession: (shopId: number, id: number) => request<{ ok: boolean }>(`/api/shops/${shopId}/assistant/sessions/${id}`, { method: "DELETE" }),
+    uploadImage: (shopId: number, file: File) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      return requestForm<{ id: string; filename: string; url: string }>(`/api/shops/${shopId}/assistant/images`, fd);
+    },
+    dashboard: (shopId: number, today: string) => request<DashboardData>(`/api/shops/${shopId}/assistant/dashboard?today=${today}`),
+  },
   finance: {
     report: (shopId: number, start: string, end: string, country = "", compare: number[] = [1]) =>
       request<FinReport>(`/api/shops/${shopId}/finance/report?start=${start}&end=${end}&compare=${compare.join(",")}${country ? `&country=${country}` : ""}`),
@@ -972,6 +1080,11 @@ export const api = {
     orders: (shopId: number, start: string, end: string, q = "", page = 0) =>
       request<FinOrdersPage>(`/api/shops/${shopId}/finance/orders?start=${start}&end=${end}&q=${encodeURIComponent(q)}&page=${page}`),
     orderDetail: (shopId: number, receiptId: number) => request<FinOrderDetail>(`/api/shops/${shopId}/finance/orders/${receiptId}`),
+    setOrderFixedCost: (shopId: number, amount: number, fixPast = false) =>
+      request<{ ok: boolean }>(`/api/shops/${shopId}/finance/settings/order-cost`, {
+        method: "PUT",
+        body: JSON.stringify({ amount, fix_past: fixPast }),
+      }),
     setOrderCost: (shopId: number, receiptId: number, cost: number | null) =>
       request<{ ok: boolean }>(`/api/shops/${shopId}/finance/orders/${receiptId}/cost`, {
         method: "PUT",

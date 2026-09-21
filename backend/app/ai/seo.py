@@ -1,6 +1,7 @@
 import json
 import re
 
+from app.ai import quality
 from app.ai.client import get_anthropic_client, get_openai_client
 from app.core.config import settings
 
@@ -80,7 +81,7 @@ def _format_keyword_pool(pool: list[dict]) -> str:
     lines = []
     for item in pool:
         if item.get("source") == "own":
-            info = "kendi kanıtlanmış kazanan"
+            info = f"senin benzer listing'lerinde kullanılıyor, bu listing'lerin son 180 günde toplam {item.get('units', 0)} satışı var"
         else:
             info = f"rakip kullanım: {item['score']}/{item['sample_size']}"
         if item.get("google_score") is not None:
@@ -89,7 +90,31 @@ def _format_keyword_pool(pool: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def generate_seo_suggestion(listing: dict, keyword_pool: list[dict] | None = None) -> dict:
+MAX_RETRIES = 2  # kalite/benzersizlik ihlalinde modele geri bildirimle en fazla bu kadar yeniden dene
+
+
+def _call(user_content: str) -> dict:
+    if settings.ai_provider == "anthropic":
+        return _generate_with_anthropic(user_content)
+    return _generate_with_openai(user_content)
+
+
+def _others_block(title: str, tags: list[str], others: list[dict]) -> str:
+    ctx = quality.similar_context(title, tags, others)
+    if not ctx:
+        return ""
+    lines = "\n".join(f'- "{o["title"]}" | etiketler: {", ".join(o["tags"])}' for o in ctx)
+    return (
+        "\n\nMağazadaki benzer listing'ler. Bunlarla AYNI başlık kalıbını, aynı etiketleri (en fazla 5 ortak etiket) ve aynı açılış "
+        "paragrafını KULLANMA; bu ürüne özgü, farklı uzun kuyruklu anahtar kelimeleri hedefle ki mağaza kendi listing'leriyle "
+        "rekabet etmesin:\n" + lines
+    )
+
+
+def generate_seo_suggestion(listing: dict, keyword_pool: list[dict] | None = None, others: list[dict] | None = None) -> dict:
+    """`others`: mağazanın diğer listing'leri (başlık/etiket/açıklama). Verilirse öneri hem biçim kurallarına hem de
+    "diğer listing'lerin kopyası olmama" denetimine tabi tutulur; ihlalde model geri bildirimle yeniden denenir."""
+    others = others or []
     listing_payload = {
         "title": listing.get("title", ""),
         "tags": listing.get("tags", []),
@@ -100,11 +125,24 @@ def generate_seo_suggestion(listing: dict, keyword_pool: list[dict] | None = Non
     user_content = f"Mevcut listing verisi:\n{json.dumps(listing_payload, ensure_ascii=False, indent=2)}"
     if keyword_pool:
         user_content += f"\n\nKullanılabilir anahtar kelime havuzu:\n{_format_keyword_pool(keyword_pool)}"
+    user_content += _others_block(listing_payload["title"], listing_payload["tags"], others)
 
-    if settings.ai_provider == "anthropic":
-        suggestion = _generate_with_anthropic(user_content)
-    else:
-        suggestion = _generate_with_openai(user_content)
+    suggestion = _call(user_content)
+    problems: list[str] = []
+    for attempt in range(MAX_RETRIES + 1):
+        tags = quality.fix_long_tags(quality.clean_tags(suggestion.get("tags", [])))
+        suggestion["tags"] = tags
+        problems = quality.all_problems(str(suggestion.get("title", "")), tags, str(suggestion.get("description", "")), others)
+        if not problems or attempt == MAX_RETRIES:
+            break
+        feedback = "\n".join(f"- {p}" for p in problems)
+        suggestion = _call(
+            user_content
+            + "\n\nÖnceki denemende şu sorunlar vardı; HEPSİNİ düzelt (sabit açıklama bölümlerini yine olduğu gibi koru):\n"
+            + feedback
+            + "\n\nÖnceki cevabın:\n"
+            + json.dumps(suggestion, ensure_ascii=False)
+        )
 
     if len(suggestion.get("tags", [])) != 13:
         raise ValueError(f"Beklenen 13 etiket, alınan: {len(suggestion.get('tags', []))}")
@@ -113,4 +151,5 @@ def generate_seo_suggestion(listing: dict, keyword_pool: list[dict] | None = Non
     suggestion["materials"] = [
         re.sub(r"[()]", "", str(m)).strip()[:45] for m in (suggestion.get("materials") or []) if str(m).strip()
     ][:13]
+    suggestion["warnings"] = problems  # denemelerden sonra hâlâ kalan sorunlar (kullanıcıya gösterilir)
     return suggestion

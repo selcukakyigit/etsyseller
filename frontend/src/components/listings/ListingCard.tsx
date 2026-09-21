@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Listing } from "@/lib/api";
 
-export type CardAction = "stats" | "copy" | "activate" | "deactivate" | "renew" | "section" | "delete" | "publish";
+export type CardAction = "preview" | "stats" | "copy" | "activate" | "deactivate" | "renew" | "section" | "delete" | "publish";
 
 export function formatPrice(l: Listing): string | null {
   if (l.price_min == null) return null;
@@ -118,6 +118,18 @@ export default function ListingCard({
           aria-label={`${listing.title} seç`}
           className="h-4 w-4 accent-[#F1641E]"
         />
+        <button
+          type="button"
+          onClick={() => onAction("preview")}
+          title="Alıcıya nasıl görüneceğini önizle"
+          className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+          Önizle
+        </button>
         <div ref={menuRef} className="relative">
           <button
             type="button"
@@ -139,6 +151,7 @@ export default function ListingCard({
                   Etsy&apos;de görüntüle ↗
                 </a>
               )}
+              {item("preview", "Önizle")}
               {!listing.is_new && item("stats", "İstatistikleri gör")}
               <Link
                 href={`/listings/${listing.listing_id}/edit`}

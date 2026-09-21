@@ -236,6 +236,16 @@ export default function ListingEditPage() {
                   </button>
                 </div>
                 {ai.suggestion.rationale && <p className="text-neutral-600 dark:text-neutral-300">{ai.suggestion.rationale}</p>}
+                {ai.suggestion.warnings && ai.suggestion.warnings.length > 0 && (
+                  <div className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                    <b>Dikkat:</b> öneri, mağazanın diğer listing&apos;lerine ya da kalite kurallarına şu noktalarda hâlâ takılıyor; yayınlamadan önce düzenle:
+                    <ul className="mt-1 list-disc pl-4">
+                      {ai.suggestion.warnings.map((w, i) => (
+                        <li key={i}>{w}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <p className="mt-1 text-xs text-neutral-400">Değişiklikler taslakta; beğenmezsen geri al ya da yayınlamadan düzenle.</p>
               </div>
             )}
@@ -258,6 +268,7 @@ export default function ListingEditPage() {
               onImagesChange={(images) => wc.patch({ images })}
               onVideosChange={(videos) => wc.patch({ videos })}
               onImageReplaced={wc.remapImageRefs}
+              title={edit.title}
             />
             </SectionCard>
 

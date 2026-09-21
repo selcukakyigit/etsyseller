@@ -27,9 +27,10 @@ function ScoredKeywordPills({ items }: { items: KeywordPoolItem[] }) {
   const ranges = useMemo(() => {
     const bySource = new Map<string, { min: number; max: number }>();
     for (const item of items) {
+      const value = item.source === "own" ? (item.units ?? 0) : item.score;
       const range = bySource.get(item.source) ?? { min: Infinity, max: -Infinity };
-      range.min = Math.min(range.min, item.score);
-      range.max = Math.max(range.max, item.score);
+      range.min = Math.min(range.min, value);
+      range.max = Math.max(range.max, value);
       bySource.set(item.source, range);
     }
     return bySource;
@@ -39,20 +40,26 @@ function ScoredKeywordPills({ items }: { items: KeywordPoolItem[] }) {
     <div className="flex flex-wrap gap-1.5">
       {items.map((item) => {
         const range = ranges.get(item.source)!;
-        const normalized = range.max > range.min ? (item.score - range.min) / (range.max - range.min) : 1;
+        const value = item.source === "own" ? (item.units ?? 0) : item.score;
+        const normalized = range.max > range.min ? (value - range.min) / (range.max - range.min) : item.source === "own" ? 0.5 : 1;
         const fill = competitionFill(normalized, item.source);
         return (
           <span
             key={item.tag}
-            title={`${item.source === "own" ? "Kendi listing'lerinden" : "Rakip listing'lerden"}: ${item.score}/${item.sample_size} kullanıyor (bu havuzdaki diğer etiketlere göre renklendirildi)`}
+            title={
+              item.source === "own"
+                ? `Senin listing'lerinden: ${(item.from_listings ?? []).join(" · ")}. Bu etiketi taşıyan benzer listing'lerin son 180 günde toplam ${item.units ?? 0} satışı var.${item.in_listing ? " Bu listing'de zaten kullanılıyor." : ""}`
+                : `Rakip listing'lerden: ilk ${item.sample_size} rakip listing'in ${item.score} tanesi bu etiketi kullanıyor (yüksek = kalabalık/rekabetçi)`
+            }
             style={{ background: `linear-gradient(to right, ${fill} ${normalized * 100}%, transparent ${normalized * 100}%)` }}
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-600 dark:text-neutral-300"
           >
-            {item.source === "own" && <span className="text-[9px] font-semibold text-[#F1641E]">KENDİ</span>}
+            {item.source === "own" && <span className="text-[9px] font-semibold text-[#F1641E]">SENİN</span>}
             {item.tag}
             <span className="text-neutral-400 dark:text-neutral-500">
-              {item.score}/{item.sample_size}
+              {item.source === "own" ? `${item.units ?? 0} satış` : `${item.score}/${item.sample_size}`}
             </span>
+            {item.in_listing && <span className="text-emerald-500" title="Bu listing'de zaten var">✓</span>}
             {item.google_score !== undefined && <span className="text-blue-500 dark:text-blue-400">G:{item.google_score}</span>}
           </span>
         );
@@ -210,8 +217,8 @@ export default function ListingRow({
         <div className="border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/50 p-4 space-y-2">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <p className="text-xs font-medium text-neutral-400 dark:text-neutral-500">
-              Sayı = kaç rakip/kendi listing&apos;in bu etiketi kullandığı (ör. 11/50). G: Google&apos;daki arama ilgisi (0-100,
-              Etsy içi değil) — düzenleme sayfasındaki &quot;AI Önerisi Üret&quot; bu havuzdan uygun olanları seçer.
+              <b>SENİN</b>: bu listing&apos;e benzeyen kendi listing&apos;lerinden gelen etiket; sayı, o etiketi taşıyan listing&apos;lerin son 180 gündeki toplam satışı (✓ = bu listing&apos;de zaten var). Rakip etiketlerde <b>11/50</b> = ilk 50 rakip listing&apos;in 11&apos;i kullanıyor (yüksek = kalabalık). <b>G</b>: Google Trends
+              ilgisi (0-100, Etsy içi arama hacmi değil; &quot;Google Trend Ekle&quot; ile yüklenir). &quot;AI Önerisi Üret&quot; bu havuzdan uygun olanları seçer.
             </p>
             <button
               onClick={handleLoadTrends}

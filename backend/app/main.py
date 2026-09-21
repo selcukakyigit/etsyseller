@@ -24,11 +24,13 @@ from app.shops import models as _shop_models  # noqa: F401
 from app.listings import models as _listing_models  # noqa: F401
 from app.orders import models as _order_models  # noqa: F401
 from app.finance import models as _finance_models  # noqa: F401
+from app.assistant import models as _assistant_models  # noqa: F401
 from app.keywords import models as _keyword_models  # noqa: F401
 
 from app.account.router import router as account_router
 from app.account.service import AVATAR_DIR
 from app.auth.router import router as auth_router
+from app.assistant.router import router as assistant_router
 from app.finance.router import router as finance_router
 from app.jobs.scheduler import start_scheduler, stop_scheduler
 from app.keywords.router import router as keywords_router
@@ -79,5 +81,6 @@ app.include_router(shops_router)
 app.include_router(listings_router)
 app.include_router(orders_router)
 app.include_router(finance_router)
+app.include_router(assistant_router)
 app.include_router(taxonomy_router)
 app.include_router(keywords_router)

@@ -27,6 +27,10 @@ def _sheet(wb: Workbook, title: str, note: str, headers: list[str], rows: list[l
         c.alignment = Alignment(vertical="center", wrap_text=True)
     for r in rows:
         ws.append(r)
+    for row in ws.iter_rows():  # müşteri adı/ürün başlığı '=' ile başlıyorsa Excel formül olarak çalıştırmasın
+        for cell in row:
+            if cell.data_type == "f":
+                cell.data_type = "s"
     for idx in money_cols:
         for cell in ws[get_column_letter(idx)][2:]:
             cell.number_format = MONEY
@@ -55,6 +59,8 @@ def build_xlsx(
 
     def note(*extra: str) -> str:
         parts = [f"Dönem: {start} – {end}", f"Ülke: {country or 'Tümü'}", f"Para birimi: {cur}", *extra]
+        if country:
+            parts.append("Reklam/yenileme giderleri ülkeye atanamadığı için dahil değil")
         return "Filtre — " + " · ".join(parts)
 
     wb = Workbook()
@@ -120,7 +126,7 @@ def build_xlsx(
                 for p in products
                 for row in (
                     [[p["listing_id"], p["title"], "(tümü)", p["units"], p["sales"], p["fees"], p["refunds"], p["cogs"], p["profit"], round(p["margin"], 1)]]
-                    + [[p["listing_id"], p["title"], v["key"] or "Seçeneksiz", v["units"], v["sales"], v.get("fees"), None, v["cogs"], v["sales"] - v.get("fees", 0) - v["cogs"], None] for v in p["variants"]]
+                    + [[p["listing_id"], p["title"], v["key"] or "Seçeneksiz", v["units"], v["sales"], v.get("fees"), v.get("refunds"), v["cogs"], v["sales"] - v.get("fees", 0) - v.get("refunds", 0) - v["cogs"], round((v["sales"] - v.get("fees", 0) - v.get("refunds", 0) - v["cogs"]) / v["sales"] * 100, 1) if v["sales"] else None] for v in p["variants"]]
                 )
             ],
             {5, 6, 7, 8, 9}, {2: 50, 3: 45},
@@ -136,16 +142,16 @@ def build_xlsx(
             wb, "Siparişler", note(f"Arama: {q.strip()}" if needle else "Arama: yok", f"{len(rows)} sipariş"),
             [
                 "Sipariş no", "Tarih", "Müşteri", "Ülke", "Ürünler", "Sipariş toplamı", "Vergi", "Satış (vergi hariç)", "İade", "İşlem ücreti",
-                "Ödeme işleme ücreti", "Düzenleyici ücret", "Diğer ücret", "Maliyet", "Maliyet elle girildi", "Kalan (kâr)", "Ücret kaydı var",
+                "Ödeme işleme ücreti", "Düzenleyici ücret", "Offsite Ads ücreti", "Diğer ücret", "Maliyet", "Maliyet elle girildi", "Kalan (kâr)", "Ücret kaydı var",
             ],
             [
                 [
                     o["receipt_id"], o["date"], o["buyer"], o["country"], o["items"], o["grand"], o["tax"], o["sales"], o["refunds"], o["transaction_fee"],
-                    o["processing_fee"], o["regulatory_fee"], o["other_fee"], o["cogs"], "Evet" if o["manual_cost"] else "", o["profit"], "Evet" if o["fees_known"] else "Hayır",
+                    o["processing_fee"], o["regulatory_fee"], o["offsite_ads_fee"], o["other_fee"], o["cogs"], "Evet" if o["manual_cost"] else "", o["profit"], "Evet" if o["fees_known"] else "Hayır",
                 ]
                 for o in sorted(rows, key=lambda r: r["date"])
             ],
-            {6, 7, 8, 9, 10, 11, 12, 13, 14, 16}, {3: 26, 5: 60},
+            {6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17}, {3: 26, 5: 60},
         )
     buf = io.BytesIO()
     wb.save(buf)

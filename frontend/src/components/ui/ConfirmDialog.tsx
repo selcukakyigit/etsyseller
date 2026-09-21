@@ -25,6 +25,7 @@ export function ConfirmDialog({
   return (
     <Modal
       z={100}
+      widthClass="max-w-md"
       title={title}
       footer={
         <>

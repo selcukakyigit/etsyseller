@@ -20,6 +20,11 @@ class CostIn(BaseModel):
     fix_past: bool = False  # True: geçmiş siparişleri de yeni maliyetle hesapla
 
 
+class FixedCostIn(BaseModel):
+    amount: float = Field(ge=0, le=1_000_000)
+    fix_past: bool = False
+
+
 class VariantCostIn(CostIn):
     key: str = Field(max_length=300)
 
@@ -117,3 +122,9 @@ def export_xlsx(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{name}"'},
     )
+
+
+@router.put("/settings/order-cost")
+def put_order_fixed_cost(body: FixedCostIn, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    service.set_order_fixed_cost(db, shop, body.amount, body.fix_past)
+    return {"ok": True}

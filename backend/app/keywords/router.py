@@ -38,7 +38,10 @@ def keyword_trends(listing_id: int, shop: Shop = Depends(get_owned_shop), db: Se
         raise HTTPException(401, str(exc)) from exc
 
     pool = service.build_keyword_pool(db, shop, listing)
-    top_keywords = [item["tag"] for item in pool[:TRENDS_LIMIT]]
+    # Havuzun başı yalnızca kendi etiketlerinle dolmasın: yarısı kendi, yarısı rakip etiketlerinden.
+    own = [i for i in pool if i["source"] == "own"][: TRENDS_LIMIT // 2 + 1]
+    comp = [i for i in pool if i["source"] != "own"][: TRENDS_LIMIT - len(own)]
+    top_keywords = [item["tag"] for item in own + comp]
     scores = trends.get_trend_scores(db, top_keywords)
 
     return {

@@ -307,6 +307,11 @@ export default function FinancePage() {
                   )}
                 </section>
 
+                {report.overhead_excluded && (
+                  <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                    Ülke filtresi açık: Etsy Ads, listeleme ve abonelik giderleri ülkeye atanamadığı için bu görünümde hesaba katılmadı. Net kâr ve marj bu yüzden gerçekte olduğundan yüksek görünür.
+                  </p>
+                )}
                 <section className="grid grid-cols-2 gap-3 lg:grid-cols-3">
                   <Kpi label="Satış (vergi hariç)" value={fmt(k.sales)} sub={<Delta label={cmpLabel} cur={k.sales} prev={pk.sales} />} extra={`${k.orders} sipariş`} />
                   <Kpi
@@ -337,7 +342,7 @@ export default function FinancePage() {
                   <Metric
                     label="Reklam harcaması"
                     value={fmt(k.ads)}
-                    hint="Etsy Ads gideri; satışa oranı"
+                    hint="Etsy Ads + Offsite Ads; satışa oranı"
                     sub={<span className="text-xs text-neutral-400">satışın %{k.ads_pct.toFixed(1)}&apos;i · {cmpLabel}: %{pk.ads_pct.toFixed(1)}</span>}
                   />
                   <Metric
@@ -415,7 +420,15 @@ export default function FinancePage() {
             )}
 
             {tab === "products" && shopId !== undefined && (
-              <ProductCosts products={report.products} shopId={shopId} money2={money2} onSaved={scheduleRefresh} onSortChange={setProdSort} />
+              <ProductCosts
+                products={report.products}
+                shopId={shopId}
+                money2={money2}
+                onSaved={scheduleRefresh}
+                onSortChange={setProdSort}
+                fixedCost={report.settings.order_fixed_cost}
+                currency={cur}
+              />
             )}
             {tab === "orders" && shopId !== undefined && (
               <OrderCosts shopId={shopId} range={rangeFor(period)} money2={money2} onSaved={scheduleRefresh} onQuery={setOrderQ} />
