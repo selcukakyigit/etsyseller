@@ -25,7 +25,7 @@ from app.listings.schemas import (
     SuggestionOut,
     VariationImagesIn,
 )
-from app.shops.deps import get_owned_shop
+from app.shops.deps import get_owned_shop, require_ai_enabled
 from app.shops.models import Shop
 
 router = APIRouter(prefix="/api/shops/{shop_id}/listings", tags=["listings"])
@@ -249,7 +249,7 @@ class AltTextIn(BaseModel):
     title: str = ""
 
 
-@router.post("/{listing_id}/draft/alt-text")
+@router.post("/{listing_id}/draft/alt-text", dependencies=[Depends(require_ai_enabled)])
 def generate_alt_text(listing_id: int, payload: AltTextIn, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
     """Taslak (henüz Etsy'ye yüklenmemiş) fotoğraflar için yapay zekâ ile alt metin önerir. Etsy'ye istek atmaz;
     Etsy API'si alt metni yalnızca fotoğraf yüklenirken kabul eder, mevcut fotoğrafların alt metni değiştirilemez."""
@@ -295,7 +295,7 @@ def draft_image_versions(
     return {"versions": drafts.list_versions(db, shop, listing_id, image_id, draft_file_id)}
 
 
-@router.post("/{listing_id}/draft/images/regenerate")
+@router.post("/{listing_id}/draft/images/regenerate", dependencies=[Depends(require_ai_enabled)])
 def regenerate_draft_image(
     listing_id: int,
     payload: RegenerateImageIn,
@@ -323,7 +323,7 @@ class GenerateImageIn(BaseModel):
     reference_draft_file_id: str | None = None
 
 
-@router.post("/{listing_id}/draft/images/generate")
+@router.post("/{listing_id}/draft/images/generate", dependencies=[Depends(require_ai_enabled)])
 def generate_draft_image(
     listing_id: int,
     payload: GenerateImageIn,
@@ -533,7 +533,7 @@ def update_personalization(
         raise HTTPException(401, str(exc)) from exc
 
 
-@router.post("/{listing_id}/suggest", response_model=SuggestionOut)
+@router.post("/{listing_id}/suggest", response_model=SuggestionOut, dependencies=[Depends(require_ai_enabled)])
 def suggest(
     listing_id: int,
     payload: SuggestIn | None = None,

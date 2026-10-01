@@ -29,6 +29,13 @@ const CARDS = [
     description: "Etsy mağaza bağlantı durumunu görüntüle",
   },
   {
+    href: "/settings/ai",
+    icon: KeyIcon,
+    color: "bg-violet-600",
+    title: "Yapay Zekâ",
+    description: "AI özelliklerini aç/kapat, verinin nereye gittiğini gör",
+  },
+  {
     href: "/settings/security",
     icon: ShieldIcon,
     color: "bg-red-500",

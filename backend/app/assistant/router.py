@@ -10,7 +10,7 @@ from app.auth.models import User
 from app.core.config import settings
 from app.core.db import get_db
 from app.core.deps import get_current_user
-from app.shops.deps import get_owned_shop
+from app.shops.deps import get_owned_shop, require_ai_enabled
 from app.shops.models import Shop
 
 router = APIRouter(prefix="/api/shops/{shop_id}/assistant", tags=["assistant"])
@@ -30,7 +30,7 @@ def providers(shop: Shop = Depends(get_owned_shop)):
     return {"default": settings.ai_provider, "providers": llm.available_providers()}
 
 
-@router.post("/chat")
+@router.post("/chat", dependencies=[Depends(require_ai_enabled)])
 def chat(body: ChatIn, shop: Shop = Depends(get_owned_shop), user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     try:
         return service.chat(db, shop, user.id, body.session_id, body.message, body.image_ids, body.provider, body.today or dt.date.today(), body.request_id)

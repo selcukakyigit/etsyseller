@@ -19,6 +19,8 @@ from app.shops import service
 from app.shops import shipping_admin as admin
 from app.shops.shipping_admin import ProcessingProfileIn, ReturnPolicyIn, ShippingProfileIn, ShopSectionIn
 from app.auth.workspaces import workspace_ids
+from app.account.schemas import DangerIn
+from app.shops.disconnect import disconnect_shop
 from app.shops.deps import get_owned_shop
 from app.shops.models import Shop
 from app.shops.schemas import ShopOut
@@ -54,6 +56,15 @@ def set_currency(payload: CurrencyIn, shop: Shop = Depends(get_owned_shop), db: 
     shop.currency = code
     db.commit()
     return {"ok": True, "currency": shop.currency}
+
+
+@router.post("/{shop_id}/disconnect")
+def disconnect(payload: DangerIn, shop: Shop = Depends(get_owned_shop), user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Etsy bağlantısını keser ve Etsy'den gelen önbellek verisini siler (bkz. shops/disconnect.py). E-posta yazarak onay ister."""
+    if not payload.confirm or payload.email.strip().lower() != user.email.lower():
+        raise HTTPException(400, "Onay için hesabının e-posta adresini yazmalısın")
+    disconnect_shop(db, shop)
+    return {"ok": True}
 
 
 @router.get("/connect/start")

@@ -1026,6 +1026,8 @@ export const api = {
       form.append("avatar", file);
       return requestForm<User>("/api/account/avatar", form);
     },
+    ai: () => request<{ enabled: boolean }>("/api/account/ai"),
+    setAi: (enabled: boolean) => request<{ enabled: boolean }>("/api/account/ai", { method: "PUT", body: JSON.stringify({ enabled }) }),
     apiKeys: () => request<ApiKeys>("/api/account/api-keys"),
     updateApiKeys: (payload: ApiKeysUpdate) =>
       request<ApiKeys>("/api/account/api-keys", { method: "PUT", body: JSON.stringify(payload) }),
@@ -1047,6 +1049,9 @@ export const api = {
   shops: {
     list: () => request<Shop[]>("/api/shops"),
     connectUrl: () => `${API_URL}/api/shops/connect/start`,
+    /** Etsy bağlantısını keser, Etsy'den gelen önbellek verisini siler. E-posta yazarak onay ister. */
+    disconnect: (shopId: number, email: string) =>
+      request<{ ok: boolean }>(`/api/shops/${shopId}/disconnect`, { method: "POST", body: JSON.stringify({ email, confirm: true }) }),
     /** `currency: null` = otomatik (siparişlerde en çok geçen para birimi); doluysa 3 harfli ISO kod sabitlenir. */
     setCurrency: (shopId: number, currency: string | null) =>
       request<{ ok: boolean; currency: string | null }>(`/api/shops/${shopId}/currency`, {

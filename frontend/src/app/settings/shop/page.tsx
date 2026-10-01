@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import SettingsSubpage from "@/components/SettingsSubpage";
+import DangerConfirmModal from "@/components/settings/DangerConfirmModal";
 
 function CurrencyPicker({ shopId, value }: { shopId: number; value: string | null }) {
   const [current, setCurrent] = useState(value);
@@ -55,6 +56,7 @@ function CurrencyPicker({ shopId, value }: { shopId: number; value: string | nul
 
 export default function ShopSettingsPage() {
   const { user, shops, activeShop, setActiveShopId, error: bootError } = useAuthAndShop();
+  const [disconnecting, setDisconnecting] = useState<{ id: number; name: string } | null>(null);
 
   return (
     <SettingsSubpage
@@ -107,6 +109,12 @@ export default function ShopSettingsPage() {
                     <span className="text-xs font-medium text-green-600 dark:text-green-400 px-2.5 py-1 rounded-full bg-green-50 dark:bg-green-950">
                       Bağlı
                     </span>
+                    <button
+                      onClick={() => setDisconnecting({ id: shop.id, name: shop.shop_name })}
+                      className="text-xs font-medium px-3 py-1.5 rounded-lg border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition"
+                    >
+                      Bağlantıyı kes
+                    </button>
                     {activeShop?.id !== shop.id && (
                       <button
                         onClick={() => setActiveShopId(shop.id)}
@@ -139,6 +147,24 @@ export default function ShopSettingsPage() {
             + Başka bir mağaza bağla
           </a>
         </section>
+      )}
+      {disconnecting && (
+        <DangerConfirmModal
+          title={`${disconnecting.name} bağlantısını kes`}
+          intro="Etsy bağlantısı kesilir ve Etsy'den gelen veriler silinir:"
+          effects={[
+            "Etsy erişim yetkisi bu uygulamadan kaldırılır; senkronizasyon durur",
+            "Etsy'den alınan ilan, sipariş, yorum, finans ve istatistik önbelleği ile görsel kopyaları silinir",
+            "Kendi girdiğin maliyetler, taslaklar ve sürüm geçmişin kalır; yeniden bağlanınca devam edersin",
+            "Etsy hesabındaki mağazana dokunulmaz. Uygulama erişimini Etsy'de Hesap Ayarları > Apps and services bölümünden de kaldırabilirsin",
+          ]}
+          actionLabel="Bağlantıyı kes"
+          onClose={() => setDisconnecting(null)}
+          onConfirm={async (email) => {
+            await api.shops.disconnect(disconnecting.id, email);
+            window.location.href = "/settings/shop";
+          }}
+        />
       )}
     </SettingsSubpage>
   );

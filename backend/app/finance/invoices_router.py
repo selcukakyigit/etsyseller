@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.finance import invoices, service
-from app.shops.deps import get_owned_shop
+from app.shops.deps import get_owned_shop, require_ai_enabled
 from app.shops.models import Shop
 
 router = APIRouter(prefix="/api/shops/{shop_id}/finance/invoices", tags=["finance-invoices"])
@@ -61,7 +61,7 @@ class ConfirmIn(BaseModel):
     candidate: dict
 
 
-@router.post("/parse", response_model=list[CandidateOut])
+@router.post("/parse", response_model=list[CandidateOut], dependencies=[Depends(require_ai_enabled)])
 async def parse_invoice(
     shop: Shop = Depends(get_owned_shop),
     db: Session = Depends(get_db),

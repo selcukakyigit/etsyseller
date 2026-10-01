@@ -1,6 +1,7 @@
 import datetime as dt
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy.sql import true as sa_true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -41,6 +42,8 @@ class Workspace(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    # Kapalıysa bu çalışma alanının içeriği hiçbir yapay zekâ sağlayıcısına gönderilmez (bkz. shops/deps.py require_ai_enabled).
+    ai_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=sa_true())
 
     members: Mapped[list["WorkspaceMember"]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
     shops: Mapped[list["Shop"]] = relationship(back_populates="workspace")

@@ -3,7 +3,10 @@ from sqlalchemy.orm import Session
 
 from app.account import danger, service
 from app.account.schemas import ApiKeysOut, ApiKeysUpdateIn, ApiKeyTestOut, DangerIn, ProfileUpdateIn
+from pydantic import BaseModel
+
 from app.auth.models import User
+from app.auth.workspaces import primary_workspace
 from app.auth.router import user_out
 from app.auth.schemas import UserOut
 from app.core.db import get_db
@@ -34,6 +37,24 @@ async def upload_avatar(
         return user_out(db, service.save_avatar(db, user, avatar.filename or "avatar.png", content))
     except service.InvalidAvatar as exc:
         raise HTTPException(400, str(exc)) from exc
+
+
+class AiSettingIn(BaseModel):
+    enabled: bool
+
+
+@router.get("/ai")
+def get_ai_setting(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return {"enabled": primary_workspace(db, user).ai_enabled}
+
+
+@router.put("/ai")
+def set_ai_setting(payload: AiSettingIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Yapay zekâ özelliklerini bu çalışma alanı için açar/kapatır. Kapalıyken içerik AI sağlayıcılarına gönderilmez."""
+    ws = primary_workspace(db, user)
+    ws.ai_enabled = payload.enabled
+    db.commit()
+    return {"enabled": ws.ai_enabled}
 
 
 @router.get("/api-keys", response_model=ApiKeysOut)
