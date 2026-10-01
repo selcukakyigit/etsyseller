@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { API_URL } from "@/lib/api";
+import Avatar from "@/components/Avatar";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import AppShell from "@/components/AppShell";
 import { ChevronRightIcon, HelpIcon, KeyIcon, ShieldIcon, StoreIcon, UserIcon } from "@/components/icons";
@@ -67,16 +67,7 @@ export default function SettingsHub() {
 
         {user && (
           <div className="rounded-2xl bg-gradient-to-r from-[#F1641E] to-[#c94f16] p-5 flex items-center gap-4 text-white">
-            {user.avatar_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={`${API_URL}${user.avatar_url}`}
-                alt=""
-                className="w-14 h-14 rounded-full object-cover border-2 border-white/30 flex-shrink-0"
-              />
-            ) : (
-              <div className="w-14 h-14 rounded-full bg-white/20 flex-shrink-0" />
-            )}
+            <Avatar user={user} size={56} className="border-2 border-white/30" />
             <div className="min-w-0">
               <p className="font-semibold truncate">{user.name || "İsimsiz kullanıcı"}</p>
               <p className="text-sm text-white/80 truncate">{user.email}</p>

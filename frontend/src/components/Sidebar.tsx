@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { api, API_URL, Shop, User } from "@/lib/api";
+import { api, Shop, User } from "@/lib/api";
+import Avatar from "@/components/Avatar";
 import { BRAND } from "@/lib/legal";
 
 const NAV_ITEMS = [
@@ -93,16 +94,7 @@ export default function Sidebar({
         )}
 
         <div className="flex items-center gap-2 px-1 min-w-0">
-          {user?.avatar_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={`${API_URL}${user.avatar_url}`}
-              alt=""
-              className="w-7 h-7 rounded-full object-cover flex-shrink-0 border border-neutral-100 dark:border-neutral-800"
-            />
-          ) : (
-            <div className="w-7 h-7 rounded-full bg-neutral-200 dark:bg-neutral-700 flex-shrink-0" />
-          )}
+          <Avatar user={user} size={28} className="border border-neutral-100 dark:border-neutral-800" />
           <span className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
             {user ? user.name || user.email : " "}
           </span>

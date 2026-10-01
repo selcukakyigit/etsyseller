@@ -36,6 +36,11 @@ def _verify_token(token: str) -> dict:
         raise HTTPException(401, "Oturum geçersiz veya süresi dolmuş") from exc
 
 
+def _picture(meta: dict) -> str | None:
+    url = meta.get("avatar_url") or meta.get("picture")
+    return url[:500] if isinstance(url, str) and url.startswith("https://") else None
+
+
 def get_current_user(
     request: Request,
     db: Session = Depends(get_db),
@@ -71,11 +76,22 @@ def get_current_user(
         if not email:
             raise HTTPException(401, "Hesapta e-posta yok")
         meta = claims.get("user_metadata") or {}
-        user = User(supabase_id=supabase_id, email=email, name=meta.get("full_name") or meta.get("name"))
+        user = User(
+            supabase_id=supabase_id,
+            email=email,
+            name=meta.get("full_name") or meta.get("name"),
+            picture_url=_picture(meta),
+        )
         db.add(user)
         db.flush()
         create_personal_workspace(db, user)
         db.refresh(user)
+    else:
+        # Google fotoğrafı sonradan eklenmiş/değişmiş olabilir (ör. hesap bu özellikten önce açıldıysa).
+        picture = _picture(claims.get("user_metadata") or {})
+        if picture and user.picture_url != picture:
+            user.picture_url = picture
+            db.commit()
     return user
 
 

@@ -17,6 +17,8 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     avatar_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Google gibi sağlayıcıdan gelen profil fotoğrafı; kullanıcı kendi fotoğrafını yüklemediyse bu gösterilir.
+    picture_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
     shops: Mapped[list["Shop"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -25,7 +27,9 @@ class User(Base):
 
     @property
     def avatar_url(self) -> str | None:
-        return f"/static/avatars/{self.avatar_filename}" if self.avatar_filename else None
+        if self.avatar_filename:
+            return f"/static/avatars/{self.avatar_filename}"
+        return self.picture_url
 
 
 class Workspace(Base):

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { API_URL, api } from "@/lib/api";
+import { api } from "@/lib/api";
+import Avatar from "@/components/Avatar";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import SettingsSubpage from "@/components/SettingsSubpage";
 
@@ -67,16 +68,7 @@ export default function ProfileSettingsPage() {
       {user && (
         <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 space-y-4">
           <div className="flex items-center gap-4">
-            {user.avatar_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={`${API_URL}${user.avatar_url}`}
-                alt=""
-                className="w-16 h-16 rounded-full object-cover border border-neutral-100 dark:border-neutral-800"
-              />
-            ) : (
-              <div className="w-16 h-16 rounded-full bg-neutral-100 dark:bg-neutral-800" />
-            )}
+            <Avatar user={user} size={64} className="border border-neutral-100 dark:border-neutral-800" />
             <div>
               <button
                 onClick={() => fileInputRef.current?.click()}
