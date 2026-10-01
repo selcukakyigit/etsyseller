@@ -1,13 +1,24 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getLang } from "@/lib/i18n-server";
+import { PrivacyEn, PRIVACY_INTRO } from "@/content/legal-en";
 import LegalLayout, { H2, P, UL } from "@/components/legal/LegalLayout";
 import { BRAND, COMPANY } from "@/lib/legal";
 
 export const metadata: Metadata = { title: `Gizlilik Politikası — ${BRAND}` };
 
-export default function PrivacyPage() {
+export default async function PrivacyPage() {
+  const lang = await getLang();
+  if (lang === "en") {
+    return (
+      <LegalLayout lang="en" title="Privacy Policy" intro={PRIVACY_INTRO}>
+        <PrivacyEn />
+      </LegalLayout>
+    );
+  }
   return (
     <LegalLayout
+      lang="tr"
       title="Gizlilik Politikası"
       intro={`${BRAND}, Etsy satıcıları için bir operasyon ve büyüme platformudur. Bu politika hangi verileri topladığımızı, neden kullandığımızı ve haklarınızı açıklar. Türkiye (KVKK) ve Avrupa Birliği (GDPR) kullanıcıları için hazırlanmıştır.`}
     >

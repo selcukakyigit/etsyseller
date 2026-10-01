@@ -1,12 +1,23 @@
 import type { Metadata } from "next";
+import { getLang } from "@/lib/i18n-server";
+import { CookiesEn, COOKIES_INTRO } from "@/content/legal-en";
 import LegalLayout, { H2, P, Table } from "@/components/legal/LegalLayout";
 import { BRAND, COMPANY } from "@/lib/legal";
 
 export const metadata: Metadata = { title: `Çerez Politikası — ${BRAND}` };
 
-export default function CookiesPage() {
+export default async function CookiesPage() {
+  const lang = await getLang();
+  if (lang === "en") {
+    return (
+      <LegalLayout lang="en" title="Cookie Policy" intro={COOKIES_INTRO}>
+        <CookiesEn />
+      </LegalLayout>
+    );
+  }
   return (
     <LegalLayout
+      lang="tr"
       title="Çerez Politikası"
       intro={`${BRAND} çerezleri ve benzer teknolojileri (ör. tarayıcı yerel depolaması) minimum düzeyde kullanır. Bu sayfa hangilerini, neden kullandığımızı açıklar.`}
     >

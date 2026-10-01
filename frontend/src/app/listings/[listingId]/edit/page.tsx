@@ -106,7 +106,7 @@ export default function ListingEditPage() {
     if (!ok || !activeShop) return;
     if (wc.unsaved && !(await wc.saveLocal())) return;
     startPublish(activeShop.id, listingId);
-    router.push("/"); // yayın arkada sürer; listede kartın üzerinde doluluk çubuğu görünür
+    router.push("/listings"); // yayın arkada sürer; listede kartın üzerinde doluluk çubuğu görünür
   }
 
   async function forcePublish() {
@@ -118,7 +118,7 @@ export default function ListingEditPage() {
     });
     if (!ok || !activeShop) return;
     startPublish(activeShop.id, listingId, true);
-    router.push("/");
+    router.push("/listings");
   }
 
   async function handleDiscard() {
@@ -133,7 +133,7 @@ export default function ListingEditPage() {
     if (!ok) return;
     dismissPublishJob(listingId);
     await wc.discard();
-    if (isNew) router.push("/");
+    if (isNew) router.push("/listings");
   }
 
   const fmt = (iso: string | null) =>
@@ -145,10 +145,10 @@ export default function ListingEditPage() {
       : "Etsy ile aynı — değişiklik yok";
 
   return (
-    <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/">
+    <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/listings">
       <div className="mx-auto max-w-5xl px-6 py-8">
         <button
-          onClick={() => router.push("/")}
+          onClick={() => router.push("/listings")}
           className="text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 transition mb-4"
         >
           ← Listing&apos;lere dön

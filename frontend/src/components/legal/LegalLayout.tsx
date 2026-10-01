@@ -1,45 +1,31 @@
-import Link from "next/link";
 import { ReactNode } from "react";
-import { BRAND, ETSY_DISCLAIMER, LEGAL_LINKS, LEGAL_UPDATED } from "@/lib/legal";
+import { SiteFooter, SiteHeader } from "@/components/site/SiteChrome";
+import { Lang } from "@/lib/i18n";
+import { LEGAL_UPDATED } from "@/lib/legal";
 
-export function LegalFooter() {
+export default function LegalLayout({
+  lang,
+  title,
+  intro,
+  children,
+}: {
+  lang: Lang;
+  title: string;
+  intro?: string;
+  children: ReactNode;
+}) {
   return (
-    <footer className="border-t border-neutral-200 dark:border-neutral-800 mt-16">
-      <div className="mx-auto max-w-3xl px-6 py-8 text-xs text-neutral-500 dark:text-neutral-400 space-y-3">
-        <nav className="flex flex-wrap gap-x-4 gap-y-1">
-          {LEGAL_LINKS.map((l) => (
-            <Link key={l.href} href={l.href} className="hover:text-neutral-800 dark:hover:text-neutral-200">
-              {l.label}
-            </Link>
-          ))}
-        </nav>
-        <p>{ETSY_DISCLAIMER}</p>
-        <p>© {new Date().getFullYear()} {BRAND}</p>
-      </div>
-    </footer>
-  );
-}
-
-export default function LegalLayout({ title, intro, children }: { title: string; intro?: string; children: ReactNode }) {
-  return (
-    <div className="flex-1 bg-white dark:bg-neutral-950 text-neutral-800 dark:text-neutral-200">
-      <header className="border-b border-neutral-200 dark:border-neutral-800">
-        <div className="mx-auto max-w-3xl px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="font-semibold text-neutral-900 dark:text-neutral-100">
-            {BRAND}
-          </Link>
-          <Link href="/login" className="text-sm text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200">
-            Giriş yap
-          </Link>
-        </div>
-      </header>
-      <main className="mx-auto max-w-3xl px-6 py-10">
-        <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">{title}</h1>
-        <p className="mt-1 text-xs text-neutral-400">Son güncelleme: {LEGAL_UPDATED}</p>
+    <div className="flex-1 bg-[#FBF9F6] text-neutral-800 dark:bg-[#0E0D0C] dark:text-neutral-200">
+      <SiteHeader lang={lang} />
+      <main className="mx-auto max-w-3xl px-6 py-12">
+        <h1 className="text-3xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">{title}</h1>
+        <p className="mt-1 text-xs text-neutral-400">
+          {lang === "tr" ? "Son güncelleme" : "Last updated"}: {LEGAL_UPDATED[lang]}
+        </p>
         {intro && <p className="mt-4 text-sm leading-relaxed">{intro}</p>}
         <div className="mt-6">{children}</div>
       </main>
-      <LegalFooter />
+      <SiteFooter lang={lang} />
     </div>
   );
 }

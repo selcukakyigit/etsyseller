@@ -8,7 +8,7 @@ import { BRAND } from "@/lib/legal";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard" },
-  { href: "/", label: "Listing'ler" },
+  { href: "/listings", label: "Listing'ler" },
   { href: "/orders", label: "Siparişler" },
   { href: "/finance", label: "Finans" },
   { href: "/reviews", label: "Yorumlar" },

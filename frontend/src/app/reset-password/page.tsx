@@ -4,9 +4,12 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { BRAND } from "@/lib/legal";
+import { useLang } from "@/lib/i18n-client";
+import { AUTH_COPY } from "@/lib/copy-auth";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
+  const t = AUTH_COPY[useLang()];
   const [ready, setReady] = useState(false);
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -31,14 +34,14 @@ export default function ResetPasswordPage() {
       setError(error.message);
       return;
     }
-    router.replace("/");
+    router.replace("/dashboard");
   }
 
   return (
     <main className="flex-1 bg-neutral-50 dark:bg-neutral-950 flex items-center justify-center px-6">
       <div className="w-full max-w-sm">
         <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-1">{BRAND}</h1>
-        <p className="text-sm text-neutral-400 dark:text-neutral-500 mb-6">Yeni şifre belirle</p>
+        <p className="text-sm text-neutral-400 dark:text-neutral-500 mb-6">{t.resetTitle}</p>
         {ready ? (
           <form onSubmit={submit} className="space-y-3 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6">
             <input
@@ -47,7 +50,7 @@ export default function ResetPasswordPage() {
               minLength={8}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="en az 8 karakter"
+              placeholder={t.passwordHint}
               autoComplete="new-password"
               className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#F1641E]"
             />
@@ -57,11 +60,11 @@ export default function ResetPasswordPage() {
               disabled={loading}
               className="w-full text-sm font-medium px-3 py-2 rounded-lg bg-neutral-900 text-white hover:bg-neutral-700 transition disabled:opacity-50"
             >
-              {loading ? "Bekleyin…" : "Şifreyi kaydet"}
+              {loading ? t.wait : t.resetSave}
             </button>
           </form>
         ) : (
-          <p className="text-sm text-neutral-500">Bağlantı geçersiz veya süresi dolmuş. Giriş sayfasından yeniden iste.</p>
+          <p className="text-sm text-neutral-500">{t.resetInvalid}</p>
         )}
       </div>
     </main>

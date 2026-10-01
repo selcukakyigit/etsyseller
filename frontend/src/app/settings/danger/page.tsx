@@ -66,7 +66,7 @@ export default function DangerSettingsPage() {
           onConfirm={async (email) => {
             await api.account.resetData(email);
             clearBrowserData();
-            window.location.href = "/";
+            window.location.href = "/listings";
           }}
         />
       )}

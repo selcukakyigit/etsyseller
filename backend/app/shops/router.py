@@ -71,7 +71,7 @@ def connect_callback(code: str, state: str, db: Session = Depends(get_db)):
         shop = service.complete_connect(db, code, state)
     except service.ShopConnectError as exc:
         raise HTTPException(400, str(exc)) from exc
-    return RedirectResponse(f"{settings.frontend_url}/?connected={shop.etsy_shop_id}")
+    return RedirectResponse(f"{settings.frontend_url}/listings?connected={shop.etsy_shop_id}")
 
 
 @router.get("/{shop_id}/shipping-profiles")

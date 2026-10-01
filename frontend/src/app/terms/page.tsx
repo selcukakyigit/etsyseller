@@ -1,13 +1,24 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getLang } from "@/lib/i18n-server";
+import { TermsEn, TERMS_INTRO } from "@/content/legal-en";
 import LegalLayout, { H2, P, UL } from "@/components/legal/LegalLayout";
 import { BRAND, COMPANY, ETSY_DISCLAIMER } from "@/lib/legal";
 
 export const metadata: Metadata = { title: `Kullanım Koşulları — ${BRAND}` };
 
-export default function TermsPage() {
+export default async function TermsPage() {
+  const lang = await getLang();
+  if (lang === "en") {
+    return (
+      <LegalLayout lang="en" title="Terms of Service" intro={TERMS_INTRO}>
+        <TermsEn />
+      </LegalLayout>
+    );
+  }
   return (
     <LegalLayout
+      lang="tr"
       title="Kullanım Koşulları"
       intro={`Bu koşullar, ${COMPANY.name} tarafından sunulan ${BRAND} hizmetini kullanımınızı düzenler. Hesap oluşturarak veya hizmeti kullanarak bu koşulları kabul etmiş olursunuz.`}
     >

@@ -1,12 +1,23 @@
 import type { Metadata } from "next";
+import { getLang } from "@/lib/i18n-server";
+import { AiDataEn, AI_INTRO } from "@/content/legal-en";
 import LegalLayout, { H2, P, UL, Table } from "@/components/legal/LegalLayout";
 import { BRAND, COMPANY } from "@/lib/legal";
 
 export const metadata: Metadata = { title: `Yapay Zekâ ve Veri İşleme — ${BRAND}` };
 
-export default function AiDataPage() {
+export default async function AiDataPage() {
+  const lang = await getLang();
+  if (lang === "en") {
+    return (
+      <LegalLayout lang="en" title="AI & Data Use" intro={AI_INTRO}>
+        <AiDataEn />
+      </LegalLayout>
+    );
+  }
   return (
     <LegalLayout
+      lang="tr"
       title="Yapay Zekâ ve Veri İşleme"
       intro={`${BRAND} metin ve görsel üretimi için yapay zekâ sağlayıcılarını kullanır. Bu sayfa hangi verinin nereye gittiğini ve nasıl kontrol edebileceğinizi açıklar.`}
     >

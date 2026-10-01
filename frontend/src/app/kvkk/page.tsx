@@ -1,15 +1,24 @@
 import type { Metadata } from "next";
+import { getLang } from "@/lib/i18n-server";
 import LegalLayout, { H2, P, UL, Table } from "@/components/legal/LegalLayout";
 import { BRAND, COMPANY } from "@/lib/legal";
 
 export const metadata: Metadata = { title: `KVKK Aydınlatma Metni — ${BRAND}` };
 
-export default function KvkkPage() {
+export default async function KvkkPage() {
+  const lang = await getLang();
   return (
     <LegalLayout
+      lang={lang}
       title="KVKK Aydınlatma Metni"
       intro={`6698 sayılı Kişisel Verilerin Korunması Kanunu'nun ("KVKK") 10. maddesi uyarınca, ${BRAND} hizmetini kullanırken kişisel verilerinizin nasıl işlendiğini bu metinle bildiriyoruz.`}
     >
+      {lang === "en" && (
+        <P>
+          This notice is the data-protection information required by Turkey's Personal Data Protection Law (KVKK) and is
+          provided in Turkish. Everyone else should read the <a className="underline" href="/privacy">Privacy Policy</a>.
+        </P>
+      )}
       <H2>1. Veri sorumlusu</H2>
       <UL>
         <li>Unvan: {COMPANY.name}</li>
