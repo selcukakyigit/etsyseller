@@ -157,8 +157,9 @@ export function PrivacyEn() {
       <H2>7. Retention and deletion</H2>
       <P>
         We keep data for as long as needed to provide the service. When you disconnect Etsy, data received from Etsy is deleted.
-        You can delete your account under Settings, Account and data; your personal data is then deleted or anonymized, except
-        records we must keep by law.
+        Contact form messages and their attachments are deleted automatically after 12 months. We keep your sign-up consent
+        record (policy version, time, IP address) while your account is open, as legal proof. You can delete your account
+        under Settings, Account and data; your personal data is then deleted or anonymized, except records we must keep by law.
       </P>
 
       <H2>8. Your rights</H2>

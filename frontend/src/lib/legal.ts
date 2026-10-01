@@ -23,8 +23,8 @@ export const COMPANY = {
   lon: 30.62966,
 };
 
-export const LEGAL_VERSION = "2026-10-01";
-export const LEGAL_UPDATED: Record<Lang, string> = { tr: "1 Ekim 2026", en: "October 1, 2026" };
+export const LEGAL_VERSION = "2026-10-02";
+export const LEGAL_UPDATED: Record<Lang, string> = { tr: "2 Ekim 2026", en: "October 2, 2026" };
 
 export const ETSY_DISCLAIMER =
   "The term 'Etsy' is a trademark of Etsy, Inc. This application uses the Etsy API but is not endorsed or certified by Etsy, Inc.";

@@ -1,4 +1,5 @@
 import { getAccessToken, supabase } from "@/lib/supabase";
+import { toast } from "@/lib/toast";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -626,6 +627,28 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Sunucuya hiç ulaşılamadığında (internet yok, sunucu yeniden başlıyor, CORS) fırlatılır. Kullanıcıya sayfanın içinde kırmızı
+ * "Failed to fetch" yazısı göstermek yerine sağ altta bir bildirim (toast) çıkarırız; bu yüzden `message` bilerek BOŞTUR:
+ * sayfalar hata metnini `{error && ...}` ile gösterdiğinden boş mesaj sayfada hiçbir şey çizmez.
+ */
+export class NetworkError extends ApiError {
+  constructor() {
+    super(0, "");
+  }
+}
+
+const NETWORK_MESSAGE = "Sunucuya ulaşılamadı. İnternet bağlantını kontrol et ya da birkaç saniye sonra tekrar dene.";
+
+async function send(input: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(input, init);
+  } catch {
+    toast.error(NETWORK_MESSAGE);
+    throw new NetworkError();
+  }
+}
+
 function detailText(detail: unknown): string | undefined {
   if (typeof detail === "string") return detail;
   if (Array.isArray(detail)) return detail.map((d) => (d && typeof d === "object" && "msg" in d ? String(d.msg) : String(d))).join("; ");
@@ -638,7 +661,7 @@ async function authHeader(): Promise<Record<string, string>> {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await send(`${API_URL}${path}`, {
     ...init,
     headers: { "Content-Type": "application/json", ...(await authHeader()), ...init?.headers },
   });
@@ -653,7 +676,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 /** Like request(), but for multipart uploads — the browser must set its own
  * Content-Type with the form boundary, so we don't force application/json. */
 async function requestForm<T>(path: string, formData: FormData): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, { method: "POST", headers: await authHeader(), body: formData });
+  const res = await send(`${API_URL}${path}`, { method: "POST", headers: await authHeader(), body: formData });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new ApiError(res.status, body.detail ?? `İstek başarısız: ${res.status}`);
@@ -1373,7 +1396,7 @@ export const api = {
       const params = new URLSearchParams({ start, end, scope: opts.scope ?? "all", sort: opts.sort ?? "sales" });
       if (country) params.set("country", country);
       if (opts.q) params.set("q", opts.q);
-      const res = await fetch(`${API_URL}/api/shops/${shopId}/finance/export.xlsx?${params}`, {
+      const res = await send(`${API_URL}/api/shops/${shopId}/finance/export.xlsx?${params}`, {
         headers: await authHeader(),
       });
       if (!res.ok) throw new Error("Excel oluşturulamadı");

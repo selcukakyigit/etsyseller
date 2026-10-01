@@ -11,6 +11,7 @@ from app.jobs.daily_stats import capture_daily_stats
 from app.jobs.listing_health import evaluate_all_shops
 from app.jobs.listing_refresh import refresh_all_shops
 from app.jobs.order_sync import sync_all_shops
+from app.jobs.retention import purge_expired_records
 from app.jobs.reviews import sync_all_shops as sync_reviews
 from app.jobs.shop_profile import sync_all_shops as sync_shop_profile
 
@@ -49,6 +50,12 @@ def start_scheduler() -> None:
         sync_shop_profile,
         trigger=CronTrigger(hour=3, minute=30),
         id="shop_profile",
+        replace_existing=True,
+    )
+    _scheduler.add_job(
+        purge_expired_records,
+        trigger=CronTrigger(hour=4, minute=0),
+        id="retention_purge",
         replace_existing=True,
     )
     _scheduler.add_job(

@@ -46,3 +46,10 @@ def signed_url(bucket: str, path: str, expires_in: int = 300) -> str:
     resp = httpx.post(f"{_base()}/object/sign/{bucket}/{path}", headers=_headers(), json={"expiresIn": expires_in}, timeout=20)
     resp.raise_for_status()
     return f"{settings.supabase_url.rstrip('/')}/storage/v1{resp.json()['signedURL']}"
+
+
+def delete(bucket: str, path: str) -> None:
+    """Depodaki nesneyi siler; zaten yoksa (404) hata saymaz."""
+    resp = httpx.delete(f"{_base()}/object/{bucket}/{path}", headers=_headers(), timeout=30)
+    if resp.status_code not in (200, 204, 400, 404):
+        resp.raise_for_status()

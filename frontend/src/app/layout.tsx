@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { InlineScript } from "@/components/InlineScript";
 import CookieNotice from "@/components/legal/CookieNotice";
+import Toaster from "@/components/ui/Toaster";
 import { BRAND } from "@/lib/legal";
 import "./globals.css";
 
@@ -36,6 +37,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col">
         {children}
         <CookieNotice />
+        <Toaster />
       </body>
     </html>
   );

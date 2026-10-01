@@ -85,7 +85,9 @@ export default async function KvkkPage() {
         <li>Hesap ve mağaza verileri: hesabınız açık olduğu sürece.</li>
         <li>Etsy'den alınan veriler: Etsy API şartlarındaki yenileme ve saklama sınırlarına uygun olarak güncel tutulur; Etsy bağlantısını kestiğinizde ilgili veriler silinir.</li>
         <li>Hesap silme talebinden sonra kişisel veriler makul bir süre içinde silinir veya anonim hale getirilir; yasal saklama yükümlülüğü olan kayıtlar (ör. fatura) ilgili süre boyunca tutulur.</li>
-        <li>Güvenlik ve işlem kayıtları: en fazla 12 ay.</li>
+        <li>İletişim formu mesajları ve ekleri: 12 ay sonra otomatik silinir.</li>
+        <li>Kayıt onayı kayıtları (metin sürümü, zaman, IP adresi): yasal ispat için hesabınız açık olduğu sürece; hesap silindiğinde silinir.</li>
+        <li>Sunucu ve altyapı günlükleri: barındırma sağlayıcılarının kendi, kısa saklama süreleriyle sınırlıdır.</li>
       </UL>
 
       <H2>7. KVKK m.11 kapsamındaki haklarınız</H2>

@@ -71,8 +71,10 @@ export default async function PrivacyPage() {
       <H2>7. Saklama ve silme</H2>
       <P>
         Verileri hizmeti sunmak için gerektiği süre saklarız. Etsy bağlantısını kestiğinizde Etsy'den alınan veriler
-        silinir. Hesabınızı Ayarlar &gt; Tehlikeli bölge'den silebilirsiniz; bunu yaptığınızda kişisel verileriniz
-        silinir veya anonimleştirilir (yasal saklama zorunluluğu olan kayıtlar hariç).
+        silinir. İletişim formu mesajları ve ekleri 12 ay sonra otomatik silinir. Kayıt onayı kayıtlarını (metin
+        sürümü, zaman, IP adresi) hesabınız açık olduğu sürece yasal ispat için tutarız. Hesabınızı Ayarlar &gt; Hesap
+        ve Veriler'den silebilirsiniz; bunu yaptığınızda kişisel verileriniz silinir veya anonimleştirilir (yasal
+        saklama zorunluluğu olan kayıtlar hariç).
       </P>
 
       <H2>8. Haklarınız</H2>
