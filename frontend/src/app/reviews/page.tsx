@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api, ShopReview, ShopReviewStats } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
@@ -121,7 +121,7 @@ function ListingStatList({ items }: { items: ShopReviewStats["top_reviewed"] }) 
   );
 }
 
-export default function ReviewsPage() {
+function ReviewsPageInner() {
   const { user, shops, activeShop, setActiveShopId, error: bootError } = useAuthAndShop();
   const shopId = activeShop?.id;
   const router = useRouter();
@@ -291,5 +291,14 @@ export default function ReviewsPage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+// useSearchParams() üretim derlemesinde Suspense sınırı ister; yoksa sayfa önceden render edilemez ve build düşer.
+export default function ReviewsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ReviewsPageInner />
+    </Suspense>
   );
 }
