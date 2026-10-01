@@ -81,8 +81,18 @@ def _rate_limited(ip: str) -> bool:
     return False
 
 
-def _notify(msg_id: int, name: str, email: str, topic: str, message: str, files: list[tuple[str, bytes]]) -> None:
-    """Resend ayarlıysa ekibe e-posta (ekleriyle) gönderir; ayarlı değilse mesaj yalnızca veritabanında durur."""
+# Gmail'in alabileceği toplam ileti boyutu 25 MB ve ekler e-postada base64 ile ~%33 büyür. Güvenli sınır: ham ekler
+# toplamı bu değeri aşarsa dosyalar e-postaya eklenmez, yalnızca (güvenli depodaki) indirme bağlantıları verilir.
+MAX_EMAIL_ATTACH_BYTES = 12 * 1024 * 1024
+LINK_TTL_SECONDS = 7 * 24 * 3600
+
+
+def _notify(
+    msg_id: int, name: str, email: str, topic: str, message: str,
+    files: list[tuple[str, bytes]], stored: list[tuple[str, int, str]],
+) -> None:
+    """Resend ayarlıysa ekibe e-posta gönderir; ayarlı değilse mesaj yalnızca veritabanında durur.
+    Ekler küçükse e-postaya eklenir; her durumda 7 gün geçerli indirme bağlantıları metne yazılır."""
     if not (settings.resend_api_key and settings.resend_from and settings.contact_to):
         return
     try:
@@ -93,7 +103,15 @@ def _notify(msg_id: int, name: str, email: str, topic: str, message: str, files:
             "subject": f"[Ulagg iletişim #{msg_id}] {topic} - {name}",
             "text": f"Gönderen: {name} <{email}>\nKonu: {topic}\n\n{message}",
         }
-        if files:
+        if stored:
+            lines = []
+            for fname, size, path in stored:
+                try:
+                    lines.append(f"- {fname} ({size // 1024} KB): {storage.signed_url(BUCKET, path, LINK_TTL_SECONDS)}")
+                except Exception:
+                    lines.append(f"- {fname} ({size // 1024} KB): bağlantı üretilemedi")
+            payload["text"] += "\n\nEkler (bağlantılar 7 gün geçerli):\n" + "\n".join(lines)
+        if files and sum(len(d) for _, d in files) <= MAX_EMAIL_ATTACH_BYTES:
             payload["attachments"] = [{"filename": fn, "content": base64.b64encode(data).decode()} for fn, data in files]
         resp = httpx.post(
             "https://api.resend.com/emails",
@@ -171,7 +189,8 @@ async def submit(
             log.exception("İletişim eki depolanamadı (#%s)", row.id)
     db.commit()
 
-    background.add_task(_notify, row.id, row.name, row.email, row.topic, row.message, [(fn, d) for fn, _, d in prepared])
+    stored = [(a.filename, a.size, a.storage_path) for a in row.attachments]
+    background.add_task(_notify, row.id, row.name, row.email, row.topic, row.message, [(fn, d) for fn, _, d in prepared], stored)
     return {"ok": True}
 
 
