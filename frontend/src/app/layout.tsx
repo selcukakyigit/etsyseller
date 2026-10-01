@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { InlineScript } from "@/components/InlineScript";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -26,10 +27,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <head>
         {/* Applies the saved theme before first paint so there's no light->dark flash. */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('theme');if(t!=='light'&&t!=='dark'){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.classList.add(t);}catch(e){}})();`,
-          }}
+        <InlineScript
+          html={`(function(){try{var t=localStorage.getItem('theme');if(t!=='light'&&t!=='dark'){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.classList.add(t);}catch(e){}})();`}
         />
       </head>
       <body className="min-h-full flex flex-col">{children}</body>

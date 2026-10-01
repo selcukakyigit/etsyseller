@@ -21,6 +21,7 @@ export default function ShippingSettingsPage() {
 
   const load = useCallback(() => {
     if (shopId === undefined) return;
+    setError(null);
     const fail = (e: unknown) => setError(e instanceof Error ? e.message : "Bilinmeyen hata");
     api.shops.readinessStateDefinitions(shopId).then(setProcessing).catch(fail);
     api.shops.shippingProfiles(shopId).then(setProfiles).catch(fail);
@@ -42,7 +43,14 @@ export default function ShippingSettingsPage() {
           </p>
         </div>
 
-        {(bootError || error) && <p className="text-sm text-red-600">{bootError ?? error}</p>}
+        {(bootError || error) && (
+          <p className="text-sm text-red-600">
+            {bootError ?? error}{" "}
+            <button type="button" onClick={load} className="font-medium underline">
+              Yeniden dene
+            </button>
+          </p>
+        )}
         {needsReconnect && <ReconnectNotice />}
 
         {activeShop ? (

@@ -6,6 +6,7 @@ import { Modal, btnGhost, btnPrimary } from "@/components/listing-editor/Modal";
 import {
   Align,
   CardSize,
+  CustomSizeEntry,
   DEFAULT_CONFIG,
   FONTS,
   FontId,
@@ -14,12 +15,17 @@ import {
   TEMPLATES,
   TemplateId,
   VAlign,
+  addCustomSize,
   cardDims,
   cardsDocument,
   loadConfig,
+  loadCustomSizes,
   printCards,
+  removeCustomSize,
   saveConfig,
 } from "./giftCard";
+
+const ADD_CUSTOM = "__add_custom__";
 
 const MM = 3.7795; // 1 mm = 3.7795 px (96 dpi)
 
@@ -61,6 +67,12 @@ function Seg<T extends string>({ value, options, onChange }: { value: T; options
 /** Hediye kartı: tasarım seç, metni düzenle, konumlandır, yazdır. Ayarlar sipariş başına tarayıcıda saklanır. */
 export default function GiftCardModal({ order, onClose }: { order: Order; onClose: () => void }) {
   const [cfg, setCfg] = useState<GiftCardConfig>(() => configForOrder(order));
+  // Kullanıcının kaydettiği özel kart boyutları — bu siparişe değil, tarayıcıya kayıtlı; her hediye kartında yeniden kullanılır.
+  const [customSizes, setCustomSizes] = useState<CustomSizeEntry[]>(() => loadCustomSizes());
+  const [addingSize, setAddingSize] = useState(false);
+  const [newW, setNewW] = useState("100");
+  const [newH, setNewH] = useState("150");
+  const [newLabel, setNewLabel] = useState("");
 
   const update = (patch: Partial<GiftCardConfig>) =>
     setCfg((prev) => {
@@ -74,6 +86,33 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
   const pxH = h * MM;
   const scale = Math.min(1, 380 / pxW, 520 / pxH);
   const doc = useMemo(() => cardsDocument([cfg]), [cfg]);
+
+  function handleSizeChange(v: string) {
+    if (v === ADD_CUSTOM) {
+      setNewLabel("");
+      setAddingSize(true);
+      return;
+    }
+    update({ size: v });
+  }
+
+  function saveNewSize() {
+    const w2 = Number(newW.replace(",", "."));
+    const h2 = Number(newH.replace(",", "."));
+    if (!(w2 > 0) || !(h2 > 0)) return;
+    const entry = addCustomSize(w2, h2, newLabel);
+    setCustomSizes((prev) => [...prev, entry]);
+    update({ size: entry.id });
+    setAddingSize(false);
+  }
+
+  function deleteCurrentCustomSize() {
+    removeCustomSize(cfg.size);
+    setCustomSizes((prev) => prev.filter((s) => s.id !== cfg.size));
+    update({ size: "4x6" });
+  }
+
+  const isCustomSelected = customSizes.some((s) => s.id === cfg.size);
 
   return (
     <Modal
@@ -215,13 +254,67 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className={labelCls}>Kart boyutu</label>
-              <select value={cfg.size} onChange={(e) => update({ size: e.target.value as CardSize })} className={inputCls}>
-                {(Object.keys(SIZES) as CardSize[]).map((s) => (
-                  <option key={s} value={s}>
-                    {SIZES[s].label}
-                  </option>
-                ))}
-              </select>
+              {addingSize ? (
+                <div className="space-y-2 rounded-lg border border-neutral-300 p-2.5 dark:border-neutral-700">
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      value={newW}
+                      onChange={(e) => setNewW(e.target.value)}
+                      inputMode="decimal"
+                      placeholder="Genişlik"
+                      className={`${inputCls} px-2 py-1.5`}
+                    />
+                    <span className="text-xs text-neutral-500">×</span>
+                    <input
+                      value={newH}
+                      onChange={(e) => setNewH(e.target.value)}
+                      inputMode="decimal"
+                      placeholder="Yükseklik"
+                      className={`${inputCls} px-2 py-1.5`}
+                    />
+                    <span className="text-xs text-neutral-500">mm</span>
+                  </div>
+                  <input
+                    value={newLabel}
+                    onChange={(e) => setNewLabel(e.target.value)}
+                    placeholder="İsim (opsiyonel, ör. Matbaacımın boyutu)"
+                    className={`${inputCls} px-2 py-1.5`}
+                  />
+                  <div className="flex justify-end gap-2">
+                    <button type="button" onClick={() => setAddingSize(false)} className="text-xs text-neutral-500 hover:underline">
+                      Vazgeç
+                    </button>
+                    <button type="button" onClick={saveNewSize} className="rounded-lg bg-[#F1641E] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#d9560f]">
+                      Kaydet
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <select value={cfg.size} onChange={(e) => handleSizeChange(e.target.value)} className={inputCls}>
+                    {(Object.keys(SIZES) as CardSize[]).map((s) => (
+                      <option key={s} value={s}>
+                        {SIZES[s].label}
+                      </option>
+                    ))}
+                    {customSizes.length > 0 && (
+                      <optgroup label="Kayıtlı özel boyutlar">
+                        {customSizes.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.label}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    <option value={ADD_CUSTOM}>+ Özel boyut ekle…</option>
+                  </select>
+                  {isCustomSelected && (
+                    <button type="button" onClick={deleteCurrentCustomSize} title="Bu özel boyutu sil" className="shrink-0 text-xs text-red-600 hover:underline">
+                      Sil
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
             <div>
               <label className={labelCls}>Yön</label>
@@ -241,7 +334,8 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
               <iframe
                 title="Hediye kartı önizleme"
                 srcDoc={doc}
-                style={{ width: pxW, height: pxH, border: 0, transform: `scale(${scale})`, transformOrigin: "top left", background: "#fff" }}
+                scrolling="no"
+                style={{ width: pxW, height: pxH, border: 0, overflow: "hidden", transform: `scale(${scale})`, transformOrigin: "top left", background: "#fff" }}
               />
             </div>
           </div>

@@ -38,7 +38,7 @@ export default function OrderFilterPanel({
 }) {
   const set = (p: Partial<OrderFilters>) => onChange({ ...filters, ...p });
   return (
-    <aside className="w-full shrink-0 lg:w-60">
+    <aside className="w-full shrink-0 lg:w-60 lg:sticky lg:self-start lg:overflow-y-auto lg:top-[14rem] lg:max-h-[calc(100vh-15rem)]">
       <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
         <span className={heading}>Gönderim tarihi</span>
         {(

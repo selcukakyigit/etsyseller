@@ -78,6 +78,9 @@ def get_api_keys() -> dict:
         "anthropic_api_key": mask_secret(settings.anthropic_api_key),
         "anthropic_model": settings.anthropic_model,
         "ai_provider": settings.ai_provider,
+        "google_api_key": mask_secret(settings.google_api_key),
+        "google_image_model": settings.google_image_model,
+        "google_image_size": settings.google_image_size,
     }
 
 
@@ -114,5 +117,15 @@ def test_anthropic_connection() -> dict:
     try:
         get_anthropic_client().models.list(limit=1)
         return {"ok": True, "message": "Claude bağlantısı başarılı"}
+    except Exception as exc:
+        return {"ok": False, "message": str(exc)}
+
+
+def test_google_connection() -> dict:
+    from app.ai.client import get_google_client
+
+    try:
+        get_google_client().models.list(config={"page_size": 1})
+        return {"ok": True, "message": "Gemini bağlantısı başarılı"}
     except Exception as exc:
         return {"ok": False, "message": str(exc)}

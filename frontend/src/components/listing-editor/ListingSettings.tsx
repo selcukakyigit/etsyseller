@@ -26,6 +26,9 @@ export default function ListingSettings({
   const [sections, setSections] = useState<ShopSection[] | null>(null);
   const [partners, setPartners] = useState<ProductionPartner[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [addingSection, setAddingSection] = useState(false);
+  const [newSectionTitle, setNewSectionTitle] = useState("");
+  const [creatingSection, setCreatingSection] = useState(false);
 
   useEffect(() => {
     api.shops.sections(shopId).then(setSections).catch((e) => setError(e instanceof Error ? e.message : "Bilinmeyen hata"));
@@ -34,6 +37,24 @@ export default function ListingSettings({
       .then(setPartners)
       .catch(() => setPartners([])); // shops_r yoksa ya da hiç ortak yoksa sessizce boş bırak
   }, [shopId]);
+
+  async function createSection() {
+    const title = newSectionTitle.trim();
+    if (!title) return;
+    setCreatingSection(true);
+    setError(null);
+    try {
+      const created = await api.shops.createShopSection(shopId, title);
+      setSections((prev) => [...(prev ?? []), created]);
+      onChange({ shop_section_id: created.shop_section_id });
+      setAddingSection(false);
+      setNewSectionTitle("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Bölüm oluşturulamadı");
+    } finally {
+      setCreatingSection(false);
+    }
+  }
 
   function togglePartner(id: number) {
     const next = productionPartnerIds.includes(id)
@@ -52,7 +73,13 @@ export default function ListingSettings({
         </label>
         <select
           value={shopSectionId ?? ""}
-          onChange={(e) => onChange({ shop_section_id: e.target.value ? Number(e.target.value) : null })}
+          onChange={(e) => {
+            if (e.target.value === "__new__") {
+              setAddingSection(true);
+              return;
+            }
+            onChange({ shop_section_id: e.target.value ? Number(e.target.value) : null });
+          }}
           className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#F1641E]"
         >
           <option value="">Yok</option>
@@ -61,7 +88,47 @@ export default function ListingSettings({
               {s.title}
             </option>
           ))}
+          <option value="__new__">+ Yeni bölüm ekle…</option>
         </select>
+        {addingSection && (
+          <div className="mt-2 flex gap-1.5">
+            <input
+              autoFocus
+              value={newSectionTitle}
+              onChange={(e) => setNewSectionTitle(e.target.value.slice(0, 24))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void createSection();
+                }
+                if (e.key === "Escape") {
+                  setAddingSection(false);
+                  setNewSectionTitle("");
+                }
+              }}
+              placeholder="Bölüm başlığı (en fazla 24 karakter)"
+              className="flex-1 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-1.5 text-sm outline-none focus:border-[#F1641E]"
+            />
+            <button
+              type="button"
+              onClick={() => void createSection()}
+              disabled={creatingSection || !newSectionTitle.trim()}
+              className="rounded-lg bg-[#F1641E] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              {creatingSection ? "Ekleniyor…" : "Ekle"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAddingSection(false);
+                setNewSectionTitle("");
+              }}
+              className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 dark:border-neutral-800 dark:text-neutral-300"
+            >
+              Vazgeç
+            </button>
+          </div>
+        )}
       </div>
 
       <label className="flex items-center justify-between gap-3 text-sm text-neutral-700 dark:text-neutral-300">

@@ -1,7 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Listing, ProductionPartner, ReturnPolicy, ShippingProfile, ShopSection } from "@/lib/api";
+import { Modal } from "@/components/listing-editor/Modal";
+import ShopSectionsSection from "@/components/shipping/ShopSectionsSection";
+import { ReconnectNotice } from "@/components/shipping/shared";
 
 export type Filters = {
   status: string; // "all" | Etsy state
@@ -94,13 +97,20 @@ export default function ListingFilters({
   filters,
   onChange,
   reference,
+  shopId,
+  onSectionsChanged,
 }: {
   listings: Listing[];
   filters: Filters;
   onChange: (f: Filters) => void;
   reference: Reference;
+  shopId: number;
+  /** Bölümler modalinde ekle/yeniden adlandır/sil sonrası çağrılır — filtre listesi Etsy'den tazelenir. */
+  onSectionsChanged: () => void;
 }) {
   const set = (patch: Partial<Filters>) => onChange({ ...filters, ...patch });
+  const [manageSections, setManageSections] = useState(false);
+  const [needsReconnect, setNeedsReconnect] = useState(false);
 
   const counts = useMemo(() => {
     const byState: Record<string, number> = {};
@@ -121,7 +131,7 @@ export default function ListingFilters({
   }, [listings]);
 
   return (
-    <aside className="w-full shrink-0 lg:w-64">
+    <aside className="w-full shrink-0 lg:w-64 lg:sticky lg:self-start lg:overflow-y-auto lg:top-[14rem] lg:max-h-[calc(100vh-15rem)]">
       <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
         <span className="block text-sm font-semibold text-neutral-900 dark:text-neutral-100">Listing durumu</span>
         <div className="mt-2">
@@ -152,8 +162,17 @@ export default function ListingFilters({
           Taslağı olan
         </Radio>
 
-        <label className={label}>Bölümler</label>
-        <select className={select} value={filters.section} onChange={(e) => set({ section: e.target.value })}>
+        <div className="mt-5 flex items-baseline justify-between">
+          <label className="block text-sm font-semibold text-neutral-900 dark:text-neutral-100">Bölümler</label>
+          <button
+            type="button"
+            onClick={() => setManageSections(true)}
+            className="text-xs font-medium text-[#F1641E] hover:underline"
+          >
+            Yönet
+          </button>
+        </div>
+        <select className={`${select} mt-2`} value={filters.section} onChange={(e) => set({ section: e.target.value })}>
           <option value="">Tümü</option>
           {reference.sections.map((s) => (
             <option key={s.shop_section_id} value={s.shop_section_id}>
@@ -221,6 +240,23 @@ export default function ListingFilters({
           Filtreleri temizle
         </button>
       </div>
+
+      {manageSections && (
+        <Modal z={95} widthClass="max-w-lg" title="Bölümleri yönet" onClose={() => setManageSections(false)}>
+          {needsReconnect && (
+            <div className="mb-4">
+              <ReconnectNotice compact />
+            </div>
+          )}
+          <ShopSectionsSection
+            shopId={shopId}
+            sections={reference.sections}
+            onChanged={onSectionsChanged}
+            onPermissionError={() => setNeedsReconnect(true)}
+            compact
+          />
+        </Modal>
+      )}
     </aside>
   );
 }

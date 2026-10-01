@@ -106,7 +106,7 @@ export default function ImageCropper({
 
   return (
     <Modal
-      z={90}
+      z={130}
       widthClass="max-w-[41rem]"
       title="Küçük resmi kırp"
       footer={

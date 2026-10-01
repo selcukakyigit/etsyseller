@@ -40,7 +40,7 @@ _log = logging.getLogger("app.publish")
 DRAFT_DIR = Path(__file__).resolve().parents[2] / "uploads" / "drafts"
 
 CORE_FIELDS = [
-    "title", "description", "tags", "materials", "taxonomy_id", "who_made", "when_made", "is_supply",
+    "title", "description", "tags", "materials", "style", "taxonomy_id", "who_made", "when_made", "is_supply",
     "shipping_profile_id", "return_policy_id", "shop_section_id", "featured_rank", "should_auto_renew",
     "is_taxable", "item_weight", "item_length", "item_width", "item_height", "item_weight_unit",
     "item_dimensions_unit", "production_partner_ids", "ecgt_garan_brand", "ecgt_garan_years",
@@ -150,7 +150,8 @@ def discard_local(db: Session, shop: Shop, listing_id: int) -> None:
 
 
 def save_file(
-    db: Session, shop: Shop, listing_id: int, kind: str, filename: str, content_type: str, content: bytes
+    db: Session, shop: Shop, listing_id: int, kind: str, filename: str, content_type: str, content: bytes,
+    origin_key: str | None = None,
 ) -> dict:
     file_id = str(uuid.uuid4())
     folder = DRAFT_DIR / str(shop.id) / str(listing_id)
@@ -162,6 +163,7 @@ def save_file(
         DraftFile(
             id=file_id, shop_id=shop.id, listing_id=listing_id, kind=kind,
             filename=filename[:255], content_type=content_type or "application/octet-stream", path=str(path),
+            origin_key=origin_key or file_id,
         )
     )
     db.commit()
@@ -173,6 +175,142 @@ def get_file(db: Session, shop: Shop, listing_id: int, file_id: str) -> DraftFil
     if f is None or f.shop_id != shop.id or f.listing_id != listing_id:
         return None
     return f
+
+
+def _source_image_bytes(db: Session, shop: Shop, listing_id: int, image_id: int, draft_file_id: str | None) -> tuple[bytes, str]:
+    """Kaynak fotoğraf: Etsy'ye zaten yüklenmiş bir görselse (image_id > 0) yerel önbellekten,
+    henüz yüklenmemiş bir taslak fotoğrafsa (image_id < 0) DraftFile'dan okunur."""
+    if image_id > 0:
+        cached = image_cache.read(shop.id, listing_id, image_id)
+        if cached is not None:
+            return cached
+        raw = json.loads(service._get_cache_row(db, shop, listing_id).raw_json)
+        img = next((i for i in raw.get("images") or [] if i.get("listing_image_id") == image_id), None)
+        if img is None:
+            raise ValueError("Görsel bulunamadı")
+        url = img.get("url_fullxfull") or img.get("url_570xN")
+        return image_cache.fetch(shop.id, listing_id, image_id, url)
+    f = get_file(db, shop, listing_id, draft_file_id or "")
+    if f is None:
+        raise ValueError("Taslak görsel dosyası bulunamadı; sayfayı yenile.")
+    return Path(f.path).read_bytes(), f.content_type
+
+
+def _resolve_origin_key(db: Session, shop: Shop, listing_id: int, image_id: int, draft_file_id: str | None) -> str:
+    """Bir fotoğraf yuvasının sürüm zincirini tanımlayan anahtar (bkz. DraftFile.origin_key). Bir taslak
+    dosyadan yola çıkılıyorsa onun zincirini devralır (eski satırlarda origin_key NULL olabilir, o zaman
+    kendi id'si zincirin başlangıcı sayılır); yoksa (canlı Etsy fotoğrafından ilk düzenleme) yeni bir zincir
+    başlatır."""
+    if draft_file_id:
+        src = get_file(db, shop, listing_id, draft_file_id)
+        if src is not None:
+            return src.origin_key or src.id
+    return f"etsy-{image_id}"
+
+
+def _origin_image_bytes(db: Session, shop: Shop, listing_id: int, origin_key: str) -> tuple[bytes, str]:
+    """Bir zincirin KÖK görseli (orijinal Etsy fotoğrafı ya da zincirin ilk taslak dosyası). Yeniden üretim
+    daima buradan başlar — önceki ÜRETİLMİŞ sürümden değil — çünkü art arda düzenlemelerde model her
+    seferinde görmediği kısımları yeniden "uyduruyor" ve bu sapmalar zincirlendikçe birikiyor (gözlemlendi:
+    yakın çekim → geniş plan geçişinde oda tanınmaz hale geldi). Kamera/mesafe/sahne talimatları yine de her
+    çağrıda güncel haliyle uygulanıyor, yalnızca hangi piksellerden başlandığı sabitleniyor."""
+    if origin_key.startswith("etsy-"):
+        orig_id = int(origin_key.removeprefix("etsy-"))
+        return _source_image_bytes(db, shop, listing_id, orig_id, None)
+    f = get_file(db, shop, listing_id, origin_key)
+    if f is None:
+        raise ValueError("Zincirin kök dosyası bulunamadı; sayfayı yenile.")
+    return Path(f.path).read_bytes(), f.content_type
+
+
+def list_versions(db: Session, shop: Shop, listing_id: int, image_id: int, draft_file_id: str | None) -> list[dict]:
+    """Bir fotoğraf yuvasının tüm geçmişi — orijinal Etsy fotoğrafı (varsa) + üretilen her sürüm, eskiden
+    yeniye. Hiçbir sürüm silinmez, bu yüzden geçmiş her zaman tam. Küpün yanındaki sürüm noktaları bunu kullanır."""
+    origin_key = _resolve_origin_key(db, shop, listing_id, image_id, draft_file_id)
+    versions: list[dict] = []
+    if origin_key.startswith("etsy-"):
+        orig_id = int(origin_key.removeprefix("etsy-"))
+        raw = json.loads(service._get_cache_row(db, shop, listing_id).raw_json)
+        img = next((i for i in raw.get("images") or [] if i.get("listing_image_id") == orig_id), None)
+        if img is not None:
+            versions.append({
+                "file_id": None, "listing_image_id": orig_id, "url": img.get("url_170x135"), "created_at": None,
+                "url_170x135": img.get("url_170x135"), "url_570xN": img.get("url_570xN"),
+                "url_fullxfull": img.get("url_fullxfull"), "alt_text": img.get("alt_text"),
+            })
+    for f in db.scalars(
+        select(DraftFile)
+        .where(DraftFile.shop_id == shop.id, DraftFile.listing_id == listing_id, DraftFile.kind == "image")
+        .order_by(DraftFile.created_at)
+    ):
+        if (f.origin_key or f.id) == origin_key:
+            versions.append({
+                "file_id": f.id, "listing_image_id": None,
+                "url": f"/api/shops/{shop.id}/listings/{listing_id}/draft/files/{f.id}",
+                "created_at": f.created_at.isoformat(),
+            })
+    return versions
+
+
+def regenerate_image(
+    db: Session,
+    shop: Shop,
+    listing_id: int,
+    image_id: int,
+    draft_file_id: str | None,
+    prompt: str | None,
+    reference_draft_file_id: str | None = None,
+    camera_prompt: str | None = None,
+    distance_prompt: str | None = None,
+    subject_image_id: int | None = None,
+    subject_draft_file_id: str | None = None,
+) -> dict:
+    """Sihirli değnek: bir görseli (Etsy'de yayında ya da henüz taslakta) yapay zekâyla yeniden oluşturup
+    yeni bir taslak dosyası olarak döner — orijinali silmez, düzenleyici ikisi arasında seçim sunar.
+    `reference_draft_file_id` verilirse (ör. toplu üretimde daha önce üretilmiş model fotoğrafı), o görsel
+    referans olarak eklenir — "aynı modeli koru, sahneyi/açıyı değiştir" gibi tutarlılık istekleri için.
+    `camera_prompt`/`distance_prompt` (kamera açısı küpü/mesafe seçiciden) sahne talimatından AYRI iletilir —
+    bkz. ai/image_gen.py `_build_prompt`. `subject_image_id` verilirse (listing'in kendi fotoğraflarından biri,
+    ürünün net/temiz göründüğü bir kare), sahnede birden fazla obje olduğunda "ürün bu" diye işaret eden bir
+    referans olarak eklenir.
+
+    ÖNEMLİ: kaynak piksel olarak `image_id`/`draft_file_id` (şu an ekranda görünen sürüm) DEĞİL, zincirin
+    KÖKÜ kullanılır (bkz. `_origin_image_bytes`) — art arda üretimlerde sapmanın birikmesini önlemek için.
+    `image_id`/`draft_file_id` yalnızca hangi zincire ait olduğunu (`origin_key`) belirlemek için kullanılır."""
+    from app.ai import image_gen
+
+    origin_key = _resolve_origin_key(db, shop, listing_id, image_id, draft_file_id)
+    content, content_type = _origin_image_bytes(db, shop, listing_id, origin_key)
+    reference = None
+    if reference_draft_file_id:
+        ref = get_file(db, shop, listing_id, reference_draft_file_id)
+        if ref is not None:
+            reference = (Path(ref.path).read_bytes(), ref.content_type)
+    subject_reference = None
+    if subject_image_id is not None:
+        subject_reference = _source_image_bytes(db, shop, listing_id, subject_image_id, subject_draft_file_id)
+    new_bytes, mime = image_gen.regenerate_image(
+        content, content_type, prompt, reference, camera_prompt, distance_prompt, subject_reference
+    )
+    filename = f"ai-regen{image_gen.guess_extension(mime)}"
+    return save_file(db, shop, listing_id, "image", filename, mime, new_bytes, origin_key=origin_key)
+
+
+def generate_image_from_prompt(
+    db: Session, shop: Shop, listing_id: int, prompt: str, reference_draft_file_id: str | None = None
+) -> dict:
+    """Kaynak fotoğraf olmadan, yalnızca metin talimatından yeni bir taslak fotoğrafı üretir — "AI ile oluştur"
+    kutucuğu, özellikle sıfırdan (henüz hiç fotoğrafı olmayan) bir listing için kullanılır."""
+    from app.ai import image_gen
+
+    reference = None
+    if reference_draft_file_id:
+        ref = get_file(db, shop, listing_id, reference_draft_file_id)
+        if ref is not None:
+            reference = (Path(ref.path).read_bytes(), ref.content_type)
+    new_bytes, mime = image_gen.generate_from_text(prompt, reference)
+    filename = f"ai-generated{image_gen.guess_extension(mime)}"
+    return save_file(db, shop, listing_id, "image", filename, mime, new_bytes)
 
 
 # ------------------------------------------------------------- publish ----
@@ -209,7 +347,7 @@ def _err(exc: Exception) -> str:
 
 
 CORE_LABELS = {
-    "title": "Başlık", "description": "Açıklama", "tags": "Etiketler", "materials": "Materyaller",
+    "title": "Başlık", "description": "Açıklama", "tags": "Etiketler", "materials": "Materyaller", "style": "Stil",
     "taxonomy_id": "Kategori", "who_made": "Kim yaptı", "when_made": "Ne zaman yapıldı", "is_supply": "Tedarik ürünü",
     "shipping_profile_id": "Kargo profili", "return_policy_id": "İade politikası", "shop_section_id": "Mağaza bölümü",
     "featured_rank": "Öne çıkarma", "should_auto_renew": "Otomatik yenileme", "is_taxable": "Vergi",

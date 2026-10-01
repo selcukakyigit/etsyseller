@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core import ttl_cache
+from app.shops import reference_cache
 from app.etsy.client import EtsyApiError, EtsyClient
 from app.listings.models import ListingCache
 from app.shops.models import Shop
@@ -94,8 +94,8 @@ def _client(db: Session, shop: Shop) -> tuple[EtsyClient, str]:
     return EtsyClient(db, shop), f"/shops/{shop.etsy_shop_id}"
 
 
-def _done(shop: Shop) -> None:
-    ttl_cache.clear((shop.id,))  # kargo/iade/işlem listeleri bir sonraki okumada tazelensin
+def _done(db: Session, shop: Shop) -> None:
+    reference_cache.invalidate(db, shop)  # kargo/iade/işlem listeleri bir sonraki okumada Etsy'den tazelensin
 
 
 def listing_counts(db: Session, shop: Shop, key: str) -> dict[int, int]:
@@ -136,14 +136,14 @@ def create_processing_profile(db: Session, shop: Shop, p: ProcessingProfileIn) -
     client, base = _client(db, shop)
     res = client.request("POST", f"{base}/readiness-state-definitions", data=p.model_dump())
     log.info("İşlem profili oluşturuldu: %s", res.get("readiness_state_id") if isinstance(res, dict) else res)
-    _done(shop)
+    _done(db, shop)
     return res
 
 
 def update_processing_profile(db: Session, shop: Shop, profile_id: int, p: ProcessingProfileIn) -> dict:
     client, base = _client(db, shop)
     res = client.request("PUT", f"{base}/readiness-state-definitions/{profile_id}", data=p.model_dump())
-    _done(shop)
+    _done(db, shop)
     return res
 
 
@@ -152,7 +152,7 @@ def delete_processing_profile(db: Session, shop: Shop, profile_id: int) -> None:
         raise EtsyApiError(400, "Bu işlem profili listing'lerde kullanılıyor; önce o listing'leri başka profile taşı.")
     client, base = _client(db, shop)
     client.request("DELETE", f"{base}/readiness-state-definitions/{profile_id}")
-    _done(shop)
+    _done(db, shop)
 
 
 # ------------------------------------------------------------------ iade politikası ----
@@ -160,14 +160,14 @@ def delete_processing_profile(db: Session, shop: Shop, profile_id: int) -> None:
 def create_return_policy(db: Session, shop: Shop, p: ReturnPolicyIn) -> dict:
     client, base = _client(db, shop)
     res = client.request("POST", f"{base}/policies/return", data=_return_body(p))
-    _done(shop)
+    _done(db, shop)
     return res
 
 
 def update_return_policy(db: Session, shop: Shop, policy_id: int, p: ReturnPolicyIn) -> dict:
     client, base = _client(db, shop)
     res = client.request("PUT", f"{base}/policies/return/{policy_id}", data=_return_body(p))
-    _done(shop)
+    _done(db, shop)
     return res
 
 
@@ -176,7 +176,7 @@ def delete_return_policy(db: Session, shop: Shop, policy_id: int) -> None:
         raise EtsyApiError(400, "Bu iade politikası listing'lerde kullanılıyor; önce o listing'leri başka politikaya taşı.")
     client, base = _client(db, shop)
     client.request("DELETE", f"{base}/policies/return/{policy_id}")
-    _done(shop)
+    _done(db, shop)
 
 
 def _return_body(p: ReturnPolicyIn) -> dict:
@@ -216,7 +216,7 @@ def create_shipping_profile(db: Session, shop: Shop, p: ShippingProfileIn) -> di
         except Exception:  # noqa: BLE001
             log.exception("Yarım kalan profil %s silinemedi", pid)
         raise
-    _done(shop)
+    _done(db, shop)
     log.info("Kargo profili oluşturuldu: %s (%s hedef)", pid, len(p.destinations))
     return client.request("GET", f"{base}/shipping-profiles/{pid}")
 
@@ -263,7 +263,7 @@ def update_shipping_profile(db: Session, shop: Shop, profile_id: int, p: Shippin
             )
     for did in set(live_dests) - wanted_ids:
         client.request("DELETE", f"{base}/shipping-profiles/{profile_id}/destinations/{did}")
-    _done(shop)
+    _done(db, shop)
     log.info("Kargo profili güncellendi: %s", profile_id)
     return client.request("GET", f"{base}/shipping-profiles/{profile_id}")
 
@@ -274,5 +274,40 @@ def delete_shipping_profile(db: Session, shop: Shop, profile_id: int) -> None:
         raise EtsyApiError(400, f"Bu kargo profili {n} listing'de kullanılıyor; önce onları başka profile taşı.")
     client, base = _client(db, shop)
     client.request("DELETE", f"{base}/shipping-profiles/{profile_id}")
-    _done(shop)
+    _done(db, shop)
     log.info("Kargo profili silindi: %s", profile_id)
+
+
+# ------------------------------------------------------------------ mağaza bölümü ----
+# NOT: Etsy'nin updateShopSection uç noktası yalnızca `title` kabul ediyor — sıralama (rank) alanı yazılabilir
+# değil, salt okunur dönüyor. Yani Etsy Shop Manager'daki "Manage Sections" sürükle-bırak sıralaması genel API
+# ile yapılamıyor; oluşturma/yeniden adlandırma/silme yapılabiliyor, sıra Etsy'nin kendi mantığına kalıyor.
+
+class ShopSectionIn(BaseModel):
+    title: str = Field(min_length=1, max_length=24)  # Etsy sınırı
+
+
+def create_shop_section(db: Session, shop: Shop, p: ShopSectionIn) -> dict:
+    client, base = _client(db, shop)
+    res = client.request("POST", f"{base}/sections", data={"title": p.title.strip()})
+    _done(db, shop)
+    log.info("Mağaza bölümü oluşturuldu: %s", res.get("shop_section_id") if isinstance(res, dict) else res)
+    return res
+
+
+def update_shop_section(db: Session, shop: Shop, section_id: int, p: ShopSectionIn) -> dict:
+    client, base = _client(db, shop)
+    res = client.request("PUT", f"{base}/sections/{section_id}", data={"title": p.title.strip()})
+    _done(db, shop)
+    log.info("Mağaza bölümü güncellendi: %s", section_id)
+    return res
+
+
+def delete_shop_section(db: Session, shop: Shop, section_id: int) -> None:
+    n = listing_counts(db, shop, "shop_section_id").get(section_id, 0)
+    if n:
+        raise EtsyApiError(400, f"Bu bölüm {n} listing'de kullanılıyor; önce onları başka bölüme taşı.")
+    client, base = _client(db, shop)
+    client.request("DELETE", f"{base}/sections/{section_id}")
+    _done(db, shop)
+    log.info("Mağaza bölümü silindi: %s", section_id)

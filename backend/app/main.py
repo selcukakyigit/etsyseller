@@ -32,6 +32,7 @@ from app.account.service import AVATAR_DIR
 from app.auth.router import router as auth_router
 from app.assistant.router import router as assistant_router
 from app.finance.router import router as finance_router
+from app.finance.invoices_router import router as finance_invoices_router
 from app.jobs.scheduler import start_scheduler, stop_scheduler
 from app.keywords.router import router as keywords_router
 from app.listings.router import router as listings_router
@@ -81,6 +82,7 @@ app.include_router(shops_router)
 app.include_router(listings_router)
 app.include_router(orders_router)
 app.include_router(finance_router)
+app.include_router(finance_invoices_router)
 app.include_router(assistant_router)
 app.include_router(taxonomy_router)
 app.include_router(keywords_router)

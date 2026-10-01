@@ -4,7 +4,8 @@
 export type TemplateId =
   | "classic" | "floral" | "kraft" | "night" | "minimal"
   | "christmas" | "halloween" | "valentines" | "mothers" | "fathers" | "easter" | "thanksgiving" | "birthday" | "newyear" | "wedding";
-export type CardSize = "a6" | "4x6" | "5x7";
+// Sabit üç boyuta ek olarak kullanıcının kaydettiği özel boyutların id'si de buraya girer (bkz. addCustomSize).
+export type CardSize = string;
 export type FontId = "serif" | "script" | "sans" | "hand";
 export type Align = "left" | "center" | "right";
 export type VAlign = "top" | "middle" | "bottom";
@@ -31,6 +32,51 @@ export const SIZES: Record<CardSize, { label: string; w: number; h: number }> = 
   "4x6": { label: "4 × 6 inç (102 × 152 mm)", w: 101.6, h: 152.4 },
   "5x7": { label: "5 × 7 inç (127 × 178 mm)", w: 127, h: 177.8 },
 };
+
+// Kullanıcının kaydettiği özel kart boyutları — tüm siparişler arasında paylaşılır (tek bir sipariş için değil,
+// mağazadaki tüm hediye kartlarında yeniden kullanılsın diye), tarayıcıda kalıcı.
+export type CustomSizeEntry = { id: string; label: string; w: number; h: number };
+const CUSTOM_SIZES_KEY = "giftcard:custom-sizes";
+
+export function loadCustomSizes(): CustomSizeEntry[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_SIZES_KEY);
+    return raw ? (JSON.parse(raw) as CustomSizeEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCustomSizes(list: CustomSizeEntry[]): void {
+  try {
+    localStorage.setItem(CUSTOM_SIZES_KEY, JSON.stringify(list));
+  } catch {
+    // tarayıcı depolaması kapalıysa kalıcılık olmadan devam
+  }
+}
+
+/** Yeni bir özel boyut ekleyip kaydeder (kalıcı listeye ekler) ve geri döner. */
+export function addCustomSize(w: number, h: number, label?: string): CustomSizeEntry {
+  const entry: CustomSizeEntry = {
+    id: `custom-${Date.now()}`,
+    label: label?.trim() || `Özel (${w} × ${h} mm)`,
+    w,
+    h,
+  };
+  saveCustomSizes([...loadCustomSizes(), entry]);
+  return entry;
+}
+
+export function removeCustomSize(id: string): void {
+  saveCustomSizes(loadCustomSizes().filter((s) => s.id !== id));
+}
+
+/** Sabit + kullanıcının kaydettiği özel boyutların birleşik haritası (id -> ölçü). */
+export function allSizes(): Record<CardSize, { label: string; w: number; h: number }> {
+  const out: Record<CardSize, { label: string; w: number; h: number }> = { ...SIZES };
+  for (const c of loadCustomSizes()) out[c.id] = { label: c.label, w: c.w, h: c.h };
+  return out;
+}
 
 export const FONTS: Record<FontId, { label: string; css: string }> = {
   serif: { label: "Klasik (serif)", css: "Georgia, 'Times New Roman', serif" },
@@ -271,7 +317,7 @@ export const DEFAULT_CONFIG: GiftCardConfig = {
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 export function cardDims(cfg: GiftCardConfig): { w: number; h: number } {
-  const { w, h } = SIZES[cfg.size];
+  const { w, h } = allSizes()[cfg.size] ?? SIZES["4x6"];
   return cfg.landscape ? { w: h, h: w } : { w, h };
 }
 
@@ -310,7 +356,7 @@ export function cardsDocument(cfgs: GiftCardConfig[], opts: { print?: boolean } 
   const { w, h } = cardDims(cfgs[0]);
   const css = [...new Set(parts.map((p) => p.css))].join("\n");
   return `<!doctype html><html><head><meta charset="utf-8"><style>
-*{box-sizing:border-box}html,body{margin:0;padding:0;background:${opts.print ? "#fff" : "#e5e5e5"}}
+*{box-sizing:border-box}html,body{margin:0;padding:0;overflow:hidden;background:${opts.print ? "#fff" : "#e5e5e5"}}
 @page{size:${w}mm ${h}mm;margin:0}
 ${css}
 </style></head><body>${parts.map((p) => p.html).join("")}</body></html>`;

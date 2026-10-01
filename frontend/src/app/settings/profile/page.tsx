@@ -60,7 +60,9 @@ export default function ProfileSettingsPage() {
     >
       {(bootError || error) && <p className="text-sm text-red-600">{bootError ?? error}</p>}
 
-      {!user && !bootError && <p className="text-sm text-neutral-400 dark:text-neutral-500">Yükleniyor…</p>}
+      <div className="min-h-[20px]">
+        {!user && !bootError && <p className="text-sm text-neutral-400 dark:text-neutral-500">Yükleniyor…</p>}
+      </div>
 
       {user && (
         <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 space-y-4">

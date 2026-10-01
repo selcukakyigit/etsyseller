@@ -17,12 +17,10 @@ class CostIn(BaseModel):
     unit_cost: float = Field(ge=0, le=1_000_000)
     shipping_cost: float = Field(ge=0, le=1_000_000)
     cost_pct: float = Field(default=0, ge=0, le=1000)
-    fix_past: bool = False  # True: geçmiş siparişleri de yeni maliyetle hesapla
 
 
 class FixedCostIn(BaseModel):
     amount: float = Field(ge=0, le=1_000_000)
-    fix_past: bool = False
 
 
 class VariantCostIn(CostIn):
@@ -32,6 +30,15 @@ class VariantCostIn(CostIn):
 class OrderCostIn(BaseModel):
     cost: float | None = Field(default=None, ge=0, le=10_000_000)  # None = elle girilmiş maliyeti sil
     note: str = Field(default="", max_length=255)
+
+
+@router.get("/available-currencies")
+def available_currencies(shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    """Etsy ödeme hesabından gerçek kur verisi bulunan para birimleri (`_fx_tables().overall`) — rapor para birimi
+    ayarı yalnızca bunlar arasından seçilebilir; başka bir kod seçilirse kur verisi olmadığından çevrilmez, sadece
+    yanlış etiketlenir."""
+    tbl = service._fx_tables(db, shop)
+    return {"currencies": sorted(tbl["overall"].keys())}
 
 
 @router.get("/report")
@@ -60,13 +67,13 @@ def sync(full: bool = False, shop: Shop = Depends(get_owned_shop), db: Session =
 
 @router.put("/costs/{listing_id}")
 def put_cost(listing_id: int, body: CostIn, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
-    service.set_cost(db, shop, listing_id, body.unit_cost, body.shipping_cost, body.cost_pct, body.fix_past)
+    service.set_cost(db, shop, listing_id, body.unit_cost, body.shipping_cost, body.cost_pct)
     return {"ok": True}
 
 
 @router.put("/costs/{listing_id}/variant")
 def put_variant_cost(listing_id: int, body: VariantCostIn, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
-    service.set_variant_cost(db, shop, listing_id, body.key, body.unit_cost, body.shipping_cost, body.cost_pct, body.fix_past)
+    service.set_variant_cost(db, shop, listing_id, body.key, body.unit_cost, body.shipping_cost, body.cost_pct)
     return {"ok": True}
 
 
@@ -126,5 +133,5 @@ def export_xlsx(
 
 @router.put("/settings/order-cost")
 def put_order_fixed_cost(body: FixedCostIn, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
-    service.set_order_fixed_cost(db, shop, body.amount, body.fix_past)
+    service.set_order_fixed_cost(db, shop, body.amount)
     return {"ok": True}

@@ -6,3 +6,7 @@ class ShopOut(BaseModel):
     etsy_shop_id: int
     shop_name: str
     connected: bool
+    # Boşsa (None) finans raporu para birimini siparişlerden otomatik seçer (en çok kullanılan); dolu ise mağaza
+    # sahibi elle sabitlemiş demektir (`PUT /api/shops/{id}/currency`), her yerde bu kullanılır.
+    currency: str | None = None
+    icon_url: str | None = None

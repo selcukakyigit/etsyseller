@@ -7,7 +7,7 @@ import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import AppShell from "@/components/AppShell";
 import ListingRow from "@/components/ListingRow";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
-import SuccessDialog from "@/components/ui/SuccessDialog";
+import { onPublishFinished, startPublish, usePublishJobs } from "@/lib/publishJobs";
 import ListingCard, { CardAction } from "@/components/listings/ListingCard";
 import ListingPreviewModal from "@/components/listings/ListingPreviewModal";
 import BulkEditModal, { BulkOp } from "@/components/listings/BulkEditModal";
@@ -34,8 +34,8 @@ export default function Home() {
   const [view, setView] = useState<"grid" | "list">("grid");
   const [reference, setReference] = useState<Reference>({ sections: [], shipping: [], returns: [], partners: [] });
   const [publishingIds, setPublishingIds] = useState<Set<number>>(new Set());
-  const [published, setPublished] = useState<{ title: string; updated: string[]; warnings: string[] } | null>(null);
   const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
+  const jobs = usePublishJobs();
   const [bulk, setBulk] = useState<{ total: number; results: PublishOutcome[]; running: boolean } | null>(null);
 
   const loadListings = useCallback(() => {
@@ -49,6 +49,9 @@ export default function Home() {
   useEffect(() => {
     loadListings();
   }, [loadListings]);
+
+  // Arka planda süren bir yayın bitince (editörden başlatılmış olabilir) liste kendini yeniler.
+  useEffect(() => onPublishFinished(() => loadListings()), [loadListings]);
 
   // Listing'ler hiç senkronize edilmemişse (mağaza yeni bağlandığında cache
   // boştur) arka planda bir kerelik senkronizasyon başlat ve bitene kadar
@@ -99,8 +102,9 @@ export default function Home() {
     };
   }, [activeShop, listings, loadListings]);
 
-  // Filtre paneli için Etsy referans verileri (sunucuda önbellekli, tek seferlik).
-  useEffect(() => {
+  // Filtre paneli için Etsy referans verileri (sunucuda önbellekli). Bölümler modalinde ekle/sil/yeniden
+  // adlandır sonrası da çağrılır ki filtre listesi hemen tazelensin.
+  const loadReference = useCallback(() => {
     if (!activeShop) return;
     const id = activeShop.id;
     Promise.all([
@@ -110,6 +114,10 @@ export default function Home() {
       api.shops.productionPartners(id).catch(() => []),
     ]).then(([sections, shipping, returns, partners]) => setReference({ sections, shipping, returns, partners }));
   }, [activeShop]);
+
+  useEffect(() => {
+    loadReference();
+  }, [loadReference]);
 
   const [editModal, setEditModal] = useState<{ ids: number[]; only?: BulkOp } | null>(null);
   const [stageMsg, setStageMsg] = useState<{ text: string; errors: { title: string; error: string }[] } | null>(null);
@@ -296,7 +304,6 @@ export default function Home() {
       if (showProgress) setBulk({ total: items.length, results: [...results], running: true });
     }
     if (showProgress) setBulk({ total: items.length, results, running: false });
-    else if (results[0]?.ok) setPublished({ title: results[0].title, updated: results[0].updated ?? [], warnings: results[0].warnings ?? [] });
     setSelected((prev) => {
       const next = new Set(prev);
       results.filter((r) => r.ok).forEach((r) => next.delete(r.id));
@@ -311,7 +318,7 @@ export default function Home() {
       message: `"${listing.title}" için kaydedilmiş değişiklikler Etsy'deki canlı listing'e uygulanacak.`,
       confirmLabel: "Etsy'de yayınla",
     });
-    if (ok) await runPublish([listing], false);
+    if (ok && activeShop) startPublish(activeShop.id, listing.listing_id); // kart üzerinde doluluk çubuğu; sonuç bitince liste yenilenir
   }
 
   async function publishSelected() {
@@ -332,12 +339,16 @@ export default function Home() {
 
   return (
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/">
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        {!user && !bootError && <p className="text-sm text-neutral-400 dark:text-neutral-500">Yükleniyor…</p>}
+      <div className="max-w-7xl mx-auto px-6 pb-8 pt-0">
+        <div>
+          {!user && !bootError && <p className="text-sm text-neutral-400 dark:text-neutral-500">Yükleniyor…</p>}
+        </div>
 
         {(bootError || error) && <p className="text-sm text-red-600 mb-4">{bootError ?? error}</p>}
 
-        {user && shops === null && !bootError && <p className="text-sm text-neutral-400 dark:text-neutral-500">Mağazalar yükleniyor…</p>}
+        <div>
+          {user && shops === null && !bootError && <p className="text-sm text-neutral-400 dark:text-neutral-500">Mağazalar yükleniyor…</p>}
+        </div>
 
         {user && shops !== null && !activeShop && (
           <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-8 text-center">
@@ -370,7 +381,8 @@ export default function Home() {
 
         {activeShop && listings && listings.length > 0 && (
           <>
-            <div className="mb-4 flex flex-wrap items-center gap-3">
+            <div className="sticky top-[49px] z-[9] -mx-6 bg-neutral-50 px-6 pb-3 pt-3 dark:bg-neutral-950">
+            <div className="mb-3 flex flex-wrap items-center gap-3">
               <h1 className="mr-auto text-xl font-semibold text-neutral-900 dark:text-neutral-100">Listing&apos;ler</h1>
               <button
                 onClick={() => newListing()}
@@ -390,7 +402,7 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="mb-3 space-y-3 rounded-xl border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="space-y-3 rounded-xl border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
               <div className="flex flex-wrap items-center gap-2">
                 <label className="flex cursor-pointer items-center gap-2 pr-2 text-sm text-neutral-700 dark:text-neutral-200">
                   <input
@@ -503,6 +515,7 @@ export default function Home() {
                 </button>
               </div>
             </div>
+            </div>
 
             {needsReconnect && (
               <div className="mb-3">
@@ -570,8 +583,9 @@ export default function Home() {
                         selected={selected.has(listing.listing_id)}
                         onSelectChange={(on) => toggleSelected(listing.listing_id, on)}
                         onAction={(a) => handleAction(a, listing)}
-                        publishing={publishingIds.has(listing.listing_id)}
+                        publishing={publishingIds.has(listing.listing_id) || jobs.get(listing.listing_id)?.phase === "running"}
                         publishError={rowErrors[listing.listing_id]}
+                        job={jobs.get(listing.listing_id)}
                       />
                     ))}
                   </div>
@@ -585,15 +599,23 @@ export default function Home() {
                         selected={selected.has(listing.listing_id)}
                         onSelectChange={(on) => toggleSelected(listing.listing_id, on)}
                         onPublish={() => publishOne(listing)}
-                        publishing={publishingIds.has(listing.listing_id)}
+                        publishing={publishingIds.has(listing.listing_id) || jobs.get(listing.listing_id)?.phase === "running"}
                         publishError={rowErrors[listing.listing_id]}
+                        job={jobs.get(listing.listing_id)}
                       />
                     ))}
                   </div>
                 )}
               </div>
 
-              <ListingFilters listings={listings} filters={filters} onChange={setFilters} reference={reference} />
+              <ListingFilters
+                listings={listings}
+                filters={filters}
+                onChange={setFilters}
+                reference={reference}
+                shopId={activeShop.id}
+                onSectionsChanged={loadReference}
+              />
             </div>
           </>
         )}
@@ -625,18 +647,6 @@ export default function Home() {
         >
           <ListingHistoryPanel shopId={activeShop.id} listingId={statsFor.listing_id} />
         </Modal>
-      )}
-      {published && (
-        <SuccessDialog
-          message={
-            published.updated.length > 0
-              ? `"${published.title}" Etsy'de yayınlandı.`
-              : `"${published.title}" için gönderilecek bir değişiklik bulunamadı.`
-          }
-          updated={published.updated}
-          warnings={published.warnings}
-          onClose={() => setPublished(null)}
-        />
       )}
     </AppShell>
   );

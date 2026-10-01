@@ -24,7 +24,9 @@ export default function SectionNav({
   return (
     <nav
       aria-label="Bölümler"
-      className="sticky top-0 z-30 -mx-2 flex flex-wrap items-center gap-1.5 rounded-xl bg-neutral-50/90 px-2 py-2 backdrop-blur dark:bg-neutral-950/90"
+      // top-[49px]: AppShell'in Topbar'ı (bkz. Topbar.tsx) kendisi de sticky top-0 ve 49px yükseklikte —
+      // bu da top-0 olsaydı ikisi aynı noktaya yapışıp üst üste binerdi (Topbar görünmez olurdu).
+      className="sticky top-[49px] z-20 -mx-2 flex flex-wrap items-center gap-1.5 rounded-xl bg-neutral-50/90 px-2 py-2 backdrop-blur dark:bg-neutral-950/90"
     >
       {EDIT_SECTIONS.map(([id, label]) => (
         <button

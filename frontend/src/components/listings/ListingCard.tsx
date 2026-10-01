@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Listing } from "@/lib/api";
+import { PublishJob } from "@/lib/publishJobs";
+import PublishBar from "@/components/listings/PublishBar";
 
 export type CardAction = "preview" | "stats" | "copy" | "activate" | "deactivate" | "renew" | "section" | "delete" | "publish";
 
@@ -23,6 +25,7 @@ export default function ListingCard({
   onAction,
   publishing,
   publishError,
+  job,
 }: {
   listing: Listing;
   selected: boolean;
@@ -30,6 +33,7 @@ export default function ListingCard({
   onAction: (action: CardAction) => void;
   publishing: boolean;
   publishError?: string | null;
+  job?: PublishJob;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -172,6 +176,7 @@ export default function ListingCard({
           )}
         </div>
       </div>
+      {job && <PublishBar id={listing.listing_id} job={job} />}
     </div>
   );
 }

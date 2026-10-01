@@ -66,8 +66,10 @@ function Counter({ n, max }: { n: number; max: number }) {
   return <p className={`mt-1 text-right text-xs ${n > max ? "text-red-600" : "text-neutral-400"}`}>{n}/{max}</p>;
 }
 
-/** Alıcının göreceği görünüm: tüm alanlar, düzenlenen alan vurgulu. */
+/** Alıcının göreceği görünüm: tüm alanlar, düzenlenen alan vurgulu. Seçenek listeleri gerçekten açılır —
+ * sadece görsel mockup değil, alıcının göreceği seçenekleri kontrol edebilesin diye. */
 function BuyerPreview({ questions, highlight }: { questions: PersonalizationQuestion[]; highlight: number }) {
+  const [openIdx, setOpenIdx] = useState<number | null>(null);
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
       <div className="space-y-4">
@@ -87,8 +89,30 @@ function BuyerPreview({ questions, highlight }: { questions: PersonalizationQues
                 </>
               )}
               {kind === "list" && (
-                <div className="mt-1.5 flex h-9 items-center justify-between rounded-lg border border-neutral-300 px-3 text-sm text-neutral-600 dark:border-neutral-700">
-                  Seçenek seç <span>▾</span>
+                <div className="relative mt-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setOpenIdx(openIdx === i ? null : i)}
+                    className="flex h-9 w-full items-center justify-between rounded-lg border border-neutral-300 px-3 text-sm text-neutral-600 hover:border-neutral-400 dark:border-neutral-700 dark:text-neutral-300"
+                  >
+                    Seçenek seç <span className={openIdx === i ? "rotate-180" : ""}>▾</span>
+                  </button>
+                  {openIdx === i && (
+                    <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+                      {q.options.length === 0 ? (
+                        <p className="px-3 py-2 text-xs text-neutral-400">Henüz seçenek eklenmedi</p>
+                      ) : (
+                        q.options.map((o, oi) => (
+                          <div
+                            key={oi}
+                            className="px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 dark:text-neutral-200 dark:hover:bg-neutral-800"
+                          >
+                            {o.label.trim() || <span className="text-neutral-400">(boş seçenek)</span>}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
               {kind === "upload" && (

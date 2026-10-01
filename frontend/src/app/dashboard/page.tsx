@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { api, DashboardData } from "@/lib/api";
+import { api, DashboardData, ShopProfile, ShopReview } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import AppShell from "@/components/AppShell";
 import ChatPanel from "@/components/assistant/ChatPanel";
@@ -29,6 +29,8 @@ export default function DashboardPage() {
   const shopId = activeShop?.id;
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [profile, setProfile] = useState<ShopProfile | null>(null);
+  const [reviews, setReviews] = useState<ShopReview[] | null>(null);
 
   const load = useCallback(() => {
     if (shopId === undefined) return;
@@ -45,6 +47,17 @@ export default function DashboardPage() {
     load();
   }, [load]);
 
+  // Mağaza profili/yorumları yerelden okunuyor (jobs/shop_profile.py, jobs/reviews.py günlük tazeler) —
+  // her dashboard açılışında Etsy'ye istek atmaz.
+  useEffect(() => {
+    if (shopId === undefined) return;
+    api.shops.profile(shopId).then(setProfile).catch(() => setProfile(null));
+    api.shops
+      .reviews(shopId, { limit: 3 })
+      .then((r) => setReviews(r.reviews))
+      .catch(() => setReviews([]));
+  }, [shopId]);
+
   const money = (n: number, digits = 0) => new Intl.NumberFormat("tr-TR", { style: "currency", currency: data?.currency ?? "USD", maximumFractionDigits: digits }).format(n);
   const now = new Date();
   const lastYear = String(now.getFullYear() - 1);
@@ -52,7 +65,9 @@ export default function DashboardPage() {
   return (
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/dashboard">
       <div className="mx-auto max-w-[96rem] px-6 py-6">
-        {!user && !bootError && <p className="text-sm text-neutral-400">Yükleniyor…</p>}
+        <div className="min-h-[20px]">
+          {!user && !bootError && <p className="text-sm text-neutral-400">Yükleniyor…</p>}
+        </div>
         {(bootError || error) && <p className="mb-4 text-sm text-red-600">{bootError ?? error}</p>}
 
         {user && shops !== null && !activeShop && (
@@ -69,6 +84,43 @@ export default function DashboardPage() {
             <ChatPanel shopId={shopId} onSent={load} />
 
             <aside className="space-y-3">
+              {(activeShop?.icon_url || profile) && (
+                <Link href="/reviews" className={`${tile} block hover:border-[#F1641E]`}>
+                  <div className="flex items-center gap-2.5">
+                    {activeShop?.icon_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={activeShop.icon_url} alt="" className="h-9 w-9 flex-shrink-0 rounded-full object-cover" />
+                    ) : (
+                      <div className="h-9 w-9 flex-shrink-0 rounded-full bg-neutral-100 dark:bg-neutral-800" />
+                    )}
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold">{activeShop?.shop_name}</div>
+                      {profile?.review_average != null && (
+                        <div className="text-xs text-neutral-500">
+                          ⭐ {profile.review_average.toFixed(1)} · {profile.review_count ?? 0} yorum
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {profile?.num_favorers != null && (
+                    <div className="mt-2 text-xs text-neutral-500">{profile.num_favorers} kişi mağazayı favoriledi</div>
+                  )}
+                  {profile?.is_vacation && (
+                    <div className="mt-1 text-xs font-medium text-amber-600">Mağaza tatil modunda</div>
+                  )}
+                  {reviews && reviews.length > 0 && (
+                    <div className="mt-3 space-y-2 border-t border-neutral-100 pt-3 dark:border-neutral-800">
+                      {reviews.map((r) => (
+                        <div key={r.transaction_id}>
+                          <div className="text-xs text-amber-500">{"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)}</div>
+                          {r.review && <p className="mt-0.5 line-clamp-2 text-xs text-neutral-600 dark:text-neutral-300">{r.review}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Link>
+              )}
+
               <div className={tile}>
                 <div className="text-xs font-medium text-neutral-500">Bugün</div>
                 <div className="mt-1 text-2xl font-semibold">{data ? money(data.today.sales) : "—"}</div>

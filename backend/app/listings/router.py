@@ -8,12 +8,13 @@ from app.auth.models import User
 from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.etsy.client import EtsyAuthError
-from app.listings import bulk, creation, drafts, performance, service
+from app.listings import bulk, creation, drafts, health, performance, service
 from app.listings.schemas import (
     DraftSaveIn,
     ImageOrderIn,
     InventoryUpdateIn,
     ListingEditOut,
+    ListingHealthOut,
     ListingHistoryOut,
     ListingOut,
     ListingUpdateIn,
@@ -88,6 +89,49 @@ def sync(full: bool = False, shop: Shop = Depends(get_owned_shop)):
     GET /sync-status to know when it's done."""
     started = service.start_background_sync(shop, full=full)
     return {"syncing": True, "started": started}
+
+
+def _health_out(h) -> ListingHealthOut:
+    return ListingHealthOut(
+        listing_id=h.listing_id,
+        stage=h.stage,
+        bottleneck=h.bottleneck,
+        note=h.note,
+        attempts=h.attempts,
+        window_start=h.window_start.isoformat() if h.window_start else None,
+        evaluated_at=h.evaluated_at.isoformat() if h.evaluated_at else None,
+        killed_at=h.killed_at.isoformat() if h.killed_at else None,
+    )
+
+
+@router.get("/health", response_model=list[ListingHealthOut])
+def shop_health(shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    """Mağazadaki tüm listing'lerin optimizasyon/durdurma durumu (liste sayfası rozetleri için)."""
+    return [_health_out(h) for h in health.get_shop_health(db, shop)]
+
+
+@router.get("/{listing_id}/health", response_model=ListingHealthOut | None)
+def listing_health(listing_id: int, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    h = health.get_listing_health(db, shop, listing_id)
+    return _health_out(h) if h else None
+
+
+@router.post("/{listing_id}/health/kill", response_model=ListingHealthOut)
+def kill_listing(listing_id: int, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    """Kullanıcı onayıyla listing'i Etsy'de inactive yapar (geri alınabilir)."""
+    try:
+        return _health_out(health.kill_listing(db, shop, listing_id))
+    except EtsyAuthError as exc:
+        raise HTTPException(401, str(exc)) from exc
+
+
+@router.post("/{listing_id}/health/keep-watching", response_model=ListingHealthOut)
+def keep_watching_listing(listing_id: int, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    """Kullanıcı 'durdurma' önerisini reddetti; sayaç sıfırlanır, yeni bir gözlem penceresi başlar."""
+    try:
+        return _health_out(health.keep_watching(db, shop, listing_id))
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
 
 
 @router.get("/{listing_id}/performance")
@@ -222,6 +266,77 @@ def generate_alt_text(listing_id: int, payload: AltTextIn, shop: Shop = Depends(
     except vision.VisionError as exc:
         raise HTTPException(502, str(exc)) from exc
     return {"alt_texts": {f.id: t for f, t in zip(files, texts)}}
+
+
+class RegenerateImageIn(BaseModel):
+    image_id: int
+    draft_file_id: str | None = None
+    prompt: str | None = None
+    reference_draft_file_id: str | None = None
+    # Kamera açısı küpü / mesafe seçiciden gelen hazır cümleler — sahne talimatından (prompt) AYRI, kendi
+    # öncelikli talimat katmanları olarak modele gider (bkz. ai/image_gen.py _build_prompt).
+    camera_prompt: str | None = None
+    distance_prompt: str | None = None
+    # Sahnede birden fazla obje olduğunda "ürün bu" diye işaret eden ayrı referans (listing'in kendi
+    # fotoğraflarından biri, id>0 Etsy'de yayında / id<0 henüz taslak).
+    subject_image_id: int | None = None
+    subject_draft_file_id: str | None = None
+
+
+@router.get("/{listing_id}/draft/images/{image_id}/versions")
+def draft_image_versions(
+    listing_id: int,
+    image_id: int,
+    draft_file_id: str | None = None,
+    shop: Shop = Depends(get_owned_shop),
+    db: Session = Depends(get_db),
+):
+    """Bir fotoğraf yuvasının tüm geçmişi (orijinal + üretilen her sürüm) — küpün yanındaki sürüm noktaları için."""
+    return {"versions": drafts.list_versions(db, shop, listing_id, image_id, draft_file_id)}
+
+
+@router.post("/{listing_id}/draft/images/regenerate")
+def regenerate_draft_image(
+    listing_id: int,
+    payload: RegenerateImageIn,
+    shop: Shop = Depends(get_owned_shop),
+    db: Session = Depends(get_db),
+):
+    """Sihirli değnek: tek bir görseli Gemini ile yeniden oluşturur. Toplu düzenleme, frontend'in bu aynı
+    uç noktayı seçilen her görsel için sırayla çağırmasıyla yapılır — davranış ikisinde de birebir aynıdır."""
+    from app.ai.image_gen import ImageGenError
+
+    try:
+        return drafts.regenerate_image(
+            db, shop, listing_id, payload.image_id, payload.draft_file_id, payload.prompt,
+            payload.reference_draft_file_id, payload.camera_prompt, payload.distance_prompt,
+            payload.subject_image_id, payload.subject_draft_file_id,
+        )
+    except ImageGenError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+class GenerateImageIn(BaseModel):
+    prompt: str = Field(min_length=1, max_length=2000)
+    reference_draft_file_id: str | None = None
+
+
+@router.post("/{listing_id}/draft/images/generate")
+def generate_draft_image(
+    listing_id: int,
+    payload: GenerateImageIn,
+    shop: Shop = Depends(get_owned_shop),
+    db: Session = Depends(get_db),
+):
+    """AI ile oluştur: kaynak fotoğraf olmadan, yalnızca yazılan talimattan yeni bir taslak fotoğrafı üretir."""
+    from app.ai.image_gen import ImageGenError
+
+    try:
+        return drafts.generate_image_from_prompt(db, shop, listing_id, payload.prompt, payload.reference_draft_file_id)
+    except ImageGenError as exc:
+        raise HTTPException(502, str(exc)) from exc
 
 
 @router.get("/{listing_id}/draft/files/{file_id}")

@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from sqlalchemy.orm import Session
 
-from app.account import service
-from app.account.schemas import ApiKeysOut, ApiKeysUpdateIn, ApiKeyTestOut, PasswordChangeIn, ProfileUpdateIn
+from app.account import danger, service
+from app.account.schemas import ApiKeysOut, ApiKeysUpdateIn, ApiKeyTestOut, DangerIn, PasswordChangeIn, ProfileUpdateIn
 from app.auth.models import User
 from app.auth.schemas import UserOut
+from app.core.config import settings
 from app.core.db import get_db
 from app.core.deps import get_current_user
 
@@ -49,6 +50,7 @@ TEST_FUNCS = {
     "etsy": service.test_etsy_connection,
     "openai": service.test_openai_connection,
     "anthropic": service.test_anthropic_connection,
+    "google": service.test_google_connection,
 }
 
 
@@ -70,4 +72,30 @@ def change_password(
         raise HTTPException(400, str(exc)) from exc
     except service.WeakPassword as exc:
         raise HTTPException(400, str(exc)) from exc
+    return {"ok": True}
+
+
+def _checked(payload: DangerIn, user: User) -> None:
+    if not payload.confirm:
+        raise HTTPException(400, "İşlemi onaylamanız gerekiyor")
+    try:
+        danger.verify(user, payload.password)
+    except service.WrongPassword as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/reset-data")
+def reset_data(payload: DangerIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Tüm verileri sıfırlar (mağaza bağlantıları ve yerel veriler); hesap ve şifre kalır."""
+    _checked(payload, user)
+    danger.reset_data(db, user)
+    return {"ok": True}
+
+
+@router.post("/delete")
+def delete_account(payload: DangerIn, response: Response, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Hesabı ve tüm verilerini kalıcı olarak siler; oturum çerezi de kaldırılır."""
+    _checked(payload, user)
+    danger.delete_account(db, user)
+    response.delete_cookie(settings.session_cookie_name, path="/")
     return {"ok": True}

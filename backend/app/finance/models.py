@@ -83,17 +83,34 @@ class OrderCost(Base):
     note: Mapped[str] = mapped_column(String(255), default="")
 
 
-class CostHistory(Base):
-    """Değiştirilmeden önceki maliyet sürümü. `valid_until` tarihinden ÖNCE verilen siparişlere uygulanır
-    (variant_key='' = listing maliyeti). Güncel değer listing_costs / variant_costs tablosundadır."""
+class ShippingInvoice(Base):
+    """Bir kargo/gümrük faturasından yapay zekâyla çıkarılan TEK bir tutar satırı. Dosyanın kendisi hiç
+    saklanmaz — yalnızca çıkarılan sayısal veri. Bir gönderi birden fazla fatura alabilir (ör. FedEx gümrük +
+    nakliye ayrı ayrı); bir varyantın toplam fatura-kaynaklı kargo maliyeti bu tablodaki ilgili satırların
+    toplamıdır (bkz. app/finance/invoices.py -> invoice_totals)."""
 
-    __tablename__ = "cost_history"
+    __tablename__ = "shipping_invoices"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
+    receipt_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)  # eşleşen Etsy siparişi
+    tracking_no: Mapped[str] = mapped_column(String(40), default="", index=True)  # aynı gönderi iki kez girilmesin
     listing_id: Mapped[int] = mapped_column(Integer, index=True)
     variant_key: Mapped[str] = mapped_column(String(300), default="")
-    valid_until: Mapped[dt.date] = mapped_column(Date)
-    unit_cost: Mapped[float] = mapped_column(Float, default=0.0)
-    shipping_cost: Mapped[float] = mapped_column(Float, default=0.0)
-    cost_pct: Mapped[float] = mapped_column(Float, default=0.0)
+    kind: Mapped[str] = mapped_column(String(20), default="diğer")  # "nakliye" | "gümrük" | "ek hizmet" | "diğer"
+    description: Mapped[str] = mapped_column(String(200), default="")  # faturadaki kalem adı ("Hizmet Ücreti", "Gümrük Vergisi"…)
+    invoice_no: Mapped[str] = mapped_column(String(60), default="")
+    # Aynı kalemin (fatura no + gönderi + tür + tutar) iki kez girilmesini önler; bir kalem birden fazla ürüne
+    # dağıtıldığı için birden fazla satır aynı parmak izini taşır.
+    fingerprint: Mapped[str] = mapped_column(String(200), default="", index=True)
+    amount: Mapped[float] = mapped_column(Float)  # rapor para biriminde (report currency)
+    original_amount: Mapped[float] = mapped_column(Float)
+    original_currency: Mapped[str] = mapped_column(String(10), default="")
+    fx_rate: Mapped[float] = mapped_column(Float, default=1.0)
+    fx_source: Mapped[str] = mapped_column(String(20), default="fatura")  # "fatura" | "tarih" | "aynı"
+    invoice_date: Mapped[dt.date] = mapped_column(Date)
+    weight_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    vendor: Mapped[str] = mapped_column(String(120), default="")
+    source_filename: Mapped[str] = mapped_column(String(255), default="")
+    match_confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[dt.datetime] = mapped_column(default=dt.datetime.utcnow)

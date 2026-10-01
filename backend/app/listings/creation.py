@@ -44,7 +44,7 @@ def _shop_currency(db: Session, shop: Shop) -> str:
 
 def blank_work(db: Session, shop: Shop, temp_id: int) -> dict:
     return {
-        "listing_id": temp_id, "title": "", "description": "", "tags": [], "materials": [], "taxonomy_id": None,
+        "listing_id": temp_id, "title": "", "description": "", "tags": [], "materials": [], "style": [], "taxonomy_id": None,
         "who_made": "i_did", "when_made": "made_to_order", "is_supply": False,
         "shipping_profile_id": None, "return_policy_id": None, "images": [], "videos": [],
         "inventory": {
@@ -212,7 +212,7 @@ def publish_new(db: Session, shop: Shop, user_id: int, temp_id: int, force: bool
                 "item_height", "item_weight_unit", "item_dimensions_unit"):
         if work.get(key) not in (None, ""):
             body[key] = work[key]
-    for key in ("tags", "materials", "production_partner_ids"):
+    for key in ("tags", "materials", "style", "production_partner_ids"):
         if work.get(key):
             body[key] = work[key]
     readiness = offerings[0].get("readiness_state_id")

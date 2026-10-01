@@ -285,6 +285,22 @@ export default function Card({ card, shopId }: { card: ChatCard; shopId: number 
     );
   }
 
+  if (card.type === "status") {
+    return (
+      <div className={box}>
+        <div className={head}>{card.title}</div>
+        <div className="grid grid-cols-2 gap-px bg-neutral-100 dark:bg-neutral-800 sm:grid-cols-4">
+          {card.rows.map((r) => (
+            <div key={r.label} className="bg-white px-4 py-3 dark:bg-neutral-900">
+              <div className="text-[11px] text-neutral-500">{r.label}</div>
+              <div className="text-lg font-semibold">{r.value.toLocaleString("tr-TR")}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   if (card.type === "listing_draft") {
     return (
       <div className={`${box} border-emerald-300 dark:border-emerald-800`}>

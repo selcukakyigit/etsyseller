@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { href: "/", label: "Listing'ler" },
   { href: "/orders", label: "Siparişler" },
   { href: "/finance", label: "Finans" },
+  { href: "/reviews", label: "Yorumlar" },
   { href: "/shipping", label: "Kargo ayarları" },
   { href: "/settings", label: "Ayarlar" },
 ];
@@ -20,7 +21,7 @@ export default function Sidebar({
   onSwitchShop,
   current,
 }: {
-  user: User;
+  user: User | null;
   shops?: Shop[] | null;
   activeShop: Shop | null;
   onSwitchShop?: (id: number) => void;
@@ -59,7 +60,11 @@ export default function Sidebar({
       <div className="px-3 py-4 border-t border-neutral-100 dark:border-neutral-800 space-y-3">
         {connectedShops.length > 1 ? (
           <div>
-            <label className="block text-[10px] font-medium text-neutral-400 dark:text-neutral-500 uppercase tracking-wide mb-1">
+            <label className="mb-1 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-neutral-400 dark:text-neutral-500">
+              {activeShop?.icon_url && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={activeShop.icon_url} alt="" className="h-4 w-4 rounded-full object-cover" />
+              )}
               Aktif Mağaza
             </label>
             <select
@@ -76,14 +81,18 @@ export default function Sidebar({
           </div>
         ) : (
           activeShop && (
-            <span className="inline-block text-xs font-medium text-green-600 dark:text-green-400 px-2.5 py-1 rounded-full bg-green-50 dark:bg-green-950">
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-green-600 dark:text-green-400 px-2.5 py-1 rounded-full bg-green-50 dark:bg-green-950">
+              {activeShop.icon_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={activeShop.icon_url} alt="" className="h-4 w-4 rounded-full object-cover flex-shrink-0" />
+              ) : null}
               {activeShop.shop_name} bağlı
             </span>
           )
         )}
 
         <div className="flex items-center gap-2 px-1 min-w-0">
-          {user.avatar_url ? (
+          {user?.avatar_url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={`${API_URL}${user.avatar_url}`}
@@ -94,13 +103,14 @@ export default function Sidebar({
             <div className="w-7 h-7 rounded-full bg-neutral-200 dark:bg-neutral-700 flex-shrink-0" />
           )}
           <span className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
-            {user.name || user.email}
+            {user ? user.name || user.email : " "}
           </span>
         </div>
 
         <button
           onClick={handleLogout}
-          className="w-full text-sm font-medium px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
+          disabled={!user}
+          className="w-full text-sm font-medium px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition disabled:opacity-50"
         >
           Çıkış yap
         </button>

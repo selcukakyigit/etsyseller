@@ -10,16 +10,21 @@ import statistics
 from collections import Counter
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.ai import quality
 from app.assistant.models import AdReport, ChatImage
+from app.finance import invoices
 from app.finance import service as fin
 from app.listings import bulk, creation, drafts, performance
 from app.listings import service as listing_service
-from app.listings.models import ListingCache
+from app.keywords import service as keyword_service
+from app.listings import sync_status as listing_sync
+from app.listings.models import ListingCache, ListingLocal
+from app.orders import service as orders_service
 from app.orders.models import OrderCache
+from app.shops import reference_cache
 from app.shops.models import Shop
 from app.taxonomy import service as taxonomy_service
 
@@ -359,7 +364,13 @@ def search_listings(ctx: Ctx, a: dict) -> dict:
         raw = json.loads(r.raw_json)
         pr = raw.get("price") or {}
         out.append({"listing_id": r.listing_id, "baslik": html.unescape(r.title), "durum": raw.get("state"), "fiyat": _r(pr["amount"] / pr["divisor"]) if pr.get("divisor") else None, "goruntulenme": r.views, "favori": r.favorites})
-    return {"sayi": len(out), "listingler": out}
+    if a.get("query") is None or len(out) < limit:
+        needle = str(a.get("query") or "").strip().lower()
+        for r in ctx.db.scalars(select(ListingLocal).where(ListingLocal.shop_id == ctx.shop.id, ListingLocal.listing_id < 0).order_by(ListingLocal.updated_at.desc())):
+            title = html.unescape(json.loads(r.data_json).get("title") or "")
+            if needle in title.lower():
+                out.append({"listing_id": r.listing_id, "baslik": title or "(başlıksız)", "durum": "yayınlanmamış yeni taslak", "fiyat": None, "goruntulenme": 0, "favori": 0})
+    return {"sayi": len(out), "listingler": out[: limit + 5]}
 
 
 def get_listing(ctx: Ctx, a: dict) -> dict:
@@ -705,6 +716,7 @@ def update_listing(ctx: Ctx, a: dict) -> dict:
         ch["price"] = bulk.PriceOp(mode="set", value=float(a["set_price"]))
     elif a.get("price_change_percent") is not None:
         ch["price"] = bulk.PriceOp(mode="percent", value=float(a["price_change_percent"]))
+    ch.update(_ref_changes(a))
     if not ch:
         return {"error": "Değişiklik belirtilmedi."}
     changes = bulk.BulkChanges(**ch)
@@ -725,6 +737,417 @@ def update_listing(ctx: Ctx, a: dict) -> dict:
     })
     return {"ok": True, "degisti": result["changed"], "duzenleyici_baglantisi": f"/listings/{lid}/edit", "yeni_baslik": after["title"],
             "not": "Değişiklik yalnızca yerel taslak olarak kaydedildi; Etsy'ye gitmedi. Kullanıcı düzenleyicide 'Etsy'de yayınla' ile gönderir."}
+
+
+
+# ------------------------------------------------------------------ mağaza seçenekleri, toplu taslak, durum, sipariş, anahtar kelime
+
+_REF_FIELDS = ("shop_section_id", "shipping_profile_id", "return_policy_id", "readiness_state_id", "production_partner_ids", "should_auto_renew")
+
+
+def _ref_changes(a: dict) -> dict:
+    """update_listing / bulk_update_listings ortak alanları: bölüm, kargo, iade, hazırlık süresi, üretim ortağı, otomatik yenileme."""
+    out: dict = {}
+    for k in _REF_FIELDS:
+        if a.get(k) is None:
+            continue
+        out[k] = [int(x) for x in a[k]] if k == "production_partner_ids" else (bool(a[k]) if k == "should_auto_renew" else int(a[k]))
+    return out
+
+
+def shop_options(ctx: Ctx, a: dict) -> dict:
+    """Bölüm / kargo profili / iade politikası / hazırlık süresi kimlikleri ve adları (yerel önbellekten, kullanan listing sayısıyla)."""
+    from app.etsy import shipping as etsy_shipping
+    from app.etsy.client import EtsyClient
+    from app.shops import shipping_admin as admin
+
+    client = EtsyClient(ctx.db, ctx.shop)
+    out: dict = {}
+    try:
+        secs = reference_cache.get_or_fetch(ctx.db, ctx.shop, "sections", lambda: etsy_shipping.list_shop_sections(client))
+        out["bolumler"] = [{"id": x.get("shop_section_id"), "ad": x.get("title")} for x in secs]
+        prof = reference_cache.get_or_fetch(ctx.db, ctx.shop, "shipping_profiles", lambda: etsy_shipping.list_shipping_profiles(client))
+        cnt = admin.listing_counts(ctx.db, ctx.shop, "shipping_profile_id")
+        out["kargo_profilleri"] = [{"id": x.get("shipping_profile_id"), "ad": x.get("title"), "listing_sayisi": cnt.get(x.get("shipping_profile_id"), 0)} for x in prof]
+        pol = reference_cache.get_or_fetch(ctx.db, ctx.shop, "return_policies", lambda: etsy_shipping.list_return_policies(client))
+        out["iade_politikalari"] = [{"id": x.get("return_policy_id"), "kabul_iade": x.get("accepts_returns"), "kabul_degisim": x.get("accepts_exchanges"), "gun": x.get("return_deadline")} for x in pol]
+        rd = reference_cache.get_or_fetch(ctx.db, ctx.shop, "readiness_state_definitions", lambda: etsy_shipping.list_readiness_state_definitions(client))
+        out["hazirlik_sureleri"] = [{"id": x.get("readiness_state_id"), "tur": x.get("readiness_state"), "min_gun": x.get("min_processing_time"), "max_gun": x.get("max_processing_time")} for x in rd]
+    except Exception as exc:  # Etsy bağlantısı/yetki hatası: kısmi sonucu yine de döndür
+        out["uyari"] = f"Etsy'den bazı seçenekler alınamadı: {str(exc)[:160]}"
+    return out
+
+
+def workspace_status(ctx: Ctx, a: dict) -> dict:
+    """Yayınlanmamış yerel değişiklikler/taslaklar ve senkronizasyon durumları."""
+    rows = ctx.db.scalars(select(ListingLocal).where(ListingLocal.shop_id == ctx.shop.id).order_by(ListingLocal.updated_at.desc())).all()
+    limit = max(1, min(int(a.get("limit") or 15), 40))
+    new_rows = [r for r in rows if r.listing_id < 0]
+    edited = [r for r in rows if r.listing_id >= 0]
+
+    def brief(r: ListingLocal) -> dict:
+        d = json.loads(r.data_json)
+        return {"listing_id": r.listing_id, "baslik": d.get("title") or "(başlıksız)", "guncellendi": r.updated_at.isoformat(timespec="minutes"), "duzenleyici": f"/listings/{r.listing_id}/edit"}
+
+    total = ctx.db.scalar(select(func.count()).select_from(ListingCache).where(ListingCache.shop_id == ctx.shop.id)) or 0
+    prog = listing_sync.get_progress(ctx.shop.id)
+    osync = orders_service.sync_status(ctx.db, ctx.shop)
+    fsync = fin.sync_status(ctx.db, ctx.shop)
+    ctx.cards.append({
+        "type": "status", "title": "Çalışma durumu",
+        "rows": [
+            {"label": "Yayınlanmamış yeni listing", "value": len(new_rows)},
+            {"label": "Yayınlanmamış düzenleme", "value": len(edited)},
+            {"label": "Yerelde listing", "value": total},
+        ],
+    })
+    return {
+        "yerel_listing_sayisi": total,
+        "yayinlanmamis_yeni_listing": len(new_rows), "yayinlanmamis_duzenleme": len(edited),
+        "yeni_listingler": [brief(r) for r in new_rows[:limit]], "duzenlenenler": [brief(r) for r in edited[:limit]],
+        "listing_senkronizasyonu": {"calisiyor": listing_sync.is_syncing(ctx.shop.id), "ilerleme": list(prog) if prog else None},
+        "siparis_senkronizasyonu": {"yerel": osync.local, "etsy_toplam": osync.remote_total, "gecmis_iniyor": osync.backfilling},
+        "finans_senkronizasyonu": {"calisiyor": fsync["running"], "kayit": fsync["entries"], "son_kayit": fsync["last_entry"], "hata": fsync["error"]},
+        "not": "Yayınlanmamış değişiklikler Etsy'de görünmez; listing düzenleyicisinde ya da Listing'ler sayfasında 'Etsy'de yayınla' ile gönderilir.",
+    }
+
+
+def bulk_update_listings(ctx: Ctx, a: dict) -> dict:
+    """Birden çok listing'e AYNI değişiklikleri YEREL TASLAK olarak uygular (Etsy'ye göndermez)."""
+    ids = [int(i) for i in (a.get("listing_ids") or [])]
+    if a.get("title_contains"):
+        q = select(ListingCache.listing_id).where(ListingCache.shop_id == ctx.shop.id, ListingCache.title.like(f"%{str(a['title_contains']).strip()}%"))
+        ids += [i for i in ctx.db.scalars(q.limit(200)).all() if i not in ids]
+    ids = ids[:100]
+    if not ids:
+        return {"error": "Listing belirtilmedi (listing_ids ya da title_contains ver)."}
+    ch: dict = {}
+    if a.get("price_change_percent") is not None:
+        ch["price"] = bulk.PriceOp(mode="percent", value=float(a["price_change_percent"]), rounding=a.get("price_rounding") or "none")
+    elif a.get("price_change_amount") is not None:
+        ch["price"] = bulk.PriceOp(mode="amount", value=float(a["price_change_amount"]), rounding=a.get("price_rounding") or "none")
+    if a.get("add_tags") or a.get("remove_tags"):
+        ch["tags"] = bulk.TagsOp(add=list(a.get("add_tags") or []), remove=list(a.get("remove_tags") or []))
+    if a.get("title_find") is not None:
+        ch["title"] = bulk.TextOp(mode="find_replace", find=str(a["title_find"]), replace=str(a.get("title_replace") or ""))
+    elif a.get("title_prefix"):
+        ch["title"] = bulk.TextOp(mode="prefix", text=str(a["title_prefix"]))
+    elif a.get("title_suffix"):
+        ch["title"] = bulk.TextOp(mode="suffix", text=str(a["title_suffix"]))
+    ch.update(_ref_changes(a))
+    if not ch:
+        return {"error": "Değişiklik belirtilmedi."}
+    results = bulk.bulk_stage(ctx.db, ctx.shop, bulk.BulkStageIn(listing_ids=ids, changes=bulk.BulkChanges(**ch)))
+    ok = [r for r in results if r["ok"] and r["changed"]]
+    same = [r for r in results if r["ok"] and not r["changed"]]
+    bad = [r for r in results if not r["ok"]]
+    ctx.cards.append({
+        "type": "status", "title": "Toplu taslak",
+        "rows": [{"label": "Taslağa alınan", "value": len(ok)}, {"label": "Zaten aynı", "value": len(same)}, {"label": "Atlanan", "value": len(bad)}],
+    })
+    return {
+        "taslaga_alinan": len(ok), "zaten_ayni": len(same), "atlanan": [{"listing_id": r["id"], "neden": r["error"]} for r in bad][:10],
+        "uygulanan_degisiklik": list(ch), "not": "Hepsi yalnızca yerel taslak; Etsy'ye gitmedi. Kullanıcı Listing'ler sayfasında 'Yayınlanmamışları seç' → 'Seçilenleri Etsy'de yayınla' ile gönderir.",
+    }
+
+
+def orders_overview(ctx: Ctx, a: dict) -> dict:
+    """Sipariş sayfasındaki sekme sayıları ve gönderilecek siparişlerin dökümü."""
+    base = (OrderCache.shop_id == ctx.shop.id,)
+
+    def count(*c) -> int:
+        return ctx.db.scalar(select(func.count()).select_from(OrderCache).where(*base, *c)) or 0
+
+    to_ship = (OrderCache.is_paid.is_(True), OrderCache.is_shipped.is_(False), OrderCache.is_canceled.is_(False))
+    today = dt.datetime.combine(ctx.today, dt.time.min)
+    rows = ctx.db.execute(select(OrderCache.country_iso, func.count()).where(*base, *to_ship).group_by(OrderCache.country_iso).order_by(func.count().desc()).limit(8)).all()
+    out = {
+        "gonderilecek": count(*to_ship), "gecikmis": count(*to_ship, OrderCache.expected_ship_date < today),
+        "bugun_gonderilmeli": count(*to_ship, OrderCache.expected_ship_date >= today, OrderCache.expected_ship_date < today + dt.timedelta(days=1)),
+        "tamamlandi": count(OrderCache.is_shipped.is_(True), OrderCache.is_canceled.is_(False)),
+        "iptal_iade": count(OrderCache.is_canceled.is_(True)), "toplam": count(),
+        "gonderilecekler_icinde": {
+            "kisisellestirmeli": count(*to_ship, OrderCache.has_personalization.is_(True)), "hediye": count(*to_ship, OrderCache.is_gift.is_(True)),
+            "alici_notlu": count(*to_ship, OrderCache.has_note.is_(True)), "kargo_yukseltmeli": count(*to_ship, OrderCache.has_upgrade.is_(True)),
+            "ulkelere_gore": {c or "?": n for c, n in rows},
+        },
+    }
+    ctx.cards.append({"type": "status", "title": "Sipariş özeti", "rows": [
+        {"label": "Gönderilecek", "value": out["gonderilecek"]}, {"label": "Gecikmiş", "value": out["gecikmis"]},
+        {"label": "Tamamlandı", "value": out["tamamlandi"]}, {"label": "İptal / iade", "value": out["iptal_iade"]}]})
+    return out
+
+
+def order_detail(ctx: Ctx, a: dict) -> dict:
+    """Tek sipariş: kalemler, kişiselleştirme cevapları, hediye/alıcı notu, kargo ve maliyet."""
+    rid = int(a["receipt_id"])
+    row = ctx.db.scalars(select(OrderCache).where(OrderCache.shop_id == ctx.shop.id, OrderCache.receipt_id == rid)).one_or_none()
+    if row is None:
+        return {"error": "Sipariş yerelde yok (senkronize edilmemiş olabilir)."}
+    o = orders_service._serialize_order(row).model_dump()
+    items = [{"urun": i["title"], "adet": i["quantity"], "sku": i["sku"], "secenekler": [{"ad": v["name"], "deger": v["value"], "kisisellestirme": v["personalization"]} for v in i["variations"]]} for i in o["items"]]
+    data = fin.orders_costs(ctx.db, ctx.shop, dt.date(2000, 1, 1), ctx.today, q=str(rid), per_page=5)
+    c = next((x for x in data["orders"] if x["receipt_id"] == rid), None)
+    return {
+        "siparis_no": rid, "durum": o["status"], "alici": o["buyer_name"], "ulke": o["address"]["country_iso"], "tutar": o["total"], "tarih": o["created_at"][:10],
+        "gonderim_tarihi": (o["expected_ship_date"] or "")[:10] or None, "gonderildi": o["is_shipped"], "urunler": items,
+        "alici_notu": o["buyer_note"], "hediye": o["is_gift"], "hediye_mesaji": o["gift_message"], "hediye_gonderen": o["gift_sender"],
+        "kargo_yontemi": o["shipping_method"], "kargo_yukseltme": o["shipping_upgrade"], "takip_kodlari": o["tracking_codes"], "kupon": o["coupon"],
+        "kargo_faturasi": [{"tur": l["kind"], "kalem": l["description"], "fatura_no": l["invoice_no"], "tarih": l["invoice_date"], "tutar": l["amount"]} for l in invoices.order_lines(ctx.db, ctx.shop, rid)],
+        "maliyet": None if c is None else {"otomatik": _r(c["auto_cost"]), "elle_girilen": c["override"], "tanimli": c["auto_defined"], "kazanc": _r(c["earned"]), "para_birimi": data["currency"]},
+    }
+
+
+def orders_missing_costs(ctx: Ctx, a: dict) -> dict:
+    """Ürün/seçenek maliyeti tanımlı olmayan ve elle de girilmemiş siparişler (kâr hesabı eksik kalır)."""
+    start = _d(a.get("start_date"), ctx.today - dt.timedelta(days=90))
+    end = _d(a.get("end_date"), ctx.today)
+    data = fin.orders_costs(ctx.db, ctx.shop, start, end, per_page=1000)
+    miss = [x for x in data["orders"] if x["override"] is None and not x["auto_defined"]]
+    titles = Counter(i["title"][:60] for x in miss for i in x["items"] if not i["defined"])
+    limit = max(1, min(int(a.get("limit") or 15), 30))
+    return {
+        "donem": [start.isoformat(), end.isoformat()], "toplam_siparis": len(data["orders"]), "maliyeti_eksik": len(miss), "para_birimi": data["currency"],
+        "en_cok_eksik_urunler": [{"urun": t, "siparis_kalemi": n} for t, n in titles.most_common(10)],
+        "siparisler": [{"siparis_no": x["receipt_id"], "tarih": x["date"], "alici": x["buyer"], "tutar": _r(x["total"])} for x in miss[:limit]],
+        "not": "Maliyetleri Finans > Ürün kârlılığı'ndan (ürün/seçenek) ya da Sipariş maliyetleri'nden (tek sipariş) kullanıcı girer.",
+    }
+
+
+def shipping_invoices(ctx: Ctx, a: dict) -> dict:
+    """Kayıtlı kargo/gümrük faturaları (gönderi başına): tutar, kalemler, uyarılar; siparişe bağlanmamış olanlar."""
+    data = invoices.query_invoices(
+        ctx.db, ctx.shop, q=str(a.get("query") or ""), kind=str(a.get("kind") or ""), inv_start=str(a.get("start_date") or ""), inv_end=str(a.get("end_date") or ""),
+        sort=str(a.get("sort") or "inv_date"), per_page=200,
+    )
+    items = data["items"]
+    limit = max(1, min(int(a.get("limit") or 10), 25))
+    unmatched = [x for x in items if not x["receipt_id"]]
+    warned = [x for x in items if x["warnings"]]
+    brief = lambda x: {  # noqa: E731
+        "siparis_no": x["receipt_id"], "alici": x["buyer"], "takip_no": x["tracking_no"], "firma": x["vendor"], "tutar": x["total"], "agirlik_kg": x["weight_kg"],
+        "son_fatura_tarihi": x["last_invoice_date"], "kalemler": [f"{l['kind']}: {l['description']} {l['amount']}" for l in x["lines"]][:6], "uyarilar": x["warnings"],
+    }
+    ctx.cards.append({"type": "status", "title": "Kargo faturaları", "rows": [
+        {"label": "Gönderi", "value": len(items)}, {"label": "Siparişe bağlanmamış", "value": len(unmatched)}, {"label": "Uyarılı", "value": len(warned)}]})
+    return {
+        "gonderi_sayisi": len(items), "toplam_tutar": data["total_amount"], "siparise_baglanmamis": len(unmatched), "uyarili": len(warned),
+        "gonderiler": [brief(x) for x in items[:limit]], "baglanmamislar": [brief(x) for x in unmatched[:limit]], "uyarililar": [brief(x) for x in warned[:limit]],
+        "not": "Faturaları Finans > Kargo faturaları sayfasından kullanıcı yükler/siler; sen ekleyemez ya da silemezsin.",
+    }
+
+
+def keyword_pool(ctx: Ctx, a: dict) -> dict:
+    """Etsy etiket havuzu: kendi başarılı listing'lerinin ve rakiplerin etiketleri. Var olan listing için listing_id, yeni ürün için query + taxonomy_id ver."""
+    if a.get("listing_id"):
+        row = ctx.db.scalars(select(ListingCache).where(ListingCache.shop_id == ctx.shop.id, ListingCache.listing_id == int(a["listing_id"]))).one_or_none()
+        if row is None:
+            return {"error": "Listing yerelde yok."}
+        listing = json.loads(row.raw_json)
+    elif a.get("query"):
+        listing = {"title": str(a["query"]), "tags": [], "taxonomy_id": int(a["taxonomy_id"]) if a.get("taxonomy_id") else None}
+    else:
+        return {"error": "listing_id ya da query ver."}
+    pool = keyword_service.build_keyword_pool(ctx.db, ctx.shop, listing)
+    limit = max(5, min(int(a.get("limit") or 25), 40))
+    return {
+        "etiketler": [{"etiket": p["tag"], "kaynak": "kendi" if p["source"] == "own" else "rakip", "puan": p.get("score")} for p in pool[:limit]],
+        "not": "Puan: kendi etiketlerin için satışa göre, rakip etiketleri için ilk 50 rakip listing'de geçme sayısına göre. Etiket en fazla 20 karakter olmalı; hepsini kopyalama, ürüne uyanları seç.",
+    }
+
+
+# ------------------------------------------------------------------ fotoğraf araçları (küple/mesafe seçiciyle AYNI hazır
+# cümleler — bkz. frontend CameraCube.tsx / DistancePicker.tsx; serbest metne bırakılırsa tutarlılık/kalite düşüyor)
+
+_AZIMUTH_PHRASE = {
+    "front": "ürünü tam önden", "front_right": "ürünü ön-sağ 3/4 açıdan", "right": "ürünü tam sağ yandan (profilden)",
+    "back_right": "ürünü arka-sağ açıdan, arkaya yakın bir açıdan", "back": "ürünü arkadan",
+    "back_left": "ürünü arka-sol açıdan, arkaya yakın bir açıdan", "left": "ürünü tam sol yandan (profilden)",
+    "front_left": "ürünü ön-sol 3/4 açıdan",
+}
+_ELEVATION_PHRASE = {
+    "low": "alçak açıdan, aşağıdan yukarıya bakan bir kamerayla", "eye": "göz hizasında, düz bir kamerayla",
+    "high": "yüksek açıdan, yukarıdan aşağıya bakan bir kamerayla",
+}
+_DISTANCE_PHRASE = {
+    "close": "Yakın çekim (close-up) kadrajla, ürünü ve dokusunu/detayını doldurarak çek; arka plan hafifçe bulanıklaşsın (sığ alan derinliği), odak tamamen üründe olsun.",
+    "medium": "Orta plan kadrajla çek: ürün net ve öne çıkmış olsun, etrafındaki sahne de bir miktar görünsün, dengeli bir odak-bağlam dengesi kur.",
+    "wide": "Geniş plan/kadrajla çek: ürünü bulunduğu ortamla/mekânla birlikte, biraz uzaktan göster; sahnenin tamamı kadrajda olsun.",
+}
+
+
+def _draft_work(ctx: Ctx, listing_id: int) -> dict:
+    """Ekrandaki güncel çalışma kopyası: taslak varsa o, yoksa kaydedilmiş yerel sürüm, o da yoksa canlı Etsy
+    hâli (bkz. frontend useListingWorkingCopy: work = draft ?? local ?? live). Fotoğraf araçları hep bunun
+    üstünde çalışır ki editördeki ekranla birebir aynı kaynaktan gitsinler."""
+    d = drafts.get_draft(ctx.db, ctx.shop, listing_id)
+    if d["exists"] and d["data"]:
+        return d["data"]
+    loc = drafts.get_local(ctx.db, ctx.shop, listing_id)
+    if loc["exists"] and loc["data"]:
+        return loc["data"]
+    return listing_service.get_listing_for_edit(ctx.db, ctx.shop, listing_id).model_dump()
+
+
+def _save_draft_work(ctx: Ctx, listing_id: int, work: dict) -> None:
+    drafts.save_draft(ctx.db, ctx.shop, listing_id, work)
+
+
+def _image_entry(shop_id: int, listing_id: int, file_id: str, alt_text: str | None, rank: int) -> dict:
+    from app.core.config import settings
+
+    url = f"{settings.api_public_url}/api/shops/{shop_id}/listings/{listing_id}/draft/files/{file_id}"
+    neg_id = -(abs(hash(file_id)) % 900_000_000) - 1  # benzersiz negatif kimlik (Etsy id'leri hep pozitif)
+    return {"listing_image_id": neg_id, "draft_file_id": file_id, "rank": rank,
+            "url_170x135": url, "url_570xN": url, "url_fullxfull": url, "alt_text": alt_text}
+
+
+def regenerate_listing_image(ctx: Ctx, a: dict) -> dict:
+    """Bir listing fotoğrafını AI ile yeniden oluşturur — kamera açısı/mesafe/sahne talimatı/özne referansı
+    (bkz. frontend'deki kamera küpü/kadraj seçici/ürün referansı ile birebir aynı mekanizma). Kaynak piksel
+    HER ZAMAN fotoğrafın kendi zincir kökü (orijinal ya da ilk üretilen kare) olur, ekrandaki sürüm değil —
+    art arda üretimlerde sapma birikmesin diye (bkz. drafts.regenerate_image). Yalnızca taslağa yazar."""
+    from app.ai.image_gen import ImageGenError
+
+    lid, image_id = int(a["listing_id"]), int(a["image_id"])
+    work = _draft_work(ctx, lid)
+    images = work.get("images") or []
+    img = next((i for i in images if i.get("listing_image_id") == image_id), None)
+    if img is None:
+        return {"error": "Fotoğraf bulunamadı; get_listing ya da workspace_status ile listing'in güncel fotoğraf id'lerine bak."}
+    camera_prompt = None
+    if a.get("azimuth") or a.get("elevation"):
+        az, el = a.get("azimuth", "front"), a.get("elevation", "eye")
+        if az not in _AZIMUTH_PHRASE or el not in _ELEVATION_PHRASE:
+            return {"error": "azimuth front/front_right/right/back_right/back/back_left/left/front_left; elevation low/eye/high olmalı."}
+        camera_prompt = f"Kamera açısı: {_AZIMUTH_PHRASE[az]}, {_ELEVATION_PHRASE[el]} çek."
+    distance_prompt = None
+    if a.get("distance"):
+        if a["distance"] not in _DISTANCE_PHRASE:
+            return {"error": "distance close/medium/wide olmalı."}
+        distance_prompt = _DISTANCE_PHRASE[a["distance"]]
+    try:
+        result = drafts.regenerate_image(
+            ctx.db, ctx.shop, lid, image_id, img.get("draft_file_id"), a.get("prompt"),
+            None, camera_prompt, distance_prompt,
+            int(a["subject_image_id"]) if a.get("subject_image_id") else None, a.get("subject_draft_file_id"),
+        )
+    except (ImageGenError, ValueError) as exc:
+        return {"error": str(exc)}
+    new_entry = _image_entry(ctx.shop.id, lid, result["file_id"], img.get("alt_text"), img.get("rank", 0))
+    work["images"] = [new_entry if i.get("listing_image_id") == image_id else i for i in images]
+    _save_draft_work(ctx, lid, work)
+    ctx.cards.append({"type": "image_regenerated", "listing_id": lid, "edit_url": f"/listings/{lid}/edit"})
+    return {"ok": True, "not": "Yeni görsel taslağa kaydedildi; Etsy'ye gitmesi için yayınlanması gerekiyor."}
+
+
+def generate_missing_alt_texts(ctx: Ctx, a: dict) -> dict:
+    """Alt metni olmayan (yalnızca YENİ/taslak) fotoğraflar için yapay zekâyla alt metin yazar. Etsy zaten
+    yayındaki fotoğrafların alt metnini değiştirtmiyor, bu yüzden yalnızca taslak fotoğraflarda çalışır."""
+    from app.ai import vision
+
+    lid = int(a["listing_id"])
+    work = _draft_work(ctx, lid)
+    images = work.get("images") or []
+    missing = [i for i in images if (i.get("listing_image_id") or 0) < 0 and i.get("draft_file_id") and not i.get("alt_text")]
+    if not missing:
+        return {"ok": True, "not": "Eksik alt metin yok."}
+    files = [(i, drafts.get_file(ctx.db, ctx.shop, lid, i["draft_file_id"])) for i in missing]
+    files = [(i, f) for i, f in files if f is not None]
+    if not files:
+        return {"error": "Taslak fotoğraf dosyaları bulunamadı; sayfayı yenile."}
+    try:
+        texts = vision.generate_alt_texts([{"path": f.path, "content_type": f.content_type} for _, f in files], work.get("title") or "")
+    except vision.VisionError as exc:
+        return {"error": str(exc)}
+    by_file_id = {i["draft_file_id"]: t for (i, _), t in zip(files, texts)}
+    work["images"] = [{**i, "alt_text": by_file_id.get(i.get("draft_file_id"), i.get("alt_text"))} for i in images]
+    _save_draft_work(ctx, lid, work)
+    ctx.cards.append({"type": "alt_texts_generated", "listing_id": lid, "count": len(texts), "edit_url": f"/listings/{lid}/edit"})
+    return {"ok": True, "yazilan_sayisi": len(texts), "not": "Alt metinler taslağa kaydedildi."}
+
+
+def _health_dict(h) -> dict:
+    return {
+        "listing_id": h.listing_id, "durum": h.stage, "darbogaz": h.bottleneck, "not": h.note,
+        "deneme_sayisi": h.attempts, "son_degerlendirme": h.evaluated_at.isoformat() if h.evaluated_at else None,
+    }
+
+
+def listing_health_status(ctx: Ctx, a: dict) -> dict:
+    """Listing'in optimizasyon/performans durumu (bkz. listings/health.py) — 'bu listing'e dokunma zamanı
+    geldi mi, geldiyse hangi alan zayıf' sorusunun kural tabanlı cevabı. listing_id verilmezse mağazada
+    dikkat isteyen (öneri var / durdurmayı değerlendir) tüm listing'leri döner."""
+    from app.listings import health
+
+    if a.get("listing_id"):
+        h = health.get_listing_health(ctx.db, ctx.shop, int(a["listing_id"]))
+        return {"saglik": _health_dict(h) if h else None, "not": None if h else "Henüz sağlık verisi yok (yeterli veri birikmemiş olabilir, ya da hiç değerlendirilmemiş)."}
+    rows = health.get_shop_health(ctx.db, ctx.shop)
+    flagged = [h for h in rows if h.stage in ("flagged", "kill_candidate")]
+    return {"dikkat_isteyenler": [_health_dict(h) for h in flagged], "toplam_izlenen": len(rows)}
+
+
+def keep_watching_listing(ctx: Ctx, a: dict) -> dict:
+    """'Durdurmayı değerlendir' önerisini reddeder: sayaç sıfırlanır, yeni bir gözlem penceresi başlar. Etsy'ye hiçbir şey gitmez."""
+    from app.listings import health
+
+    try:
+        health.keep_watching(ctx.db, ctx.shop, int(a["listing_id"]))
+    except ValueError as exc:
+        return {"error": str(exc)}
+    return {"ok": True, "not": "İzlemeye devam ediliyor, sayaç sıfırlandı."}
+
+
+# ------------------------------------------------------------------ ONAY GEREKTİREN araçlar: bunlar Etsy'ye GERÇEKTEN
+# gider, görünür ve geri alması zor. confirm=true verilmeden yalnızca ne yapılacağını özetler, YAPMAZ — bkz. SYSTEM_PROMPT.
+
+def publish_listing_draft(ctx: Ctx, a: dict) -> dict:
+    """Bir listing'in taslağını/yerel değişikliklerini Etsy'ye yayınlar — canlıya yansır. confirm=true
+    gerekir; aksi halde yalnızca ne yayınlanacağını özetler."""
+    lid = int(a["listing_id"])
+    if not a.get("confirm"):
+        d = drafts.get_draft(ctx.db, ctx.shop, lid)
+        loc = drafts.get_local(ctx.db, ctx.shop, lid)
+        if not (d["exists"] and d["data"]) and not (loc["exists"] and loc["data"]):
+            return {"error": "Yayınlanacak bir değişiklik yok."}
+        return {"pending_confirmation": True, "listing_id": lid,
+                "not": "Bu, listing'i GERÇEKTEN Etsy'ye yayınlar (canlıya yansır, geri dönüşü zor). Kullanıcı sohbette AÇIKÇA onaylarsa (evet/yap/onaylıyorum vb.) confirm=true ile TEKRAR çağır; onaylamadıysa asla çağırma."}
+    if lid > 0:
+        d = drafts.get_draft(ctx.db, ctx.shop, lid)
+        if d["exists"] and d["data"]:  # UI'daki "Yayınla" da aynısını yapar: taslağı önce yerel sürüme yükseltir
+            live = listing_service.get_listing_for_edit(ctx.db, ctx.shop, lid).model_dump()
+            drafts.save_local(ctx.db, ctx.shop, lid, d["data"], live)
+    result = drafts.publish_local(ctx.db, ctx.shop, ctx.user_id, lid, bool(a.get("force")))
+    ctx.cards.append({"type": "listing_published", "listing_id": lid, "ok": result.get("ok"), "edit_url": f"/listings/{lid}/edit"})
+    return result
+
+
+def deactivate_listing(ctx: Ctx, a: dict) -> dict:
+    """Listing'i Etsy'de INACTIVE yapar (satışa kapanır, tekrar active edilebilir). confirm=true gerekir."""
+    from app.listings import health
+
+    lid = int(a["listing_id"])
+    if not a.get("confirm"):
+        return {"pending_confirmation": True, "listing_id": lid,
+                "not": "Bu, listing'i Etsy'de INACTIVE yapar (satışa kapanır, görünür bir değişiklik). Kullanıcı sohbette AÇIKÇA onaylarsa confirm=true ile TEKRAR çağır; onaylamadıysa asla çağırma."}
+    health.kill_listing(ctx.db, ctx.shop, lid)
+    ctx.cards.append({"type": "listing_deactivated", "listing_id": lid, "edit_url": f"/listings/{lid}/edit"})
+    return {"ok": True, "not": "Listing Etsy'de inactive yapıldı."}
+
+
+def mark_order_shipped(ctx: Ctx, a: dict) -> dict:
+    """Siparişi Etsy'de kargoya verildi işaretler — alıcıya bildirim gidebilir. confirm=true gerekir."""
+    rid = int(a["receipt_id"])
+    if not a.get("confirm"):
+        return {"pending_confirmation": True, "receipt_id": rid,
+                "not": "Bu, siparişi Etsy'de KARGOYA VERİLDİ işaretler, alıcıya bildirim gidebilir. Kullanıcı sohbette AÇIKÇA onaylarsa confirm=true ile (varsa takip no/kargo firmasıyla) TEKRAR çağır; onaylamadıysa asla çağırma."}
+    try:
+        orders_service.mark_shipped(ctx.db, ctx.shop, rid, a.get("tracking_code"), a.get("carrier_name"))
+    except orders_service.OrderNotFound as exc:
+        return {"error": str(exc)}
+    ctx.cards.append({"type": "order_shipped", "receipt_id": rid})
+    return {"ok": True, "not": "Sipariş kargoya verildi olarak işaretlendi."}
 
 
 # ------------------------------------------------------------------ araç tanımları
@@ -772,12 +1195,43 @@ TOOLS: list[dict] = [
         "who_made": {"type": "string", "enum": ["i_did", "someone_else", "collective"]},
         "when_made": {"type": "string"},
     }, ["title"])},
-    {"name": "update_listing", "description": "Var olan bir listing'in başlık, açıklama, etiket veya fiyatını YEREL TASLAK olarak değiştirir (Etsy'ye göndermez). Önce get_listing ile mevcut hâline bak.", "input_schema": _obj({
+    {"name": "shop_options", "description": "Mağazanın bölüm (section), kargo profili, iade politikası ve hazırlık süresi seçenekleri: kimlik ve adlarıyla. update_listing/bulk_update_listings'te bu kimlikleri kullanmadan önce çağır.", "input_schema": _obj({})},
+    {"name": "workspace_status", "description": "Yayınlanmamış yeni listing'ler ve yerel düzenlemeler, listing/sipariş/finans senkronizasyon durumu. 'Kaç taslağım var', 'hangileri yayınlanmadı', 'senkronizasyon ne durumda' soruları için.", "input_schema": _obj({"limit": {"type": "integer"}})},
+    {"name": "orders_overview", "description": "Sipariş sayfasındaki sayılar: gönderilecek, gecikmiş, bugün gönderilmesi gereken, tamamlanan, iptal/iade, toplam; gönderilecekler arasında kişiselleştirmeli, hediye, alıcı notlu ve ülke dağılımı.", "input_schema": _obj({})},
+    {"name": "order_detail", "description": "Tek siparişin ayrıntısı: kalemler ve seçenekler, kişiselleştirme cevapları, alıcı/hediye notu, kargo yöntemi, takip kodu ve maliyet. Sipariş numarasını list_orders'tan al.", "input_schema": _obj({"receipt_id": {"type": "integer"}}, ["receipt_id"])},
+    {"name": "orders_missing_costs", "description": "Ürün maliyeti tanımlı olmadığı için kârı eksik hesaplanan siparişler ve en çok eksik kalan ürünler. Tarih verilmezse son 90 gün.", "input_schema": _obj({"start_date": DATE, "end_date": DATE, "limit": {"type": "integer"}})},
+    {"name": "shipping_invoices", "description": "Kayıtlı kargo/gümrük faturaları (gönderi başına): toplam tutar, kalemler (nakliye/gümrük/ek hizmet), aynı gönderiye fazla kesilmiş kalem uyarıları ve siparişe bağlanamayanlar. Alıcı adı, takip no, ürün ya da fatura no ile aranabilir.", "input_schema": _obj({"query": {"type": "string"}, "kind": {"type": "string", "enum": ["nakliye", "gümrük", "ek hizmet", "diğer"]}, "start_date": DATE, "end_date": DATE, "sort": {"type": "string", "enum": ["inv_date", "order_date", "buyer", "amount"]}, "limit": {"type": "integer"}})},
+    {"name": "keyword_pool", "description": "Etiket/anahtar kelime havuzu (kendi satan listing'lerinin ve rakiplerin etiketleri). Var olan listing için listing_id; yeni ürün için İngilizce query ve taxonomy_id (find_category'den) ver. Başlık/etiket yazmadan önce bak.", "input_schema": _obj({"listing_id": {"type": "integer"}, "query": {"type": "string"}, "taxonomy_id": {"type": "integer"}, "limit": {"type": "integer"}})},
+    {"name": "bulk_update_listings", "description": "Birden çok listing'e AYNI değişikliği YEREL TASLAK olarak uygular (Etsy'ye göndermez; en fazla 100 listing). Listing'leri listing_ids ile ya da başlığında geçen ifadeyle (title_contains) seç. Fiyat yüzdesi/tutarı, etiket ekle/çıkar, başlıkta bul-değiştir/önek/sonek, bölüm/kargo/iade/hazırlık süresi. Kullanıcı kapsamı (kaç listing, ne değişecek) net söylemediyse önce sor.", "input_schema": _obj({
+        "listing_ids": {"type": "array", "items": {"type": "integer"}}, "title_contains": {"type": "string"},
+        "price_change_percent": {"type": "number", "description": "10 = %10 zam, -5 = %5 indirim"}, "price_change_amount": {"type": "number"}, "price_rounding": {"type": "string", "enum": ["none", "x.99", "x.00"]},
+        "add_tags": {"type": "array", "items": {"type": "string"}}, "remove_tags": {"type": "array", "items": {"type": "string"}},
+        "title_find": {"type": "string"}, "title_replace": {"type": "string"}, "title_prefix": {"type": "string"}, "title_suffix": {"type": "string"},
+        "shop_section_id": {"type": "integer"}, "shipping_profile_id": {"type": "integer"}, "return_policy_id": {"type": "integer"}, "readiness_state_id": {"type": "integer"},
+        "production_partner_ids": {"type": "array", "items": {"type": "integer"}}, "should_auto_renew": {"type": "boolean"},
+    })},
+    {"name": "update_listing", "description": "Var olan bir listing'in başlık, açıklama, etiket, fiyat, bölüm, kargo profili, iade politikası, hazırlık süresi, üretim ortağı veya otomatik yenilemeyi YEREL TASLAK olarak değiştirir (Etsy'ye göndermez). Önce get_listing ile mevcut hâline bak.", "input_schema": _obj({
         "listing_id": {"type": "integer"}, "new_title": {"type": "string"}, "new_description": {"type": "string"},
         "set_tags": {"type": "array", "items": {"type": "string"}, "description": "Etiketlerin tamamını bununla değiştirir (en fazla 13)"},
         "add_tags": {"type": "array", "items": {"type": "string"}}, "remove_tags": {"type": "array", "items": {"type": "string"}},
         "set_price": {"type": "number"}, "price_change_percent": {"type": "number", "description": "Örn. 10 = %10 zam, -5 = %5 indirim"},
+        "shop_section_id": {"type": "integer"}, "shipping_profile_id": {"type": "integer"}, "return_policy_id": {"type": "integer"}, "readiness_state_id": {"type": "integer"},
+        "production_partner_ids": {"type": "array", "items": {"type": "integer"}}, "should_auto_renew": {"type": "boolean"},
     }, ["listing_id"])},
+    {"name": "regenerate_listing_image", "description": "Bir listing fotoğrafını AI ile yeniden oluşturur (yalnızca taslağa yazar, Etsy'ye göndermez). Kamera açısı ve/veya mesafe/kadraj ve/veya serbest sahne talimatı verilebilir, hepsi birlikte uygulanır. subject_image_id: sahnede birden fazla obje olduğunda 'ürün bu' diye işaret eden, aynı listing'in başka bir fotoğrafı.", "input_schema": _obj({
+        "listing_id": {"type": "integer"}, "image_id": {"type": "integer", "description": "Değiştirilecek fotoğrafın listing_image_id'si (get_listing/workspace_status'tan)"},
+        "azimuth": {"type": "string", "enum": ["front", "front_right", "right", "back_right", "back", "back_left", "left", "front_left"]},
+        "elevation": {"type": "string", "enum": ["low", "eye", "high"]},
+        "distance": {"type": "string", "enum": ["close", "medium", "wide"]},
+        "prompt": {"type": "string", "description": "Sahne talimatı, ör. 'oturma odasında göster', 'arka planı beyaz yap'"},
+        "subject_image_id": {"type": "integer"},
+    }, ["listing_id", "image_id"])},
+    {"name": "generate_missing_alt_texts", "description": "Bir listing'in alt metni olmayan (yalnızca YENİ/taslak) fotoğrafları için yapay zekâyla alt metin yazar.", "input_schema": _obj({"listing_id": {"type": "integer"}}, ["listing_id"])},
+    {"name": "listing_health_status", "description": "Listing'in optimizasyon durumu: yeterli veri var mı, performansı mağaza medyanına göre nasıl, hangi alan zayıf, durdurmayı değerlendirmeli mi. listing_id vermezsen dikkat isteyen tüm listing'leri döner.", "input_schema": _obj({"listing_id": {"type": "integer"}})},
+    {"name": "keep_watching_listing", "description": "Bir listing için 'durdurmayı değerlendir' önerisini reddedip izlemeye devam eder (sayaç sıfırlanır). Etsy'ye hiçbir şey göndermez.", "input_schema": _obj({"listing_id": {"type": "integer"}}, ["listing_id"])},
+    {"name": "publish_listing_draft", "description": "ONAY GEREKİR. Bir listing'in taslağını/yerel değişikliklerini GERÇEKTEN Etsy'ye yayınlar (canlıya yansır). confirm=true verilmeden yalnızca ne yayınlanacağını özetler.", "input_schema": _obj({"listing_id": {"type": "integer"}, "confirm": {"type": "boolean"}, "force": {"type": "boolean", "description": "Etsy'de sonradan değişen alanları da ezer (çakışma varsa)"}}, ["listing_id"])},
+    {"name": "deactivate_listing", "description": "ONAY GEREKİR. Listing'i Etsy'de INACTIVE yapar (satışa kapanır). confirm=true verilmeden yalnızca ne olacağını özetler.", "input_schema": _obj({"listing_id": {"type": "integer"}, "confirm": {"type": "boolean"}}, ["listing_id"])},
+    {"name": "mark_order_shipped", "description": "ONAY GEREKİR. Siparişi Etsy'de kargoya verildi işaretler (alıcıya bildirim gidebilir). confirm=true verilmeden yalnızca ne olacağını özetler.", "input_schema": _obj({"receipt_id": {"type": "integer"}, "confirm": {"type": "boolean"}, "tracking_code": {"type": "string"}, "carrier_name": {"type": "string"}}, ["receipt_id"])},
 ]
 
 # Kullanıcıya gösterilen ilerleme metinleri ("asistan şu an ne yapıyor").
@@ -799,12 +1253,32 @@ TOOL_LABELS = {
     "similar_listings": "Benzer listing'leri inceliyor",
     "create_listing_draft": "Taslağı oluşturuyor",
     "update_listing": "Taslağı güncelliyor",
+    "shop_options": "Mağaza seçeneklerine bakıyor",
+    "workspace_status": "Taslak ve senkronizasyon durumuna bakıyor",
+    "orders_overview": "Sipariş sayılarını çıkarıyor",
+    "order_detail": "Siparişi açıyor",
+    "orders_missing_costs": "Maliyeti eksik siparişleri tarıyor",
+    "keyword_pool": "Anahtar kelime havuzuna bakıyor",
+    "shipping_invoices": "Kargo faturalarına bakıyor",
+    "bulk_update_listings": "Toplu taslak hazırlıyor",
+    "regenerate_listing_image": "Fotoğrafı yeniden oluşturuyor",
+    "generate_missing_alt_texts": "Alt metinleri yazıyor",
+    "listing_health_status": "Listing sağlığına bakıyor",
+    "keep_watching_listing": "İzlemeye devam ediyor",
+    "publish_listing_draft": "Etsy'ye yayınlıyor",
+    "deactivate_listing": "Listing'i pasife alıyor",
+    "mark_order_shipped": "Siparişi kargoya verildi işaretliyor",
 }
 
 EXECUTORS = {
     "finance_summary": finance_summary, "monthly_pnl": monthly_pnl, "top_products": top_products, "listing_performance": listing_performance, "stale_listings": stale_listings, "save_ad_report": save_ad_report, "ad_reports": ad_reports, "compare_periods": compare_periods, "ads_summary": ads_summary, "list_orders": list_orders,
     "search_listings": search_listings, "get_listing": get_listing, "shop_defaults": shop_defaults, "find_category": find_category, "similar_listings": similar_listings,
     "create_listing_draft": create_listing_draft, "update_listing": update_listing,
+    "shop_options": shop_options, "workspace_status": workspace_status, "orders_overview": orders_overview, "order_detail": order_detail,
+    "orders_missing_costs": orders_missing_costs, "keyword_pool": keyword_pool, "shipping_invoices": shipping_invoices, "bulk_update_listings": bulk_update_listings,
+    "regenerate_listing_image": regenerate_listing_image, "generate_missing_alt_texts": generate_missing_alt_texts,
+    "listing_health_status": listing_health_status, "keep_watching_listing": keep_watching_listing,
+    "publish_listing_draft": publish_listing_draft, "deactivate_listing": deactivate_listing, "mark_order_shipped": mark_order_shipped,
 }
 
 

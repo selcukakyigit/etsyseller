@@ -7,6 +7,9 @@ import SettingsSubpage from "@/components/SettingsSubpage";
 
 const OPENAI_MODELS = ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4-turbo", "o1", "o1-mini", "o3-mini"];
 const ANTHROPIC_MODELS = ["claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5-20251001", "claude-fable-5-1"];
+// gemini-2.5-flash-image, Gemini API'de 2 Ekim 2026'da emekliye ayrılıyor — yeni kurulumlar
+// gemini-3.1-flash-image-preview veya daha ucuz gemini-3.1-flash-lite-image kullanmalı.
+const GEMINI_IMAGE_MODELS = ["gemini-3.1-flash-image-preview", "gemini-3.1-flash-lite-image", "gemini-2.5-flash-image"];
 const CUSTOM_MODEL = "__custom__";
 
 function SecretField({
@@ -84,7 +87,7 @@ function ModelSelect({
   );
 }
 
-function TestConnectionButton({ provider }: { provider: "etsy" | "openai" | "anthropic" }) {
+function TestConnectionButton({ provider }: { provider: "etsy" | "openai" | "anthropic" | "google" }) {
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<ApiKeyTestResult | null>(null);
 
@@ -130,6 +133,9 @@ export default function ApiKeysSettingsPage() {
   const [anthropicApiKey, setAnthropicApiKey] = useState("");
   const [anthropicModel, setAnthropicModel] = useState("");
   const [aiProvider, setAiProvider] = useState<"openai" | "anthropic">("openai");
+  const [googleApiKey, setGoogleApiKey] = useState("");
+  const [googleImageModel, setGoogleImageModel] = useState("");
+  const [googleImageSize, setGoogleImageSize] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -142,6 +148,8 @@ export default function ApiKeysSettingsPage() {
         setOpenaiModel(keys.openai_model);
         setAnthropicModel(keys.anthropic_model);
         setAiProvider(keys.ai_provider === "anthropic" ? "anthropic" : "openai");
+        setGoogleImageModel(keys.google_image_model);
+        setGoogleImageSize(keys.google_image_size);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Bilinmeyen hata"));
   }, []);
@@ -159,12 +167,16 @@ export default function ApiKeysSettingsPage() {
         anthropic_api_key: anthropicApiKey || undefined,
         anthropic_model: anthropicModel || undefined,
         ai_provider: aiProvider,
+        google_api_key: googleApiKey || undefined,
+        google_image_model: googleImageModel || undefined,
+        google_image_size: googleImageSize || undefined,
       });
       setApiKeysMasked(updated);
       setEtsyApiKey("");
       setEtsySharedSecret("");
       setOpenaiApiKey("");
       setAnthropicApiKey("");
+      setGoogleApiKey("");
       setSaved(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Bilinmeyen hata");
@@ -253,7 +265,7 @@ export default function ApiKeysSettingsPage() {
             <TestConnectionButton provider="openai" />
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-3 pb-6 border-b border-neutral-100 dark:border-neutral-800">
             <h3 className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wide">
               Claude (Anthropic) {aiProvider === "anthropic" && <span className="text-[#F1641E]">(aktif)</span>}
             </h3>
@@ -270,6 +282,39 @@ export default function ApiKeysSettingsPage() {
               onChange={setAnthropicModel}
             />
             <TestConnectionButton provider="anthropic" />
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wide">
+              Gemini (Google) — görsel sihirli değnek
+            </h3>
+            <p className="text-xs text-neutral-400 dark:text-neutral-500">
+              Listing fotoğraflarını yapay zekâyla yeniden oluşturmak (düzenleyicideki sihirli değnek) için
+              kullanılır; SEO önerilerini etkilemez. Google AI Studio&apos;dan ücretsiz alınabilir.
+            </p>
+            <SecretField
+              label="Google API Key"
+              masked={apiKeysMasked.google_api_key}
+              value={googleApiKey}
+              onChange={setGoogleApiKey}
+            />
+            <ModelSelect label="Görsel modeli" options={GEMINI_IMAGE_MODELS} value={googleImageModel} onChange={setGoogleImageModel} />
+            <div>
+              <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Çözünürlük</label>
+              <select
+                value={googleImageSize}
+                onChange={(e) => setGoogleImageSize(e.target.value)}
+                className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 text-sm font-mono outline-none focus:border-[#F1641E]"
+              >
+                <option value="1K">1K (~1024px) — en ucuz</option>
+                <option value="2K">2K (~2048px) — Etsy&apos;nin önerdiği eşik, varsayılan</option>
+                <option value="4K">4K (~4096px) — en pahalı</option>
+              </select>
+              <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
+                Yükseldikçe fiyat da artar (görsel başına ~$0.045 / ~$0.10 / ~$0.15 civarı, modele göre değişir).
+              </p>
+            </div>
+            <TestConnectionButton provider="google" />
           </div>
 
           <div className="flex items-center gap-3">

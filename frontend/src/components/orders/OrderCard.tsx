@@ -7,6 +7,33 @@ import { addressText, copyText, fmtDate, shipBucket, shipByLabel } from "./order
 const btn =
   "rounded-full border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-800 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800";
 
+const URL_RE = /(https?:\/\/[^\s]+)/g;
+
+/** Kişiselleştirme metnindeki linkleri (ör. Etsy'nin "logonu yükle" dosya bağlantıları) tıklanabilir bir
+ * düğmeye çevirir — düz metin olarak uzun bir URL göstermek yerine. Metnin geri kalanı olduğu gibi kalır. */
+function Linkify({ text }: { text: string }) {
+  const parts = text.split(URL_RE);
+  return (
+    <>
+      {parts.map((part, i) =>
+        /^https?:\/\//.test(part) ? (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ml-1 inline-flex items-center gap-1 rounded-full bg-neutral-800 px-2.5 py-1 align-middle text-[11px] font-semibold text-white hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
+          >
+            Dosyayı aç ↗
+          </a>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  );
+}
+
 /** Etsy Shop Manager'daki sipariş kartının karşılığı: alıcı, kalemler (varyasyon + kişiselleştirme), gönderim tarihi, adres. */
 export default function OrderCard({
   order,
@@ -103,7 +130,9 @@ export default function OrderCard({
                   {(item.variations ?? []).map((v, j) => (
                     <p key={j} className="mt-0.5 break-words">
                       <span className="text-neutral-500">{v.name}</span>{" "}
-                      <b className={v.personalization ? "text-neutral-900 dark:text-neutral-50" : "text-neutral-800 dark:text-neutral-200"}>{v.value}</b>
+                      <b className={v.personalization ? "text-neutral-900 dark:text-neutral-50" : "text-neutral-800 dark:text-neutral-200"}>
+                        <Linkify text={v.value} />
+                      </b>
                     </p>
                   ))}
                 </div>

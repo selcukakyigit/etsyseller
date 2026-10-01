@@ -10,6 +10,8 @@ import ShipModal from "@/components/orders/ShipModal";
 import GiftCardModal, { configForOrder } from "@/components/orders/GiftCardModal";
 import { printCards } from "@/components/orders/giftCard";
 import { EMPTY_ORDER_FILTERS, OrderFilters, Tab, addressText, copyText, groupByShipBy } from "@/components/orders/orderUtils";
+import { onSyncDone } from "@/lib/syncEvents";
+import { useUrlTab } from "@/lib/useUrlTab";
 
 const TABS: [Tab, string][] = [
   ["toship", "Gönderilecek"],
@@ -17,6 +19,7 @@ const TABS: [Tab, string][] = [
   ["canceled", "İptal / iade"],
   ["all", "Tümü"],
 ];
+const TAB_VALUES = TABS.map(([v]) => v) as readonly Tab[];
 
 const localToday = () => {
   const d = new Date();
@@ -28,7 +31,7 @@ export default function OrdersPage() {
   const [data, setData] = useState<OrdersPageData | null>(null);
   const [loadedKey, setLoadedKey] = useState<string | null>(null); // hangi sorgunun sonucu ekranda
   const [syncInfo, setSyncInfo] = useState<OrdersSyncStatus | null>(null);
-  const [tab, setTab] = useState<Tab>("toship");
+  const [tab, setTab] = useUrlTab<Tab>("tab", "toship", TAB_VALUES);
   const [filters, setFilters] = useState<OrderFilters>(EMPTY_ORDER_FILTERS);
   const [queryInput, setQueryInput] = useState("");
   const [query, setQuery] = useState("");
@@ -44,6 +47,14 @@ export default function OrdersPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  // Sabit üst bloğun yüksekliğini CSS değişkenine yazar; altındaki sabit satırlar (sayı, grup başlığı) buna göre dizilir.
+  const stickyRef = useCallback((el: HTMLDivElement | null) => {
+    const root = el?.parentElement;
+    if (!el || !root) return;
+    const set = () => root.style.setProperty("--os", `${el.offsetHeight}px`);
+    set();
+    new ResizeObserver(set).observe(el);
+  }, []);
   const bootstrapped = useRef<number | null>(null);
   const shopId = activeShop?.id;
 
@@ -138,19 +149,14 @@ export default function OrdersPage() {
     return () => document.removeEventListener("mousedown", close);
   }, [menuOpen]);
 
-  async function handleSync() {
+  // Tek "senkronize et" düğmesi navbar'da; o bitince bu sayfa listeyi ve senkron durumunu tazeler.
+  useEffect(() => {
     if (shopId === undefined) return;
-    setSyncing(true);
-    setError(null);
-    try {
-      setSyncInfo(await api.orders.sync(shopId));
+    return onSyncDone(() => {
       load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Bilinmeyen hata");
-    } finally {
-      setSyncing(false);
-    }
-  }
+      api.orders.syncStatus(shopId).then(setSyncInfo).catch(() => undefined);
+    });
+  }, [shopId, load]);
 
   const loading = loadedKey !== JSON.stringify([shopId, tab, query, filters, sort, page, perPage]);
   const items = data?.items ?? [];
@@ -203,8 +209,10 @@ export default function OrdersPage() {
 
   return (
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/orders">
-      <div className="mx-auto max-w-6xl px-6 py-8">
-        {!user && !bootError && <p className="text-sm text-neutral-400">Yükleniyor…</p>}
+      <div className="mx-auto max-w-6xl px-6 pb-8 pt-0">
+        <div>
+          {!user && !bootError && <p className="text-sm text-neutral-400">Yükleniyor…</p>}
+        </div>
         {(bootError || error) && <p className="mb-4 text-sm text-red-600">{bootError ?? error}</p>}
 
         {user && shops !== null && !activeShop && (
@@ -218,7 +226,19 @@ export default function OrdersPage() {
 
         {activeShop && (
           <>
-            <div className="mb-4 flex flex-wrap items-center gap-3">
+            {syncInfo?.backfilling && (
+              <p className="mb-4 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-200">
+                Geçmiş siparişler arka planda indiriliyor: <b>{syncInfo.local}</b> / {syncInfo.remote_total ?? "…"}. Bu sayfayı kullanmaya devam edebilirsin, bitince liste otomatik güncellenir.
+              </p>
+            )}
+            {syncInfo && !syncInfo.backfilling && syncInfo.remote_total !== null && syncInfo.local < syncInfo.remote_total && (
+              <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                Etsy&apos;de {syncInfo.remote_total} sipariş var, yerelde {syncInfo.local} tanesi görünüyor. Kalanı için üstteki senkronize ikonuna bas.
+              </p>
+            )}
+
+            <div ref={stickyRef} className="sticky top-[49px] z-[9] -mx-6 bg-neutral-50 px-6 pb-3 pt-3 dark:bg-neutral-950">
+            <div className="mb-3 flex flex-wrap items-center gap-3">
               <h1 className="mr-auto text-xl font-semibold text-neutral-900 dark:text-neutral-100">Siparişler</h1>
               <div className="relative w-full sm:w-80">
                 <input
@@ -229,27 +249,9 @@ export default function OrdersPage() {
                 />
                 <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-neutral-400">⌕</span>
               </div>
-              <button
-                onClick={handleSync}
-                disabled={syncing}
-                className="rounded-full border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
-              >
-                {syncing ? "Senkronize ediliyor…" : "Etsy ile senkronize et"}
-              </button>
             </div>
 
-            {syncInfo?.backfilling && (
-              <p className="mb-4 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-200">
-                Geçmiş siparişler arka planda indiriliyor: <b>{syncInfo.local}</b> / {syncInfo.remote_total ?? "…"}. Bu sayfayı kullanmaya devam edebilirsin, bitince liste otomatik güncellenir.
-              </p>
-            )}
-            {syncInfo && !syncInfo.backfilling && syncInfo.remote_total !== null && syncInfo.local < syncInfo.remote_total && (
-              <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-                Etsy&apos;de {syncInfo.remote_total} sipariş var, yerelde {syncInfo.local} tanesi görünüyor. Kalanı için &quot;Etsy ile senkronize et&quot;e bas.
-              </p>
-            )}
-
-            <div className="mb-3 flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <label className="flex cursor-pointer items-center gap-2 text-sm text-neutral-700 dark:text-neutral-200">
                 <input
                   type="checkbox"
@@ -321,17 +323,7 @@ export default function OrdersPage() {
                 </select>
               </div>
             </div>
-
-            {notice && (
-              <p className="mb-3 flex items-center justify-between rounded-lg bg-neutral-100 px-4 py-2 text-sm text-neutral-800 dark:bg-neutral-800 dark:text-neutral-100">
-                {notice}
-                <button onClick={() => setNotice(null)} className="text-xs text-neutral-500 hover:underline">
-                  Kapat
-                </button>
-              </p>
-            )}
-
-            <div className="mb-4 flex flex-wrap gap-x-5 gap-y-1 border-b border-neutral-200 dark:border-neutral-800">
+            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 border-b border-neutral-200 dark:border-neutral-800">
               {TABS.map(([key, label]) => (
                 <button
                   key={key}
@@ -347,6 +339,16 @@ export default function OrdersPage() {
                 </button>
               ))}
             </div>
+            </div>
+
+            {notice && (
+              <p className="mb-3 flex items-center justify-between rounded-lg bg-neutral-100 px-4 py-2 text-sm text-neutral-800 dark:bg-neutral-800 dark:text-neutral-100">
+                {notice}
+                <button onClick={() => setNotice(null)} className="text-xs text-neutral-500 hover:underline">
+                  Kapat
+                </button>
+              </p>
+            )}
 
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
               <div className={`min-w-0 flex-1 space-y-5 ${loading ? "opacity-60" : ""}`}>
@@ -364,7 +366,7 @@ export default function OrdersPage() {
                 {groups.map((g) => (
                   <section key={g.key} className="space-y-3">
                     {g.label && (
-                      <div className="flex items-center gap-2 rounded-lg bg-neutral-100 px-4 py-2 text-sm dark:bg-neutral-800">
+                      <div className="sticky top-[calc(49px+var(--os,150px))] z-[8] flex items-center gap-2 rounded-lg bg-neutral-100 px-4 py-2 text-sm dark:bg-neutral-800">
                         <b className="text-neutral-900 dark:text-neutral-100">{g.label}</b>
                         <span className="rounded-full bg-white px-2 text-xs dark:bg-neutral-900">{g.orders.length}</span>
                         <button

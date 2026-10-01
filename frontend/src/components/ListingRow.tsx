@@ -4,18 +4,9 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { api, KeywordPoolItem, Listing, ListingHistory } from "@/lib/api";
 import ListingHistoryPanel from "@/components/ListingHistoryPanel";
-
-/** Green = favorable, red = unfavorable — same convention every SEO tool
- * uses for a difficulty/competition score. But our score means opposite
- * things depending on where it came from: for a competitor tag, a high
- * score means "most top listings already use this" (saturated → red). For
- * your own tag, a high score means "your own best-growing listings use
- * this" (proven winner → green). So the direction flips by source. */
-function competitionFill(normalized: number, source: KeywordPoolItem["source"]): string {
-  const favorable = source === "own" ? normalized : 1 - normalized;
-  const hue = favorable * 130; // 0 = red, 130 = green
-  return `hsla(${hue}, 70%, 45%, 0.3)`;
-}
+import { PublishJob } from "@/lib/publishJobs";
+import PublishBar from "@/components/listings/PublishBar";
+import { competitionFill, normalizedScore, poolRanges } from "@/lib/keywordScore";
 
 function ScoredKeywordPills({ items }: { items: KeywordPoolItem[] }) {
   // Normalized against the min/max *within this pool*, not the raw
@@ -24,24 +15,12 @@ function ScoredKeywordPills({ items }: { items: KeywordPoolItem[] }) {
   // up bunched in the same "low ratio" range and the color barely varies.
   // Comparing tags to each other instead spreads them across the full
   // green-to-red range, which is what's actually useful to look at.
-  const ranges = useMemo(() => {
-    const bySource = new Map<string, { min: number; max: number }>();
-    for (const item of items) {
-      const value = item.source === "own" ? (item.units ?? 0) : item.score;
-      const range = bySource.get(item.source) ?? { min: Infinity, max: -Infinity };
-      range.min = Math.min(range.min, value);
-      range.max = Math.max(range.max, value);
-      bySource.set(item.source, range);
-    }
-    return bySource;
-  }, [items]);
+  const ranges = useMemo(() => poolRanges(items), [items]);
 
   return (
     <div className="flex flex-wrap gap-1.5">
       {items.map((item) => {
-        const range = ranges.get(item.source)!;
-        const value = item.source === "own" ? (item.units ?? 0) : item.score;
-        const normalized = range.max > range.min ? (value - range.min) / (range.max - range.min) : item.source === "own" ? 0.5 : 1;
+        const normalized = normalizedScore(item, ranges);
         const fill = competitionFill(normalized, item.source);
         return (
           <span
@@ -79,6 +58,7 @@ export default function ListingRow({
   onSelectChange,
   onPublish,
   publishing,
+  job,
   publishError,
 }: {
   shopId: number;
@@ -91,6 +71,7 @@ export default function ListingRow({
   /** Kaydedilmiş yerel sürümü Etsy'de yayınlar; yalnızca yerel değişikliği olan listing'lerde gösterilir. */
   onPublish?: () => void;
   publishing?: boolean;
+  job?: PublishJob;
   publishError?: string | null;
 }) {
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -210,6 +191,7 @@ export default function ListingRow({
       </div>
 
       {(error || publishError) && <p className="px-4 pb-3 text-sm text-red-600">{error ?? publishError}</p>}
+      {job && <PublishBar id={listing.listing_id} job={job} />}
 
       {historyOpen && <ListingHistoryPanel shopId={shopId} listingId={listing.listing_id} initialHistory={mockHistory} />}
 

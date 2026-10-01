@@ -47,11 +47,14 @@ def complete_connect(db: Session, code: str, state: str) -> Shop:
             etsy_shop_id=shop_data["shop_id"],
             etsy_user_id=etsy_user_id,
             shop_name=shop_data["shop_name"],
+            icon_url=shop_data.get("icon_url_fullxfull"),
         )
         db.add(shop)
         db.flush()
     else:
         shop.shop_name = shop_data["shop_name"]
+        if shop_data.get("icon_url_fullxfull"):
+            shop.icon_url = shop_data["icon_url_fullxfull"]
 
     expires_at = dt.datetime.utcnow() + dt.timedelta(seconds=token_set.expires_in)
     if shop.oauth_token is None:

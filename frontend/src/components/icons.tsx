@@ -18,9 +18,9 @@ export function MoonIcon({ className = "" }: { className?: string }) {
   );
 }
 
-export function SyncIcon({ className = "" }: { className?: string }) {
+export function SyncIcon({ className = "", style }: { className?: string; style?: React.CSSProperties }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className={`w-4 h-4 ${className}`}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className={`w-4 h-4 ${className}`} style={style}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M20 11a8 8 0 00-14.9-4M4 5v5h5" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M4 13a8 8 0 0014.9 4M20 19v-5h-5" />
     </svg>

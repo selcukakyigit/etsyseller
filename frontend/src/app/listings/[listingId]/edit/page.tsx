@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { api, PublishResult, Suggestion } from "@/lib/api";
+import { api, Suggestion } from "@/lib/api";
 import { useListingWorkingCopy } from "@/lib/useListingWorkingCopy";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
-import SuccessDialog from "@/components/ui/SuccessDialog";
+import { dismissPublishJob, startPublish, usePublishJobs } from "@/lib/publishJobs";
 import ProgressBar from "@/components/ui/ProgressBar";
 import SectionNav, { EDIT_SECTIONS } from "@/components/listing-editor/SectionNav";
 import SectionCard from "@/components/listing-editor/SectionCard";
@@ -22,6 +22,7 @@ import ListingSettings from "@/components/listing-editor/ListingSettings";
 import PhysicalDetails from "@/components/listing-editor/PhysicalDetails";
 import PersonalizationEditor from "@/components/listing-editor/PersonalizationEditor";
 import StringListEditor from "@/components/listing-editor/StringListEditor";
+import TagsEditor from "@/components/listing-editor/TagsEditor";
 
 export default function ListingEditPage() {
   const { user, shops, activeShop, setActiveShopId, error: bootError } = useAuthAndShop();
@@ -33,9 +34,10 @@ export default function ListingEditPage() {
   const edit = wc.work;
   const isNew = listingId < 0;
   const [confirm, confirmElement] = useConfirm();
-  const [result, setResult] = useState<PublishResult | null>(null);
-  const [success, setSuccess] = useState<PublishResult | null>(null);
-  const [conflict, setConflict] = useState<PublishResult | null>(null);
+  // Yayın arka planda sürer (bkz. lib/publishJobs); önceki bir yayının hata/çakışma sonucu burada gösterilir.
+  const job = usePublishJobs().get(listingId);
+  const conflict = job?.phase === "error" ? job.conflicts : undefined;
+  const publishError = job?.phase === "error" && !job.conflicts ? job.error : undefined;
   const [closed, setClosed] = useState<Record<string, boolean>>({});
   const isOpen = (id: string) => !closed[id];
   const toggle = (id: string) => setClosed((c) => ({ ...c, [id]: !c[id] }));
@@ -101,32 +103,22 @@ export default function ListingEditPage() {
         : "Kaydettiğin tüm değişiklikler Etsy'deki canlı listing'e uygulanacak. Yayındaki listing hemen güncellenir.",
       confirmLabel: isNew ? "Oluştur" : "Etsy'de yayınla",
     });
-    if (!ok) return;
-    setResult(null);
-    setConflict(null);
-    const r = await wc.publish();
-    if (r?.conflicts && r.conflicts.length > 0) setConflict(r);
-    else if (r && !r.ok && r.listing_id && r.listing_id !== listingId) {
-      // Listing Etsy'de oluşturuldu ama bir adım başarısız oldu: geçici kimlik artık geçersiz, gerçek sayfaya geç.
-      await confirm({ title: "Yayın tamamlanamadı", message: r.error ?? "Bir adım başarısız oldu.", confirmLabel: "Listing'e git" });
-      router.replace(`/listings/${r.listing_id}/edit`);
-      return;
-    } else setResult(r);
-    if (r?.ok) setSuccess(r);
+    if (!ok || !activeShop) return;
+    if (wc.unsaved && !(await wc.saveLocal())) return;
+    startPublish(activeShop.id, listingId);
+    router.push("/"); // yayın arkada sürer; listede kartın üzerinde doluluk çubuğu görünür
   }
 
   async function forcePublish() {
     const ok = await confirm({
       title: "Etsy'deki değişiklikler ezilsin mi?",
-      message: `Şu alanlarda Etsy'deki değerin yerine senin değerin yazılacak: ${conflict?.conflicts?.map((c) => c.label).join(", ")}. Bu geri alınamaz.`,
+      message: `Şu alanlarda Etsy'deki değerin yerine senin değerin yazılacak: ${conflict?.map((c) => c.label).join(", ")}. Bu geri alınamaz.`,
       confirmLabel: "Benimkiyle ez",
       destructive: true,
     });
-    if (!ok) return;
-    setConflict(null);
-    const r = await wc.publish(true);
-    setResult(r);
-    if (r?.ok) setSuccess(r);
+    if (!ok || !activeShop) return;
+    startPublish(activeShop.id, listingId, true);
+    router.push("/");
   }
 
   async function handleDiscard() {
@@ -139,7 +131,7 @@ export default function ListingEditPage() {
       destructive: true,
     });
     if (!ok) return;
-    setResult(null);
+    dismissPublishJob(listingId);
     await wc.discard();
     if (isNew) router.push("/");
   }
@@ -186,7 +178,9 @@ export default function ListingEditPage() {
         )}
 
         {activeShop && !edit && !wc.error && (
-          <p className="text-sm text-neutral-400 dark:text-neutral-500">Yükleniyor…</p>
+          <div className="min-h-[20px]">
+            <p className="text-sm text-neutral-400 dark:text-neutral-500">Yükleniyor…</p>
+          </div>
         )}
 
         {edit && activeShop && (
@@ -349,8 +343,9 @@ export default function ListingEditPage() {
               onToggle={() => toggle("sec-attributes")}
             >
             <div className="space-y-5">
-              <StringListEditor label="Etiketler" values={edit.tags} maxItems={13} onChange={(tags) => wc.patch({ tags })} />
+              <TagsEditor shopId={activeShop.id} listingId={listingId} tags={edit.tags} onChange={(tags) => wc.patch({ tags })} />
               <StringListEditor label="Materyaller" values={edit.materials} onChange={(materials) => wc.patch({ materials })} />
+              <StringListEditor label="Stil" values={edit.style} maxItems={2} onChange={(style) => wc.patch({ style })} />
             </div>
 
             <PropertyFields
@@ -441,7 +436,7 @@ export default function ListingEditPage() {
               <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-800 dark:bg-amber-950/40">
                 <p className="mb-1 font-semibold text-amber-900 dark:text-amber-200">Etsy&apos;de bu listing değişmiş</p>
                 <p className="text-amber-900 dark:text-amber-200">
-                  Sen kaydettikten sonra şu alanlar Etsy&apos;de de farklı değiştirilmiş: <b>{conflict.conflicts?.map((c) => c.label).join(", ")}</b>.
+                  Sen kaydettikten sonra şu alanlar Etsy&apos;de de farklı değiştirilmiş: <b>{conflict.map((c) => c.label).join(", ")}</b>.
                   Hiçbir şey yazılmadı.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -454,26 +449,22 @@ export default function ListingEditPage() {
                   <button onClick={forcePublish} className="rounded-full bg-amber-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-amber-700">
                     Benimkiyle ez
                   </button>
-                  <button onClick={() => setConflict(null)} className="px-3 py-1.5 text-sm text-amber-900 hover:underline dark:text-amber-200">
+                  <button onClick={() => dismissPublishJob(listingId)} className="px-3 py-1.5 text-sm text-amber-900 hover:underline dark:text-amber-200">
                     Kapat
                   </button>
                 </div>
               </div>
             )}
-            {result && !result.ok && (
+            {publishError && (
               <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm dark:border-red-900 dark:bg-red-950/40">
-                <p className="mb-2 font-semibold text-red-700 dark:text-red-300">Yayın tamamlanamadı</p>
-                <ul className="space-y-1">
-                  {result.steps.map((st) => (
-                    <li key={st.name} className={st.ok ? "text-neutral-600 dark:text-neutral-300" : "text-red-700 dark:text-red-300"}>
-                      {st.ok ? "✓" : "✗"} {st.name}
-                      {st.error ? ` — ${st.error}` : ""}
-                    </li>
-                  ))}
-                </ul>
+                <p className="mb-1 font-semibold text-red-700 dark:text-red-300">Yayın tamamlanamadı</p>
+                <p className="text-red-700 dark:text-red-300">{publishError}</p>
                 <p className="mt-2 text-xs text-neutral-500">
                   Yerel kaydın korunuyor; sorunu düzeltip tekrar yayınlayınca kalan farklar tamamlanır.
                 </p>
+                <button onClick={() => dismissPublishJob(listingId)} className="mt-2 text-xs text-neutral-500 hover:underline">
+                  Kapat
+                </button>
               </div>
             )}
 
@@ -516,21 +507,6 @@ export default function ListingEditPage() {
         )}
       </div>
       {confirmElement}
-      {success && (
-        <SuccessDialog
-          message={
-            isNew
-              ? "Listing Etsy'de oluşturuldu. Listing'ler sayfasına dönüyoruz."
-              : success.steps.some((st) => st.changed)
-              ? "Değişiklikler Etsy'de yayınlandı. Listing'ler sayfasına dönüyoruz."
-              : "Etsy'ye gönderilecek bir değişiklik bulunamadı. Listing'ler sayfasına dönüyoruz."
-          }
-          updated={success.steps.filter((st) => st.changed).map((st) => st.name)}
-          warnings={success.warnings}
-          closeLabel="Listing'lere dön"
-          onClose={() => router.push("/")}
-        />
-      )}
     </AppShell>
   );
 }

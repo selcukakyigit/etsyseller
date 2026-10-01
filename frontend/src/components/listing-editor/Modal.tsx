@@ -1,6 +1,7 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 export function Modal({
   title,
@@ -8,15 +9,33 @@ export function Modal({
   footer,
   z = 50,
   widthClass = "max-w-5xl",
+  onClose,
 }: {
   title: string;
   children: ReactNode;
   footer?: ReactNode;
   z?: number;
   widthClass?: string;
+  /** Verilirse, boş (karartılmış) alana tıklayınca modal kapanır. */
+  onClose?: () => void;
 }) {
-  return (
-    <div className="fixed inset-0 flex items-center justify-center bg-black/40 p-4" style={{ zIndex: z }}>
+  // document.body'ye portal: DOM'da nereye yerleştirilirse yerleştirilsin (ör. sticky/overflow-auto bir
+  // sidebar içinde) her zaman tam ekranı kaplar. Bir ata öğede transform/overflow varsa fixed konumlandırma
+  // ona göre kırpılabiliyor/yanlış konumlanabiliyor — portal bunu DOM ağacından tamamen bağımsız kılıyor.
+  // `document` sunucu tarafında (SSR/ilk render) yok — yalnızca tarayıcıda bağlandıktan (mount) sonra
+  // portal'a geçiyoruz, aksi halde "Target container is not a DOM element" hatası atıyordu.
+  const [mounted, setMounted] = useState(false);
+  // Yalnızca tarayıcıda bağlandığını anlamanın yolu bu — kaçınılmaz bir istisna.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 flex items-center justify-center bg-black/40 p-4"
+      style={{ zIndex: z }}
+      onClick={onClose ? (e) => e.target === e.currentTarget && onClose() : undefined}
+    >
       <div
         role="dialog"
         aria-modal="true"
@@ -33,7 +52,8 @@ export function Modal({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

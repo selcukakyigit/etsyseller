@@ -16,9 +16,12 @@ MANAGED_KEYS = {
     "anthropic_api_key": "ANTHROPIC_API_KEY",
     "anthropic_model": "ANTHROPIC_MODEL",
     "ai_provider": "AI_PROVIDER",
+    "google_api_key": "GOOGLE_API_KEY",
+    "google_image_model": "GOOGLE_IMAGE_MODEL",
+    "google_image_size": "GOOGLE_IMAGE_SIZE",
 }
 
-SECRET_KEYS = {"etsy_api_key", "etsy_shared_secret", "openai_api_key", "anthropic_api_key"}
+SECRET_KEYS = {"etsy_api_key", "etsy_shared_secret", "openai_api_key", "anthropic_api_key", "google_api_key"}
 
 # Fixed display width regardless of the real secret's length (some keys, e.g.
 # OpenAI's, run past 150 chars — mirroring the true length broke the settings

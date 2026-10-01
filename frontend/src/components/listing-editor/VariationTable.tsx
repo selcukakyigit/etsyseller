@@ -140,6 +140,8 @@ export default function VariationTable({
     readiness: inventory.readiness_state_on_property ?? [],
   });
   const [links, setLinks] = useState<Links>({ propertyId: linksProp.property_id, images: linksProp.images });
+  const [showAllVariants, setShowAllVariants] = useState(false); // çok varyantlı ürünlerde tablo uzun/karmaşık görünmesin diye ilk 5 gösterilir
+  const VISIBLE_ROWS = 5;
 
   useEffect(() => {
     if (!taxonomyId) return;
@@ -337,7 +339,7 @@ export default function VariationTable({
               </tr>
             </thead>
             <tbody>
-              {keys.map((key) => {
+              {(showAllVariants ? keys : keys.slice(0, VISIBLE_ROWS)).map((key) => {
                 const match = (r: EditableRow) => valueKey(r.product, prop.id) === key;
                 const row = rows.find(match) as EditableRow;
                 const visible = rows.some((r) => match(r) && r.enabled);
@@ -369,6 +371,15 @@ export default function VariationTable({
             </tbody>
           </table>
         </div>
+        {keys.length > VISIBLE_ROWS && (
+          <button
+            type="button"
+            onClick={() => setShowAllVariants((v) => !v)}
+            className="mt-2 text-xs font-semibold text-neutral-600 hover:underline dark:text-neutral-300"
+          >
+            {showAllVariants ? "Daha az göster" : `Daha fazla göster (${keys.length - VISIBLE_ROWS} tane daha)`}
+          </button>
+        )}
       </div>
     );
   }
@@ -469,7 +480,7 @@ export default function VariationTable({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, i) => (
+              {(showAllVariants ? rows : rows.slice(0, VISIBLE_ROWS)).map((row, i) => (
                 <tr
                   key={i}
                   className={`border-t border-neutral-100 dark:border-neutral-800 ${row.enabled ? "" : "opacity-50"} ${
@@ -528,6 +539,15 @@ export default function VariationTable({
             </tbody>
           </table>
         </div>
+        {rows.length > VISIBLE_ROWS && (
+          <button
+            type="button"
+            onClick={() => setShowAllVariants((v) => !v)}
+            className="mt-2 text-xs font-semibold text-neutral-600 hover:underline dark:text-neutral-300"
+          >
+            {showAllVariants ? "Daha az göster" : `Daha fazla göster (${rows.length - VISIBLE_ROWS} tane daha)`}
+          </button>
+        )}
       </div>
     );
   }

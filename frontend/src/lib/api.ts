@@ -15,6 +15,9 @@ export type ApiKeys = {
   anthropic_api_key: string;
   anthropic_model: string;
   ai_provider: string;
+  google_api_key: string;
+  google_image_model: string;
+  google_image_size: string;
 };
 
 export type ApiKeysUpdate = Partial<ApiKeys>;
@@ -29,6 +32,46 @@ export type Shop = {
   etsy_shop_id: number;
   shop_name: string;
   connected: boolean;
+  /** Elle sabitlenmiş rapor para birimi (ör. "USD"); boşsa finans raporu siparişlerden otomatik seçer. */
+  currency: string | null;
+  icon_url: string | null;
+};
+
+export type ShopProfile = {
+  title?: string | null;
+  announcement?: string | null;
+  url?: string | null;
+  icon_url_fullxfull?: string | null;
+  image_url_760x100?: string | null;
+  num_favorers?: number;
+  listing_active_count?: number;
+  is_vacation?: boolean;
+  vacation_message?: string | null;
+  review_count?: number;
+  review_average?: number | null;
+};
+
+export type ShopReview = {
+  transaction_id: number;
+  listing_id: number;
+  rating: number;
+  review: string;
+  image_url: string | null;
+  created_at: string;
+};
+
+export type ShopReviewListingStat = {
+  listing_id: number;
+  title: string | null;
+  count: number;
+  average: number;
+};
+
+export type ShopReviewStats = {
+  top_reviewed: ShopReviewListingStat[];
+  top_rated: ShopReviewListingStat[];
+  rating_distribution: Record<string, number>;
+  monthly: { month: string; count: number; average: number | null }[];
 };
 
 export type Suggestion = {
@@ -76,11 +119,30 @@ export type ListingPerformance = {
   lifetime: { views: number; favorites: number };
   conversion_percent: number | null;
   freshness: { tracking_days: number; etsy_last_modified_days: number | null; content_changed_on?: string; days_since_content_change?: number; unchanged_for_at_least_days?: number };
+  /** İçerik değiştiği günün öncesi/sonrası günlük ortalamalar (eşit uzunlukta pencere) — "AI ile yayınladık, bir şey
+   * değişti mi" sorusuna cevap. Öncesi/sonrası için yeterli veri yoksa null. */
+  since_change: {
+    content_changed_on: string;
+    window_days: number;
+    before: { views_per_day: number | null; favorites_per_day: number | null; units_per_day: number; revenue_per_day: number };
+    after: { views_per_day: number | null; favorites_per_day: number | null; units_per_day: number; revenue_per_day: number };
+  } | null;
 };
 
 export type ListingHistory = {
   versions: Suggestion[];
   stats: StatSnapshot[];
+};
+
+export type ListingHealth = {
+  listing_id: number;
+  stage: "watching" | "flagged" | "stable" | "kill_candidate" | "killed";
+  bottleneck: "seo" | "appeal" | "conversion" | null;
+  note: string;
+  attempts: number;
+  window_start: string | null;
+  evaluated_at: string | null;
+  killed_at: string | null;
 };
 
 export type Listing = {
@@ -248,6 +310,20 @@ export type ListingImage = {
   alt_text: string | null;
 };
 
+// Bir fotoğraf yuvasının sürüm geçmişindeki tek bir kayıt — orijinal Etsy fotoğrafıysa file_id null,
+// listing_image_id doludur; AI ile üretilmiş bir sürümse file_id dolu, listing_image_id null'dur.
+export type ImageVersion = {
+  file_id: string | null;
+  listing_image_id: number | null;
+  url: string;
+  created_at: string | null;
+  // Yalnızca orijinal Etsy fotoğrafı (file_id null) için: ListingImage'a dönüştürmek için gereken alanlar.
+  url_170x135?: string;
+  url_570xN?: string;
+  url_fullxfull?: string;
+  alt_text?: string | null;
+};
+
 // Etsy's inventory/property shapes are deep and actively evolving (third
 // variation rollout) — passed through as loosely-typed objects on both the
 // backend and here, rather than modeled field by field. Components that need
@@ -310,6 +386,7 @@ export type ListingEdit = {
   description: string;
   tags: string[];
   materials: string[];
+  style: string[];
   taxonomy_id: number | null;
   who_made: string | null;
   when_made: string | null;
@@ -377,6 +454,7 @@ export type ListingUpdate = Partial<{
   description: string;
   tags: string[];
   materials: string[];
+  style: string[];
   taxonomy_id: number;
   who_made: string;
   when_made: string;
@@ -411,6 +489,7 @@ export type ListingUpdate = Partial<{
 export type ShopSection = {
   shop_section_id: number;
   title: string;
+  active_listing_count?: number;
 };
 
 export type ProductionPartner = {
@@ -622,6 +701,20 @@ export interface FinCustomer {
   sales: number;
   last: string;
 }
+export interface FinOrderBrief {
+  receipt_id: number;
+  date: string;
+  buyer: string;
+  country: string;
+  title: string;
+  item_count: number;
+  sales: number;
+  cogs: number;
+  profit: number;
+  margin: number;
+  cost_defined: boolean;
+}
+
 export interface FinProduct {
   listing_id: number;
   title: string;
@@ -637,6 +730,10 @@ export interface FinProduct {
   shipping_cost: number | null;
   cost_pct: number | null;
   is_digital: boolean;
+  /** Bu üründen bu dönemde satın alan müşteri adları (arama için). */
+  buyers: string[];
+  /** Bu dönemdeki en az bir sipariş, güncel kayıttan FARKLI eski bir maliyet sürümü kullandı (ör. "geçmişi düzelt"
+   * işaretlenmeden değiştirilmiş bir değer) — gösterilen kâr/marj güncel maliyet kutucuklarıyla uyuşmayabilir. */
   variants: FinVariant[];
 }
 export interface FinVariant {
@@ -650,6 +747,105 @@ export interface FinVariant {
   unit_cost: number | null;
   shipping_cost: number | null;
   cost_pct: number | null;
+  /** Yüklenen kargo faturalarından ortalama ağırlık (varsa) — yalnızca bilgi amaçlı, hesaplamaya girmez. */
+  weight_kg: number | null;
+  /** Bu varyanta eşleşen onaylanmış fatura tutarlarının toplamı; kargo kutusu boşsa otomatik kullanılır. */
+  invoice_amount: number;
+  invoice_count: number;
+  /** Faturası olan seçeneklerde: dönemdeki siparişler ve her birinin kargo faturası (yoksa null). */
+  orders: { receipt_id: number; buyer: string; date: string; tracking: string; invoice: number | null }[];
+}
+
+export interface InvoiceMatchItem {
+  listing_id: number | null;
+  variant_key: string;
+  title: string;
+  qty: number;
+}
+
+/** Bir fatura satırının eşleştiği Etsy siparişi (önce takip no, olmazsa alıcı adı + ülke + tarih). */
+export interface InvoiceMatch {
+  receipt_id: number;
+  /** İptal edilmiş sipariş: maliyeti raporlara girmez (Finans iptal edilenleri saymaz). */
+  canceled: boolean;
+  buyer: string;
+  country: string;
+  date: string;
+  score: number;
+  reason: string;
+  items: InvoiceMatchItem[];
+}
+
+/** `/finance/invoices/parse`'ın döndüğü, henüz kaydedilmemiş bir GÖNDERİ satırı — kullanıcı siparişi onaylayınca
+ * aynısı `/confirm`'e geri gönderilir. Tutar, eşleşen siparişin ürünlerine fiyat payına göre dağıtılır. */
+export interface InvoiceCandidate {
+  vendor: string;
+  invoice_number: string;
+  invoice_date: string;
+  kind: "nakliye" | "gümrük" | "ek hizmet" | "diğer";
+  description: string;
+  tracking_no: string;
+  ship_date: string | null;
+  recipient: string;
+  recipient_country: string;
+  weight_kg: number | null;
+  original_amount: number;
+  /** Satır toplamı fatura toplamıyla uyuşmuyorsa uyarı (boş = sorun yok). */
+  check_note: string;
+  original_currency: string;
+  amount: number;
+  fx_rate: number;
+  fx_source: string;
+  matches: InvoiceMatch[];
+  already_saved: boolean;
+  source_filename: string;
+}
+
+export interface InvoiceQuery {
+  q?: string;
+  kind?: string;
+  invStart?: string;
+  invEnd?: string;
+  orderStart?: string;
+  orderEnd?: string;
+  sort?: string;
+  page?: number;
+  perPage?: number;
+}
+export interface InvoicePage {
+  items: InvoiceShipment[];
+  total: number;
+  total_amount: number;
+}
+
+/** Bir gönderideki tek fatura kalemi (nakliye / gümrük / ek hizmet / diğer). */
+export interface InvoiceLine {
+  id: number;
+  kind: string;
+  description: string;
+  invoice_no: string;
+  invoice_date: string;
+  amount: number;
+  original_amount: number;
+  original_currency: string;
+  fx_source: string;
+  source_filename: string;
+  weight_kg: number | null;
+}
+
+/** Kayıtlı faturalar listesinde GÖNDERİ başına tek kayıt; içinde tüm kalemleri ve olası mükerrer/fazla kesinti uyarıları. */
+export interface InvoiceShipment {
+  receipt_id: number | null;
+  tracking_no: string;
+  buyer: string;
+  order_date: string | null;
+  vendor: string;
+  products: { listing_id: number; variant_key: string; title: string }[];
+  lines: InvoiceLine[];
+  total: number;
+  weight_kg: number | null;
+  last_invoice_date: string;
+  warnings: string[];
 }
 export interface FinOrderCost {
   receipt_id: number;
@@ -660,6 +856,8 @@ export interface FinOrderCost {
   items: { title: string; quantity: number; variant: string; defined: boolean }[];
   auto_cost: number;
   fixed_cost: number;
+  /** Faturalardan gelen gerçek kargo toplamı (fatura yoksa null). */
+  invoice_ship: number | null;
   original_currency: string;
   original_total: number;
   auto_defined: boolean;
@@ -697,6 +895,9 @@ export interface FinOrderDetail {
     variations: { name: string; value: string }[];
     unit_cost: number;
     cost_defined: boolean;
+    is_digital: boolean;
+    /** Adet başına maliyet parçaları; kargo kaynağı: faturadan / elle girilen / yok. */
+    cost_parts: { unit: number; pct: number; ship: number; ship_source: "fatura" | "elle" | "" };
   }[];
   earnings: {
     buyer_paid: number;
@@ -717,6 +918,7 @@ export interface FinOrderDetail {
     cost_manual: boolean;
     auto_cost: number;
     fixed_cost: number;
+    shipping_lines: InvoiceLine[];
     profit: number;
   };
 }
@@ -737,6 +939,11 @@ export interface FinReport {
   series: FinSeriesPoint[];
   countries: FinCountry[];
   customers: FinCustomer[];
+  /** Dönemdeki en kârlı / en düşük kârlı (zarar) 10'ar sipariş. */
+  top_orders: FinOrderBrief[];
+  worst_orders: FinOrderBrief[];
+  /** Maliyeti hiç girilmemiş olduğu için bu listelere alınmayan sipariş sayısı. */
+  orders_no_cost: number;
   products: FinProduct[];
   available_countries: string[];
   first_year: number;
@@ -757,6 +964,7 @@ export type ChatCard =
   | { type: "movers"; title: string; currency: string; rows: { title: string; listing_id: number; units: number; prev_units: number; sales: number; prev_sales: number; change: number }[] }
   | { type: "orders"; title: string; rows: { receipt_id: number; buyer: string; country: string; date: string; ship_by: string | null; total: number; items: string[] }[] }
   | { type: "listing_draft"; listing_id: number; title: string; edit_url: string; price: [number, number]; quantity: number; tags: string[]; combos: number; image: string | null; images: number; problems: string[]; price_assumed?: boolean; quantity_assumed?: boolean }
+  | { type: "status"; title: string; rows: { label: string; value: number }[] }
   | { type: "listing_update"; listing_id: number; title: string; edit_url: string; changes: string[]; tags: string[] }
   | { type: "performance"; title: string; listing_id: number; period: { start: string; end: string }; previous_period: { start: string; end: string }; sales: { units: number; revenue: number; prev_units: number; prev_revenue: number }; views_now: ListingPerformance["views_now"]; conversion_percent: number | null; freshness: ListingPerformance["freshness"]; lifetime: { views: number; favorites: number }; price: number | null }
   | { type: "stale"; title: string; rows: { listing_id: number; title: string; days: number; exact: boolean; units_recent: number; units_previous: number; views: number }[] }
@@ -813,21 +1021,51 @@ export const api = {
     apiKeys: () => request<ApiKeys>("/api/account/api-keys"),
     updateApiKeys: (payload: ApiKeysUpdate) =>
       request<ApiKeys>("/api/account/api-keys", { method: "PUT", body: JSON.stringify(payload) }),
-    testApiKey: (provider: "etsy" | "openai" | "anthropic") =>
+    testApiKey: (provider: "etsy" | "openai" | "anthropic" | "google") =>
       request<ApiKeyTestResult>(`/api/account/api-keys/test/${provider}`, { method: "POST" }),
     changePassword: (currentPassword: string, newPassword: string) =>
       request<{ ok: boolean }>("/api/account/password", {
         method: "PUT",
         body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
       }),
+    // Geri alınamaz işlemler: hesap şifresi + onay zorunlu. Şifre yanlışsa sunucu hata döner.
+    resetData: (password: string) =>
+      request<{ ok: boolean }>("/api/account/reset-data", { method: "POST", body: JSON.stringify({ password, confirm: true }) }),
+    deleteAccount: (password: string) =>
+      request<{ ok: boolean }>("/api/account/delete", { method: "POST", body: JSON.stringify({ password, confirm: true }) }),
   },
   shops: {
     list: () => request<Shop[]>("/api/shops"),
     connectUrl: () => `${API_URL}/api/shops/connect/start`,
+    /** `currency: null` = otomatik (siparişlerde en çok geçen para birimi); doluysa 3 harfli ISO kod sabitlenir. */
+    setCurrency: (shopId: number, currency: string | null) =>
+      request<{ ok: boolean; currency: string | null }>(`/api/shops/${shopId}/currency`, {
+        method: "PUT",
+        body: JSON.stringify({ currency }),
+      }),
     shippingProfiles: (shopId: number) =>
       request<ShippingProfile[]>(`/api/shops/${shopId}/shipping-profiles`),
     returnPolicies: (shopId: number) => request<ReturnPolicy[]>(`/api/shops/${shopId}/return-policies`),
     sections: (shopId: number) => request<ShopSection[]>(`/api/shops/${shopId}/sections`),
+    profile: (shopId: number) => request<ShopProfile>(`/api/shops/${shopId}/profile`),
+    reviews: (shopId: number, opts?: { listingId?: number; rating?: number; month?: string; limit?: number; offset?: number }) =>
+      request<{ total: number; average: number | null; reviews: ShopReview[] }>(
+        `/api/shops/${shopId}/reviews?${new URLSearchParams({
+          ...(opts?.listingId ? { listing_id: String(opts.listingId) } : {}),
+          ...(opts?.rating ? { rating: String(opts.rating) } : {}),
+          ...(opts?.month ? { month: opts.month } : {}),
+          ...(opts?.limit ? { limit: String(opts.limit) } : {}),
+          ...(opts?.offset ? { offset: String(opts.offset) } : {}),
+        })}`
+      ),
+    reviewStats: (shopId: number) => request<ShopReviewStats>(`/api/shops/${shopId}/reviews/stats`),
+    // Etsy'nin genel API'sinde bölüm sırası (rank) yazılamıyor — yalnızca oluşturma/yeniden adlandırma/silme mümkün.
+    createShopSection: (shopId: number, title: string) =>
+      request<ShopSection>(`/api/shops/${shopId}/sections`, { method: "POST", body: JSON.stringify({ title }) }),
+    updateShopSection: (shopId: number, sectionId: number, title: string) =>
+      request<ShopSection>(`/api/shops/${shopId}/sections/${sectionId}`, { method: "PUT", body: JSON.stringify({ title }) }),
+    deleteShopSection: (shopId: number, sectionId: number) =>
+      request<{ ok: boolean }>(`/api/shops/${shopId}/sections/${sectionId}`, { method: "DELETE" }),
     productionPartners: (shopId: number) =>
       request<ProductionPartner[]>(`/api/shops/${shopId}/production-partners`),
     createProcessingProfile: (shopId: number, body: ProcessingProfileInput) =>
@@ -859,11 +1097,20 @@ export const api = {
         method: "POST",
       }),
     syncStatus: (shopId: number) =>
-      request<{ syncing: boolean; last_synced_at: string | null }>(`/api/shops/${shopId}/listings/sync-status`),
+      request<{ syncing: boolean; last_synced_at: string | null; done: number | null; total: number | null }>(
+        `/api/shops/${shopId}/listings/sync-status`,
+      ),
     performance: (shopId: number, listingId: number, start: string, end: string) =>
       request<ListingPerformance>(`/api/shops/${shopId}/listings/${listingId}/performance?start=${start}&end=${end}`),
     history: (shopId: number, listingId: number) =>
       request<ListingHistory>(`/api/shops/${shopId}/listings/${listingId}/history`),
+    health: (shopId: number, listingId: number) =>
+      request<ListingHealth | null>(`/api/shops/${shopId}/listings/${listingId}/health`),
+    shopHealth: (shopId: number) => request<ListingHealth[]>(`/api/shops/${shopId}/listings/health`),
+    killListing: (shopId: number, listingId: number) =>
+      request<ListingHealth>(`/api/shops/${shopId}/listings/${listingId}/health/kill`, { method: "POST" }),
+    keepWatching: (shopId: number, listingId: number) =>
+      request<ListingHealth>(`/api/shops/${shopId}/listings/${listingId}/health/keep-watching`, { method: "POST" }),
     suggest: (shopId: number, listingId: number, current?: SuggestInput) =>
       request<Suggestion>(`/api/shops/${shopId}/listings/${listingId}/suggest`, {
         method: "POST",
@@ -981,6 +1228,56 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ file_ids: fileIds, title }),
       }),
+    // Bir fotoğraf yuvasının tüm geçmişi (orijinal + üretilen her sürüm, eskiden yeniye) — hiçbiri silinmez.
+    imageVersions: (shopId: number, listingId: number, imageId: number, draftFileId?: string | null) =>
+      request<{ versions: ImageVersion[] }>(
+        `/api/shops/${shopId}/listings/${listingId}/draft/images/${imageId}/versions${
+          draftFileId ? `?draft_file_id=${encodeURIComponent(draftFileId)}` : ""
+        }`
+      ),
+    // Sihirli değnek: bir görseli Gemini ile yeniden oluşturur, yeni bir taslak dosyası döner (orijinali silmez).
+    // `referenceDraftFileId`: ör. toplu üretimde daha önce üretilmiş model fotoğrafı — "aynı modeli koru" için.
+    // `subjectImageId`/`subjectDraftFileId`: sahnede birden fazla obje olduğunda "ürün bu" diye işaret eden,
+    // listing'in kendi fotoğraflarından biri (net/temiz ürün karesi).
+    regenerateImage: (
+      shopId: number,
+      listingId: number,
+      imageId: number,
+      draftFileId: string | null,
+      opts?: {
+        prompt?: string;
+        referenceDraftFileId?: string;
+        cameraPrompt?: string;
+        distancePrompt?: string;
+        subjectImageId?: number;
+        subjectDraftFileId?: string;
+      }
+    ) =>
+      request<{ file_id: string; kind: string; filename: string }>(
+        `/api/shops/${shopId}/listings/${listingId}/draft/images/regenerate`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            image_id: imageId,
+            draft_file_id: draftFileId,
+            prompt: opts?.prompt || undefined,
+            reference_draft_file_id: opts?.referenceDraftFileId || undefined,
+            camera_prompt: opts?.cameraPrompt || undefined,
+            distance_prompt: opts?.distancePrompt || undefined,
+            subject_image_id: opts?.subjectImageId ?? undefined,
+            subject_draft_file_id: opts?.subjectDraftFileId || undefined,
+          }),
+        }
+      ),
+    // AI ile oluştur: kaynak fotoğraf olmadan, yalnızca yazılan talimattan yeni bir taslak fotoğrafı üretir.
+    generateImage: (shopId: number, listingId: number, prompt: string, referenceDraftFileId?: string) =>
+      request<{ file_id: string; kind: string; filename: string }>(
+        `/api/shops/${shopId}/listings/${listingId}/draft/images/generate`,
+        {
+          method: "POST",
+          body: JSON.stringify({ prompt, reference_draft_file_id: referenceDraftFileId || undefined }),
+        }
+      ),
     reorderImages: (shopId: number, listingId: number, imageIds: number[]) =>
       request<ListingImage[]>(`/api/shops/${shopId}/listings/${listingId}/images/order`, {
         method: "PUT",
@@ -1053,6 +1350,8 @@ export const api = {
     dashboard: (shopId: number, today: string) => request<DashboardData>(`/api/shops/${shopId}/assistant/dashboard?today=${today}`),
   },
   finance: {
+    /** Gerçek kur verisi bulunan, dolayısıyla mağaza para birimi olarak seçilebilecek kodlar. */
+    availableCurrencies: (shopId: number) => request<{ currencies: string[] }>(`/api/shops/${shopId}/finance/available-currencies`),
     report: (shopId: number, start: string, end: string, country = "", compare: number[] = [1]) =>
       request<FinReport>(`/api/shops/${shopId}/finance/report?start=${start}&end=${end}&compare=${compare.join(",")}${country ? `&country=${country}` : ""}`),
     exportXlsx: async (shopId: number, start: string, end: string, country = "", opts: { scope?: string; q?: string; sort?: string } = {}) => {
@@ -1067,28 +1366,51 @@ export const api = {
     },
     syncStatus: (shopId: number) => request<FinSyncStatus>(`/api/shops/${shopId}/finance/sync-status`),
     sync: (shopId: number, full = false) => request<FinSyncStatus>(`/api/shops/${shopId}/finance/sync?full=${full}`, { method: "POST" }),
-    setCost: (shopId: number, listingId: number, unitCost: number, shippingCost: number, costPct = 0, fixPast = false) =>
+    setCost: (shopId: number, listingId: number, unitCost: number, shippingCost: number, costPct = 0) =>
       request<{ ok: boolean }>(`/api/shops/${shopId}/finance/costs/${listingId}`, {
         method: "PUT",
-        body: JSON.stringify({ unit_cost: unitCost, shipping_cost: shippingCost, cost_pct: costPct, fix_past: fixPast }),
+        body: JSON.stringify({ unit_cost: unitCost, shipping_cost: shippingCost, cost_pct: costPct }),
       }),
-    setVariantCost: (shopId: number, listingId: number, key: string, unitCost: number, shippingCost: number, costPct = 0, fixPast = false) =>
+    setVariantCost: (shopId: number, listingId: number, key: string, unitCost: number, shippingCost: number, costPct = 0) =>
       request<{ ok: boolean }>(`/api/shops/${shopId}/finance/costs/${listingId}/variant`, {
         method: "PUT",
-        body: JSON.stringify({ key, unit_cost: unitCost, shipping_cost: shippingCost, cost_pct: costPct, fix_past: fixPast }),
+        body: JSON.stringify({ key, unit_cost: unitCost, shipping_cost: shippingCost, cost_pct: costPct }),
       }),
     orders: (shopId: number, start: string, end: string, q = "", page = 0) =>
       request<FinOrdersPage>(`/api/shops/${shopId}/finance/orders?start=${start}&end=${end}&q=${encodeURIComponent(q)}&page=${page}`),
     orderDetail: (shopId: number, receiptId: number) => request<FinOrderDetail>(`/api/shops/${shopId}/finance/orders/${receiptId}`),
-    setOrderFixedCost: (shopId: number, amount: number, fixPast = false) =>
+    setOrderFixedCost: (shopId: number, amount: number) =>
       request<{ ok: boolean }>(`/api/shops/${shopId}/finance/settings/order-cost`, {
         method: "PUT",
-        body: JSON.stringify({ amount, fix_past: fixPast }),
+        body: JSON.stringify({ amount }),
       }),
     setOrderCost: (shopId: number, receiptId: number, cost: number | null) =>
       request<{ ok: boolean }>(`/api/shops/${shopId}/finance/orders/${receiptId}/cost`, {
         method: "PUT",
         body: JSON.stringify({ cost }),
       }),
+    invoices: {
+      // Dosyayı okuyup çıkarılan kalemleri döner — HENÜZ kaydetmez (onay ekranı için).
+      parse: (shopId: number, file: File) => {
+        const form = new FormData();
+        form.append("file", file, file.name);
+        return requestForm<InvoiceCandidate[]>(`/api/shops/${shopId}/finance/invoices/parse`, form);
+      },
+      confirm: (shopId: number, receiptId: number, candidate: InvoiceCandidate) =>
+        request<{ ids: number[] }>(`/api/shops/${shopId}/finance/invoices/confirm`, {
+          method: "POST",
+          body: JSON.stringify({ receipt_id: receiptId, candidate }),
+        }),
+      list: (shopId: number, f: InvoiceQuery = {}) => {
+        const params = new URLSearchParams({ sort: f.sort ?? "inv_date", page: String(f.page ?? 0), per_page: String(f.perPage ?? 20) });
+        const map: [string, string | undefined][] = [["q", f.q], ["kind", f.kind], ["inv_start", f.invStart], ["inv_end", f.invEnd], ["order_start", f.orderStart], ["order_end", f.orderEnd]];
+        for (const [k, v] of map) if (v) params.set(k, v);
+        return request<InvoicePage>(`/api/shops/${shopId}/finance/invoices?${params}`);
+      },
+      removeMany: (shopId: number, ids: number[]) =>
+        request<{ deleted: number }>(`/api/shops/${shopId}/finance/invoices/delete`, { method: "POST", body: JSON.stringify({ ids }) }),
+      remove: (shopId: number, id: number) =>
+        request<{ ok: boolean }>(`/api/shops/${shopId}/finance/invoices/${id}`, { method: "DELETE" }),
+    },
   },
 };

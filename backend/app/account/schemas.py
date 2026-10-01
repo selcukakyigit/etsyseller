@@ -13,6 +13,9 @@ class ApiKeysOut(BaseModel):
     anthropic_api_key: str
     anthropic_model: str
     ai_provider: str
+    google_api_key: str
+    google_image_model: str
+    google_image_size: str
 
 
 class ApiKeysUpdateIn(BaseModel):
@@ -27,6 +30,9 @@ class ApiKeysUpdateIn(BaseModel):
     anthropic_api_key: str | None = None
     anthropic_model: str | None = None
     ai_provider: str | None = None
+    google_api_key: str | None = None
+    google_image_model: str | None = None
+    google_image_size: str | None = None
 
 
 class ApiKeyTestOut(BaseModel):
@@ -37,3 +43,10 @@ class ApiKeyTestOut(BaseModel):
 class PasswordChangeIn(BaseModel):
     current_password: str
     new_password: str
+
+
+class DangerIn(BaseModel):
+    """Geri alınamaz işlemler için: hesap şifresi + "onaylıyorum" işareti (ikisi de zorunlu)."""
+
+    password: str
+    confirm: bool = False

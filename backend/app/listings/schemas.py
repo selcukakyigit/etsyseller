@@ -68,6 +68,17 @@ class StatSnapshotOut(BaseModel):
     captured_at: str
 
 
+class ListingHealthOut(BaseModel):
+    listing_id: int
+    stage: str  # watching | flagged | stable | kill_candidate | killed
+    bottleneck: str | None = None  # seo | appeal | conversion
+    note: str
+    attempts: int
+    window_start: str | None = None
+    evaluated_at: str | None = None
+    killed_at: str | None = None
+
+
 class ListingHistoryOut(BaseModel):
     versions: list[SuggestionOut]
     stats: list[StatSnapshotOut]
@@ -80,6 +91,7 @@ class ListingUpdateIn(BaseModel):
     description: str | None = None
     tags: list[str] | None = None
     materials: list[str] | None = None
+    style: list[str] | None = None
     taxonomy_id: int | None = None
     who_made: str | None = None
     when_made: str | None = None
@@ -118,6 +130,7 @@ class ListingEditOut(BaseModel):
     description: str
     tags: list[str]
     materials: list[str]
+    style: list[str] = []
     taxonomy_id: int | None
     who_made: str | None
     when_made: str | None

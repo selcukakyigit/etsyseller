@@ -235,6 +235,17 @@ def _serialize_order(row: OrderCache, images: dict[int, str] | None = None) -> O
     )
 
 
+def _shipby_order(tab: str, nulls_last):
+    """Gönderim tarihine göre sıra: gönderilecekler en yakın tarih önce (acil olan üstte); gönderilmiş/iptal olanlar en
+    yeni tarih önce. "Tümü"nde gönderilecekler üstte (yakın→uzak), gönderilmişler altta (yeni→eski)."""
+    d = OrderCache.expected_ship_date
+    if tab == "toship":
+        return (nulls_last, d.asc(), OrderCache.created_at.desc())
+    if tab == "all":
+        return (OrderCache.is_shipped.asc(), nulls_last, case((OrderCache.is_shipped.is_(False), d), else_=None).asc(), d.desc(), OrderCache.created_at.desc())
+    return (nulls_last, d.desc(), OrderCache.created_at.desc())
+
+
 def orders_page(
     db: Session,
     shop: Shop,
@@ -316,7 +327,7 @@ def orders_page(
 
     nulls_last = case((OrderCache.expected_ship_date.is_(None), 1), else_=0)
     order_by = {
-        "shipby": (nulls_last, OrderCache.expected_ship_date.asc(), OrderCache.created_at.desc()),
+        "shipby": _shipby_order(tab, nulls_last),
         "newest": (OrderCache.created_at.desc(),),
         "oldest": (OrderCache.created_at.asc(),),
         "total": (OrderCache.grandtotal_amount.desc(), OrderCache.created_at.desc()),

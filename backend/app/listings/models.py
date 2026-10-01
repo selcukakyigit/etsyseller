@@ -97,7 +97,10 @@ class ListingDraft(Base):
 
 
 class DraftFile(Base):
-    """Taslağa eklenen (henüz Etsy'ye yüklenmemiş) fotoğraf/video dosyası; içerik diskte durur."""
+    """Taslağa eklenen (henüz Etsy'ye yüklenmemiş) fotoğraf/video dosyası; içerik diskte durur. Bir dosya
+    ASLA silinmez (yeniden üretim eskisinin üstüne yazmaz, yeni bir satır ekler) — bu yüzden `origin_key`
+    ile aynı "fotoğraf yuvası"na ait tüm sürümler gruplanıp geçmiş olarak gösterilebiliyor
+    (bkz. listings/drafts.py list_versions, küpün yanındaki sürüm noktaları)."""
 
     __tablename__ = "listing_draft_files"
 
@@ -109,6 +112,41 @@ class DraftFile(Base):
     content_type: Mapped[str] = mapped_column(String(100), default="application/octet-stream")
     path: Mapped[str] = mapped_column(Text)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    # Aynı "fotoğraf yuvası"nın tüm sürümlerini birbirine bağlayan anahtar: bir Etsy fotoğrafından ilk kez
+    # üretildiyse "etsy-{image_id}", bir taslak dosyadan üretildiyse o dosyanın origin_key'i (zincir taşınır).
+    # Yoksa (bağımsız yükleme) kendi id'si. Eski satırlarda NULL olabilir — bkz. drafts.py _resolve_origin_key.
+    origin_key: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+
+
+class ListingHealth(Base):
+    """Listing'in optimizasyon/durdurma durum makinesi (bkz. listings/health.py). `jobs/listing_health.py`
+    günlük olarak yeniden hesaplar: yeterli veri biriktiyse (`window_start`'tan bu yana) mağaza medyanıyla
+    kıyaslar, hangi aşamada tıkandığını (`bottleneck`) teşhis eder; aynı listing `attempts` kez denenip
+    hâlâ zayıfsa "kill_candidate" (durdurmayı değerlendir) işaretlenir. Etsy'ye giden hiçbir şey yok —
+    kullanıcı "durdur" derse ayrıca /health/kill çağrılır."""
+
+    __tablename__ = "listing_health"
+    __table_args__ = (UniqueConstraint("shop_id", "listing_id", name="uq_listing_health_shop_listing"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
+    listing_id: Mapped[int] = mapped_column(Integer, index=True)
+
+    # watching (veri birikiyor) | flagged (öneri var) | stable (iyi, dokunma) | kill_candidate | killed
+    stage: Mapped[str] = mapped_column(String(20), default="watching")
+    # seo | appeal | conversion — flagged/kill_candidate'ta hangi huni aşaması zayıf
+    bottleneck: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    note: Mapped[str] = mapped_column(Text, default="")
+
+    # Şu anki gözlem penceresinin başlangıcı: son uygulanan değişiklik, yoksa listing'in oluşturulma tarihi
+    window_start: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    # Bu pencereye kadar kaç farklı değişiklik döngüsü denendi (her yeni "applied" versiyon +1)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    # Daha önce denenmiş bottleneck türleri (JSON liste) — aynı teşhisi tekrar tekrar önermemek için
+    tried_bottlenecks: Mapped[str] = mapped_column(Text, default="[]")
+
+    evaluated_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    killed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class ListingLocal(Base):

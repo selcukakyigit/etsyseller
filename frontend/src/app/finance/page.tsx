@@ -3,9 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, FinReport, FinSyncStatus } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
+import { useUrlTab } from "@/lib/useUrlTab";
 import AppShell from "@/components/AppShell";
 import { CompareBars, StackedBars, monthLabel } from "@/components/finance/charts";
 import { ProductCosts, OrderCosts } from "@/components/finance/CostEditors";
+import ShippingInvoices from "@/components/finance/ShippingInvoices";
+import { onSyncDone } from "@/lib/syncEvents";
+import TopOrders from "@/components/finance/TopOrders";
 
 const names = new Intl.DisplayNames(["tr"], { type: "region", fallback: "code" });
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -13,13 +17,22 @@ const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart
 function rangeFor(period: string): { start: string; end: string } {
   const now = new Date();
   const y = now.getFullYear();
+  if (period === "today") return { start: iso(now), end: iso(now) };
+  if (period === "yesterday") {
+    const d = iso(new Date(now.getTime() - 864e5));
+    return { start: d, end: d };
+  }
   if (period === "ytd") return { start: iso(new Date(y, 0, 1)), end: iso(now) };
   if (period === "last12") return { start: iso(new Date(y - 1, now.getMonth() + 1, 1)), end: iso(now) };
+  if (period === "7d") return { start: iso(new Date(now.getTime() - 6 * 864e5)), end: iso(now) };
+  if (period === "30d") return { start: iso(new Date(now.getTime() - 29 * 864e5)), end: iso(now) };
   if (period === "90d") return { start: iso(new Date(now.getTime() - 89 * 864e5)), end: iso(now) };
   if (period === "month") return { start: iso(new Date(y, now.getMonth(), 1)), end: iso(now) };
   const yr = Number(period);
   return { start: iso(new Date(yr, 0, 1)), end: iso(new Date(yr, 11, 31)) };
 }
+
+const TABS = ["overview", "products", "orders", "invoices"] as const;
 
 const card = "rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900";
 const h2 = "mb-3 text-base font-semibold text-neutral-900 dark:text-neutral-100";
@@ -38,10 +51,22 @@ function Delta({ cur, prev, label, invert = false }: { cur: number; prev: number
 export default function FinancePage() {
   const { user, shops, activeShop, setActiveShopId, error: bootError } = useAuthAndShop();
   const shopId = activeShop?.id;
-  const [tab, setTab] = useState<"overview" | "products" | "orders">("overview");
-  const [period, setPeriod] = useState("ytd");
+  const [tab, setTab] = useUrlTab<(typeof TABS)[number]>("tab", "overview", TABS);
+  const [topTab, setTopTab] = useState<"customers" | "best" | "worst">("customers");
+  const [period, setPeriod] = useState("month");
+  const [customStart, setCustomStart] = useState(() => iso(new Date(Date.now() - 29 * 864e5)));
+  const [customEnd, setCustomEnd] = useState(() => iso(new Date()));
   const [country, setCountry] = useState("");
   const [report, setReport] = useState<FinReport | null>(null);
+  // period built-in bir seçenekse rangeFor'dan, "custom" ise kullanıcının seçtiği iki tarihten, "all" ise ilk
+  // siparişten bugüne (henüz veri gelmediyse Etsy'nin kuruluş yılı 2005 güvenli bir alt sınır) gelir;
+  // Genel bakış/Ürünler/Siparişler hepsi tek bu değeri kullanır, ayrı bir entegrasyon gerekmez.
+  const range =
+    period === "custom"
+      ? { start: customStart, end: customEnd }
+      : period === "all"
+        ? { start: iso(new Date(report?.first_year ?? 2005, 0, 1)), end: iso(new Date()) }
+        : rangeFor(period);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [sync, setSync] = useState<FinSyncStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +85,7 @@ export default function FinancePage() {
   const [prodSort, setProdSort] = useState("sales");
   const wasRunning = useRef(false);
 
-  const baseYear = Number(rangeFor(period).end.slice(0, 4));
+  const baseYear = Number(range.end.slice(0, 4));
   // Grafikte gösterilecek yıllar (en fazla 3, tekrarsız). Kartlar ve ülke çubukları her zaman bir önceki yılla karşılaştırılır.
   const chartYears = [
     chartSel[0] ? Number(chartSel[0]) : baseYear,
@@ -70,20 +95,27 @@ export default function FinancePage() {
   const chartOffsets = chartYears.filter((y) => y < baseYear).map((y) => baseYear - y);
   const offsets = [1, ...chartOffsets.filter((o) => o !== 1)].slice(0, 4);
   const offsetsKey = offsets.join(",");
-  const key = JSON.stringify([shopId, period, country, reloadTick, offsetsKey]);
+  const key = JSON.stringify([shopId, period, range.start, range.end, country, reloadTick, offsetsKey]);
   const loading = loadedKey !== key;
 
   useEffect(() => {
     if (shopId === undefined) return;
-    const { start, end } = rangeFor(period);
+    if (period === "custom" && customStart > customEnd) return; // geçersiz aralık: bekle, istek atma
+
+    const storageKey = `fin-report:${key}`;
     let cancelled = false;
     api.finance
-      .report(shopId, start, end, country, offsetsKey.split(",").filter(Boolean).map(Number))
+      .report(shopId, range.start, range.end, country, offsetsKey.split(",").filter(Boolean).map(Number))
       .then((r) => {
         if (cancelled) return;
         setReport(r);
         setError(null);
         setLoadedKey(key);
+        try {
+          sessionStorage.setItem(storageKey, JSON.stringify(r));
+        } catch {
+          // kota dolu vb. — önbellek olmadan da çalışır
+        }
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
@@ -91,7 +123,7 @@ export default function FinancePage() {
     return () => {
       cancelled = true;
     };
-  }, [shopId, period, country, key, silentTick, offsetsKey]);
+  }, [shopId, key, silentTick, period, range.start, range.end, country, offsetsKey, customStart, customEnd]);
 
   // Senkronizasyon: ilk kullanımda otomatik başlar, çalışırken izlenir, bitince rapor yenilenir.
   const startSync = useCallback(
@@ -129,10 +161,13 @@ export default function FinancePage() {
     };
   }, [shopId, startSync]);
 
+  // Tek "senkronize et" düğmesi navbar'da; o bitince rapor kendiliğinden tazelenir.
+  useEffect(() => onSyncDone(() => setReloadTick((n) => n + 1)), []);
+
   const exportExcel = (all: boolean) => {
     if (shopId === undefined) return;
-    const { start, end } = rangeFor(period);
-    const scope = all ? "all" : tab;
+    const { start, end } = range;
+    const scope = all ? "all" : tab === "invoices" ? "products" : tab;
     setExporting(true);
     api.finance
       .exportXlsx(shopId, start, end, country, { scope, q: all ? "" : orderQ, sort: prodSort })
@@ -147,47 +182,82 @@ export default function FinancePage() {
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setExporting(false));
   };
-  const tabLabel = { overview: "Genel bakış", products: "Ürünler", orders: "Siparişler" }[tab];
+  const tabLabel = { overview: "Genel bakış", products: "Ürünler", orders: "Siparişler", invoices: "Ürünler" }[tab];
 
-  const cur = report?.currency ?? "USD";
+  // Aynı dönem/ülke için daha önce yüklenmiş bir rapor sessionStorage'daysa (ör. sayfadan çıkıp geri gelince)
+  // taze veri gelene kadar onu gösterir — "Rapor hazırlanıyor…" boşluğu ve ardından gelen ani UI değişimi yerine.
+  const displayReport = useMemo<FinReport | null>(() => {
+    if (report) return report;
+    try {
+      const cached = sessionStorage.getItem(`fin-report:${key}`);
+      return cached ? (JSON.parse(cached) as FinReport) : null;
+    } catch {
+      return null;
+    }
+  }, [report, key]);
+
+  const cur = displayReport?.currency ?? "USD";
   const money = useMemo(() => new Intl.NumberFormat("tr-TR", { style: "currency", currency: cur, maximumFractionDigits: 0 }), [cur]);
   const money2 = useMemo(() => new Intl.NumberFormat("tr-TR", { style: "currency", currency: cur, maximumFractionDigits: 2 }), [cur]);
   const fmt = (n: number) => money.format(n);
 
   const years = useMemo(() => {
-    const first = report?.first_year ?? new Date().getFullYear();
+    const first = displayReport?.first_year ?? new Date().getFullYear();
     const out: string[] = [];
     for (let y = new Date().getFullYear() - 1; y >= first; y--) out.push(String(y));
     return out;
-  }, [report?.first_year]);
+  }, [displayReport?.first_year]);
 
   const yearOptions: number[] = [];
-  for (let y = baseYear; y >= (report?.first_year ?? baseYear - 1); y--) yearOptions.push(y);
+  for (let y = baseYear; y >= (displayReport?.first_year ?? baseYear - 1); y--) yearOptions.push(y);
   const cmpLabel = String(baseYear - 1);
   const PALETTE = ["#c4c4c4", "#93c5fd", "#a78bfa"];
   const chartSorted = [...chartYears].sort((a, b) => a - b); // eski yıl solda
   const others = chartYears.filter((y) => y !== baseYear).sort((a, b) => b - a); // en yakın yıl gri
   const compareSeries = chartSorted.map((y) => ({ name: String(y), color: y === baseYear ? "#F1641E" : PALETTE[others.indexOf(y)] ?? PALETTE[2] }));
-  const k = report?.kpi;
-  const pk = report?.prev_kpi;
-  const missingFees = report?.coverage.orders_without_fees ?? 0;
+  const k = displayReport?.kpi;
+  const pk = displayReport?.prev_kpi;
+  const missingFees = displayReport?.coverage.orders_without_fees ?? 0;
   const select = "rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900";
 
   return (
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/finance">
-      <div className="mx-auto max-w-6xl px-6 py-8">
-        {!user && !bootError && <p className="text-sm text-neutral-400">Yükleniyor…</p>}
+      <div className="mx-auto max-w-6xl px-6 pb-8 pt-0">
+        {/* Sabit yükseklik: bu satır `user` gelince DOM'dan tamamen kalkıyor — sarmalayıcı olmadan
+            altındaki başlık/filtre satırı bir anda yukarı kayıyordu ("UI zıplaması"). */}
+        <div>
+          {!user && !bootError && <p className="text-sm text-neutral-400">Yükleniyor…</p>}
+        </div>
         {(bootError || error) && <p className="mb-4 text-sm text-red-600">{bootError ?? error}</p>}
 
-        <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">Finans</h1>
-            <p className="text-sm text-neutral-500">Satış, Etsy ücretleri ve ürün kârlılığı. Tutarlar {cur} cinsindendir.</p>
-          </div>
+        <div className={`mb-5 ${!displayReport && !error ? "min-h-[52px]" : ""}`}>
+          {sync?.running && (
+            <div className="rounded-xl border border-orange-200 bg-orange-50 p-3 text-sm text-orange-900 dark:border-orange-900 dark:bg-orange-950 dark:text-orange-200">
+              {sync.phase || "Etsy hesap hareketleri indiriliyor"} · %{Math.round(sync.progress * 100)}
+              <div className="mt-2 h-1.5 overflow-hidden rounded bg-orange-200 dark:bg-orange-900">
+                <div className="h-full bg-[#F1641E] transition-all" style={{ width: `${Math.round(sync.progress * 100)}%` }} />
+              </div>
+            </div>
+          )}
+          {sync?.error && <p className="text-sm text-red-600">Senkronizasyon hatası: {sync.error}</p>}
+          {!sync?.running && !sync?.error && missingFees > 0 && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+              Bu dönemdeki {missingFees} siparişin Etsy ücret kaydı yok; bu siparişlerde ücretler 0 görünür. üstteki senkronize ikonuyla tamamlanır.
+            </p>
+          )}
+        </div>
+
+        <div className="sticky top-[49px] z-[9] -mx-6 bg-neutral-50 px-6 pb-3 pt-3 dark:bg-neutral-950">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">Finans</h1>
           <div className="flex flex-wrap items-center gap-2">
             <select value={period} onChange={(e) => setPeriod(e.target.value)} className={select}>
+              <option value="today">Bugün</option>
+              <option value="yesterday">Dün</option>
               <option value="ytd">Bu yıl</option>
               <option value="month">Bu ay</option>
+              <option value="7d">Son 7 gün</option>
+              <option value="30d">Son 30 gün</option>
               <option value="90d">Son 90 gün</option>
               <option value="last12">Son 12 ay</option>
               {years.map((y) => (
@@ -195,7 +265,29 @@ export default function FinancePage() {
                   {y}
                 </option>
               ))}
+              <option value="all">Tüm zamanlar</option>
+              <option value="custom">Özel aralık…</option>
             </select>
+            {period === "custom" && (
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="date"
+                  value={customStart}
+                  max={customEnd}
+                  onChange={(e) => setCustomStart(e.target.value)}
+                  className={select}
+                />
+                <span className="text-sm text-neutral-500">–</span>
+                <input
+                  type="date"
+                  value={customEnd}
+                  min={customStart}
+                  max={iso(new Date())}
+                  onChange={(e) => setCustomEnd(e.target.value)}
+                  className={select}
+                />
+              </div>
+            )}
             <select value={country} onChange={(e) => setCountry(e.target.value)} className={select}>
               <option value="">Tüm ülkeler</option>
               {(report?.available_countries ?? []).map((c) => (
@@ -206,7 +298,7 @@ export default function FinancePage() {
             </select>
             <button
               type="button"
-              disabled={exporting || !report}
+              disabled={exporting || !displayReport}
               onClick={() => exportExcel(false)}
               title="Bu sekmedeki dönem, ülke ve filtrelerle"
               className="rounded-lg bg-[#F1641E] px-3 py-2 text-sm font-medium text-white hover:bg-[#d9560f] disabled:opacity-50"
@@ -215,45 +307,22 @@ export default function FinancePage() {
             </button>
             <button
               type="button"
-              disabled={exporting || !report}
+              disabled={exporting || !displayReport}
               onClick={() => exportExcel(true)}
               title="Tüm sayfalar (özet, müşteriler, ülkeler, ürünler, siparişler), dönem ve ülke filtresiyle"
               className="rounded-lg border border-neutral-300 px-3 py-2 text-sm font-medium hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
             >
               Tümünü aktar
             </button>
-            <button
-              type="button"
-              disabled={sync?.running}
-              onClick={() => startSync(false)}
-              className="rounded-lg border border-neutral-300 px-3 py-2 text-sm font-medium hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
-            >
-              {sync?.running ? "Güncelleniyor…" : "Etsy'den güncelle"}
-            </button>
           </div>
         </div>
-
-        {sync?.running && (
-          <div className="mb-5 rounded-xl border border-orange-200 bg-orange-50 p-3 text-sm text-orange-900 dark:border-orange-900 dark:bg-orange-950 dark:text-orange-200">
-            {sync.phase || "Etsy hesap hareketleri indiriliyor"} · %{Math.round(sync.progress * 100)}
-            <div className="mt-2 h-1.5 overflow-hidden rounded bg-orange-200 dark:bg-orange-900">
-              <div className="h-full bg-[#F1641E] transition-all" style={{ width: `${Math.round(sync.progress * 100)}%` }} />
-            </div>
-          </div>
-        )}
-        {sync?.error && <p className="mb-4 text-sm text-red-600">Senkronizasyon hatası: {sync.error}</p>}
-        {!sync?.running && missingFees > 0 && (
-          <p className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
-            Bu dönemdeki {missingFees} siparişin Etsy ücret kaydı yok; bu siparişlerde ücretler 0 görünür. &quot;Etsy&apos;den güncelle&quot; ile tamamlanır.
-          </p>
-        )}
-
-        <div className="mb-5 flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
+        <div className="flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
           {(
             [
               ["overview", "Genel bakış"],
               ["products", "Ürün kârlılığı"],
               ["orders", "Sipariş maliyetleri"],
+              ["invoices", "Kargo faturaları"],
             ] as const
           ).map(([v, l]) => (
             <button
@@ -266,16 +335,60 @@ export default function FinancePage() {
             </button>
           ))}
         </div>
+        </div>
 
-        {!report && !error && <p className="text-sm text-neutral-400">Rapor hazırlanıyor…</p>}
+        {!displayReport && !error && (
+          <div className="space-y-5 pt-2" aria-live="polite">
+            <div className="h-48 animate-pulse rounded-xl border border-neutral-200 bg-neutral-200/70 dark:border-neutral-800 dark:bg-neutral-800/80" />
+            <div className="grid gap-3 md:grid-cols-3">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-32 animate-pulse rounded-xl border border-neutral-200 bg-neutral-200/70 dark:border-neutral-800 dark:bg-neutral-800/80" />
+              ))}
+            </div>
+            <div className="h-72 animate-pulse rounded-xl border border-neutral-200 bg-neutral-200/70 dark:border-neutral-800 dark:bg-neutral-800/80" />
+          </div>
+        )}
 
-        {report && k && pk && (
+        {displayReport && k && pk && (
           <div className={loading ? "opacity-60 transition-opacity" : "transition-opacity"}>
             {tab === "overview" && (
               <div className="space-y-5">
                 <section className={card}>
-                  <h2 className={h2}>En çok alışveriş yapan müşteriler</h2>
-                  {report.customers.length === 0 ? (
+                  <div className="mb-3 flex flex-wrap gap-1 border-b border-neutral-200 dark:border-neutral-800">
+                    {(
+                      [
+                        ["customers", "En çok alışveriş yapan müşteriler"],
+                        ["best", "En çok kazandıran siparişler"],
+                        ["worst", "Zarar / düşük kârlı siparişler"],
+                      ] as const
+                    ).map(([v, label]) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setTopTab(v)}
+                        className={`-mb-px border-b-2 px-3 py-2 text-sm font-semibold ${topTab === v ? "border-[#F1641E] text-neutral-900 dark:text-neutral-100" : "border-transparent text-neutral-500 hover:text-neutral-800"}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {(topTab === "best" || topTab === "worst") && shopId !== undefined && (
+                    <>
+                      <TopOrders
+                        rows={topTab === "best" ? displayReport.top_orders : displayReport.worst_orders}
+                        shopId={shopId}
+                        money2={money2}
+                        countryName={(c) => names.of(c) ?? c}
+                        emptyText="Bu dönemde maliyeti girilmiş sipariş yok."
+                      />
+                      <p className="mt-2 text-[11px] text-neutral-400">
+                        Sipariş kârı: satış − iade − Etsy ücreti − maliyet (reklam/abonelik gibi ortak giderler hariç).
+                        {topTab === "worst" && " Zarar edenler en üstte."}
+                        {displayReport.orders_no_cost > 0 && ` Maliyeti girilmemiş ${displayReport.orders_no_cost} sipariş, kârı gerçeği yansıtmadığı için listeye dahil değil.`}
+                      </p>
+                    </>
+                  )}
+                  {topTab === "customers" && (displayReport.customers.length === 0 ? (
                     <p className="text-sm text-neutral-400">Bu dönemde sipariş yok.</p>
                   ) : (
                     <div className="overflow-x-auto">
@@ -291,7 +404,7 @@ export default function FinancePage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {report.customers.slice(0, 10).map((c, i) => (
+                          {displayReport.customers.slice(0, 10).map((c, i) => (
                             <tr key={`${c.name}-${i}`} className="border-b border-neutral-50 last:border-0 dark:border-neutral-800/60">
                               <td className="py-2 pr-3 text-neutral-400">{i + 1}</td>
                               <td className="py-2 pr-3 font-medium">{c.name}</td>
@@ -304,10 +417,10 @@ export default function FinancePage() {
                         </tbody>
                       </table>
                     </div>
-                  )}
+                  ))}
                 </section>
 
-                {report.overhead_excluded && (
+                {displayReport.overhead_excluded && (
                   <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
                     Ülke filtresi açık: Etsy Ads, listeleme ve abonelik giderleri ülkeye atanamadığı için bu görünümde hesaba katılmadı. Net kâr ve marj bu yüzden gerçekte olduğundan yüksek görünür.
                   </p>
@@ -332,6 +445,7 @@ export default function FinancePage() {
                 </section>
 
                 <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  <Metric label="Satılan ürün adedi" value={k.units.toLocaleString("tr-TR")} sub={<Delta label={cmpLabel} cur={k.units} prev={pk.units} />} />
                   <Metric label="Ortalama sipariş değeri" value={money2.format(k.aov)} sub={<Delta label={cmpLabel} cur={k.aov} prev={pk.aov} />} />
                   <Metric
                     label="Etsy'ye giden pay"
@@ -379,10 +493,14 @@ export default function FinancePage() {
                     </div>
                   </div>
                   <CompareBars
-                    data={report.series.map((sp) => ({
+                    data={displayReport.series
+                      .filter((sp) => sp.month.slice(0, 4) === String(baseYear)) // bu grafik "bu yılın ayı vs geçen yıllar" karşılaştırması;
+                      // "Tüm zamanlar"/çok yıllı özel aralıkta series birden fazla yılın aylarını içerebilir, aynı ay adı (Oca, Şub…)
+                      // birden fazla kez gelip React key çakışmasına yol açardı.
+                      .map((sp) => ({
                       label: monthLabel(sp.month).slice(0, 3),
                       values: chartSorted.map((y) =>
-                        y === baseYear ? sp.sales : baseYear - y === report.offsets[0] ? sp.prev_sales : (sp.cmp.find((c) => c.offset === baseYear - y)?.sales ?? 0),
+                        y === baseYear ? sp.sales : baseYear - y === displayReport.offsets[0] ? sp.prev_sales : (sp.cmp.find((c) => c.offset === baseYear - y)?.sales ?? 0),
                       ),
                     }))}
                     series={compareSeries}
@@ -393,7 +511,7 @@ export default function FinancePage() {
                 <section className={card}>
                   <h2 className={h2}>Satış nereye gidiyor?</h2>
                   <StackedBars
-                    data={report.series.map((s) => ({ label: monthLabel(s.month), parts: [s.profit, s.cogs, s.fees, s.overhead] }))}
+                    data={displayReport.series.map((s) => ({ label: monthLabel(s.month), parts: [s.profit, s.cogs, s.fees, s.overhead] }))}
                     legend={[
                       { name: "Net kâr", color: "#10b981" },
                       { name: "Ürün + kargo", color: "#6366f1" },
@@ -414,24 +532,27 @@ export default function FinancePage() {
 
                 <section className={card}>
                   <h2 className={h2}>Hangi ülkeye satış yapıldı?</h2>
-                  <CountryBars rows={report.countries} fmt={fmt} cur={String(baseYear)} prev={cmpLabel} />
+                  <CountryBars rows={displayReport.countries} fmt={fmt} cur={String(baseYear)} prev={cmpLabel} />
                 </section>
               </div>
             )}
 
             {tab === "products" && shopId !== undefined && (
               <ProductCosts
-                products={report.products}
+                products={displayReport.products}
                 shopId={shopId}
                 money2={money2}
                 onSaved={scheduleRefresh}
                 onSortChange={setProdSort}
-                fixedCost={report.settings.order_fixed_cost}
+                fixedCost={displayReport.settings.order_fixed_cost}
                 currency={cur}
               />
             )}
             {tab === "orders" && shopId !== undefined && (
-              <OrderCosts shopId={shopId} range={rangeFor(period)} money2={money2} onSaved={scheduleRefresh} onQuery={setOrderQ} />
+              <OrderCosts shopId={shopId} range={range} money2={money2} onSaved={scheduleRefresh} onQuery={setOrderQ} />
+            )}
+            {tab === "invoices" && shopId !== undefined && (
+              <ShippingInvoices shopId={shopId} products={displayReport.products} money2={money2} onSaved={scheduleRefresh} />
             )}
           </div>
         )}

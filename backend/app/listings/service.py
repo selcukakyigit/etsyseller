@@ -17,7 +17,6 @@ from app.etsy import properties as etsy_properties
 from app.etsy import variation_images as etsy_variation_images
 from app.etsy import videos as etsy_videos
 from app.etsy.client import EtsyClient
-from app.core import ttl_cache
 from app.listings import image_cache
 from app.keywords import service as keyword_service
 from app.keywords import trends as keyword_trends
@@ -144,11 +143,19 @@ def sync_listings(db: Session, shop: Shop, full: bool = False) -> int:
             complete = False  # bir durum çekilemediyse silinenleri temizleme (yanlışlıkla silmeyelim)
             logger.exception("Listing state %s could not be fetched for shop %s", state, shop.id)
 
+    # Etsy'nin farklı durum sorguları (active/inactive/draft/…) bazen aynı listing'i döndürebiliyor (ör. durum
+    # değişimi tam senkron sırasında olursa). `db` autoflush=False olduğundan, aynı listing_id bu döngüde iki kez
+    # geçerse ikinci geçişte henüz flush edilmemiş ilk INSERT görülemiyor ve UNIQUE ihlali ile TÜM senkron çöküyordu
+    # (o ana kadar işlenenler kaydolur, kalanı hiç güncellenmez). Baştan tekilleştirip bunu kökten önlüyoruz.
+    listings = list({item["listing_id"]: item for item in listings}.values())
+
     synced = 0
     seen_skipped = 0
     seen: set[int] = set()
     captured_today = performance.captured_today_ids(db, shop.id)
-    for item in listings:
+    total = len(listings)
+    for idx, item in enumerate(listings):
+        sync_status.set_progress(shop.id, idx, total)
         listing_id = item["listing_id"]
         seen.add(listing_id)
         performance.record_snapshot(db, shop.id, item, captured_today)  # görüntülenme/favori/içerik parmak izi: günde bir
@@ -177,25 +184,32 @@ def sync_listings(db: Session, shop: Shop, full: bool = False) -> int:
             inventory = json.loads(existing.inventory_json) if existing else {}
             properties = json.loads(existing.properties_json) if existing else []
 
-        row = existing
-        if row is None:
-            row = ListingCache(shop_id=shop.id, listing_id=listing_id)
-            db.add(row)
+        try:
+            row = existing
+            if row is None:
+                row = ListingCache(shop_id=shop.id, listing_id=listing_id)
+                db.add(row)
 
-        row.title = item.get("title", "")
-        row.views = item.get("views") or 0
-        row.favorites = item.get("num_favorers") or 0
-        row.raw_json = json.dumps(item, ensure_ascii=False)
-        row.inventory_json = json.dumps(inventory, ensure_ascii=False)
-        row.properties_json = json.dumps(properties, ensure_ascii=False)
-        row.synced_at = dt.datetime.utcnow()
-        # Süresi dolmuş/tükenmiş listing'lerde ek veriler (varyasyon fotoğrafı, kişiselleştirme) açılınca çekilir; API kotasını korur.
-        if item.get("state") in ("active", "inactive", "draft"):
-            _store_extras(client, row, listing_id)
-        synced += 1
-        if synced % 25 == 0:
-            db.commit()
+            row.title = item.get("title", "")
+            row.views = item.get("views") or 0
+            row.favorites = item.get("num_favorers") or 0
+            row.raw_json = json.dumps(item, ensure_ascii=False)
+            row.inventory_json = json.dumps(inventory, ensure_ascii=False)
+            row.properties_json = json.dumps(properties, ensure_ascii=False)
+            row.synced_at = dt.datetime.utcnow()
+            # Süresi dolmuş/tükenmiş listing'lerde ek veriler (varyasyon fotoğrafı, kişiselleştirme) açılınca çekilir; API kotasını korur.
+            if item.get("state") in ("active", "inactive", "draft"):
+                _store_extras(client, row, listing_id)
+            synced += 1
+            if synced % 25 == 0:
+                db.commit()
+        except Exception:
+            # Tek bir listing'de beklenmeyen bir hata (ör. veritabanı kısıtlaması) TÜM senkronu sessizce
+            # durdurmasın — geri al, bu listing'i atla, kalanına devam et; bir sonraki senkron bunu tekrar dener.
+            db.rollback()
+            logger.exception("Listing %s senkronize edilemedi (shop %s), atlanıp devam ediliyor", listing_id, shop.id)
 
+    sync_status.set_progress(shop.id, total, total)
     if complete:
         for stale in db.scalars(select(ListingCache).where(ListingCache.shop_id == shop.id)).all():
             if stale.listing_id not in seen:
@@ -213,6 +227,10 @@ def _run_sync_in_background(shop_id: int, full: bool = False) -> None:
         shop = db.get(Shop, shop_id)
         if shop is not None and shop.oauth_token is not None:
             sync_listings(db, shop, full=full)
+            if full:
+                from app.shops import reference_cache
+
+                reference_cache.invalidate(db, shop)  # kargo/işlem/iade profilleri de tazelensin
     except Exception:
         logger.exception("Background listing sync failed for shop %s", shop_id)
     finally:
@@ -226,7 +244,6 @@ def start_background_sync(shop: Shop, full: bool = False) -> bool:
     however long a full sync takes. Returns False if one's already running."""
     if not sync_status.mark_syncing(shop.id):
         return False
-    ttl_cache.clear((shop.id,))
     threading.Thread(target=_run_sync_in_background, args=(shop.id, full), daemon=True).start()
     return True
 
@@ -235,9 +252,12 @@ def get_sync_status(db: Session, shop: Shop) -> dict:
     last_synced_at = db.scalars(
         select(ListingCache.synced_at).where(ListingCache.shop_id == shop.id).order_by(ListingCache.synced_at.desc())
     ).first()
+    progress = sync_status.get_progress(shop.id)
     return {
         "syncing": sync_status.is_syncing(shop.id),
         "last_synced_at": last_synced_at.isoformat() if last_synced_at else None,
+        "done": progress[0] if progress else None,
+        "total": progress[1] if progress else None,
     }
 
 
@@ -555,6 +575,7 @@ def _listing_edit_out(row: ListingCache) -> ListingEditOut:
         description=html.unescape(raw.get("description", "")),
         tags=_unescape(raw.get("tags") or []),
         materials=_unescape(raw.get("materials") or []),
+        style=_unescape(raw.get("style") or []),
         taxonomy_id=raw.get("taxonomy_id"),
         who_made=raw.get("who_made"),
         when_made=raw.get("when_made"),

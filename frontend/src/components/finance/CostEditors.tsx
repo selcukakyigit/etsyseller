@@ -1,7 +1,10 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { Modal } from "@/components/listing-editor/Modal";
 import { api, FinOrderCost, FinOrdersPage, FinProduct, FinVariant } from "@/lib/api";
+import OrderCostBreakdown from "./OrderCostBreakdown";
 import OrderDetailModal from "./OrderDetailModal";
 import ProductThumb from "./ProductThumb";
 
@@ -12,6 +15,58 @@ const filledCls = `${inputBase} border-emerald-300 bg-emerald-50 dark:border-eme
 
 const num = (v: string) => Number(v.replace(",", ".") || 0);
 const initial = (v: number | null | undefined) => (v === null || v === undefined || v === 0 ? "" : String(v));
+
+/** "USD" -> "$", "EUR" -> "€"… kod tanınmazsa kodun kendisini döner. */
+function currencySymbol(code: string): string {
+  try {
+    return (0)
+      .toLocaleString("tr-TR", { style: "currency", currency: code, minimumFractionDigits: 0, maximumFractionDigits: 0 })
+      .replace(/[\d\s]/g, "");
+  } catch {
+    return code;
+  }
+}
+
+/** Maliyet/kargo/fiyat% kutularının kenarında birim simgesi gösterir (para birimi solda, % sağda) — hangi birimde
+ * girildiği belirsiz kalmasın. Üç kutu da aynı genişlikte (`inputBase`'in w-20'si), satırdaki hizalama bozulmasın. */
+function UnitInput({
+  value,
+  onChange,
+  onBlur,
+  onKeyDown,
+  symbol,
+  side = "prefix",
+  className,
+  placeholder = "0",
+  adornment,
+}: {
+  /** Kutunun içinde, sağ köşede duran küçük öğe (ör. fatura ikonu) — hücre genişliğini değiştirmez. */
+  adornment?: React.ReactNode;
+  placeholder?: string;
+  value: string;
+  onChange: (v: string) => void;
+  onBlur: () => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  symbol: string;
+  side?: "prefix" | "suffix";
+  className: string;
+}) {
+  return (
+    <span className="relative inline-block">
+      <span className={`pointer-events-none absolute top-1/2 -translate-y-1/2 text-[11px] text-neutral-400 ${side === "prefix" ? "left-1.5" : "right-1.5"}`}>{symbol}</span>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+        onKeyDown={onKeyDown}
+        inputMode="decimal"
+        placeholder={placeholder}
+        className={`${className} ${side === "prefix" ? "pl-4" : "pr-4"} ${adornment ? "pr-6" : ""}`}
+      />
+      {adornment && <span className="absolute right-1.5 top-1/2 -translate-y-1/2">{adornment}</span>}
+    </span>
+  );
+}
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -47,7 +102,83 @@ function StateMark({ state, message, filled }: { state: SaveState; message?: str
   if (state === "saving") return <span className="whitespace-nowrap text-[11px] text-neutral-400">Kaydediliyor…</span>;
   if (state === "saved") return <span className="whitespace-nowrap text-[11px] font-medium text-emerald-600">✓ Kaydedildi</span>;
   if (state === "error") return <span className="whitespace-nowrap text-[11px] font-medium text-red-600">{message || "Kaydedilemedi"}</span>;
-  return filled ? <span className="whitespace-nowrap text-[11px] text-emerald-700/70 dark:text-emerald-400/70">Kayıtlı</span> : null;
+  if (filled) return <span className="whitespace-nowrap text-[11px] text-emerald-700/70 dark:text-emerald-400/70">Kayıtlı</span>;
+  return <span className="text-[11px] text-neutral-300 dark:text-neutral-700">—</span>;
+}
+
+/** Kargo faturası özeti: kutunun yanında küçük bir ikon; ayrıntı fare üzerine gelince görünür. Faturasız adet varsa ikon sarı. */
+/** Turuncu, yuvarlak içinde "i". `filled`: dikkat gerektiren durum (ör. faturasız adet var) için dolu, aksi halde çerçeveli. */
+export function InfoDot({ filled = false }: { filled?: boolean }) {
+  return (
+    <span
+      className={`flex h-4 w-4 items-center justify-center rounded-full border text-[10px] font-bold italic leading-none ${
+        filled ? "border-[#F1641E] bg-[#F1641E] text-white" : "border-[#F1641E] text-[#F1641E]"
+      }`}
+    >
+      i
+    </span>
+  );
+}
+
+type InvoiceOrder = { receipt_id: number; buyer: string; date: string; tracking: string; invoice: number | null };
+
+function InvoiceInfo({ invoice, manual, orders }: { invoice: { amount: number; count: number; units: number }; manual: boolean; orders: InvoiceOrder[] }) {
+  const missing = invoice.units - invoice.count;
+  const [open, setOpen] = useState(false);
+  const withInv = orders.filter((o) => o.invoice !== null);
+  const without = orders.filter((o) => o.invoice === null);
+  const row = "flex items-center justify-between gap-3 border-b border-neutral-100 py-1.5 text-sm last:border-0 dark:border-neutral-800";
+  return (
+    <span className="group relative block leading-none">
+      <button type="button" onClick={() => setOpen(true)} className="cursor-pointer" aria-label="Kargo faturası detayı">
+        <InfoDot filled={missing > 0} />
+      </button>
+      {open &&
+        createPortal(
+        <Modal title={`Kargo faturaları · ${withInv.length}/${orders.length} sipariş faturalı`} widthClass="max-w-lg" onClose={() => setOpen(false)} z={120}>
+          <div className="text-left" onClick={(e) => e.stopPropagation()}>
+            {without.length > 0 && (
+              <>
+                <p className="mb-1 text-xs font-semibold text-amber-600 dark:text-amber-400">Faturasız ({without.length}) — kargosu şu an 0 görünüyor</p>
+                <div className="mb-4">
+                  {without.map((o) => (
+                    <div key={o.receipt_id} className={row}>
+                      <span>
+                        {o.buyer || "—"} <span className="text-xs text-neutral-400">· {o.date}</span>
+                      </span>
+                      <span className="text-xs text-neutral-500">{o.tracking || "takip no yok"}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+            <p className="mb-1 text-xs font-semibold text-sky-700 dark:text-sky-400">Faturalı ({withInv.length})</p>
+            <div>
+              {withInv.map((o) => (
+                <div key={o.receipt_id} className={row}>
+                  <span>
+                    {o.buyer || "—"} <span className="text-xs text-neutral-400">· {o.date}</span>
+                  </span>
+                  <span className="text-xs text-neutral-500">
+                    {o.tracking || "—"} · <b className="text-neutral-800 dark:text-neutral-100">{(o.invoice ?? 0).toFixed(2)}</b>
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-neutral-400">Eksik faturaları &quot;Kargo faturaları&quot; sekmesinden yükleyin; takip no ile otomatik eşleşir.</p>
+          </div>
+        </Modal>,
+        document.body
+      )}
+      <span className="pointer-events-none absolute right-full top-1/2 z-30 mr-1 hidden -translate-y-1/2 whitespace-nowrap rounded-md bg-neutral-900 px-2 py-1.5 text-left text-[11px] leading-snug text-white shadow-lg group-hover:block dark:bg-neutral-700">
+        <span className="block">
+          {invoice.count} siparişte fatura: <b>{invoice.amount.toFixed(2)}</b>
+        </span>
+        <span className="block text-neutral-300">{manual ? "Faturalı siparişlerde fatura, faturasızlarda elle girilen değer kullanılır" : "Faturalı siparişlerde fatura tutarı kullanılıyor"}</span>
+        {missing > 0 && <span className="block text-amber-300">{missing} adet faturasız</span>}
+      </span>
+    </span>
+  );
 }
 
 function CostInputs({
@@ -55,12 +186,24 @@ function CostInputs({
   onSave,
   onSaved,
   noShip,
+  currency,
+  weightKg,
+  invoice,
+  orders,
 }: {
+  /** Fatura ikonuna tıklanınca gösterilen sipariş listesi (faturalı/faturasız). */
+  orders?: InvoiceOrder[];
   init: { unit: number | null; ship: number | null; pct: number | null };
   onSave: (unit: number, ship: number, pct: number) => Promise<unknown>;
   onSaved: () => void;
   noShip?: boolean;
+  currency: string;
+  /** Yüklenen faturalardan ortalama ağırlık; yalnızca bilgi. */
+  weightKg?: number | null;
+  /** Seçili dönemde bu seçeneğe yüklenen kargo faturaları: toplam tutar, faturalı sipariş sayısı, toplam adet. */
+  invoice?: { amount: number; count: number; units: number };
 }) {
+  const symbol = currencySymbol(currency);
   const [unit, setUnit] = useState(initial(init.unit));
   const [ship, setShip] = useState(initial(init.ship));
   const [pct, setPct] = useState(initial(init.pct));
@@ -80,7 +223,7 @@ function CostInputs({
   return (
     <>
       <td className="py-2 pr-2 text-right">
-        <input value={unit} onChange={(e) => setUnit(e.target.value)} onBlur={commit} onKeyDown={keys} inputMode="decimal" placeholder="0" className={unit !== "" ? filledCls : inputCls} />
+        <UnitInput value={unit} onChange={setUnit} onBlur={commit} onKeyDown={keys} symbol={symbol} className={unit !== "" ? filledCls : inputCls} />
       </td>
       <td className="py-2 pr-2 text-right">
         {noShip ? (
@@ -88,12 +231,22 @@ function CostInputs({
             dijital
           </span>
         ) : (
-          <input value={ship} onChange={(e) => setShip(e.target.value)} onBlur={commit} onKeyDown={keys} inputMode="decimal" placeholder="0" className={ship !== "" ? filledCls : inputCls} />
+          <UnitInput
+            value={ship}
+            onChange={setShip}
+            onBlur={commit}
+            onKeyDown={keys}
+            symbol={symbol}
+            placeholder={invoice && invoice.count > 0 ? (invoice.amount / invoice.count).toFixed(2) : "0"}
+            adornment={invoice && invoice.count > 0 ? <InvoiceInfo invoice={invoice} manual={ship !== "" && Number(ship) > 0} orders={orders ?? []} /> : undefined}
+            className={`${ship !== "" ? filledCls : inputCls} ${invoice && invoice.count > 0 && ship === "" ? "placeholder:font-medium placeholder:text-sky-600 dark:placeholder:text-sky-400" : ""}`}
+          />
         )}
       </td>
       <td className="py-2 pr-2 text-right">
-        <input value={pct} onChange={(e) => setPct(e.target.value)} onBlur={commit} onKeyDown={keys} inputMode="decimal" placeholder="0" className={`${pct !== "" ? filledCls : inputCls} w-16`} />
+        <UnitInput value={pct} onChange={setPct} onBlur={commit} onKeyDown={keys} symbol="%" side="suffix" className={pct !== "" ? filledCls : inputCls} />
       </td>
+      <td className="py-2 pr-2 text-right text-xs text-neutral-500">{weightKg ? weightKg : "—"}</td>
       <td className="w-28 py-2 pr-2">
         <StateMark state={state} message={message} filled={filled} />
       </td>
@@ -102,10 +255,10 @@ function CostInputs({
 }
 
 /** Sipariş başına sabit gider (ambalaj, koli, etiket…): tüm siparişlere (dijital olanlar hariç) uygulanır. */
-function FixedCostCard({ shopId, initial, currency, fixPast, onSaved }: { shopId: number; initial: number; currency: string; fixPast: boolean; onSaved: () => void }) {
+function FixedCostCard({ shopId, initial, currency, onSaved }: { shopId: number; initial: number; currency: string; onSaved: () => void }) {
   const [val, setVal] = useState(initial ? String(initial) : "");
   const last = useRef(val);
-  const [state, run, message] = useAutoSave(() => api.finance.setOrderFixedCost(shopId, num(val), fixPast), onSaved);
+  const [state, run, message] = useAutoSave(() => api.finance.setOrderFixedCost(shopId, num(val)), onSaved);
   const commit = () => {
     if (val === last.current || Number.isNaN(num(val))) return;
     last.current = val;
@@ -153,15 +306,13 @@ export function ProductCosts({
   fixedCost: number;
   currency: string;
 }) {
-  const [fixPast, setFixPast] = useState(false);
   const [search, setSearch] = useState("");
   const [limit, setLimit] = useState(50);
   const [sort, setSort] = useState<"sales" | "profit" | "margin">("sales");
   const [open, setOpen] = useState<Set<number>>(new Set());
   const needle = search.trim().toLowerCase();
-  const sorted = [...products].sort((a, b) => b[sort] - a[sort]).filter((p) => !needle || p.title.toLowerCase().includes(needle) || String(p.listing_id).includes(needle));
+  const sorted = [...products].sort((a, b) => b[sort] - a[sort]).filter((p) => !needle || p.title.toLowerCase().includes(needle) || String(p.listing_id).includes(needle) || (p.buyers ?? []).some((b) => b.toLowerCase().includes(needle)));
   const rows = sorted.slice(0, limit);
-  const missing = products.filter((p) => p.unit_cost === null && p.cost_pct === null && !p.variants.some((v) => v.unit_cost !== null)).length;
   const toggle = (id: number) =>
     setOpen((s) => {
       const n = new Set(s);
@@ -174,27 +325,15 @@ export function ProductCosts({
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-base font-semibold">Ürün kârlılığı</h2>
-          <p className="max-w-2xl text-xs text-neutral-500">
-            Kutular yazdıkça kaydolur (Tab ile ilerleyebilirsiniz). Maliyet = sabit tutar + satış fiyatının yüzdesi + kargo. Ürünün satırını açıp her boyut/seçenek için ayrı maliyet girerseniz o seçenek listing
-            maliyetinin yerine geçer. Özel siparişler için &quot;Sipariş maliyetleri&quot; sekmesi.
-            {missing > 0 && ` ${missing} üründe maliyet girilmemiş.`}
-          </p>
-          <label className="mt-2 flex max-w-2xl cursor-pointer items-start gap-2 text-xs text-neutral-600 dark:text-neutral-300">
-            <input type="checkbox" checked={fixPast} onChange={(e) => setFixPast(e.target.checked)} className="mt-0.5 accent-[#F1641E]" />
-            <span>
-              <b>Geçmiş siparişleri de güncelle.</b> Kapalıyken (önerilen) daha önce girilmiş bir maliyeti değiştirdiğinizde eski değer geçmiş siparişlerde korunur, yeni değer bugünden itibaren uygulanır. İlk kez girilen maliyet
-              her zaman tüm geçmişe uygulanır. Yazım hatasını düzeltiyorsanız bunu açın.
-            </span>
-          </label>
         </div>
-        <input value={search} onChange={(e) => { setSearch(e.target.value); setLimit(50); }} placeholder="Ürün ara" className="w-48 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+        <input value={search} onChange={(e) => { setSearch(e.target.value); setLimit(50); }} placeholder="Ürün ya da müşteri ara" className="w-48 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
         <select value={sort} onChange={(e) => { setSort(e.target.value as typeof sort); onSortChange?.(e.target.value); }} className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
           <option value="sales">Satışa göre</option>
           <option value="profit">Kâra göre</option>
           <option value="margin">Marja göre</option>
         </select>
       </div>
-      <FixedCostCard shopId={shopId} initial={fixedCost} currency={currency} fixPast={fixPast} onSaved={onSaved} />
+      <FixedCostCard shopId={shopId} initial={fixedCost} currency={currency} onSaved={onSaved} />
       <div className="overflow-x-auto">
         <table className="w-full min-w-[980px] text-sm">
           <thead>
@@ -206,6 +345,7 @@ export function ProductCosts({
               <th className="py-2 pr-2 text-right font-medium">Maliyet</th>
               <th className="py-2 pr-2 text-right font-medium">Kargo</th>
               <th className="py-2 pr-2 text-right font-medium">Fiyat %</th>
+              <th className="py-2 pr-2 text-right font-medium">Kg</th>
               <th className="py-2 pr-2 text-left font-medium">Kayıt</th>
               <th className="py-2 pr-3 text-right font-medium">Kalan</th>
               <th className="py-2 text-right font-medium">Marj</th>
@@ -236,15 +376,16 @@ export function ProductCosts({
                   <td className="py-2 pr-3 text-right text-neutral-500">{money2.format(p.fees)}</td>
                   <CostInputs
                     init={{ unit: p.unit_cost, ship: p.shipping_cost, pct: p.cost_pct }}
-                    onSave={(u, s, c) => api.finance.setCost(shopId, p.listing_id, u, s, c, fixPast)}
+                    onSave={(u, s, c) => api.finance.setCost(shopId, p.listing_id, u, s, c)}
                     onSaved={onSaved}
                     noShip={p.is_digital}
+                    currency={currency}
                   />
                   <td className={`py-2 pr-3 text-right font-semibold ${p.profit >= 0 ? "text-emerald-600" : "text-red-600"}`}>{money2.format(p.profit)}</td>
                   <td className="py-2 text-right text-neutral-500">%{p.margin.toFixed(0)}</td>
                 </tr>
                 {open.has(p.listing_id) &&
-                  p.variants.map((v) => <VariantRow key={v.key} v={v} listingId={p.listing_id} shopId={shopId} money2={money2} onSaved={onSaved} fixPast={fixPast} />)}
+                  p.variants.map((v) => <VariantRow key={v.key} v={v} listingId={p.listing_id} shopId={shopId} money2={money2} onSaved={onSaved} currency={currency} />)}
               </Fragment>
             ))}
           </tbody>
@@ -262,21 +403,27 @@ export function ProductCosts({
   );
 }
 
-function VariantRow({ v, listingId, shopId, money2, onSaved, fixPast }: { v: FinVariant; listingId: number; shopId: number; money2: Intl.NumberFormat; onSaved: () => void; fixPast: boolean }) {
+function VariantRow({ v, listingId, shopId, money2, onSaved, currency }: { v: FinVariant; listingId: number; shopId: number; money2: Intl.NumberFormat; onSaved: () => void; currency: string }) {
   const profit = (v.sales ?? 0) - (v.fees ?? 0) - (v.refunds ?? 0) - (v.cogs ?? 0);
   const valid = Number.isFinite(profit);
   const margin = valid && v.sales > 0 ? (profit / v.sales) * 100 : 0;
   return (
     <tr className="border-b border-sky-100 bg-sky-50/70 text-[13px] dark:border-sky-950 dark:bg-sky-950/20">
-      <td className="py-1.5 pl-14 pr-3 text-neutral-600 dark:text-neutral-300">{v.key || "Seçeneksiz"}</td>
+      <td className="py-1.5 pl-14 pr-3 text-neutral-600 dark:text-neutral-300">
+        {v.key || "Seçeneksiz"}
+      </td>
       <td className="py-1.5 pr-3 text-right">{v.units}</td>
       <td className="py-1.5 pr-3 text-right">{money2.format(v.sales)}</td>
       <td className="py-1.5 pr-3 text-right text-neutral-500">{money2.format(v.fees)}</td>
       <CostInputs
         init={{ unit: v.unit_cost, ship: v.shipping_cost, pct: v.cost_pct }}
-        onSave={(u, s, c) => api.finance.setVariantCost(shopId, listingId, v.key, u, s, c, fixPast)}
+        onSave={(u, s, c) => api.finance.setVariantCost(shopId, listingId, v.key, u, s, c)}
         onSaved={onSaved}
         noShip={v.is_digital}
+        currency={currency}
+        weightKg={v.weight_kg}
+        invoice={{ amount: v.invoice_amount, count: v.invoice_count, units: v.units }}
+        orders={v.orders}
       />
       <td className={`py-1.5 pr-3 text-right font-semibold ${!valid ? "text-neutral-400" : profit >= 0 ? "text-emerald-600" : "text-red-600"}`}>{valid ? money2.format(profit) : "—"}</td>
       <td className="py-1.5 text-right text-neutral-500">{valid ? `%${margin.toFixed(0)}` : "—"}</td>
@@ -304,6 +451,7 @@ export function OrderCosts({
   const [data, setData] = useState<FinOrdersPage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
+  const [breakdownId, setBreakdownId] = useState<number | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -361,7 +509,7 @@ export function OrderCosts({
           </thead>
           <tbody>
             {(data?.orders ?? []).map((o) => (
-              <OrderRow key={o.receipt_id} o={o} shopId={shopId} money2={money2} onSaved={onSaved} onOpen={() => setDetailId(o.receipt_id)} currency={data?.currency ?? o.original_currency} />
+              <OrderRow key={o.receipt_id} o={o} shopId={shopId} money2={money2} onSaved={onSaved} onOpen={() => setDetailId(o.receipt_id)} onBreakdown={setBreakdownId} currency={data?.currency ?? o.original_currency} />
             ))}
           </tbody>
         </table>
@@ -381,6 +529,7 @@ export function OrderCosts({
         </div>
       )}
       {detailId !== null && <OrderDetailModal shopId={shopId} receiptId={detailId} onClose={() => setDetailId(null)} />}
+      {breakdownId !== null && <OrderCostBreakdown shopId={shopId} receiptId={breakdownId} money2={money2} onClose={() => setBreakdownId(null)} />}
     </section>
   );
 }
@@ -403,7 +552,7 @@ function ProfitCell({ o, val, money2 }: { o: FinOrderCost; val: string; money2: 
   );
 }
 
-function OrderRow({ o, shopId, money2, onSaved, onOpen, currency }: { o: FinOrderCost; shopId: number; money2: Intl.NumberFormat; onSaved: () => void; onOpen: () => void; currency: string }) {
+function OrderRow({ o, shopId, money2, onSaved, onOpen, onBreakdown, currency }: { o: FinOrderCost; shopId: number; money2: Intl.NumberFormat; onSaved: () => void; onOpen: () => void; onBreakdown: (receiptId: number) => void; currency: string }) {
   const [val, setVal] = useState(o.override === null ? "" : String(o.override));
   const last = useRef(val);
   const [state, run, message] = useAutoSave(() => api.finance.setOrderCost(shopId, o.receipt_id, val === "" ? null : num(val)), onSaved);
@@ -452,8 +601,14 @@ function OrderRow({ o, shopId, money2, onSaved, onOpen, currency }: { o: FinOrde
           <span className="text-xs text-amber-600">maliyet yok</span>
         ) : (
           <>
-            {money2.format(o.auto_cost)}
+            <span className="inline-flex items-center justify-end gap-1.5">
+              {money2.format(o.auto_cost)}
+              <button type="button" onClick={() => onBreakdown(o.receipt_id)} className="cursor-pointer" aria-label="Maliyet dökümü" title="Maliyet dökümü">
+                <InfoDot filled={o.invoice_ship === null} />
+              </button>
+            </span>
             {o.fixed_cost > 0 && <div className="text-[11px] text-neutral-400">içinde sabit gider {money2.format(o.fixed_cost)}</div>}
+            {o.invoice_ship !== null && <div className="text-[11px] text-sky-600 dark:text-sky-400">kargo faturadan {money2.format(o.invoice_ship)}</div>}
           </>
         )}
       </td>

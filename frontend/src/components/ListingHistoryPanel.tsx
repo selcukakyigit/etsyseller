@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api, ListingHistory, ListingPerformance } from "@/lib/api";
+import { api, ListingHealth, ListingHistory, ListingPerformance } from "@/lib/api";
 import TrendChart from "@/components/TrendChart";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "Bekliyor",
@@ -12,6 +13,10 @@ const STATUS_LABEL: Record<string, string> = {
 
 function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString("tr-TR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+function formatDate(isoDate: string) {
+  return new Date(`${isoDate}T00:00:00`).toLocaleDateString("tr-TR", { day: "2-digit", month: "short", year: "numeric" });
 }
 
 // Oturum boyunca bellekte tutulan son sonuçlar: panel yeniden açılınca ya da dönem değişince eski veri anında görünür, arkada yenilenir.
@@ -107,9 +112,142 @@ function PerformanceSummary({ shopId, listingId }: { shopId: number; listingId: 
             Satışlar sipariş geçmişinden tamdır. Etsy görüntülenme/favori geçmişi vermez; günlük biriktiriyoruz (izleme {f?.tracking_days ?? 0} gündür). Toplam: {perf.lifetime.views} görüntülenme, {perf.lifetime.favorites} favori
             {perf.conversion_percent !== null && ` · dönüşüm %${perf.conversion_percent}`}.
           </p>
+          {perf.since_change ? (
+            <div className="mt-3 rounded-lg border border-neutral-100 bg-neutral-50 p-2.5 dark:border-neutral-800 dark:bg-neutral-950">
+              <p className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">
+                İçerik {formatDate(perf.since_change.content_changed_on)} tarihinde değişti — öncesi/sonrası (günde ortalama, {perf.since_change.window_days} gün baz alındı):
+              </p>
+              <div className="mt-1.5 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                {(
+                  [
+                    ["Görüntülenme/gün", "views_per_day"],
+                    ["Favori/gün", "favorites_per_day"],
+                    ["Satış adedi/gün", "units_per_day"],
+                    ["Ciro/gün", "revenue_per_day"],
+                  ] as const
+                ).map(([label, key]) => {
+                  const b = perf.since_change!.before[key];
+                  const a = perf.since_change!.after[key];
+                  const fmt = (n: number | null) => (n === null ? "—" : key === "revenue_per_day" ? `$${n.toFixed(2)}` : n.toFixed(key === "units_per_day" ? 2 : 1));
+                  const up = a !== null && b !== null && a > b;
+                  const down = a !== null && b !== null && a < b;
+                  return (
+                    <div key={key}>
+                      <div className="text-[10px] text-neutral-400">{label}</div>
+                      <div>
+                        {fmt(b)} → <b className={up ? "text-emerald-600" : down ? "text-red-600" : ""}>{fmt(a)}</b>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            f && !f.content_changed_on && (
+              <p className="mt-2 text-[11px] text-neutral-400">
+                Değişiklik öncesi/sonrası kıyaslama için içeriğin ne zaman değiştiğinin izlenmiş olması ve öncesinde/sonrasında en az birkaç günlük veri olması gerekiyor.
+              </p>
+            )
+          )}
         </>
       )}
     </div>
+  );
+}
+
+const STAGE_LABEL: Record<ListingHealth["stage"], string> = {
+  watching: "İzleniyor",
+  flagged: "Öneri var",
+  stable: "Stabil",
+  kill_candidate: "Durdurmayı değerlendir",
+  killed: "Durduruldu",
+};
+
+const STAGE_STYLE: Record<ListingHealth["stage"], string> = {
+  watching: "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300",
+  flagged: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+  stable: "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+  kill_candidate: "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  killed: "bg-neutral-200 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-500",
+};
+
+/** Listing "durdurmayı değerlendir" aşamasına gelene kadar sessiz kalır — bkz. listings/health.py:
+ * en az 21 gün/100 görüntülenme birikmeden hiçbir şey söylemez, sonra mağaza medyanına göre teşhis eder. */
+function HealthBanner({ shopId, listingId }: { shopId: number; listingId: number }) {
+  const [healthState, setHealthState] = useState<ListingHealth | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [confirm, confirmElement] = useConfirm();
+
+  useEffect(() => {
+    let cancelled = false;
+    api.listings
+      .health(shopId, listingId)
+      .then((h) => {
+        if (!cancelled) setHealthState(h);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [shopId, listingId]);
+
+  if (!healthState || healthState.stage === "watching") return null;
+
+  const handleKill = async () => {
+    const ok = await confirm({
+      title: "Listing'i durdur",
+      message: "Bu listing Etsy'de inactive yapılacak (satışa kapanır). İstediğin zaman tekrar active edebilirsin. Devam edilsin mi?",
+      confirmLabel: "Durdur",
+      destructive: true,
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      setHealthState(await api.listings.killListing(shopId, listingId));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleKeepWatching = async () => {
+    setBusy(true);
+    try {
+      setHealthState(await api.listings.keepWatching(shopId, listingId));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      {confirmElement}
+      <div className="rounded-xl border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STAGE_STYLE[healthState.stage]}`}>{STAGE_LABEL[healthState.stage]}</span>
+          {healthState.stage === "kill_candidate" && (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={handleKeepWatching}
+                className="rounded-full px-3 py-1 text-xs font-medium bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 disabled:opacity-50"
+              >
+                İzlemeye devam et
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={handleKill}
+                className="rounded-full px-3 py-1 text-xs font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                Listing&apos;i durdur
+              </button>
+            </div>
+          )}
+        </div>
+        <p className="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400">{healthState.note}</p>
+      </div>
+    </>
   );
 }
 
@@ -125,6 +263,7 @@ export default function ListingHistoryPanel({
 }) {
   const [history, setHistory] = useState<ListingHistory | null>(initialHistory ?? historyCache.get(`${shopId}:${listingId}`) ?? null);
   const [error, setError] = useState<string | null>(null);
+  const [showAllHistory, setShowAllHistory] = useState(false);
 
   useEffect(() => {
     if (initialHistory) return;
@@ -142,6 +281,7 @@ export default function ListingHistoryPanel({
   if (!history)
     return (
       <div className="border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/50 p-4 space-y-4">
+        {listingId > 0 && <HealthBanner shopId={shopId} listingId={listingId} />}
         {listingId > 0 && <PerformanceSummary shopId={shopId} listingId={listingId} />}
         <p className="text-sm text-neutral-400 dark:text-neutral-500">Değişiklik geçmişi yükleniyor…</p>
       </div>
@@ -153,6 +293,7 @@ export default function ListingHistoryPanel({
 
   return (
     <div className="border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/50 p-4 space-y-4">
+      {listingId > 0 && <HealthBanner shopId={shopId} listingId={listingId} />}
       {listingId > 0 && <PerformanceSummary shopId={shopId} listingId={listingId} />}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <TrendChart
@@ -174,8 +315,9 @@ export default function ListingHistoryPanel({
         {history.versions.length === 0 ? (
           <p className="text-sm text-neutral-400 dark:text-neutral-500">Henüz bir öneri üretilmedi.</p>
         ) : (
+          <>
           <ol className="space-y-2">
-            {history.versions.map((v) => (
+            {(showAllHistory ? history.versions : history.versions.slice(0, 3)).map((v) => (
               <li key={v.id} className="flex items-start gap-3 text-sm">
                 <span
                   className={`mt-0.5 flex-shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -198,6 +340,16 @@ export default function ListingHistoryPanel({
               </li>
             ))}
           </ol>
+          {history.versions.length > 3 && (
+            <button
+              type="button"
+              onClick={() => setShowAllHistory((v) => !v)}
+              className="mt-2 text-xs font-medium text-[#c94f16] hover:underline"
+            >
+              {showAllHistory ? "Daha az göster" : `Daha fazla göster (${history.versions.length - 3} tane daha)`}
+            </button>
+          )}
+          </>
         )}
       </div>
     </div>

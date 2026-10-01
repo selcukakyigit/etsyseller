@@ -15,14 +15,18 @@ logger = logging.getLogger(__name__)
 OWN_LISTINGS = 6  # etiketleri havuza alınacak, bu listing'e en benzer kendi listing'lerin sayısı
 OWN_TAGS = 15
 COMPETITOR_SAMPLE = 50
-COMPETITOR_TAGS = 15
+COMPETITOR_TAGS = 30  # editördeki "havuzdan seç" artık yalnızca rakip etiketleri öneri olarak gösteriyor (SENİN
+# etiketleri zaten kendi listing'lerinden bilinen fikirler — çeşitlilik için rakip payını büyüttük)
 POOL_SIZE = OWN_TAGS + COMPETITOR_TAGS
 WINNER_WINDOW_DAYS = 180
 MIN_RELEVANCE = 0.12  # ağırlıklı kelime benzerliği bunun altındaysa listing "alakasız" sayılır
 
 
-def _own_tags(db: Session, shop: Shop, listing: dict) -> list[dict]:
-    """Senin ALAKALI listing'lerinden etiketler, GERÇEK SATIŞA göre sıralı.
+def _own_tag_agg(db: Session, shop: Shop, listing: dict) -> tuple[dict[str, dict], int]:
+    """Senin ALAKALI listing'lerinin etiketlerini toplar, GERÇEK SATIŞA göre ağırlıklandırır. Ham toplam
+    (dict[etiket] -> {units, n, from}) + kaç benzer listing seçildiği döner; üst N'e kesme `build_keyword_pool`'da
+    yapılır — böylece havuzda yer almayan ama listing'de zaten kullanılan bir etiketin de gerçek sayısına
+    (kesilmemiş hâliyle) ulaşılabiliyor.
 
     Eski yöntem, aynı kategorideki listing'leri günlük anlık görüntülerdeki görüntülenme artışıyla sıralıyordu; bu geçmiş
     çok kısa olduğunda (ör. 2 gün) rastgele sonuç veriyordu ve kategori çok geniş olduğunda (Wall Decor) alakasız ürünlerin
@@ -57,7 +61,6 @@ def _own_tags(db: Session, shop: Shop, listing: dict) -> list[dict]:
     ranked.sort(key=lambda r: -r[0])
     chosen = ranked[:OWN_LISTINGS]
 
-    mine = {t.lower() for t in (listing.get("tags") or [])}
     agg: dict[str, dict] = {}
     for _, _, units, o in chosen:
         for tag in o["tags"]:
@@ -67,14 +70,7 @@ def _own_tags(db: Session, shop: Shop, listing: dict) -> list[dict]:
             d["n"] += 1
             if len(d["from"]) < 2:
                 d["from"].append(o["title"][:60])
-    out = sorted(agg.values(), key=lambda d: (-d["units"], -d["n"]))[:OWN_TAGS]
-    return [
-        {
-            "tag": d["tag"], "source": "own", "score": d["n"], "sample_size": len(chosen), "units": d["units"],
-            "from_listings": d["from"], "in_listing": d["tag"] in mine,
-        }
-        for d in out
-    ]
+    return agg, len(chosen)
 
 
 def _anchor_keywords(listing: dict) -> str | None:
@@ -89,10 +85,11 @@ def _anchor_keywords(listing: dict) -> str | None:
     title = (listing.get("title") or "").strip()
     if not title:
         return None
-    for sep in (",", "|", "-", ":"):
-        if sep in title:
-            title = title.split(sep, 1)[0].strip()
-            break
+    # Metinde EN ÖNCE geçen ayırıcıyı kullan — sabit bir öncelik sırasıyla (ör. hep önce virgül) kontrol
+    # etmek, ayırıcı metinde daha SONRA geçse bile onu seçip yanlış (gereksiz kısa/uzun) bir çapa üretebiliyordu.
+    positions = [title.index(sep) for sep in (",", "|", "-", ":") if sep in title]
+    if positions:
+        title = title[: min(positions)].strip()
     return title or None
 
 
@@ -122,18 +119,51 @@ def _competitor_tags(taxonomy_id: int | None, keywords: str | None) -> tuple[Cou
 def build_keyword_pool(db: Session, shop: Shop, listing: dict) -> list[dict]:
     """Aday anahtar kelime havuzu (SEO önerisine ve arayüze girdi): `OWN_TAGS` kadar senin alakalı listing'lerinden
     (gerçek satışa göre sıralı) + `COMPETITOR_TAGS` kadar rakip etiketi (ilk 50 rakip listing'te kaç kez geçtiğine göre).
-    Slotlar ayrıdır, bu yüzden rakip verisi kendi etiketlerin tarafından ezilmez."""
-    pool = _own_tags(db, shop, listing)
-    seen = {item["tag"] for item in pool}
+    Slotlar ayrıdır, bu yüzden rakip verisi kendi etiketlerin tarafından ezilmez.
 
+    Ayrıca: listing'in ŞU AN kullandığı her etiket, üst-N kesmesine girmese bile (ör. iyi satmayan ya da
+    rakiplerde nadir geçen bir etiket) havuzda GERÇEK sayısıyla yer alır — aksi halde arayüzde renksiz/skorsuz
+    görünüyordu, sanki hiç veri yokmuş gibi; oysa "0/50" ya da düşük satış da anlamlı bir sayı."""
+    mine = {t.lower() for t in (listing.get("tags") or [])}
+    own_agg, own_sample = _own_tag_agg(db, shop, listing)
     competitor_counts, competitor_sample = _competitor_tags(listing.get("taxonomy_id"), _anchor_keywords(listing))
+
+    pool: list[dict] = []
+    seen: set[str] = set()
+
+    own_sorted = sorted(own_agg.values(), key=lambda d: (-d["units"], -d["n"]))[:OWN_TAGS]
+    for d in own_sorted:
+        pool.append({
+            "tag": d["tag"], "source": "own", "score": d["n"], "sample_size": own_sample, "units": d["units"],
+            "from_listings": d["from"], "in_listing": d["tag"] in mine,
+        })
+        seen.add(d["tag"])
+
     added = 0
     for tag, score in competitor_counts.most_common():
         if tag in seen:
             continue
         seen.add(tag)
-        pool.append({"tag": tag, "source": "competitor", "score": score, "sample_size": competitor_sample})
+        pool.append({"tag": tag, "source": "competitor", "score": score, "sample_size": competitor_sample, "in_listing": tag in mine})
         added += 1
         if added >= COMPETITOR_TAGS:
             break
-    return pool[:POOL_SIZE]
+
+    # Havuzda yer almayan ama listing'de zaten kullanılan etiketler — gerçek sayılarıyla, sample_size 0'sa
+    # (arama hiç yapılamadıysa/sonuç yoksa) o etiketi hiç eklemiyoruz; "0/0" yanıltıcı olurdu.
+    for tag in mine:
+        if tag in seen:
+            continue
+        if tag in own_agg:
+            d = own_agg[tag]
+            pool.append({
+                "tag": tag, "source": "own", "score": d["n"], "sample_size": own_sample, "units": d["units"],
+                "from_listings": d["from"], "in_listing": True,
+            })
+        elif competitor_sample > 0:
+            pool.append({"tag": tag, "source": "competitor", "score": competitor_counts.get(tag, 0), "sample_size": competitor_sample, "in_listing": True})
+        else:
+            continue
+        seen.add(tag)
+
+    return pool

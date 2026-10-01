@@ -36,6 +36,13 @@ const CARDS = [
     description: "Şifreni değiştir",
   },
   {
+    href: "/settings/danger",
+    icon: ShieldIcon,
+    color: "bg-neutral-700",
+    title: "Hesap ve Veriler",
+    description: "Verileri sıfırla veya üyeliği sil",
+  },
+  {
     href: "/settings/help",
     icon: HelpIcon,
     color: "bg-teal-600",
@@ -54,7 +61,9 @@ export default function SettingsHub() {
 
         {bootError && <p className="text-sm text-red-600">{bootError}</p>}
 
-        {!user && !bootError && <p className="text-sm text-neutral-400 dark:text-neutral-500">Yükleniyor…</p>}
+        <div className="min-h-[20px]">
+          {!user && !bootError && <p className="text-sm text-neutral-400 dark:text-neutral-500">Yükleniyor…</p>}
+        </div>
 
         {user && (
           <div className="rounded-2xl bg-gradient-to-r from-[#F1641E] to-[#c94f16] p-5 flex items-center gap-4 text-white">
