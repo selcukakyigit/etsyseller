@@ -20,6 +20,7 @@ import ListingFilters, { applyFilters, EMPTY_FILTERS, Filters, Reference } from 
 type PublishOutcome = { id: number; title: string; ok: boolean; error?: string; updated?: string[]; warnings?: string[] };
 
 const SYNC_POLL_INTERVAL_MS = 3000;
+const STALE_AFTER_MS = 5 * 60 * 60 * 1000; // 5 saat: 6 saatlik sınırın altında kal
 
 export default function Home() {
   const { user, shops, activeShop, setActiveShopId, error: bootError } = useAuthAndShop();
@@ -53,6 +54,43 @@ export default function Home() {
 
   // Arka planda süren bir yayın bitince (editörden başlatılmış olabilir) liste kendini yeniler.
   useEffect(() => onPublishFinished(() => loadListings()), [loadListings]);
+
+  // Önbellek bayatsa sessizce yenile. Etsy kuralı: ilan verisi en fazla 6 saat eski gösterilebilir; sunucu 4 saatte bir
+  // kendi yeniler, bu da sayfayı uzun süre sonra açan (ya da sunucu işinin kaçırıldığı) durumlar için ikinci güvence.
+  // Yenileme sürerken eski liste görünmeye devam eder; bitince liste tazelenir.
+  const shopIdForStale = activeShop?.id;
+  const hasListings = (listings?.length ?? 0) > 0;
+  useEffect(() => {
+    if (!shopIdForStale || !hasListings) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    (async () => {
+      try {
+        const status = await api.listings.syncStatus(shopIdForStale);
+        if (cancelled || status.syncing) return;
+        const last = status.last_synced_at ? Date.parse(`${status.last_synced_at}Z`) : 0; // sunucu UTC, saat dilimi eki yok
+        if (Date.now() - last < STALE_AFTER_MS) return;
+        await api.listings.sync(shopIdForStale);
+        timer = setInterval(async () => {
+          try {
+            const s = await api.listings.syncStatus(shopIdForStale);
+            if (!s.syncing) {
+              clearInterval(timer);
+              if (!cancelled) loadListings();
+            }
+          } catch {
+            // ağ hatası: bir sonraki tikte tekrar dener
+          }
+        }, SYNC_POLL_INTERVAL_MS);
+      } catch {
+        // sessiz arka plan yenilemesi: hata kullanıcıyı rahatsız etmesin
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+    };
+  }, [shopIdForStale, hasListings, loadListings]);
 
   // Listing'ler hiç senkronize edilmemişse (mağaza yeni bağlandığında cache
   // boştur) arka planda bir kerelik senkronizasyon başlat ve bitene kadar

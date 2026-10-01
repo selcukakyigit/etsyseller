@@ -13,9 +13,29 @@ _last_call = 0.0
 MIN_INTERVAL_SECONDS = 0.22  # a bit above 1/5s for safety margin
 
 
+# Personal API anahtarı günde yaklaşık 5.000 istek verir (Commercial daha fazlası). Sayaç bellek içidir (yeniden
+# başlatmada sıfırlanır, yaklaşık bir ölçüdür): amaç, zamanlanmış yenilemelerin kullanıcının etkileşimli kullanımına
+# ayrılan payı yememesi.
+DAILY_BUDGET_FOR_BACKGROUND = 3500
+_day = ""
+_calls = 0
+
+
+def calls_today() -> int:
+    return _calls if _day == time.strftime("%Y-%m-%d", time.gmtime()) else 0
+
+
+def background_budget_ok() -> bool:
+    return calls_today() < DAILY_BUDGET_FOR_BACKGROUND
+
+
 def throttle() -> None:
-    global _last_call
+    global _last_call, _day, _calls
     with _lock:
+        today = time.strftime("%Y-%m-%d", time.gmtime())
+        if today != _day:
+            _day, _calls = today, 0
+        _calls += 1
         now = time.monotonic()
         wait = MIN_INTERVAL_SECONDS - (now - _last_call)
         if wait > 0:

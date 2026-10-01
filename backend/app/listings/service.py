@@ -216,6 +216,8 @@ def sync_listings(db: Session, shop: Shop, full: bool = False) -> int:
         for stale in db.scalars(select(ListingCache).where(ListingCache.shop_id == shop.id)).all():
             if stale.listing_id not in seen:
                 db.delete(stale)
+    if complete:
+        shop.listings_synced_at = dt.datetime.utcnow()
     db.commit()
     logger.info("Listing sync: %s çekildi, %s değişmediği için atlandı (full=%s)", synced, seen_skipped, full)
     return synced
@@ -251,9 +253,7 @@ def start_background_sync(shop: Shop, full: bool = False) -> bool:
 
 
 def get_sync_status(db: Session, shop: Shop) -> dict:
-    last_synced_at = db.scalars(
-        select(ListingCache.synced_at).where(ListingCache.shop_id == shop.id).order_by(ListingCache.synced_at.desc())
-    ).first()
+    last_synced_at = shop.listings_synced_at  # None: tam senkron hiç tamamlanmadı (yarım kalmış olabilir)
     progress = sync_status.get_progress(shop.id)
     return {
         "syncing": sync_status.is_syncing(shop.id),

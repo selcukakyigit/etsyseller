@@ -22,6 +22,9 @@ class Shop(Base):
     currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     # Mağaza logosu (Etsy: icon_url_fullxfull) — bağlanınca bir kez, sonra jobs/shop_profile.py ile günlük tazelenir.
     icon_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # İlan listesinin Etsy ile en son tam doğrulandığı an. Etsy kuralı: ilan verisi en fazla 6 saat eski gösterilebilir;
+    # bu damga hem zamanlanmış yenilemeyi hem arayüzdeki "güncel mi" kararını yönetir.
+    listings_synced_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="shops")
     workspace: Mapped["Workspace"] = relationship(back_populates="shops")
