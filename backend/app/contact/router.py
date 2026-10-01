@@ -1,9 +1,8 @@
 import logging
-import smtplib
 import time
 from collections import defaultdict, deque
-from email.message import EmailMessage
 
+import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
@@ -52,21 +51,23 @@ def _rate_limited(ip: str) -> bool:
 
 
 def _notify(msg_id: int, name: str, email: str, topic: str, message: str) -> None:
-    """SMTP ayarlıysa ekibe e-posta gönderir; ayarlı değilse mesaj yalnızca veritabanında durur."""
-    if not (settings.smtp_host and settings.contact_to):
+    """Resend ayarlıysa ekibe e-posta gönderir; ayarlı değilse mesaj yalnızca veritabanında durur."""
+    if not (settings.resend_api_key and settings.resend_from and settings.contact_to):
         return
     try:
-        mail = EmailMessage()
-        mail["Subject"] = f"[Ulagg iletişim #{msg_id}] {topic} - {name}"
-        mail["From"] = settings.smtp_from or settings.smtp_user
-        mail["To"] = settings.contact_to
-        mail["Reply-To"] = email
-        mail.set_content(f"Gönderen: {name} <{email}>\nKonu: {topic}\n\n{message}")
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as smtp:
-            smtp.starttls()
-            if settings.smtp_user:
-                smtp.login(settings.smtp_user, settings.smtp_password)
-            smtp.send_message(mail)
+        resp = httpx.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {settings.resend_api_key}"},
+            json={
+                "from": settings.resend_from,
+                "to": [a.strip() for a in settings.contact_to.split(",") if a.strip()],
+                "reply_to": email,
+                "subject": f"[Ulagg iletişim #{msg_id}] {topic} - {name}",
+                "text": f"Gönderen: {name} <{email}>\nKonu: {topic}\n\n{message}",
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
     except Exception:  # bildirim başarısız olsa da mesaj kaydedildi; kullanıcıya hata göstermeyiz
         log.exception("İletişim bildirimi gönderilemedi (#%s)", msg_id)
 

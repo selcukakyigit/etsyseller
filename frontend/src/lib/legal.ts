@@ -5,20 +5,22 @@ import type { Lang } from "@/lib/i18n";
 export const BRAND = "Ulagg";
 export const BRAND_DOMAIN = "ulagg.com"; // TODO: gerçek alan adı
 
-// Veri sorumlusu (işletme) bilgileri. TODO: vergi/MERSİS numarası ve gerçek e-posta adresleri.
+// Veri sorumlusu (işletme) bilgileri. TODO: gerçek e-posta adresleri.
 export const COMPANY = {
   name: "CATCHOPS YAZILIM SAN. VE TİC. LTD. ŞTİ.",
   address: "Ünsal Mah. 5 Temmuz Kurtuluş Cad. Rima Apt. Sitesi No:226/B Kepez/ANTALYA",
   addressLines: ["Ünsal Mah. 5 Temmuz Kurtuluş Cad.", "Rima Apt. Sitesi No:226/B", "Kepez / Antalya, Türkiye"],
-  mersis: "[MERSİS / VERGİ NO]",
+  mersis: "0203073912000001",
+  tax: "Antalya Kurumlar V.D. 2030739120",
+  tradeRegistry: "114386",
   whatsapp: "905417718590",
   whatsappDisplay: "+90 541 771 85 90",
   email: `support@${BRAND_DOMAIN}`, // TODO: gerçek destek adresi
   kvkkEmail: `privacy@${BRAND_DOMAIN}`, // TODO: gizlilik / KVKK başvurularının alınacağı adres
-  // Harita işaretçisi: Ünsal Mahallesi merkezi (yaklaşık). Tam konum için Google Haritalar'da binaya sağ tıklayıp
-  // koordinatları buraya yaz.
-  lat: 36.9286639,
-  lon: 30.6334245,
+  // Harita işaretçisi: 5 Temmuz Kurtuluş Caddesi'nin Ünsal Mahallesi'ndeki kesimi (OpenStreetMap verisi). Bina numarası
+  // haritada kayıtlı olmadığı için yaklaşıktır; Google Haritalar'da binaya sağ tıklayıp tam koordinatları buraya yazabilirsin.
+  lat: 36.9346978,
+  lon: 30.62966,
 };
 
 export const LEGAL_VERSION = "2026-10-01";

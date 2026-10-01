@@ -63,6 +63,11 @@ export default async function ContactPage() {
                   <span key={l} className="block">{l}</span>
                 ))}
               </address>
+              <p className="mt-3 text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
+                {COMPANY.tax}
+                <br />
+                MERSİS {COMPANY.mersis} · {lang === "tr" ? "Ticaret Sicil No" : "Trade registry no."} {COMPANY.tradeRegistry}
+              </p>
             </div>
 
             <dl className="space-y-4">

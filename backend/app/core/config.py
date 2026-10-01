@@ -39,12 +39,10 @@ class Settings(BaseSettings):
     # mağazaların Etsy bağlantısı yeniden kurulmalıdır — güvenli bir yerde yedekle.
     token_encryption_key: str = ""
 
-    # İletişim formu bildirimi (isteğe bağlı): ayarlı değilse mesajlar yalnızca veritabanına yazılır.
-    smtp_host: str = ""
-    smtp_port: int = 587
-    smtp_user: str = ""
-    smtp_password: str = ""
-    smtp_from: str = ""
+    # İletişim formu bildirimi (Resend, isteğe bağlı): ayarlı değilse mesajlar yalnızca veritabanına yazılır.
+    # RESEND_FROM doğrulanmış bir alan adından olmalı, örn. "Ulagg <noreply@ulagg.com>"; CONTACT_TO bildirimi alacak adres(ler).
+    resend_api_key: str = ""
+    resend_from: str = ""
     contact_to: str = ""
 
     # Virgülle ayrılmış e-postalar: global API anahtarları ekranını yalnızca bunlar görebilir/değiştirebilir.

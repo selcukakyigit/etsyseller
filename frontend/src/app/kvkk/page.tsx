@@ -23,7 +23,9 @@ export default async function KvkkPage() {
       <UL>
         <li>Unvan: {COMPANY.name}</li>
         <li>Adres: {COMPANY.address}</li>
-        <li>MERSİS / Vergi No: {COMPANY.mersis}</li>
+        <li>MERSİS No: {COMPANY.mersis}</li>
+        <li>Vergi Dairesi / No: {COMPANY.tax}</li>
+        <li>Ticaret Sicil No: {COMPANY.tradeRegistry}</li>
         <li>İletişim: {COMPANY.kvkkEmail}</li>
       </UL>
 
