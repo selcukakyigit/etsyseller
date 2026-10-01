@@ -7,6 +7,7 @@ from app.auth.schemas import ConsentIn, UserOut
 from app.core.config import settings
 from app.core.db import get_db
 from app.core.deps import get_current_user, is_admin
+from app.core.net import client_ip
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -40,8 +41,7 @@ def accept_terms(
     """Kullanım Koşulları / Gizlilik / KVKK metninin güncel sürümünün kabulünü sürüm, zaman ve IP ile kaydeder."""
     if payload.version != settings.legal_version:
         raise HTTPException(409, "Metinler güncellendi, sayfayı yenileyip tekrar deneyin")
-    forwarded = request.headers.get("x-forwarded-for")
-    ip = forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else None)
+    ip = client_ip(request)
     db.add(UserConsent(user_id=user.id, version=payload.version, ip=ip, user_agent=(request.headers.get("user-agent") or "")[:255]))
     db.commit()
     return user_out(db, user)

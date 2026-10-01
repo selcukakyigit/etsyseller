@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.auth.models import User
 from app.contact.models import ContactAttachment, ContactMessage
 from app.core import storage
+from app.core.net import client_ip
 from app.core.config import settings
 from app.core.db import get_db
 from app.core.deps import require_admin
@@ -69,13 +70,6 @@ def _safe_name(name: str) -> str:
     return (base or "file")[:120]
 
 
-def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
-
-
 def _rate_limited(ip: str) -> bool:
     now = time.time()
     q = _hits[ip]
@@ -129,7 +123,7 @@ async def submit(
         return {"ok": True}
     if int(request.headers.get("content-length") or 0) > MAX_REQUEST_BYTES:
         raise HTTPException(413, "Files are too large (10 MB per file).")
-    ip = _client_ip(request)
+    ip = client_ip(request)
     if _rate_limited(ip):
         raise HTTPException(429, "Too many messages. Please try again later.")
     try:
