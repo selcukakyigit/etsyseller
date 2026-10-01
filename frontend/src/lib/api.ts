@@ -1,3 +1,5 @@
+import { getAccessToken, supabase } from "@/lib/supabase";
+
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export type User = {
@@ -5,6 +7,9 @@ export type User = {
   email: string;
   name: string | null;
   avatar_url: string | null;
+  is_admin: boolean;
+  /** Güncel hukuki metin sürümü kabul edilmediyse true — kullanıcı /accept-terms ekranına yönlendirilir. */
+  needs_consent: boolean;
 };
 
 export type ApiKeys = {
@@ -627,11 +632,15 @@ function detailText(detail: unknown): string | undefined {
   return undefined;
 }
 
+async function authHeader(): Promise<Record<string, string>> {
+  const token = await getAccessToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
-    credentials: "include",
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    headers: { "Content-Type": "application/json", ...(await authHeader()), ...init?.headers },
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -644,7 +653,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 /** Like request(), but for multipart uploads — the browser must set its own
  * Content-Type with the form boundary, so we don't force application/json. */
 async function requestForm<T>(path: string, formData: FormData): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, { method: "POST", credentials: "include", body: formData });
+  const res = await fetch(`${API_URL}${path}`, { method: "POST", headers: await authHeader(), body: formData });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new ApiError(res.status, body.detail ?? `İstek başarısız: ${res.status}`);
@@ -1004,11 +1013,10 @@ export interface DashboardData {
 export const api = {
   auth: {
     me: () => request<User>("/api/auth/me"),
-    register: (email: string, password: string) =>
-      request<User>("/api/auth/register", { method: "POST", body: JSON.stringify({ email, password }) }),
-    login: (email: string, password: string) =>
-      request<User>("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
-    logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
+    consent: (version: string) => request<User>("/api/auth/consent", { method: "POST", body: JSON.stringify({ version }) }),
+    logout: async () => {
+      await supabase.auth.signOut();
+    },
   },
   account: {
     updateProfile: (name: string) =>
@@ -1023,16 +1031,18 @@ export const api = {
       request<ApiKeys>("/api/account/api-keys", { method: "PUT", body: JSON.stringify(payload) }),
     testApiKey: (provider: "etsy" | "openai" | "anthropic" | "google") =>
       request<ApiKeyTestResult>(`/api/account/api-keys/test/${provider}`, { method: "POST" }),
-    changePassword: (currentPassword: string, newPassword: string) =>
-      request<{ ok: boolean }>("/api/account/password", {
-        method: "PUT",
-        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
-      }),
-    // Geri alınamaz işlemler: hesap şifresi + onay zorunlu. Şifre yanlışsa sunucu hata döner.
-    resetData: (password: string) =>
-      request<{ ok: boolean }>("/api/account/reset-data", { method: "POST", body: JSON.stringify({ password, confirm: true }) }),
-    deleteAccount: (password: string) =>
-      request<{ ok: boolean }>("/api/account/delete", { method: "POST", body: JSON.stringify({ password, confirm: true }) }),
+    /** Şifre Supabase'de tutulur: mevcut şifreyle yeniden giriş doğrulanır, sonra yenisi ayarlanır. */
+    changePassword: async (email: string, currentPassword: string, newPassword: string) => {
+      const check = await supabase.auth.signInWithPassword({ email, password: currentPassword });
+      if (check.error) throw new Error("Mevcut şifre yanlış");
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw new Error(error.message);
+    },
+    // Geri alınamaz işlemler: hesabın e-postasını yazarak onay + onay kutusu zorunlu.
+    resetData: (email: string) =>
+      request<{ ok: boolean }>("/api/account/reset-data", { method: "POST", body: JSON.stringify({ email, confirm: true }) }),
+    deleteAccount: (email: string) =>
+      request<{ ok: boolean }>("/api/account/delete", { method: "POST", body: JSON.stringify({ email, confirm: true }) }),
   },
   shops: {
     list: () => request<Shop[]>("/api/shops"),
@@ -1359,7 +1369,7 @@ export const api = {
       if (country) params.set("country", country);
       if (opts.q) params.set("q", opts.q);
       const res = await fetch(`${API_URL}/api/shops/${shopId}/finance/export.xlsx?${params}`, {
-        credentials: "include",
+        headers: await authHeader(),
       });
       if (!res.ok) throw new Error("Excel oluşturulamadı");
       return res.blob();

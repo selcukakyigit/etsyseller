@@ -1,0 +1,12 @@
+Terminal 1: Backend
+
+
+cd C:\Users\ADMİN\Desktop\etsy\backend
+.venv\Scripts\activate
+alembic upgrade head        # sadece yeni migration geldiyse gerekli
+uvicorn app.main:app --reload --port 8000
+Terminal 2: Frontend
+
+
+cd C:\Users\ADMİN\Desktop\etsy\frontend
+npm run dev

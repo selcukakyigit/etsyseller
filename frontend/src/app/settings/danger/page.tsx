@@ -63,8 +63,8 @@ export default function DangerSettingsPage() {
           ]}
           actionLabel="Verileri sıfırla"
           onClose={() => setModal(null)}
-          onConfirm={async (password) => {
-            await api.account.resetData(password);
+          onConfirm={async (email) => {
+            await api.account.resetData(email);
             clearBrowserData();
             window.location.href = "/";
           }}
@@ -81,8 +81,9 @@ export default function DangerSettingsPage() {
           ]}
           actionLabel="Üyeliği sil"
           onClose={() => setModal(null)}
-          onConfirm={async (password) => {
-            await api.account.deleteAccount(password); // sunucu oturumu ve çerezi de siler: kullanıcı çıkış yapmış olur
+          onConfirm={async (email) => {
+            await api.account.deleteAccount(email);
+            await api.auth.logout();
             clearBrowserData();
             window.location.href = "/login";
           }}

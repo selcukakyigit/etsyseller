@@ -86,7 +86,7 @@ export default function SettingsHub() {
 
         {user && (
           <div className="grid sm:grid-cols-2 gap-3">
-            {CARDS.map((card) => {
+            {CARDS.filter((card) => card.href !== "/settings/api-keys" || user.is_admin).map((card) => {
               const Icon = card.icon;
               return (
                 <Link

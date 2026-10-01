@@ -40,13 +40,9 @@ class ApiKeyTestOut(BaseModel):
     message: str
 
 
-class PasswordChangeIn(BaseModel):
-    current_password: str
-    new_password: str
-
-
 class DangerIn(BaseModel):
-    """Geri alınamaz işlemler için: hesap şifresi + "onaylıyorum" işareti (ikisi de zorunlu)."""
+    """Geri alınamaz işlemler için: hesabın e-postasını yazarak onay + "onaylıyorum" işareti (ikisi de zorunlu).
+    Şifre doğrulaması Supabase tarafında olduğundan burada e-posta yazdırılır."""
 
-    password: str
+    email: str
     confirm: bool = False

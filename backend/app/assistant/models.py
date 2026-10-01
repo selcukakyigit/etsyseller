@@ -1,9 +1,9 @@
 import datetime as dt
 
-from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.db import Base
+from app.core.db import MONEY, Base
 
 
 class ChatSession(Base):
@@ -59,11 +59,11 @@ class AdReport(Base):
     listing_title: Mapped[str] = mapped_column(String(255), default="")
     period_start: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     period_end: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
-    spend: Mapped[float] = mapped_column(Float, default=0.0)
+    spend: Mapped[float] = mapped_column(MONEY, default=0.0)
     views: Mapped[int] = mapped_column(Integer, default=0)
     clicks: Mapped[int] = mapped_column(Integer, default=0)
     orders: Mapped[int] = mapped_column(Integer, default=0)
-    revenue: Mapped[float] = mapped_column(Float, default=0.0)
+    revenue: Mapped[float] = mapped_column(MONEY, default=0.0)
     keywords_json: Mapped[str] = mapped_column(Text, default="[]")
     note: Mapped[str] = mapped_column(String(500), default="")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)

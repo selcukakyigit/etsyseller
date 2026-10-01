@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, ApiError, Shop, User } from "@/lib/api";
+import { LEGAL_VERSION } from "@/lib/legal";
 
 const ACTIVE_SHOP_KEY = "activeShopId";
 
@@ -29,7 +30,26 @@ export function useAuthAndShop() {
   const loadUser = useCallback(() => {
     api.auth
       .me()
-      .then(setUser)
+      .then(async (u) => {
+        if (u.needs_consent) {
+          // Kayıt formunda onay kutusu işaretlendiyse ilk girişte sürümle birlikte kaydet; yoksa onay ekranına yönlendir.
+          let pending: string | null = null;
+          try {
+            pending = window.localStorage.getItem("pendingConsent");
+          } catch {}
+          if (pending === LEGAL_VERSION) {
+            try {
+              u = await api.auth.consent(LEGAL_VERSION);
+              window.localStorage.removeItem("pendingConsent");
+            } catch {}
+          }
+          if (u.needs_consent) {
+            router.replace("/accept-terms");
+            return;
+          }
+        }
+        setUser(u);
+      })
       .catch((e) => {
         if (e instanceof ApiError && e.status === 401) {
           router.push("/login");

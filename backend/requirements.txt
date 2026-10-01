@@ -6,7 +6,6 @@ pydantic-settings==2.5.2
 pydantic[email]==2.13.5
 SQLAlchemy==2.0.35
 alembic==1.13.3
-bcrypt==4.2.0
 openai==1.109.1
 apscheduler==3.10.4
 python-multipart==0.0.12
@@ -17,3 +16,5 @@ openpyxl==3.1.5
 google-genai==2.25.0
 xlrd==2.0.1
 pypdf==5.9.0
+PyJWT[crypto]==2.10.1
+psycopg[binary]==3.2.3

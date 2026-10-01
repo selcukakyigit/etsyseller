@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 from app.auth.models import User
 from app.core.config import settings
 from app.core.env_store import mask_secret, set_env_values
-from app.core.security import hash_password, verify_password
 
 AVATAR_DIR = Path(__file__).resolve().parent.parent.parent / "uploads" / "avatars"
 AVATAR_DIR.mkdir(parents=True, exist_ok=True)
@@ -18,23 +17,6 @@ AVATAR_SIZE = 512  # square, in pixels
 
 class InvalidAvatar(Exception):
     pass
-
-
-class WrongPassword(Exception):
-    pass
-
-
-class WeakPassword(Exception):
-    pass
-
-
-def change_password(db: Session, user: User, current_password: str, new_password: str) -> None:
-    if not verify_password(current_password, user.password_hash):
-        raise WrongPassword("Mevcut şifre yanlış")
-    if len(new_password) < 8:
-        raise WeakPassword("Yeni şifre en az 8 karakter olmalı")
-    user.password_hash = hash_password(new_password)
-    db.commit()
 
 
 def update_profile(db: Session, user: User, name: str | None) -> User:

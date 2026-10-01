@@ -1,4 +1,4 @@
-"""Geri alınamaz hesap işlemleri: "tüm verileri sıfırla" ve "hesabı sil". Her ikisi de hesap şifresi ister.
+"""Geri alınamaz hesap işlemleri: "tüm verileri sıfırla" ve "hesabı sil". İkisi de hesabın e-postasını yazarak onay ister.
 
 Etsy'deki mağazanın kendisine dokunulmaz — silinen yalnızca bu uygulamadaki yerel kopyalar/kayıtlardır. `.env`'deki
 API anahtarları uygulama geneli ayardır (kullanıcıya ait değil), o yüzden silinmez.
@@ -6,25 +6,31 @@ API anahtarları uygulama geneli ayardır (kullanıcıya ait değil), o yüzden 
 import shutil
 from pathlib import Path
 
+import httpx
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.account.service import AVATAR_DIR, WrongPassword
-from app.auth.models import User
+from app.account.service import AVATAR_DIR
+from app.auth.models import User, Workspace, WorkspaceMember
+from app.auth.workspaces import workspace_ids
+from app.core.config import settings
 from app.core.db import Base
-from app.core.security import verify_password
 from app.shops.models import Shop
 
 UPLOADS = Path(__file__).resolve().parents[2] / "uploads"
 # mağaza başına diskte tutulan klasörler: <uploads>/<ad>/<shop_id>
 SHOP_UPLOAD_FOLDERS = ("drafts", "image-cache", "chat")
 # kullanıcıya/mağazaya bağlı ama shop_id taşımayan ya da silinmemesi gereken tablolar
-SKIP_TABLES = {"shops", "users", "sessions", "oauth_states"}
+SKIP_TABLES = {"shops", "users", "oauth_states", "workspaces", "workspace_members", "user_consents"}
 
 
-def verify(user: User, password: str) -> None:
-    if not verify_password(password, user.password_hash):
-        raise WrongPassword("Şifre yanlış")
+class WrongConfirmation(Exception):
+    pass
+
+
+def verify(user: User, typed_email: str) -> None:
+    if typed_email.strip().lower() != user.email.lower():
+        raise WrongConfirmation("Yazdığınız e-posta hesabınızla eşleşmiyor")
 
 
 def _wipe_shops(db: Session, shop_ids: list[int]) -> None:
@@ -51,21 +57,47 @@ def _wipe_shops(db: Session, shop_ids: list[int]) -> None:
 
 
 def _shop_ids(db: Session, user: User) -> list[int]:
-    return list(db.scalars(select(Shop.id).where(Shop.user_id == user.id)))
+    return list(db.scalars(select(Shop.id).where(Shop.workspace_id.in_(workspace_ids(db, user)))))
 
 
 def reset_data(db: Session, user: User) -> None:
-    """Hesap açık, şifre/profil aynı kalır; bağlı mağazalar ve onlara ait TÜM veri silinir — hesap yeni açılmış gibi olur."""
+    """Hesap açık, profil aynı kalır; bağlı mağazalar ve onlara ait TÜM veri silinir — hesap yeni açılmış gibi olur."""
     _wipe_shops(db, _shop_ids(db, user))
     db.execute(delete(Base.metadata.tables["oauth_states"]).where(Base.metadata.tables["oauth_states"].c.user_id == user.id))
     db.commit()
 
 
+def _delete_supabase_user(supabase_id: str) -> None:
+    if not (settings.supabase_url and settings.supabase_secret_key):
+        raise RuntimeError("Supabase yapılandırılmamış")
+    resp = httpx.delete(
+        f"{settings.supabase_url.rstrip('/')}/auth/v1/admin/users/{supabase_id}",
+        headers={"apikey": settings.supabase_secret_key, "Authorization": f"Bearer {settings.supabase_secret_key}"},
+        timeout=20,
+    )
+    if resp.status_code not in (200, 204, 404):
+        raise RuntimeError(f"Supabase kullanıcısı silinemedi ({resp.status_code})")
+
+
 def delete_account(db: Session, user: User) -> None:
-    """Kullanıcı, oturumları, mağazaları ve tüm verisi (profil fotoğrafı dahil) kalıcı olarak silinir."""
+    """Kullanıcı, kişisel çalışma alanı, mağazaları ve tüm verisi (profil fotoğrafı ve Supabase kimliği dahil) silinir."""
+    supabase_id = user.supabase_id
+    avatar = user.avatar_filename
+    owned_workspaces = list(
+        db.scalars(select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == user.id, WorkspaceMember.role == "owner"))
+    )
     reset_data(db, user)
-    if user.avatar_filename:
-        (AVATAR_DIR / user.avatar_filename).unlink(missing_ok=True)
+    # Kimlik kaydı, yerel kullanıcı satırı silinmeden önce kaldırılır: Supabase hata verirse kullanıcı satırı durur ve
+    # işlem tekrar denenebilir (giriş açık kalıp verisi silinmiş yarım durum tutarlı biçimde yeniden denenir).
+    _delete_supabase_user(supabase_id)
+    if avatar:
+        (AVATAR_DIR / avatar).unlink(missing_ok=True)
+    user_id = user.id
     db.expire_all()
-    db.delete(db.get(User, user.id))
+    db.delete(db.get(User, user_id))
+    db.flush()
+    # Başka üyesi kalmayan sahip olunan çalışma alanlarını da kaldır.
+    for wid in owned_workspaces:
+        if not db.scalar(select(WorkspaceMember.id).where(WorkspaceMember.workspace_id == wid).limit(1)):
+            db.execute(delete(Workspace).where(Workspace.id == wid))
     db.commit()

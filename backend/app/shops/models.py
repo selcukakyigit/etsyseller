@@ -10,7 +10,9 @@ class Shop(Base):
     __tablename__ = "shops"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    # Mağazayı bağlayan kullanıcı; erişim `workspace_id` üzerinden üyelikle belirlenir.
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
     etsy_shop_id: Mapped[int] = mapped_column(Integer, unique=True, index=True)
     etsy_user_id: Mapped[int] = mapped_column(Integer)
     shop_name: Mapped[str] = mapped_column(String(255))
@@ -21,6 +23,7 @@ class Shop(Base):
     icon_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="shops")
+    workspace: Mapped["Workspace"] = relationship(back_populates="shops")
     oauth_token: Mapped["OAuthToken | None"] = relationship(
         back_populates="shop", uselist=False, cascade="all, delete-orphan"
     )
@@ -54,6 +57,7 @@ class OAuthState(Base):
 
     state: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"))
     code_verifier: Mapped[str] = mapped_column(String(128))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 

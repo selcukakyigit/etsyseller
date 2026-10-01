@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, API_URL, Shop, User } from "@/lib/api";
+import { BRAND } from "@/lib/legal";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard" },
@@ -38,7 +39,7 @@ export default function Sidebar({
   return (
     <aside className="w-56 flex-shrink-0 border-r border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex flex-col h-screen sticky top-0">
       <div className="px-5 py-4 border-b border-neutral-100 dark:border-neutral-800">
-        <h1 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">Etsy Otomasyon</h1>
+        <h1 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">{BRAND}</h1>
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1">

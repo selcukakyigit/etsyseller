@@ -1,66 +1,47 @@
-import datetime as dt
-
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import service
-from app.auth.models import User
-from app.auth.schemas import LoginRequest, RegisterRequest, UserOut
+from app.auth.models import User, UserConsent
+from app.auth.schemas import ConsentIn, UserOut
 from app.core.config import settings
 from app.core.db import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, is_admin
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
-def _set_session_cookie(response: Response, token: str) -> None:
-    response.set_cookie(
-        key=settings.session_cookie_name,
-        value=token,
-        httponly=True,
-        samesite="lax",
-        secure=settings.session_cookie_secure,
-        max_age=settings.session_max_age_days * 24 * 60 * 60,
-        path="/",
+def _latest_consent(db: Session, user: User) -> str | None:
+    return db.scalar(select(UserConsent.version).where(UserConsent.user_id == user.id).order_by(UserConsent.id.desc()).limit(1))
+
+
+def user_out(db: Session, user: User) -> UserOut:
+    version = _latest_consent(db, user)
+    return UserOut(
+        id=user.id,
+        email=user.email,
+        name=user.name,
+        avatar_url=user.avatar_url,
+        is_admin=is_admin(user),
+        consent_version=version,
+        needs_consent=version != settings.legal_version,
     )
 
 
-@router.post("/register", response_model=UserOut)
-def register(payload: RegisterRequest, response: Response, db: Session = Depends(get_db)):
-    try:
-        user = service.register(db, payload.email, payload.password)
-    except service.AuthError as exc:
-        raise HTTPException(400, str(exc)) from exc
-
-    token, _ = service.create_session(db, user)
-    _set_session_cookie(response, token)
-    return user
-
-
-@router.post("/login", response_model=UserOut)
-def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)):
-    try:
-        user = service.authenticate(db, payload.email, payload.password)
-    except service.AuthError as exc:
-        raise HTTPException(401, str(exc)) from exc
-
-    token, _ = service.create_session(db, user)
-    _set_session_cookie(response, token)
-    return user
-
-
-@router.post("/logout")
-def logout(
-    response: Response,
-    db: Session = Depends(get_db),
-    session_token: str | None = Cookie(default=None, alias=settings.session_cookie_name),
-):
-    if session_token:
-        service.destroy_session(db, session_token)
-    response.delete_cookie(settings.session_cookie_name, path="/")
-    return {"ok": True}
-
-
 @router.get("/me", response_model=UserOut)
-def me(user: User = Depends(get_current_user)):
-    return user
+def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return user_out(db, user)
+
+
+@router.post("/consent", response_model=UserOut)
+def accept_terms(
+    payload: ConsentIn, request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """Kullanım Koşulları / Gizlilik / KVKK metninin güncel sürümünün kabulünü sürüm, zaman ve IP ile kaydeder."""
+    if payload.version != settings.legal_version:
+        raise HTTPException(409, "Metinler güncellendi, sayfayı yenileyip tekrar deneyin")
+    forwarded = request.headers.get("x-forwarded-for")
+    ip = forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else None)
+    db.add(UserConsent(user_id=user.id, version=payload.version, ip=ip, user_agent=(request.headers.get("user-agent") or "")[:255]))
+    db.commit()
+    return user_out(db, user)

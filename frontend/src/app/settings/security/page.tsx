@@ -30,7 +30,7 @@ export default function SecuritySettingsPage() {
 
     setSaving(true);
     try {
-      await api.account.changePassword(currentPassword, newPassword);
+      await api.account.changePassword(user!.email, currentPassword, newPassword);
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");

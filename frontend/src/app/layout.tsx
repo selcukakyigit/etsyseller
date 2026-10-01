@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { InlineScript } from "@/components/InlineScript";
+import CookieNotice from "@/components/legal/CookieNotice";
+import { BRAND } from "@/lib/legal";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Etsy SEO Otomasyon",
-  description: "Etsy listing'lerini AI ile SEO açısından optimize eden otomasyon aracı",
+  title: BRAND,
+  description: "Etsy satıcıları için AI destekli operasyon ve kârlılık platformu",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -31,7 +33,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           html={`(function(){try{var t=localStorage.getItem('theme');if(t!=='light'&&t!=='dark'){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.classList.add(t);}catch(e){}})();`}
         />
       </head>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {children}
+        <CookieNotice />
+      </body>
     </html>
   );
 }

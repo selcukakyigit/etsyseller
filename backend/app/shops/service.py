@@ -4,6 +4,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.auth.models import User
+from app.auth.workspaces import primary_workspace
 from app.core.config import settings
 from app.core.security import generate_token
 from app.etsy import oauth as etsy_oauth
@@ -15,17 +16,24 @@ class ShopConnectError(Exception):
     pass
 
 
+OAUTH_STATE_TTL = dt.timedelta(minutes=10)
+
+
 def start_connect(db: Session, user: User) -> str:
     pkce = etsy_oauth.generate_pkce()
     state = generate_token()
-    db.add(OAuthState(state=state, user_id=user.id, code_verifier=pkce.code_verifier))
+    workspace = primary_workspace(db, user)
+    db.add(OAuthState(state=state, user_id=user.id, workspace_id=workspace.id, code_verifier=pkce.code_verifier))
     db.commit()
     return etsy_oauth.build_authorize_url(state, pkce.code_challenge)
 
 
 def complete_connect(db: Session, code: str, state: str) -> Shop:
     oauth_state = db.get(OAuthState, state)
-    if oauth_state is None:
+    if oauth_state is None or dt.datetime.utcnow() - oauth_state.created_at > OAUTH_STATE_TTL:
+        if oauth_state is not None:
+            db.delete(oauth_state)
+            db.commit()
         raise ShopConnectError("Bilinmeyen ya da süresi dolmuş bağlantı isteği. Tekrar deneyin.")
 
     token_set = etsy_oauth.exchange_code(code, oauth_state.code_verifier)
@@ -41,9 +49,12 @@ def complete_connect(db: Session, code: str, state: str) -> Shop:
     shop_data = resp.json()
 
     shop = db.query(Shop).filter_by(etsy_shop_id=shop_data["shop_id"]).one_or_none()
+    if shop is not None and shop.workspace_id != oauth_state.workspace_id:
+        raise ShopConnectError("Bu Etsy mağazası başka bir hesaba bağlı. Önce o hesaptan bağlantıyı kaldırın.")
     if shop is None:
         shop = Shop(
             user_id=oauth_state.user_id,
+            workspace_id=oauth_state.workspace_id,
             etsy_shop_id=shop_data["shop_id"],
             etsy_user_id=etsy_user_id,
             shop_name=shop_data["shop_name"],

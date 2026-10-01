@@ -28,13 +28,20 @@ class Settings(BaseSettings):
     api_public_url: str = "http://localhost:8000"
     database_url: str = "sqlite:///./data.db"
 
-    session_cookie_name: str = "session_token"
-    session_max_age_days: int = 90
-    # Set to True once the app is served over HTTPS; browsers drop Secure
-    # cookies over plain http, which local dev still uses.
-    session_cookie_secure: bool = False
+    # Supabase: kimlik doğrulama (JWT) + hesap silerken Auth kullanıcısını kaldırmak için.
+    supabase_url: str = ""
+    supabase_publishable_key: str = ""
+    supabase_secret_key: str = ""  # yalnızca backend; asla frontend'e verilmez
+    supabase_jwks_url: str = ""
+    supabase_db_url: str = ""  # yalnızca bilgi amaçlı (.env'de DATABASE_URL asıl bağlantıdır)
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    # Virgülle ayrılmış e-postalar: global API anahtarları ekranını yalnızca bunlar görebilir/değiştirebilir.
+    admin_emails: str = ""
+
+    # Kayıtta kabul edilen hukuki metin sürümü (frontend src/lib/legal.ts içindeki LEGAL_VERSION ile aynı olmalı).
+    legal_version: str = "2026-10-01"
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 
 settings = Settings()

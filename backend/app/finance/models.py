@@ -3,7 +3,7 @@ import datetime as dt
 from sqlalchemy import Date, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.db import Base
+from app.core.db import FX, MONEY, PCT, Base
 
 
 class LedgerEntry(Base):
@@ -49,9 +49,9 @@ class ListingCost(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
     listing_id: Mapped[int] = mapped_column(Integer)
-    unit_cost: Mapped[float] = mapped_column(Float, default=0.0)
-    shipping_cost: Mapped[float] = mapped_column(Float, default=0.0)
-    cost_pct: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")  # satış fiyatının yüzdesi
+    unit_cost: Mapped[float] = mapped_column(MONEY, default=0.0)
+    shipping_cost: Mapped[float] = mapped_column(MONEY, default=0.0)
+    cost_pct: Mapped[float] = mapped_column(PCT, default=0.0, server_default="0")  # satış fiyatının yüzdesi
     updated_at: Mapped[dt.datetime] = mapped_column(default=dt.datetime.utcnow)
 
 
@@ -65,9 +65,9 @@ class VariantCost(Base):
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
     listing_id: Mapped[int] = mapped_column(Integer)
     variant_key: Mapped[str] = mapped_column(String(300))
-    unit_cost: Mapped[float] = mapped_column(Float, default=0.0)
-    shipping_cost: Mapped[float] = mapped_column(Float, default=0.0)
-    cost_pct: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    unit_cost: Mapped[float] = mapped_column(MONEY, default=0.0)
+    shipping_cost: Mapped[float] = mapped_column(MONEY, default=0.0)
+    cost_pct: Mapped[float] = mapped_column(PCT, default=0.0, server_default="0")
 
 
 class OrderCost(Base):
@@ -79,7 +79,7 @@ class OrderCost(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
     receipt_id: Mapped[int] = mapped_column(Integer)
-    cost: Mapped[float] = mapped_column(Float, default=0.0)
+    cost: Mapped[float] = mapped_column(MONEY, default=0.0)
     note: Mapped[str] = mapped_column(String(255), default="")
 
 
@@ -103,10 +103,10 @@ class ShippingInvoice(Base):
     # Aynı kalemin (fatura no + gönderi + tür + tutar) iki kez girilmesini önler; bir kalem birden fazla ürüne
     # dağıtıldığı için birden fazla satır aynı parmak izini taşır.
     fingerprint: Mapped[str] = mapped_column(String(200), default="", index=True)
-    amount: Mapped[float] = mapped_column(Float)  # rapor para biriminde (report currency)
-    original_amount: Mapped[float] = mapped_column(Float)
+    amount: Mapped[float] = mapped_column(MONEY)  # rapor para biriminde (report currency)
+    original_amount: Mapped[float] = mapped_column(MONEY)
     original_currency: Mapped[str] = mapped_column(String(10), default="")
-    fx_rate: Mapped[float] = mapped_column(Float, default=1.0)
+    fx_rate: Mapped[float] = mapped_column(FX, default=1.0)
     fx_source: Mapped[str] = mapped_column(String(20), default="fatura")  # "fatura" | "tarih" | "aynı"
     invoice_date: Mapped[dt.date] = mapped_column(Date)
     weight_kg: Mapped[float | None] = mapped_column(Float, nullable=True)

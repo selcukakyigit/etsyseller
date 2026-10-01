@@ -18,6 +18,7 @@ from app.listings.models import ListingCache
 from app.shops import service
 from app.shops import shipping_admin as admin
 from app.shops.shipping_admin import ProcessingProfileIn, ReturnPolicyIn, ShippingProfileIn, ShopSectionIn
+from app.auth.workspaces import workspace_ids
 from app.shops.deps import get_owned_shop
 from app.shops.models import Shop
 from app.shops.schemas import ShopOut
@@ -27,7 +28,7 @@ router = APIRouter(prefix="/api/shops", tags=["shops"])
 
 @router.get("", response_model=list[ShopOut])
 def list_shops(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    shops = db.query(Shop).filter_by(user_id=user.id).all()
+    shops = db.query(Shop).filter(Shop.workspace_id.in_(workspace_ids(db, user))).all()
     return [
         ShopOut(id=s.id, etsy_shop_id=s.etsy_shop_id, shop_name=s.shop_name, connected=s.oauth_token is not None, currency=s.currency, icon_url=s.icon_url)
         for s in shops
