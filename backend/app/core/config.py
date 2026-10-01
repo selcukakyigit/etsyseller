@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     resend_from: str = ""
     contact_to: str = ""
 
+    # /docs, /redoc, /openapi.json yalnızca yerelde açık (üretimde uç nokta haritası saldırgana verilmez).
+    expose_docs: bool = False
+
     # Virgülle ayrılmış e-postalar: global API anahtarları ekranını yalnızca bunlar görebilir/değiştirebilir.
     admin_emails: str = ""
 

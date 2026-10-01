@@ -76,3 +76,12 @@ class UserConsent(Base):
     accepted_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
     user: Mapped["User"] = relationship(back_populates="consents")
+
+
+class BlockedEmailDomain(Base):
+    """Kayıtta reddedilen (tek kullanımlık) e-posta alan adları. Supabase'deki `hook_block_disposable_email` kancası bu
+    tabloya bakar; içerik scripts/update_disposable_domains.py ile yenilenir."""
+
+    __tablename__ = "blocked_email_domains"
+
+    domain: Mapped[str] = mapped_column(String(255), primary_key=True)

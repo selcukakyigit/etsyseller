@@ -28,7 +28,7 @@ export const AUTH_COPY: Record<
     haveAccount: string;
     registered: string;
     resetSent: string;
-    errors: { credentials: string; notConfirmed: string; exists: string; weak: string; rate: string };
+    errors: { credentials: string; notConfirmed: string; exists: string; weak: string; rate: string; disposable: string };
     resetTitle: string;
     resetSave: string;
     resetInvalid: string;
@@ -73,6 +73,7 @@ export const AUTH_COPY: Record<
       exists: "This email is already registered.",
       weak: "Password must be at least 8 characters.",
       rate: "Too many attempts. Try again in a few minutes.",
+      disposable: "Disposable (temporary) email addresses can't be used. Please sign up with your real email address.",
     },
     resetTitle: "Set a new password",
     resetSave: "Save password",
@@ -117,6 +118,7 @@ export const AUTH_COPY: Record<
       exists: "Bu e-posta zaten kayıtlı.",
       weak: "Şifre en az 8 karakter olmalı.",
       rate: "Çok fazla deneme yaptın, biraz sonra tekrar dene.",
+      disposable: "Tek kullanımlık (geçici) e-posta adresleriyle kayıt olunamaz. Lütfen gerçek e-posta adresinle kayıt ol.",
     },
     resetTitle: "Yeni şifre belirle",
     resetSave: "Şifreyi kaydet",
@@ -139,5 +141,6 @@ export function translateAuthError(message: string, lang: Lang): string {
   if (m.includes("already registered")) return e.exists;
   if (m.includes("password should be")) return e.weak;
   if (m.includes("rate limit")) return e.rate;
+  if (m.includes("disposable")) return e.disposable;
   return message;
 }

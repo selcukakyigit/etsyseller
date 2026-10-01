@@ -2,6 +2,8 @@
 (zaten büyük olan o dosyalara dokunmadan, kendi köşesinde büyür)."""
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+
+from app.core.uploads import read_limited
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -67,9 +69,7 @@ async def parse_invoice(
     db: Session = Depends(get_db),
     file: UploadFile = File(...),
 ):
-    content = await file.read()
-    if len(content) > MAX_BYTES:
-        raise HTTPException(413, "Dosya çok büyük (en fazla 15MB)")
+    content = await read_limited(file, MAX_BYTES, "Dosya")
     report_ccy = service._fx_tables(db, shop)["R"]
     try:
         return invoices.parse_file(db, shop, content, file.filename or "fatura", file.content_type or "", report_ccy)

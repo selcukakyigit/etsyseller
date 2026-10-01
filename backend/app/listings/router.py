@@ -1,6 +1,8 @@
 import datetime as dt
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+
+from app.core.uploads import MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, read_limited
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
@@ -238,7 +240,7 @@ async def upload_draft_file(
 ):
     if kind not in ("image", "video"):
         raise HTTPException(400, "kind image veya video olmalı")
-    content = await file.read()
+    content = await read_limited(file, MAX_VIDEO_BYTES if kind == "video" else MAX_IMAGE_BYTES, "Dosya")
     return drafts.save_file(
         db, shop, listing_id, kind, file.filename or f"{kind}", file.content_type or "", content
     )
@@ -436,7 +438,7 @@ async def upload_image(
     db: Session = Depends(get_db),
 ):
     try:
-        content = await image.read()
+        content = await read_limited(image, MAX_IMAGE_BYTES, "Görsel")
         return service.upload_listing_image(
             db, shop, listing_id, content, image.filename or "image.jpg", rank, alt_text
         )
@@ -495,7 +497,7 @@ async def upload_video(
     db: Session = Depends(get_db),
 ):
     try:
-        content = await video.read()
+        content = await read_limited(video, MAX_VIDEO_BYTES, "Video")
         return service.upload_listing_video(db, shop, listing_id, content, video.filename or "video.mp4")
     except EtsyAuthError as exc:
         raise HTTPException(401, str(exc)) from exc

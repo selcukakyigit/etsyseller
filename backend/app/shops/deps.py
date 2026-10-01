@@ -1,3 +1,6 @@
+import time
+from collections import defaultdict, deque
+
 from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -25,3 +28,17 @@ def require_ai_enabled(shop: Shop = Depends(get_owned_shop), db: Session = Depen
     ws = db.get(Workspace, shop.workspace_id)
     if ws is not None and not ws.ai_enabled:
         raise HTTPException(403, "Yapay zekâ özellikleri kapalı. Ayarlar > Yapay Zekâ bölümünden açabilirsin.")
+    # Çalışma alanı başına 10 dakikada en fazla AI_MAX_CALLS istek: ele geçirilmiş ya da kötü niyetli bir hesabın AI
+    # sağlayıcı faturasını şişirmesini önler. Bellek içi sayaç (tek kopya için yeterli; ölçeklenince Redis'e taşınmalı).
+    now = time.time()
+    hits = _ai_hits[shop.workspace_id]
+    while hits and now - hits[0] > AI_WINDOW_SECONDS:
+        hits.popleft()
+    if len(hits) >= AI_MAX_CALLS:
+        raise HTTPException(429, "Kısa sürede çok fazla yapay zekâ isteği gönderildi. Birkaç dakika sonra tekrar dene.")
+    hits.append(now)
+
+
+AI_WINDOW_SECONDS = 600
+AI_MAX_CALLS = 60
+_ai_hits: dict[int, deque[float]] = defaultdict(deque)

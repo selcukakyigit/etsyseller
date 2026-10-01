@@ -4,6 +4,7 @@ from fastapi import Cookie, Depends, Header, HTTPException, Request
 from jwt import PyJWKClient
 from sqlalchemy.orm import Session
 
+from app.auth.disposable import MESSAGE as DISPOSABLE_MESSAGE, is_disposable
 from app.auth.models import User
 from app.auth.workspaces import create_personal_workspace
 from app.core.config import settings
@@ -75,6 +76,8 @@ def get_current_user(
         email = (claims.get("email") or "").lower()
         if not email:
             raise HTTPException(401, "Hesapta e-posta yok")
+        if is_disposable(email):
+            raise HTTPException(403, DISPOSABLE_MESSAGE)
         meta = claims.get("user_metadata") or {}
         user = User(
             supabase_id=supabase_id,

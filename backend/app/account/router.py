@@ -11,6 +11,7 @@ from app.auth.router import user_out
 from app.auth.schemas import UserOut
 from app.core.db import get_db
 from app.core.deps import get_current_user, require_admin
+from app.core.uploads import read_limited
 
 router = APIRouter(prefix="/api/account", tags=["account"])
 
@@ -30,9 +31,7 @@ async def upload_avatar(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    content = await avatar.read()
-    if len(content) > MAX_AVATAR_BYTES:
-        raise HTTPException(413, "Görsel çok büyük (maksimum 5MB)")
+    content = await read_limited(avatar, MAX_AVATAR_BYTES, "Görsel")
     try:
         return user_out(db, service.save_avatar(db, user, avatar.filename or "avatar.png", content))
     except service.InvalidAvatar as exc:
