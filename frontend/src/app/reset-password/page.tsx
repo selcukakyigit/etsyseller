@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { BRAND } from "@/lib/legal";
+import Logo from "@/components/Logo";
 import { useLang } from "@/lib/i18n-client";
 import { AUTH_COPY } from "@/lib/copy-auth";
 
@@ -40,7 +40,7 @@ export default function ResetPasswordPage() {
   return (
     <main className="flex-1 bg-neutral-50 dark:bg-neutral-950 flex items-center justify-center px-6">
       <div className="w-full max-w-sm">
-        <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-1">{BRAND}</h1>
+        <div className="mb-1"><Logo height={28} /></div>
         <p className="text-sm text-neutral-400 dark:text-neutral-500 mb-6">{t.resetTitle}</p>
         {ready ? (
           <form onSubmit={submit} className="space-y-3 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6">

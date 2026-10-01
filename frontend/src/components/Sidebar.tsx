@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, Shop, User } from "@/lib/api";
 import Avatar from "@/components/Avatar";
-import { BRAND } from "@/lib/legal";
+import Logo from "@/components/Logo";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard" },
@@ -40,7 +40,7 @@ export default function Sidebar({
   return (
     <aside className="w-56 flex-shrink-0 border-r border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex flex-col h-screen sticky top-0">
       <div className="px-5 py-4 border-b border-neutral-100 dark:border-neutral-800">
-        <h1 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">{BRAND}</h1>
+        <Logo height={22} />
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1">

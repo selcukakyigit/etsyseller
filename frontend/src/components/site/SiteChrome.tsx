@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Logo from "@/components/Logo";
 import LangSwitch from "@/components/LangSwitch";
 import HeaderAuth from "@/components/site/HeaderAuth";
 import { Lang } from "@/lib/i18n";
@@ -17,11 +18,10 @@ const NAV = {
   ],
 };
 
-export function Wordmark() {
+export function Wordmark({ height = 26 }: { height?: number }) {
   return (
-    <Link href="/" className="flex items-center gap-2 text-neutral-900 dark:text-neutral-100">
-      <span className="grid h-7 w-7 place-items-center rounded-lg bg-[#F1641E] text-sm font-bold text-white">U</span>
-      <span className="text-lg font-semibold tracking-tight">{BRAND}</span>
+    <Link href="/" aria-label={BRAND} className="flex items-center">
+      <Logo height={height} />
     </Link>
   );
 }

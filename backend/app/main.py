@@ -26,11 +26,13 @@ from app.orders import models as _order_models  # noqa: F401
 from app.finance import models as _finance_models  # noqa: F401
 from app.assistant import models as _assistant_models  # noqa: F401
 from app.keywords import models as _keyword_models  # noqa: F401
+from app.contact import models as _contact_models  # noqa: F401
 
 from app.account.router import router as account_router
 from app.account.service import AVATAR_DIR
 from app.auth.router import router as auth_router
 from app.assistant.router import router as assistant_router
+from app.contact.router import router as contact_router
 from app.finance.router import router as finance_router
 from app.finance.invoices_router import router as finance_invoices_router
 from app.jobs.scheduler import start_scheduler, stop_scheduler
@@ -86,3 +88,4 @@ app.include_router(finance_invoices_router)
 app.include_router(assistant_router)
 app.include_router(taxonomy_router)
 app.include_router(keywords_router)
+app.include_router(contact_router)

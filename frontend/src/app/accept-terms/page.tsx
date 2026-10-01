@@ -4,7 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { BRAND, LEGAL_UPDATED, LEGAL_VERSION, LEGAL_LINKS } from "@/lib/legal";
+import Logo from "@/components/Logo";
+import { LEGAL_UPDATED, LEGAL_VERSION, LEGAL_LINKS } from "@/lib/legal";
 import { useLang } from "@/lib/i18n-client";
 import { AUTH_COPY } from "@/lib/copy-auth";
 
@@ -37,7 +38,8 @@ export default function AcceptTermsPage() {
   return (
     <main className="flex-1 bg-neutral-50 dark:bg-neutral-950 flex items-center justify-center px-6">
       <div className="w-full max-w-md rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 space-y-4">
-        <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{BRAND}: {t.acceptTitle}</h1>
+        <Logo height={26} />
+        <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{t.acceptTitle}</h1>
         <p className="text-sm text-neutral-600 dark:text-neutral-400">
           {t.acceptLead} {LEGAL_UPDATED[lang]}).
         </p>

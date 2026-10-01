@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { BRAND, ETSY_DISCLAIMER, LEGAL_VERSION } from "@/lib/legal";
+import Logo from "@/components/Logo";
 import LangSwitch from "@/components/LangSwitch";
 import { useLang } from "@/lib/i18n-client";
 import { AUTH_COPY, translateAuthError } from "@/lib/copy-auth";
@@ -101,7 +102,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="mb-6 flex items-start justify-between">
           <div>
-            <Link href="/" className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{BRAND}</Link>
+            <Link href="/" aria-label={BRAND} className="inline-block mb-1"><Logo height={28} /></Link>
             <p className="text-sm text-neutral-400 dark:text-neutral-500">{title}</p>
           </div>
           <LangSwitch />
