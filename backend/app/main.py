@@ -58,9 +58,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# AVATAR_DIR.parent is the shared uploads/ dir; mounted whole so future
-# uploaded-file features (beyond avatars) don't need a new mount each time.
-app.mount("/static", StaticFiles(directory=str(AVATAR_DIR.parent)), name="static")
+# Yalnızca avatarlar herkese açık servis edilir (dosya adı tahmin edilemez). Taslak/sohbet/önbellek görselleri
+# uploads/ altında kalır ve yalnızca yetki kontrolü yapan uç noktalardan sunulur — klasörün tamamı asla mount edilmez.
+app.mount("/static/avatars", StaticFiles(directory=str(AVATAR_DIR)), name="avatars")
 
 @app.exception_handler(EtsyAuthError)
 async def etsy_auth_error_handler(_: Request, exc: EtsyAuthError):

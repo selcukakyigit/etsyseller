@@ -1,3 +1,4 @@
+import secrets
 from io import BytesIO
 from pathlib import Path
 
@@ -44,8 +45,11 @@ def save_avatar(db: Session, user: User, filename: str, content: bytes) -> User:
         (AVATAR_SIZE, AVATAR_SIZE), Image.LANCZOS
     )
 
-    new_filename = f"{user.id}.png"
+    # Rastgele ek, URL'nin tahmin edilmesini ve eski fotoğrafın önbellekte kalmasını engeller.
+    new_filename = f"{user.id}-{secrets.token_urlsafe(12)}.png"
     image.save(AVATAR_DIR / new_filename, format="PNG")
+    if user.avatar_filename:
+        (AVATAR_DIR / user.avatar_filename).unlink(missing_ok=True)
     user.avatar_filename = new_filename
     db.commit()
     return user

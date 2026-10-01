@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     supabase_jwks_url: str = ""
     supabase_db_url: str = ""  # yalnızca bilgi amaçlı (.env'de DATABASE_URL asıl bağlantıdır)
 
+    # Etsy belirteçlerini veritabanında şifrelemek için Fernet anahtar(lar)ı (bkz. core/crypto.py). Kaybedilirse tüm
+    # mağazaların Etsy bağlantısı yeniden kurulmalıdır — güvenli bir yerde yedekle.
+    token_encryption_key: str = ""
+
     # Virgülle ayrılmış e-postalar: global API anahtarları ekranını yalnızca bunlar görebilir/değiştirebilir.
     admin_emails: str = ""
 

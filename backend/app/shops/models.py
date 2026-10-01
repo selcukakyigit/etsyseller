@@ -3,6 +3,7 @@ import datetime as dt
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.crypto import EncryptedText
 from app.core.db import Base
 
 
@@ -66,8 +67,8 @@ class OAuthToken(Base):
     __tablename__ = "oauth_tokens"
 
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), primary_key=True)
-    access_token: Mapped[str] = mapped_column(Text)
-    refresh_token: Mapped[str] = mapped_column(Text)
+    access_token: Mapped[str] = mapped_column(EncryptedText)
+    refresh_token: Mapped[str] = mapped_column(EncryptedText)
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime)
 
     shop: Mapped["Shop"] = relationship(back_populates="oauth_token")
