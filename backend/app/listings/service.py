@@ -92,7 +92,9 @@ def _store_extras(client: EtsyClient, row: ListingCache, listing_id: int) -> Non
         row.extras_synced = True
     except Exception:
         logger.warning("Extras of listing %s could not be synced", listing_id)
-    image_cache.cache_listing_images(row.shop_id, listing_id, json.loads(row.raw_json).get("images") or [])
+    # Görseller burada İNDİRİLMEZ: yüzlerce ilanın tam boy fotoğraflarını sırayla indirmek ilk senkronu dakikalarca
+    # uzatır ve diski doldurur. Düzenleme/kırpma ekranı bir görseli ilk açışında Etsy'den çekip önbelleğe alır
+    # (image_cache.fetch, drafts.py).
 
 
 def _fetch_and_cache_one(db: Session, shop: Shop, client: EtsyClient, listing_id: int) -> ListingCache:
@@ -201,8 +203,8 @@ def sync_listings(db: Session, shop: Shop, full: bool = False) -> int:
             if item.get("state") in ("active", "inactive", "draft"):
                 _store_extras(client, row, listing_id)
             synced += 1
-            if synced % 25 == 0:
-                db.commit()
+            if synced % 10 == 0:
+                db.commit()  # kısa aralıklarla kaydet: ilanlar liste ekranında senkron sürerken belirmeye başlar
         except Exception:
             # Tek bir listing'de beklenmeyen bir hata (ör. veritabanı kısıtlaması) TÜM senkronu sessizce
             # durdurmasın — geri al, bu listing'i atla, kalanına devam et; bir sonraki senkron bunu tekrar dener.
@@ -347,7 +349,7 @@ def _summary(raw: dict, inventory: dict, over: dict) -> dict:
 
 
 def list_listings(db: Session, shop: Shop) -> list[ListingOut]:
-    _backfill_images_once(shop.id)
+    # Görseller toplu indirilmez; ilk açılışta tek tek önbelleğe alınır (bkz. _store_extras notu).
     rows = db.scalars(select(ListingCache).where(ListingCache.shop_id == shop.id)).all()
     listing_ids = [row.listing_id for row in rows]
     pending = db.scalars(

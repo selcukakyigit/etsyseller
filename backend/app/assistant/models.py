@@ -1,6 +1,6 @@
 import datetime as dt
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import MONEY, Base
@@ -55,7 +55,7 @@ class AdReport(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
-    listing_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    listing_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     listing_title: Mapped[str] = mapped_column(String(255), default="")
     period_start: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     period_end: Mapped[dt.date | None] = mapped_column(Date, nullable=True)

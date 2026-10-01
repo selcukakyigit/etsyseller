@@ -1,6 +1,6 @@
 import datetime as dt
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -17,7 +17,7 @@ class OrderCache(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
-    receipt_id: Mapped[int] = mapped_column(Integer, index=True)
+    receipt_id: Mapped[int] = mapped_column(BigInteger, index=True)
 
     status: Mapped[str] = mapped_column(String(30))
     buyer_name: Mapped[str] = mapped_column(String(255), default="")

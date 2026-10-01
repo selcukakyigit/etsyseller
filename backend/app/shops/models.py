@@ -1,6 +1,6 @@
 import datetime as dt
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.crypto import EncryptedText
@@ -14,8 +14,8 @@ class Shop(Base):
     # Mağazayı bağlayan kullanıcı; erişim `workspace_id` üzerinden üyelikle belirlenir.
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
-    etsy_shop_id: Mapped[int] = mapped_column(Integer, unique=True, index=True)
-    etsy_user_id: Mapped[int] = mapped_column(Integer)
+    etsy_shop_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
+    etsy_user_id: Mapped[int] = mapped_column(BigInteger)
     shop_name: Mapped[str] = mapped_column(String(255))
     connected_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
     # Elle sabitlenmiş rapor para birimi (ör. "USD"); boşsa finans raporu siparişlerden otomatik seçer.
@@ -39,8 +39,8 @@ class ReviewCache(Base):
 
     transaction_id: Mapped[int] = mapped_column(primary_key=True)
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
-    listing_id: Mapped[int] = mapped_column(Integer, index=True)
-    buyer_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    listing_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    buyer_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     rating: Mapped[int] = mapped_column(Integer)
     review: Mapped[str] = mapped_column(Text, default="")
     language: Mapped[str | None] = mapped_column(String(10), nullable=True)

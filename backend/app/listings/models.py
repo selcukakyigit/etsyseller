@@ -1,6 +1,6 @@
 import datetime as dt
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -20,7 +20,7 @@ class ListingCache(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
-    listing_id: Mapped[int] = mapped_column(Integer, index=True)
+    listing_id: Mapped[int] = mapped_column(BigInteger, index=True)
 
     title: Mapped[str] = mapped_column(Text, default="")
     views: Mapped[int] = mapped_column(Integer, default=0)
@@ -46,7 +46,7 @@ class ListingVersion(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
-    listing_id: Mapped[int] = mapped_column(Integer, index=True)
+    listing_id: Mapped[int] = mapped_column(BigInteger, index=True)
 
     kind: Mapped[str] = mapped_column(String(20), default="ai_suggestion")  # ai_suggestion|manual_edit
 
@@ -73,7 +73,7 @@ class ListingStatSnapshot(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
-    listing_id: Mapped[int] = mapped_column(Integer, index=True)
+    listing_id: Mapped[int] = mapped_column(BigInteger, index=True)
     views: Mapped[int] = mapped_column(Integer, default=0)
     favorites: Mapped[int] = mapped_column(Integer, default=0)
     captured_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
@@ -91,7 +91,7 @@ class ListingDraft(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
-    listing_id: Mapped[int] = mapped_column(Integer, index=True)
+    listing_id: Mapped[int] = mapped_column(BigInteger, index=True)
     data_json: Mapped[str] = mapped_column(Text, default="{}")
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
@@ -106,7 +106,7 @@ class DraftFile(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
-    listing_id: Mapped[int] = mapped_column(Integer, index=True)
+    listing_id: Mapped[int] = mapped_column(BigInteger, index=True)
     kind: Mapped[str] = mapped_column(String(10))  # image|video
     filename: Mapped[str] = mapped_column(String(255))
     content_type: Mapped[str] = mapped_column(String(100), default="application/octet-stream")
@@ -130,7 +130,7 @@ class ListingHealth(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
-    listing_id: Mapped[int] = mapped_column(Integer, index=True)
+    listing_id: Mapped[int] = mapped_column(BigInteger, index=True)
 
     # watching (veri birikiyor) | flagged (öneri var) | stable (iyi, dokunma) | kill_candidate | killed
     stage: Mapped[str] = mapped_column(String(20), default="watching")
@@ -159,7 +159,7 @@ class ListingLocal(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
-    listing_id: Mapped[int] = mapped_column(Integer, index=True)
+    listing_id: Mapped[int] = mapped_column(BigInteger, index=True)
     data_json: Mapped[str] = mapped_column(Text, default="{}")
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
     # Yerel kopyanın alındığı Etsy hâli (üç yönlü karşılaştırma için); kayıtlar arasında korunur.

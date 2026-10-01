@@ -1,6 +1,6 @@
 import datetime as dt
 
-from sqlalchemy import Date, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import BigInteger, Date, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import FX, MONEY, PCT, Base
@@ -15,14 +15,14 @@ class LedgerEntry(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
-    entry_id: Mapped[int] = mapped_column(Integer)
-    created_ts: Mapped[int] = mapped_column(Integer, index=True)
+    entry_id: Mapped[int] = mapped_column(BigInteger)
+    created_ts: Mapped[int] = mapped_column(BigInteger, index=True)
     amount: Mapped[int] = mapped_column(Integer)
     currency: Mapped[str] = mapped_column(String(10), default="")
     ledger_type: Mapped[str] = mapped_column(String(60), index=True)
     reference_type: Mapped[str] = mapped_column(String(40), default="")
     reference_id: Mapped[str] = mapped_column(String(40), default="")
-    receipt_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    receipt_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
 
 
 class FinPayment(Base):
@@ -33,8 +33,8 @@ class FinPayment(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
-    payment_id: Mapped[int] = mapped_column(Integer)
-    receipt_id: Mapped[int] = mapped_column(Integer, index=True)
+    payment_id: Mapped[int] = mapped_column(BigInteger)
+    receipt_id: Mapped[int] = mapped_column(BigInteger, index=True)
     gross_minor: Mapped[int] = mapped_column(Integer, default=0)
     fees_minor: Mapped[int] = mapped_column(Integer, default=0)
     currency: Mapped[str] = mapped_column(String(10), default="")
@@ -48,7 +48,7 @@ class ListingCost(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
-    listing_id: Mapped[int] = mapped_column(Integer)
+    listing_id: Mapped[int] = mapped_column(BigInteger)
     unit_cost: Mapped[float] = mapped_column(MONEY, default=0.0)
     shipping_cost: Mapped[float] = mapped_column(MONEY, default=0.0)
     cost_pct: Mapped[float] = mapped_column(PCT, default=0.0, server_default="0")  # satış fiyatının yüzdesi
@@ -63,7 +63,7 @@ class VariantCost(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
-    listing_id: Mapped[int] = mapped_column(Integer)
+    listing_id: Mapped[int] = mapped_column(BigInteger)
     variant_key: Mapped[str] = mapped_column(String(300))
     unit_cost: Mapped[float] = mapped_column(MONEY, default=0.0)
     shipping_cost: Mapped[float] = mapped_column(MONEY, default=0.0)
@@ -78,7 +78,7 @@ class OrderCost(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
-    receipt_id: Mapped[int] = mapped_column(Integer)
+    receipt_id: Mapped[int] = mapped_column(BigInteger)
     cost: Mapped[float] = mapped_column(MONEY, default=0.0)
     note: Mapped[str] = mapped_column(String(255), default="")
 
@@ -93,9 +93,9 @@ class ShippingInvoice(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
-    receipt_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)  # eşleşen Etsy siparişi
+    receipt_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)  # eşleşen Etsy siparişi
     tracking_no: Mapped[str] = mapped_column(String(40), default="", index=True)  # aynı gönderi iki kez girilmesin
-    listing_id: Mapped[int] = mapped_column(Integer, index=True)
+    listing_id: Mapped[int] = mapped_column(BigInteger, index=True)
     variant_key: Mapped[str] = mapped_column(String(300), default="")
     kind: Mapped[str] = mapped_column(String(20), default="diğer")  # "nakliye" | "gümrük" | "ek hizmet" | "diğer"
     description: Mapped[str] = mapped_column(String(200), default="")  # faturadaki kalem adı ("Hizmet Ücreti", "Gümrük Vergisi"…)
