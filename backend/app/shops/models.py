@@ -37,7 +37,7 @@ class ReviewCache(Base):
 
     __tablename__ = "review_cache"
 
-    transaction_id: Mapped[int] = mapped_column(primary_key=True)
+    transaction_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
     listing_id: Mapped[int] = mapped_column(BigInteger, index=True)
     buyer_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
