@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
+from app.core.errors import register_error_handlers
 from app.etsy.client import EtsyApiError, EtsyAuthError
 
 # Uygulama logları (Etsy'ye giden yazma istekleri, yayın adımları) uvicorn çıktısıyla aynı yere düşsün.
@@ -50,7 +51,8 @@ async def lifespan(_: FastAPI):
     stop_scheduler()
 
 
-app = FastAPI(title="Etsy Otomasyon", lifespan=lifespan)
+app = FastAPI(title="Ulagg API", lifespan=lifespan)
+register_error_handlers(app)
 
 app.add_middleware(
     CORSMiddleware,
@@ -66,7 +68,7 @@ app.mount("/static/avatars", StaticFiles(directory=str(AVATAR_DIR)), name="avata
 
 @app.exception_handler(EtsyAuthError)
 async def etsy_auth_error_handler(_: Request, exc: EtsyAuthError):
-    return JSONResponse(status_code=401, content={"detail": str(exc)})
+    return JSONResponse(status_code=401, content={"detail": str(exc), "code": 401})
 
 
 @app.exception_handler(EtsyApiError)
@@ -75,7 +77,7 @@ async def etsy_api_error_handler(_: Request, exc: EtsyApiError):
     # the frontend sees a real reason instead of a generic 500 — this is a
     # catch-all safety net; routes with a narrower try/except still win.
     status_code = exc.status_code if 400 <= exc.status_code < 500 else 502
-    return JSONResponse(status_code=status_code, content={"detail": f"Etsy API: {exc.message}"})
+    return JSONResponse(status_code=status_code, content={"detail": f"Etsy API: {exc.message}", "code": status_code})
 
 
 app.include_router(auth_router)

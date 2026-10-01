@@ -1,11 +1,9 @@
-import base64
 import logging
 import re
 import secrets
 import time
 from collections import defaultdict, deque
 
-import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import EmailStr, TypeAdapter, ValidationError
 from sqlalchemy import select
@@ -18,6 +16,8 @@ from app.core.net import client_ip
 from app.core.config import settings
 from app.core.db import get_db
 from app.core.deps import require_admin
+from app.emails.renderer import render
+from app.emails.sender import send_email
 
 log = logging.getLogger("app.contact")
 router = APIRouter(prefix="/api/contact", tags=["contact"])
@@ -91,37 +91,25 @@ def _notify(
     msg_id: int, name: str, email: str, topic: str, message: str,
     files: list[tuple[str, bytes]], stored: list[tuple[str, int, str]],
 ) -> None:
-    """Resend ayarlıysa ekibe e-posta gönderir; ayarlı değilse mesaj yalnızca veritabanında durur.
-    Ekler küçükse e-postaya eklenir; her durumda 7 gün geçerli indirme bağlantıları metne yazılır."""
-    if not (settings.resend_api_key and settings.resend_from and settings.contact_to):
+    """Ekibe bildirim e-postası. Ekler küçükse eklenir; her durumda 7 gün geçerli indirme bağlantıları da yazılır."""
+    if not settings.contact_to:
         return
-    try:
-        payload = {
-            "from": settings.resend_from,
-            "to": [a.strip() for a in settings.contact_to.split(",") if a.strip()],
-            "reply_to": email,
-            "subject": f"[Ulagg iletişim #{msg_id}] {topic} - {name}",
-            "text": f"Gönderen: {name} <{email}>\nKonu: {topic}\n\n{message}",
-        }
-        if stored:
-            lines = []
-            for fname, size, path in stored:
-                try:
-                    lines.append(f"- {fname} ({size // 1024} KB): {storage.signed_url(BUCKET, path, LINK_TTL_SECONDS)}")
-                except Exception:
-                    lines.append(f"- {fname} ({size // 1024} KB): bağlantı üretilemedi")
-            payload["text"] += "\n\nEkler (bağlantılar 7 gün geçerli):\n" + "\n".join(lines)
-        if files and sum(len(d) for _, d in files) <= MAX_EMAIL_ATTACH_BYTES:
-            payload["attachments"] = [{"filename": fn, "content": base64.b64encode(data).decode()} for fn, data in files]
-        resp = httpx.post(
-            "https://api.resend.com/emails",
-            headers={"Authorization": f"Bearer {settings.resend_api_key}"},
-            json=payload,
-            timeout=60,
-        )
-        resp.raise_for_status()
-    except Exception:  # bildirim başarısız olsa da mesaj kaydedildi; kullanıcıya hata göstermeyiz
-        log.exception("İletişim bildirimi gönderilemedi (#%s)", msg_id)
+    links = []
+    for fname, size, path in stored:
+        try:
+            links.append({"filename": fname, "size_kb": max(1, size // 1024), "url": storage.signed_url(BUCKET, path, LINK_TTL_SECONDS)})
+        except Exception:
+            log.exception("İmzalı bağlantı üretilemedi (#%s, %s)", msg_id, fname)
+    html, text = render(
+        "contact_notification.html",
+        title=f"New contact message #{msg_id}", preheader=f"{name}: {message[:90]}",
+        msg_id=msg_id, name=name, email=email, topic=topic, message=message, attachments=links,
+    )
+    attach = files if files and sum(len(d) for _, d in files) <= MAX_EMAIL_ATTACH_BYTES else None
+    send_email(
+        [a.strip() for a in settings.contact_to.split(",") if a.strip()],
+        f"[Ulagg iletişim #{msg_id}] {topic} - {name}", html, text, reply_to=email, attachments=attach,
+    )
 
 
 @router.post("", status_code=202)

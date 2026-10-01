@@ -1,0 +1,16 @@
+{# Supabase Auth e-postaları (kayıt doğrulama, şifre sıfırlama...). Tek şablon, içerik build_supabase_emails.py'den gelir.
+   Metinler `{{ .ConfirmationURL }}` gibi Supabase yer tutucuları içerir; Supabase gönderirken bunları doldurur. #}
+{% extends "base.html" %}
+{% import "_components.html" as c %}
+{% block content %}
+{% for part in parts %}
+{% if not loop.first %}<hr style="border:0;border-top:1px solid #EAE4DA;margin:24px 0;">{% endif %}
+{{ c.heading(part.heading) }}
+{{ c.paragraph(part.body) }}
+{% if part.code %}
+<p style="margin:18px 0;font-size:30px;letter-spacing:6px;font-weight:700;color:#1F1B16;">{{ part.code }}</p>
+{% endif %}
+{% if part.button %}{{ c.button(part.url, part.button) }}{% endif %}
+{{ c.small(part.note) }}
+{% endfor %}
+{% endblock %}

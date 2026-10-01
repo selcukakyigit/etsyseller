@@ -19,3 +19,4 @@ pypdf==5.9.0
 PyJWT[crypto]==2.10.1
 psycopg[binary]==3.2.3
 cryptography==50.0.1
+jinja2==3.1.6

@@ -1,0 +1,27 @@
+{# Ortak parçalar: her e-posta bunları kullanır, böylece tipografi ve düğme stili tek yerde durur. #}
+{% macro heading(text) -%}
+<h1 style="margin:0 0 14px;font-size:22px;line-height:1.3;font-weight:600;color:#1F1B16;">{{ text }}</h1>
+{%- endmacro %}
+
+{% macro paragraph(text) -%}
+<p style="margin:0 0 14px;">{{ text }}</p>
+{%- endmacro %}
+
+{% macro button(url, label) -%}
+<p style="margin:22px 0;"><a href="{{ url }}" style="display:inline-block;background:#1F1B16;color:#FFFFFF;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:999px;">{{ label }}</a></p>
+{%- endmacro %}
+
+{% macro small(text) -%}
+<p style="margin:0 0 10px;font-size:13px;color:#8A8278;">{{ text }}</p>
+{%- endmacro %}
+
+{% macro facts(rows) -%}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px;border-top:1px solid #EAE4DA;">
+  {% for label, value in rows %}
+  <tr>
+    <td style="padding:8px 12px 8px 0;border-bottom:1px solid #EAE4DA;color:#8A8278;font-size:13px;width:110px;vertical-align:top;">{{ label }}</td>
+    <td style="padding:8px 0;border-bottom:1px solid #EAE4DA;vertical-align:top;">{{ value }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{%- endmacro %}

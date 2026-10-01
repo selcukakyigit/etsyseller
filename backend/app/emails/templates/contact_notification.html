@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% import "_components.html" as c %}
+{% block content %}
+{{ c.heading("New contact message #" ~ msg_id) }}
+{{ c.facts([("From", name ~ " <" ~ email ~ ">"), ("Topic", topic)]) }}
+<div style="white-space:pre-wrap;margin:0 0 16px;">{{ message }}</div>
+{% if attachments %}
+<p style="margin:0 0 6px;font-weight:600;">Attachments <span style="font-weight:400;color:#8A8278;">(links valid 7 days)</span></p>
+<ul style="margin:0 0 14px;padding-left:20px;">
+  {% for a in attachments %}
+  <li style="margin:0 0 4px;"><a href="{{ a.url }}" style="color:#1F1B16;">{{ a.filename }}</a> <span style="color:#8A8278;">({{ a.size_kb }} KB)</span></li>
+  {% endfor %}
+</ul>
+{% endif %}
+{{ c.small("Reply to this email to answer " ~ email ~ " directly.") }}
+{% endblock %}
