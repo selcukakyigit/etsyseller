@@ -32,7 +32,7 @@ export default async function PrivacyPage() {
       <UL>
         <li><b>Hesap:</b> e-posta, ad, şifre (yalnızca özet/hash halinde), Google ile girişte Google'ın verdiği ad ve e-posta.</li>
         <li><b>Etsy verileri:</b> siz yetki verdiğinizde mağaza bilgileri, listeler, görseller, siparişler, yorumlar ve performans istatistikleri. Siparişlerde alıcı adı ve teslimat adresi bulunur.</li>
-        <li><b>Sizin girdiğiniz veriler:</b> maliyetler, taslaklar, notlar, yüklediğiniz görseller.</li>
+        <li><b>Sizin girdiğiniz veriler:</b> maliyetler, taslaklar, notlar, yüklediğiniz görseller ve iletişim formundan gönderdiğiniz mesajlar (eklediğiniz dosyalarla birlikte).</li>
         <li><b>Teknik veriler:</b> IP adresi, tarayıcı, oturum, hata kayıtları.</li>
       </UL>
       <P>Etsy'de toplamadığımız şey: Etsy şifreniz. Bağlantı, Etsy'nin kendi izin ekranı (OAuth) üzerinden kurulur.</P>

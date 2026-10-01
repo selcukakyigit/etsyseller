@@ -111,7 +111,7 @@ export function PrivacyEn() {
       <UL>
         <li><b>Account:</b> email, name, profile photo from Google if you sign in with Google. Passwords are handled by our authentication provider and are never visible to us.</li>
         <li><b>Etsy data</b>, once you authorize it: shop details, listings, images, orders, reviews and performance statistics. Orders include buyer name and shipping address.</li>
-        <li><b>What you enter:</b> product costs, drafts, notes, uploaded images.</li>
+        <li><b>What you enter:</b> product costs, drafts, notes, uploaded images, and messages (with any files you attach) sent through the contact form.</li>
         <li><b>Technical data:</b> IP address, browser, session and error logs.</li>
       </UL>
       <P>We never collect your Etsy password. The connection is made through Etsy&apos;s authorization screen (OAuth).</P>

@@ -1,7 +1,7 @@
 import datetime as dt
 
-from sqlalchemy import Boolean, DateTime, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
 
@@ -21,3 +21,20 @@ class ContactMessage(Base):
     user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
     handled: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+
+    attachments: Mapped[list["ContactAttachment"]] = relationship(back_populates="message", cascade="all, delete-orphan")
+
+
+class ContactAttachment(Base):
+    """Mesaja eklenen dosya. İçerik özel bir Supabase Storage kovasında durur; burada yalnızca künyesi vardır."""
+
+    __tablename__ = "contact_attachments"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    message_id: Mapped[int] = mapped_column(ForeignKey("contact_messages.id", ondelete="CASCADE"), index=True)
+    filename: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(100))
+    size: Mapped[int] = mapped_column(Integer)
+    storage_path: Mapped[str] = mapped_column(String(300))
+
+    message: Mapped["ContactMessage"] = relationship(back_populates="attachments")
