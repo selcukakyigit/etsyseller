@@ -1,7 +1,6 @@
 import datetime as dt
 import logging
 
-from pytrends.request import TrendReq
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,6 +13,9 @@ BATCH_SIZE = 5  # pytrends/Google Trends caps comparisons to 5 terms per request
 
 
 def _fetch_batch(keywords: list[str]) -> dict[str, int]:
+    # pytrends pandas+numpy'i (~80 MB) yükler; yalnızca canlı Trends sorgusu yapılırken içe aktarılır.
+    from pytrends.request import TrendReq
+
     pytrends = TrendReq(hl="tr-TR", tz=180)
     pytrends.build_payload(keywords, timeframe="today 3-m")
     df = pytrends.interest_over_time()

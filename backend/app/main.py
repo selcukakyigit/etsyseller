@@ -80,6 +80,12 @@ async def etsy_api_error_handler(_: Request, exc: EtsyApiError):
     return JSONResponse(status_code=status_code, content={"detail": f"Etsy API: {exc.message}", "code": status_code})
 
 
+@app.get("/healthz", include_in_schema=False)
+def healthz():
+    """Render'ın sağlık kontrolü için hafif uç nokta: veritabanına ya da dış servise dokunmaz."""
+    return {"ok": True}
+
+
 app.include_router(auth_router)
 app.include_router(account_router)
 app.include_router(shops_router)
