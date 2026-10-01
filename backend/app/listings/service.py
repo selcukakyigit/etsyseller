@@ -5,7 +5,7 @@ import logging
 import threading
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 from app.ai import quality, seo
 from app.listings import performance
@@ -350,7 +350,13 @@ def _summary(raw: dict, inventory: dict, over: dict) -> dict:
 
 def list_listings(db: Session, shop: Shop) -> list[ListingOut]:
     # Görseller toplu indirilmez; ilk açılışta tek tek önbelleğe alınır (bkz. _store_extras notu).
-    rows = db.scalars(select(ListingCache).where(ListingCache.shop_id == shop.id)).all()
+    # Liste kartları özellikler, varyasyon görselleri ve kişiselleştirme JSON'unu kullanmaz; yüzlerce ilan için bunları
+    # her istekte belleğe almak (Render'ın 512 MB sınırında) gereksiz yük bindiriyor. Gerekirse tek ilan açılınca okunur.
+    rows = db.scalars(
+        select(ListingCache)
+        .where(ListingCache.shop_id == shop.id)
+        .options(defer(ListingCache.properties_json), defer(ListingCache.variation_images_json), defer(ListingCache.personalization_json))
+    ).all()
     listing_ids = [row.listing_id for row in rows]
     pending = db.scalars(
         select(ListingVersion)

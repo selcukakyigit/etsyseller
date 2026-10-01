@@ -1,6 +1,9 @@
+import datetime as dt
 import logging
 
+from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
@@ -12,7 +15,8 @@ from app.jobs.shop_profile import sync_all_shops as sync_shop_profile
 
 logger = logging.getLogger(__name__)
 
-_scheduler = BackgroundScheduler(timezone="UTC")
+# En fazla 2 iş aynı anda çalışsın: hepsi aynı anda başlarsa bellek 512 MB sınırını aşıp servisi yeniden başlatabiliyor.
+_scheduler = BackgroundScheduler(timezone="UTC", executors={"default": ThreadPoolExecutor(2)})
 
 
 def start_scheduler() -> None:
@@ -48,13 +52,20 @@ def start_scheduler() -> None:
     )
     _scheduler.start()
 
-    # Run all five once immediately in the background so the UI has data from
-    # day one instead of waiting for the first scheduled firing.
-    _scheduler.add_job(capture_daily_stats, id="daily_stats_initial_run", replace_existing=True)
-    _scheduler.add_job(sync_all_shops, id="order_sync_initial_run", replace_existing=True)
-    _scheduler.add_job(evaluate_all_shops, id="listing_health_initial_run", replace_existing=True)
-    _scheduler.add_job(sync_shop_profile, id="shop_profile_initial_run", replace_existing=True)
-    _scheduler.add_job(sync_reviews, id="reviews_initial_run", replace_existing=True)
+    # Yeni süreç başlayınca her işi bir kez de çalıştır ki arayüz ilk günden veri görsün. Hepsi aynı anda değil, 45 sn
+    # arayla: yeniden başlatma döngüsünde (ör. bellek yetersizliği) hepsinin birden başlayıp durumu kötüleştirmesini önler.
+    now = dt.datetime.now(dt.timezone.utc)
+    for i, (func, job_id) in enumerate(
+        [
+            (sync_all_shops, "order_sync_initial_run"),
+            (sync_shop_profile, "shop_profile_initial_run"),
+            (capture_daily_stats, "daily_stats_initial_run"),
+            (sync_reviews, "reviews_initial_run"),
+            (evaluate_all_shops, "listing_health_initial_run"),
+        ],
+        start=1,
+    ):
+        _scheduler.add_job(func, trigger=DateTrigger(run_date=now + dt.timedelta(seconds=45 * i)), id=job_id, replace_existing=True)
 
     logger.info(
         "Scheduler started: daily_stats 03:00, listing_health 03:15, shop_profile 03:30, reviews 03:45 UTC; "
