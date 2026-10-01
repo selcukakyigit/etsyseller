@@ -76,7 +76,7 @@ export default function ListingCard({
       <Link href={`/listings/${listing.listing_id}/edit`} className="relative block aspect-square bg-neutral-100 dark:bg-neutral-800">
         {listing.image_url && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={listing.image_url} alt="" className="h-full w-full object-cover" />
+          <img src={listing.image_url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
         )}
         <div className="absolute left-2 top-2 flex flex-col items-start gap-1">
           {listing.is_new && <span className={`${badge} bg-sky-100 text-sky-800`}>Yeni · Etsy&apos;de yok</span>}

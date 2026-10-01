@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, BulkChanges, Listing } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
+import { useIncrementalList } from "@/lib/useIncrementalList";
 import AppShell from "@/components/AppShell";
 import ListingRow from "@/components/ListingRow";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
@@ -258,6 +259,12 @@ export default function Home() {
     };
     return [...searched].sort(cmp[sort] ?? cmp.ending);
   }, [listings, filters, query, sort]);
+  // Yüzlerce kartı bir anda çizmek sayfayı kasıyor: 12 ile başla (xl ekranda 3 sıra), kaydırdıkça 12 daha ekle.
+  const { shown, hasMore, sentinelRef } = useIncrementalList(
+    visibleListings,
+    view === "grid" ? 12 : 8,
+    `${view}|${query}|${sort}|${JSON.stringify(filters)}`,
+  );
   const selectedDrafts = draftListings.filter((l) => selected.has(l.listing_id));
   const selectedListings = (listings ?? []).filter((l) => selected.has(l.listing_id));
   const allRenewable = selectedListings.length > 0 && selectedListings.every((l) => l.state === "expired" || l.state === "sold_out");
@@ -576,7 +583,7 @@ export default function Home() {
 
                 {view === "grid" ? (
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                    {visibleListings.map((listing) => (
+                    {shown.map((listing) => (
                       <ListingCard
                         key={listing.listing_id}
                         listing={listing}
@@ -591,7 +598,7 @@ export default function Home() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {visibleListings.map((listing) => (
+                    {shown.map((listing) => (
                       <ListingRow
                         key={listing.listing_id}
                         shopId={activeShop.id}
@@ -604,6 +611,11 @@ export default function Home() {
                         job={jobs.get(listing.listing_id)}
                       />
                     ))}
+                  </div>
+                )}
+                {hasMore && (
+                  <div ref={sentinelRef} className="py-8 text-center text-xs text-neutral-400 dark:text-neutral-500">
+                    Daha fazla listing yükleniyor…
                   </div>
                 )}
               </div>

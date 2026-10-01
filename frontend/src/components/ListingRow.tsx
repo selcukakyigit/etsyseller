@@ -139,6 +139,8 @@ export default function ListingRow({
           <img
             src={listing.image_url}
             alt=""
+            loading="lazy"
+            decoding="async"
             className="w-14 h-14 rounded-lg object-cover flex-shrink-0 border border-neutral-100 dark:border-neutral-800"
           />
         ) : (
