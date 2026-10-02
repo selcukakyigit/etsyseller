@@ -42,7 +42,9 @@ export default function Sidebar({
   return (
     <aside className="w-56 flex-shrink-0 border-r border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex flex-col h-screen sticky top-0">
       <div className="px-5 py-4 border-b border-neutral-100 dark:border-neutral-800">
-        <Logo height={22} />
+        <Link href="/" aria-label={t("Ana sayfa", "Home page")} className="inline-block">
+          <Logo height={22} />
+        </Link>
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1">
