@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { api, DescriptionTemplate } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import AppShell from "@/components/AppShell";
@@ -11,15 +11,14 @@ import { useT } from "@/lib/i18n-client";
 import { useCached } from "@/lib/pageCache";
 import { toast } from "@/lib/toast";
 
-const PLACEHOLDER_HELP: [string, string, string][] = [
-  ["{product}", "Ürüne özel yazının yeri (yoksa başa gelir)", "Where the product-specific text goes (top if missing)"],
-  ["{title}", "Listing başlığı", "Listing title"],
-  ["{shop_name}", "Mağaza adı", "Shop name"],
-  ["{materials}", "Malzemeler", "Materials"],
-  ["{sizes}", "Boyut seçenekleri", "Size options"],
-  ["{colors}", "Renk seçenekleri", "Color options"],
-  ["{variations}", "Tüm varyasyonlar (satır satır)", "All variations (one per line)"],
-];
+// Ürün yazısı her zaman üste gelir (sunucu `{product}` yoksa öyle yerleştirir); kutuda yalnızca sabit metin görünür.
+// Eski/asistanın kaydettiği şablonların başındaki "{product}" satırı gösterilmez.
+const visibleBody = (body: string) => body.replace(/^\s*\{product\}\s*/, "");
+
+const EXAMPLE = `We offer free express shipping with FedEx and DHL.
+
+SATISFACTION GUARANTEED, OR YOUR MONEY BACK:
+If you are not completely satisfied, contact us within 30 days and we will resolve it.`;
 
 type Draft = { id: number | null; name: string; body: string; is_default: boolean };
 
@@ -33,7 +32,6 @@ export default function DescriptionTemplatesPage() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirm, confirmElement] = useConfirm();
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (!shopId) return;
@@ -102,18 +100,7 @@ export default function DescriptionTemplatesPage() {
     }
   }
 
-  function insertPlaceholder(ph: string) {
-    if (!draft) return;
-    const el = bodyRef.current;
-    const start = el ? el.selectionStart : draft.body.length;
-    const end = el ? el.selectionEnd : draft.body.length;
-    const next = draft.body.slice(0, start) + ph + draft.body.slice(end);
-    setDraft({ ...draft, body: next });
-    requestAnimationFrame(() => {
-      el?.focus();
-      el?.setSelectionRange(start + ph.length, start + ph.length);
-    });
-  }
+
 
   const list = items ?? [];
   const allSelected = list.length > 0 && list.every((x) => selected.has(x.id));
@@ -161,7 +148,7 @@ export default function DescriptionTemplatesPage() {
             <button
               type="button"
               disabled={!shopId}
-              onClick={() => setDraft({ id: null, name: "", body: "{product}\n\n", is_default: list.length === 0 })}
+              onClick={() => setDraft({ id: null, name: "", body: "", is_default: list.length === 0 })}
               className="rounded-full bg-[#D97757] px-4 py-1.5 text-xs font-semibold text-white hover:bg-[#C6613F] disabled:opacity-40"
             >
               + {t("Yeni şablon", "New template")}
@@ -190,7 +177,7 @@ export default function DescriptionTemplatesPage() {
                     })
                   }
                 />
-                <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setDraft({ id: item.id, name: item.name, body: item.body, is_default: item.is_default })}>
+                <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setDraft({ id: item.id, name: item.name, body: visibleBody(item.body), is_default: item.is_default })}>
                   <p className="flex items-center gap-2 text-sm font-medium text-neutral-900 dark:text-neutral-100">
                     <span className="truncate">{item.name}</span>
                     {item.is_default && (
@@ -199,7 +186,7 @@ export default function DescriptionTemplatesPage() {
                       </span>
                     )}
                   </p>
-                  <p className="mt-0.5 line-clamp-2 whitespace-pre-line text-xs text-neutral-500 dark:text-neutral-400">{item.body}</p>
+                  <p className="mt-0.5 line-clamp-2 whitespace-pre-line text-xs text-neutral-500 dark:text-neutral-400">{visibleBody(item.body)}</p>
                 </button>
                 <button
                   type="button"
@@ -251,33 +238,25 @@ export default function DescriptionTemplatesPage() {
             placeholder={t("Örn. Metal duvar sanatı", "E.g. Metal wall art")}
             className="mb-3 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
           />
-          <label className="mb-1 block text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("Metin", "Text")}</label>
+          <label className="mb-1 block text-xs font-medium text-neutral-500 dark:text-neutral-400">
+            {t("Her açıklamanın sonuna eklenecek metin", "Text added to the end of every description")}
+          </label>
           <textarea
-            ref={bodyRef}
             value={draft.body}
             onChange={(e) => setDraft({ ...draft, body: e.target.value.slice(0, 20000) })}
-            rows={14}
-            className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 font-mono text-xs leading-relaxed text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+            rows={12}
+            placeholder={EXAMPLE}
+            className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm leading-relaxed text-neutral-900 placeholder:text-neutral-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:placeholder:text-neutral-600"
           />
-          <p className="mb-1 mt-2 text-xs text-neutral-500 dark:text-neutral-400">
-            {t("Yer tutucu eklemek için tıkla. Değeri boş kalanın satırı açıklamada görünmez.", "Click to insert a placeholder. A line whose value is empty is left out of the description.")}
+          <p className="mb-3 mt-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+            {t(
+              "Kargo, garanti, iletişim gibi her listing'de aynı kalan metni yapıştır. Ürüne özel yazı her zaman üstte kalır, bu metin altına eklenir.",
+              "Paste the text that stays the same in every listing, such as shipping, guarantee and contact. The product-specific text always stays on top and this text is added below it.",
+            )}
           </p>
-          <div className="mb-3 flex flex-wrap gap-1.5">
-            {PLACEHOLDER_HELP.map(([ph, tr, en]) => (
-              <button
-                key={ph}
-                type="button"
-                title={t(tr, en)}
-                onClick={() => insertPlaceholder(ph)}
-                className="rounded-full border border-neutral-200 px-2.5 py-1 font-mono text-[11px] text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
-              >
-                {ph}
-              </button>
-            ))}
-          </div>
           <label className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300">
             <input type="checkbox" checked={draft.is_default} onChange={(e) => setDraft({ ...draft, is_default: e.target.checked })} />
-            {t("Varsayılan şablon (asistan yeni listing'lere bunu ekler)", "Default template (the assistant adds it to new listings)")}
+            {t("Varsayılan yap (asistan yeni listing'lere bunu ekler)", "Make default (the assistant adds it to new listings)")}
           </label>
         </Modal>
       )}
