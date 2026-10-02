@@ -115,6 +115,63 @@ def title_problems(title: str) -> list[str]:
     return out
 
 
+_SIZE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:\"|”|''|in\b|inch(?:es)?\b|cm\b|mm\b|ft\b|feet\b|foot\b)", re.I)
+_NUM = re.compile(r"\d+(?:[.,]\d+)?")
+COLORS = (
+    "black", "white", "gold", "silver", "grey", "gray", "copper", "bronze", "brown", "red", "blue", "green", "yellow",
+    "orange", "pink", "purple", "beige", "navy", "teal", "ivory", "cream", "rose gold", "antique",
+)
+
+
+def variation_values(inventory: dict | None) -> dict[str, list[str]]:
+    """Envanterdeki varyasyonlar: özellik adı -> seçenekler (Etsy'nin HTML kaçışları çözülmüş)."""
+    out: dict[str, list[str]] = {}
+    for p in (inventory or {}).get("products") or []:
+        for pv in p.get("property_values") or []:
+            name = html.unescape(str(pv.get("property_name") or "")).strip()
+            if not name:
+                continue
+            vals = out.setdefault(name, [])
+            for v in pv.get("values") or []:
+                v = html.unescape(str(v)).strip()
+                if v and v not in vals:
+                    vals.append(v)
+    return out
+
+
+def fact_problems(title: str, description: str, source_text: str, variations: dict[str, list[str]]) -> list[str]:
+    """Önerinin listing'de olmayan bilgi uydurmadığını denetler: kaynakta geçmeyen ölçü ve renkler; birden çok seçeneği
+    olan boyut/renk için başlıkta tek bir seçenek (alıcıyı yanıltır)."""
+    out: list[str] = []
+    src = html.unescape(source_text).lower()
+    src_nums = {n.replace(",", ".") for n in _NUM.findall(src)}
+    new_text = f"{title}\n{description}"
+    sizes = sorted({m.group(1).replace(",", ".") for m in _SIZE.finditer(new_text)} - src_nums)
+    if sizes:
+        out.append(tr(
+            f"Listing'de olmayan ölçü yazılmış ({', '.join(sizes)}); yalnızca listing'deki ölçüleri kullan, ölçü uydurma.",
+            f"Sizes that are not in the listing were written ({', '.join(sizes)}); use only the listing's sizes.",
+        ))
+    low = new_text.lower()
+    colors = sorted(c for c in COLORS if re.search(rf"\b{c}\b", low) and not re.search(rf"\b{c}\b", src))
+    if colors:
+        out.append(tr(
+            f"Listing'de olmayan renk yazılmış ({', '.join(colors)}); yalnızca listing'deki renkleri kullan.",
+            f"Colors that are not in the listing were written ({', '.join(colors)}); use only the listing's colors.",
+        ))
+    t = title.lower()
+    for name, vals in variations.items():
+        if len(vals) < 2:
+            continue
+        hits = [v for v in vals if v.lower() in t or any(n in _NUM.findall(t) for n in _NUM.findall(v))]
+        if hits:
+            out.append(tr(
+                f"Başlıkta \"{name}\" seçeneklerinden yalnızca biri var ({hits[0]}), oysa {len(vals)} seçenek sunuluyor; başlığa tek bir seçeneği yazma.",
+                f"The title names only one of the \"{name}\" options ({hits[0]}) although {len(vals)} are offered; do not put a single option in the title.",
+            ))
+    return out
+
+
 def basic_problems(title: str, tags: list[str], product_description: str = "") -> list[str]:
     """Başlık/etiket/açıklama biçim kuralları."""
     out = title_problems(title)

@@ -12,7 +12,10 @@ edilmiş yeni bir başlık, 13 etiket ve açıklama önerisi üretmek.
 Etsy başlık kuralları (Etsy'nin Ağustos 2025 resmî rehberi; arama artık anlamı büyük dil modelleriyle anlıyor, \
 anahtar kelime doldurma cezalandırılıyor):
 - Başlık KISA ve NET: 15 kelimeden az. Önce ürünün NE olduğu (ana anahtar öbeği ilk 40 karakterde), ardından \
-renk, boyut, malzeme, stil gibi NESNEL tanımlar. Örn. "Personalized Metal Farm Sign, Black Steel Ranch Name Plaque, 24 Inch"
+renk, boyut, malzeme, stil gibi NESNEL tanımlar. Ana arama öbeği listing'in mevcut başlığından ve satış getiren \
+etiketlerinden gelsin (ör. mevcut başlıkta "metal garage sign" varsa onu koru); kısaltırken ana öbeği atma
+- Listing'de birden çok boyut ya da renk seçeneği varsa (verilen "variations") başlığa TEK bir boyut/renk yazma; ya hiç \
+yazma ya da genel ifade kullan. Listing'de olmayan ölçü, renk ya da malzeme ASLA uydurma (başlıkta da açıklamada da)
 - Başlıkta OLMAYACAKLAR: hediye/alıcı ifadeleri ("gift for dad", "for her"), öznel sözcükler ("beautiful", "perfect", \
 "best"), kargo/indirim bilgisi, aynı kelimenin tekrarı, virgülle sıralanmış kelime listesi
 - Başlıktan çıkardığın hediye/alıcı/kullanım yeri/vesile ifadelerini SİLME: etiketlere ve açıklamaya taşı (Etsy bunları \
@@ -119,7 +122,10 @@ def _others_block(title: str, tags: list[str], others: list[dict]) -> str:
     )
 
 
-def generate_seo_suggestion(listing: dict, keyword_pool: list[dict] | None = None, others: list[dict] | None = None, diagnosis_brief: str = "") -> dict:
+def generate_seo_suggestion(
+    listing: dict, keyword_pool: list[dict] | None = None, others: list[dict] | None = None, diagnosis_brief: str = "",
+    variations: dict[str, list[str]] | None = None,
+) -> dict:
     """`others`: mağazanın diğer listing'leri (başlık/etiket/açıklama). Verilirse öneri hem biçim kurallarına hem de
     "diğer listing'lerin kopyası olmama" denetimine tabi tutulur; ihlalde model geri bildirimle yeniden denenir."""
     others = others or []
@@ -128,7 +134,13 @@ def generate_seo_suggestion(listing: dict, keyword_pool: list[dict] | None = Non
         "tags": listing.get("tags", []),
         "description": listing.get("description", ""),
         "materials": listing.get("materials", []),
+        "variations": variations or {},
     }
+    # Uydurma denetimi için kaynak: mevcut metin, malzemeler ve varyasyon seçenekleri
+    source_text = "\n".join([
+        str(listing_payload["title"]), str(listing_payload["description"]), " ".join(map(str, listing_payload["materials"])),
+        " ".join(v for vals in (variations or {}).values() for v in vals),
+    ])
 
     user_content = f"Mevcut listing verisi:\n{json.dumps(listing_payload, ensure_ascii=False, indent=2)}"
     if keyword_pool:
@@ -143,6 +155,7 @@ def generate_seo_suggestion(listing: dict, keyword_pool: list[dict] | None = Non
         tags = quality.fix_long_tags(quality.clean_tags(suggestion.get("tags", [])))
         suggestion["tags"] = tags
         problems = quality.all_problems(str(suggestion.get("title", "")), tags, str(suggestion.get("description", "")), others)
+        problems += quality.fact_problems(str(suggestion.get("title", "")), str(suggestion.get("description", "")), source_text, variations or {})
         if not problems or attempt == MAX_RETRIES:
             break
         feedback = "\n".join(f"- {p}" for p in problems)

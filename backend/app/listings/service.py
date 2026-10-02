@@ -459,14 +459,18 @@ def _build_listings(db: Session, shop: Shop) -> list[ListingOut]:
 def create_suggestion(
     db: Session, shop: Shop, user_id: int, listing_id: int, overrides: SuggestIn | None = None
 ) -> SuggestionOut:
+    local = db.scalars(select(ListingLocal).where(ListingLocal.shop_id == shop.id).where(ListingLocal.listing_id == listing_id)).one_or_none()
+    local_data = json.loads(local.data_json) if local else {}
     if listing_id < 0:
-        local = db.scalars(select(ListingLocal).where(ListingLocal.shop_id == shop.id).where(ListingLocal.listing_id == listing_id)).one_or_none()
-        listing = json.loads(local.data_json) if local else {}
+        listing = local_data
+        inventory = local_data.get("inventory")
     else:
         row = _get_cache_row(db, shop, listing_id)
         if row is None:
             row = _fetch_and_cache_one(db, shop, EtsyClient(db, shop), listing_id)
         listing = json.loads(row.raw_json)
+        # Varyasyonlar: düzenleyicide değiştirildiyse yerel sürümden, yoksa Etsy'deki hâlinden
+        inventory = local_data.get("inventory") or json.loads(row.inventory_json or "{}")
     # Formdaki (taslaktaki) güncel değerler verildiyse AI onları iyileştirir.
     if overrides is not None:
         for key, value in overrides.model_dump(exclude_none=True).items():
@@ -491,7 +495,7 @@ def create_suggestion(
             logger.warning("Teşhis hesaplanamadı (listing %s)", listing_id, exc_info=True)
 
     try:
-        suggestion = seo.generate_seo_suggestion(listing, keyword_pool=keyword_pool, others=quality.shop_others(db, shop.id, exclude_id=listing_id), diagnosis_brief=brief)
+        suggestion = seo.generate_seo_suggestion(listing, keyword_pool=keyword_pool, others=quality.shop_others(db, shop.id, exclude_id=listing_id), diagnosis_brief=brief, variations=quality.variation_values(inventory))
     except (ValueError, json.JSONDecodeError) as exc:
         raise SuggestionError(f"SEO önerisi üretilemedi: {exc}") from exc
 
