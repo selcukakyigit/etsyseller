@@ -4,6 +4,8 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import { api, FinProduct, InvoiceCandidate, InvoiceShipment } from "@/lib/api";
 import { useRegenProgress } from "@/lib/useRegenProgress";
 import { tNow as t } from "@/lib/i18n";
+import { useCached } from "@/lib/pageCache";
+import { BlockSpinner } from "@/components/ui/Spinner";
 
 const card = "rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900";
 const input = "rounded-lg border border-neutral-300 bg-white px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900";
@@ -62,11 +64,8 @@ export default function ShippingInvoices({
   onSaved: () => void;
 }) {
   const [reviews, setReviews] = useState<Review[]>([]);
-  const [saved, setSaved] = useState<InvoiceShipment[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [total, setTotal] = useState(0);
-  const [totalAmount, setTotalAmount] = useState(0);
   const [q, setQ] = useState("");
   const [kind, setKind] = useState("");
   const [invStart, setInvStart] = useState("");
@@ -79,23 +78,27 @@ export default function ShippingInvoices({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nextId, setNextId] = useState(1);
+  // Kayıtlı faturalar sekme belleğinde tutulur: sekmeye geri dönünce liste beklemeden görünür, arkada tazelenir.
+  const [list, setList] = useCached<{ items: InvoiceShipment[]; total: number; total_amount: number }>(
+    `fin-invoices:${shopId}:${q}:${kind}:${invStart}:${invEnd}:${sort}:${page}`,
+    { keepPrevious: true },
+  );
+  const saved = list?.items ?? [];
+  const total = list?.total ?? 0;
+  const totalAmount = list?.total_amount ?? 0;
   const titleOf = (id: number) => products.find((p) => p.listing_id === id)?.title || `Listing ${id}`;
 
   const loadSaved = useCallback(() => {
     api.finance.invoices
       .list(shopId, { q, kind, invStart, invEnd, sort, page, perPage: PER_PAGE })
-      .then((r) => {
-        setSaved(r.items);
-        setTotal(r.total);
-        setTotalAmount(r.total_amount);
-      })
-      .catch(() => setSaved([]));
-  }, [shopId, q, kind, invStart, invEnd, sort, page]);
-  // Arama yazılırken her tuşta istek atmamak için kısa bir gecikme.
+      .then((r) => setList({ items: r.items, total: r.total, total_amount: r.total_amount }))
+      .catch(() => setList({ items: [], total: 0, total_amount: 0 }));
+  }, [shopId, q, kind, invStart, invEnd, sort, page, setList]);
+  // Arama yazılırken her tuşta istek atmamak için kısa bir gecikme; aramasız açılışta beklemeden yükle.
   useEffect(() => {
-    const timer = setTimeout(loadSaved, 250);
+    const timer = setTimeout(loadSaved, q ? 250 : 0);
     return () => clearTimeout(timer);
-  }, [loadSaved]);
+  }, [loadSaved, q]);
   // Süzgeç değişince ilk sayfaya dön.
   const onFilter = (set: (v: string) => void) => (v: string) => {
     set(v);
@@ -398,7 +401,9 @@ export default function ShippingInvoices({
             </button>
           </div>
         )}
-        {saved.length === 0 ? (
+        {list === null ? (
+          <BlockSpinner />
+        ) : saved.length === 0 ? (
           <p className="text-sm text-neutral-400">{hasFilter ? t("Bu süzgeçlere uyan fatura yok.", "No invoices match these filters.") : t("Henüz onaylanmış fatura yok.", "No confirmed invoices yet.")}</p>
         ) : (
           <div className="overflow-x-auto">

@@ -8,6 +8,8 @@ import OrderCostBreakdown from "./OrderCostBreakdown";
 import OrderDetailModal from "./OrderDetailModal";
 import ProductThumb from "./ProductThumb";
 import { tNow as t } from "@/lib/i18n";
+import { useCached } from "@/lib/pageCache";
+import { BlockSpinner } from "@/components/ui/Spinner";
 
 const card = "rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900";
 const inputBase = "w-20 rounded border px-2 py-1 text-right text-sm focus:border-[#D97757] focus:outline-none";
@@ -459,7 +461,7 @@ export function OrderCosts({
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(0);
-  const [data, setData] = useState<FinOrdersPage | null>(null);
+  const [data, setData] = useCached<FinOrdersPage>(`fin-orders:${shopId}:${range.start}:${range.end}:${q}:${page}`, { keepPrevious: true });
   const [error, setError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [breakdownId, setBreakdownId] = useState<number | null>(null);
@@ -489,7 +491,7 @@ export function OrderCosts({
     return () => {
       cancelled = true;
     };
-  }, [shopId, range.start, range.end, q, page]);
+  }, [shopId, range.start, range.end, q, page, setData]);
 
   const pages = data ? Math.max(1, Math.ceil(data.total / 30)) : 1;
   return (
@@ -531,6 +533,7 @@ export function OrderCosts({
           </tbody>
         </table>
       </div>
+      {!data && !error && <BlockSpinner />}
       {data && data.orders.length === 0 && <p className="py-4 text-sm text-neutral-400">{t("Bu dönemde sipariş bulunamadı.", "No orders found in this period.")}</p>}
       {data && pages > 1 && (
         <div className="mt-3 flex items-center justify-end gap-3 text-sm text-neutral-500">

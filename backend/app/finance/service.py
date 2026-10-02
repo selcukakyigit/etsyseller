@@ -325,7 +325,22 @@ def _shift_year(d: dt.date, years: int) -> dt.date:
 ORDER_FEE_BUCKETS = ("transaction", "processing_fee", "regulatory_fee", "offsite_ads")
 
 
+_fx_cache = ResultCache(max_items=20)
+
+
 def _fx_tables(db: Session, shop: Shop) -> dict:
+    """`_build_fx_tables` sonucunu sipariş/ödeme/ledger sürümü değişene kadar bellekte tutar (sekme açılışlarını hızlandırır).
+    Sonuç salt okunur kullanılır, kopyalanmaz."""
+    key = (shop.id, _finance_version(db, shop))
+    tbl = _fx_cache.get(key)
+    if tbl is None:
+        _fx_cache.drop_shop(shop.id)
+        tbl = _build_fx_tables(db, shop)
+        _fx_cache.set(key, tbl)
+    return tbl
+
+
+def _build_fx_tables(db: Session, shop: Shop) -> dict:
     """Kur tabloları (yalnızca sipariş sütunları ve ödeme tutarlarından; JSON açmaz, hızlıdır).
     Rapor para birimi `R` = en çok sipariş alınan para birimi. `own[rid]` = ödeme hesabı birimi / sipariş para birimi,
     `med[(para birimi, ay)]` aynı oranın aylık ortancası."""
