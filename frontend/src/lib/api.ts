@@ -259,7 +259,6 @@ export type Order = {
   tracking_codes: string[];
   channel: "etsy" | "pattern";
   address: OrderAddress;
-  buyer_email: string | null;
   buyer_note: string | null;
   is_gift: boolean;
   gift_message: string | null;

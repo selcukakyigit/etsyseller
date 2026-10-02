@@ -10,7 +10,8 @@ logger = logging.getLogger(__name__)
 
 
 def sync_all_shops() -> None:
-    """Mağaza profilini (logo, duyuru, yorum ortalaması/sayısı, favori sayısı, tatil modu) günlük tazeler.
+    """Mağaza profilini (logo, duyuru, yorum ortalaması/sayısı, favori sayısı, tatil modu) 4 saatte bir tazeler
+    (Etsy API Terms: gösterilen veri Etsy'dekinden 6 saatten eski olmamalı).
     Etsy'de bu alanlar bizim bir yazma işlemimiz olmadan da değişebiliyor (ör. yeni bir yorum geldiğinde
     review_average kendiliğinden değişir), bu yüzden reference_cache.invalidate yerine periyodik `set` kullanılır."""
     db = SessionLocal()

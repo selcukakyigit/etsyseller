@@ -48,7 +48,6 @@ class OrderOut(BaseModel):
     # Siparişler sayfası (Etsy Shop Manager benzeri) için zengin alanlar
     channel: str = "etsy"  # etsy | pattern
     address: AddressOut = AddressOut()
-    buyer_email: str | None = None  # Etsy yalnızca onaylı uygulamalara verir; genelde None
     buyer_note: str | None = None
     is_gift: bool = False
     gift_message: str | None = None

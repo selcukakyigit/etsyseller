@@ -48,7 +48,7 @@ def start_scheduler() -> None:
     )
     _scheduler.add_job(
         sync_shop_profile,
-        trigger=CronTrigger(hour=3, minute=30),
+        trigger=IntervalTrigger(hours=4),
         id="shop_profile",
         replace_existing=True,
     )
@@ -60,7 +60,7 @@ def start_scheduler() -> None:
     )
     _scheduler.add_job(
         sync_reviews,
-        trigger=CronTrigger(hour=3, minute=45),
+        trigger=IntervalTrigger(hours=4),
         id="reviews",
         replace_existing=True,
     )
@@ -83,8 +83,8 @@ def start_scheduler() -> None:
         _scheduler.add_job(func, trigger=DateTrigger(run_date=now + dt.timedelta(seconds=45 * i)), id=job_id, replace_existing=True)
 
     logger.info(
-        "Scheduler started: daily_stats 03:00, listing_health 03:15, shop_profile 03:30, reviews 03:45 UTC; "
-        "order_sync every 2h, listing_refresh every 4h (all also run once shortly after start)."
+        "Scheduler started: daily_stats 03:00, listing_health 03:15 UTC; order_sync every 2h, "
+        "listing_refresh/shop_profile/reviews every 4h (all also run once shortly after start)."
     )
 
 

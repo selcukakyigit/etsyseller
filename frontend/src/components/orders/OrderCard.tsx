@@ -181,9 +181,6 @@ export default function OrderCard({
                 <button type="button" onClick={() => copy(addressText(order), "addr")} className="mt-1 underline underline-offset-2">
                   {copied === "addr" ? "Kopyalandı ✓" : "Adresi kopyala"}
                 </button>
-                <p className="mt-1.5 text-neutral-500">
-                  E-posta: {order.buyer_email ?? "Etsy bu uygulamaya alıcı e-postasını vermiyor"}
-                </p>
               </div>
             ) : (
               <p className="mt-0.5 text-neutral-500">

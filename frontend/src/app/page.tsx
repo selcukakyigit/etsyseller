@@ -5,7 +5,7 @@ import { SiteFooter, SiteHeader } from "@/components/site/SiteChrome";
 import { serif } from "@/components/site/fonts";
 import { getLang } from "@/lib/i18n-server";
 import { Lang } from "@/lib/i18n";
-import { BRAND } from "@/lib/legal";
+import { BRAND, ETSY_DISCLAIMER } from "@/lib/legal";
 
 const COPY = {
   en: {
@@ -123,6 +123,10 @@ export default async function LandingPage() {
               </Link>
             </div>
             <p className="mt-5 text-sm text-neutral-500 dark:text-neutral-400">{c.micro}</p>
+            {/* Etsy API Terms: bu cümle "belirgin bir yerde" olmalı (Commercial Access şartı); yalnızca footer'da kalmasın. */}
+            <p className="mt-6 max-w-xl border-l-2 border-neutral-300 pl-3 text-xs leading-relaxed text-neutral-600 dark:border-neutral-600 dark:text-neutral-300">
+              {ETSY_DISCLAIMER}
+            </p>
           </div>
           <div className="flex min-w-0 justify-center lg:justify-end">
             <ProductMock lang={lang} />

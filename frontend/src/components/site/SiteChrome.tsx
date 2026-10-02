@@ -70,7 +70,7 @@ export function SiteFooter({ lang }: { lang: Lang }) {
             ))}
           </nav>
         </div>
-        <p className="mt-8 max-w-3xl text-xs leading-relaxed text-neutral-400 dark:text-neutral-500">{ETSY_DISCLAIMER}</p>
+        <p className="mt-8 max-w-3xl text-sm leading-relaxed text-neutral-600 dark:text-neutral-300">{ETSY_DISCLAIMER}</p>
         <p className="mt-2 text-xs text-neutral-400 dark:text-neutral-500">© {new Date().getFullYear()} {BRAND}</p>
       </div>
     </footer>
