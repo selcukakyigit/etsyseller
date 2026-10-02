@@ -135,10 +135,16 @@ def _sales_index(db: Session, shop: Shop) -> dict[int, list[tuple[dt.date, int, 
             return cached[1]
     tbl = fin._fx_tables(db, shop)
     per: dict[int, dict[dt.date, list]] = {}
-    for row in db.scalars(select(OrderCache).where(OrderCache.shop_id == shop.id, OrderCache.is_canceled.is_(False))):
-        kc, _ = fin._factors(tbl, row.receipt_id)
-        day = row.created_at.date()
-        for t in json.loads(row.raw_json).get("transactions") or []:
+    # Yalnızca gereken sütunlar, parça parça: tüm siparişlerin ham JSON'u aynı anda belleğe alınmaz.
+    q = (
+        select(OrderCache.receipt_id, OrderCache.created_at, OrderCache.raw_json)
+        .where(OrderCache.shop_id == shop.id, OrderCache.is_canceled.is_(False))
+        .execution_options(yield_per=200)
+    )
+    for receipt_id, created_at, raw_json in db.execute(q):
+        kc, _ = fin._factors(tbl, receipt_id)
+        day = created_at.date()
+        for t in json.loads(raw_json).get("transactions") or []:
             qty = t.get("quantity") or 1
             d = per.setdefault(t.get("listing_id"), {}).setdefault(day, [0, 0.0])
             d[0] += qty

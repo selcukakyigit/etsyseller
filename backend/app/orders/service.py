@@ -345,11 +345,14 @@ def orders_page(
     return OrdersPageOut(items=[_serialize_order(r, images) for r in rows], total=total, counts=counts, destinations=destinations)
 
 
+LIST_ORDERS_MAX = 200  # eski, sayfasız uç nokta: binlerce siparişi tek seferde belleğe almasın (arayüz sayfalı `orders_page` kullanır)
+
+
 def list_orders(db: Session, shop: Shop, needs_shipping: bool | None = None) -> list[OrderOut]:
     query = select(OrderCache).where(OrderCache.shop_id == shop.id)
     if needs_shipping:
         query = query.where(OrderCache.is_paid.is_(True)).where(OrderCache.is_shipped.is_(False))
-    query = query.order_by(OrderCache.created_at.desc())
+    query = query.order_by(OrderCache.created_at.desc()).limit(LIST_ORDERS_MAX)
     rows = db.scalars(query).all()
     ids = {t.get("listing_id") for row in rows for t in json.loads(row.raw_json).get("transactions", []) if t.get("listing_id")}
     images = _listing_images(db, shop, ids)

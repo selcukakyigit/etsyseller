@@ -372,17 +372,23 @@ def _digits(s: str) -> str:
 
 def _order_index(db: Session, shop: Shop) -> list[dict]:
     """Eşleştirme için siparişlerin hafif özeti: takip kodları, alıcı, ülke, tarih ve kalemler."""
+    from app.finance.service import _slim_receipt
+
     out = []
-    for row in db.scalars(select(OrderCache).where(OrderCache.shop_id == shop.id)):
-        raw = json.loads(row.raw_json)
+    # Parça parça okunur ve kalemlerin yalnızca eşleştirmede kullanılan alanları tutulur (bellek; bkz. finance/service.py).
+    cols = (OrderCache.receipt_id, OrderCache.is_canceled, OrderCache.buyer_name, OrderCache.country_iso, OrderCache.created_at, OrderCache.raw_json)
+    for receipt_id, is_canceled, buyer_name, country_iso, created_at, raw_json in db.execute(
+        select(*cols).where(OrderCache.shop_id == shop.id).execution_options(yield_per=200)
+    ):
+        raw = _slim_receipt(json.loads(raw_json))
         out.append({
-            "receipt_id": row.receipt_id,
-            "canceled": bool(row.is_canceled),
-            "buyer": row.buyer_name or "",
-            "country": (row.country_iso or "").upper(),
-            "date": row.created_at.date(),
-            "tracking": {_digits(s.get("tracking_code")) for s in raw.get("shipments") or [] if s.get("tracking_code")},
-            "txs": raw.get("transactions") or [],
+            "receipt_id": receipt_id,
+            "canceled": bool(is_canceled),
+            "buyer": buyer_name or "",
+            "country": (country_iso or "").upper(),
+            "date": created_at.date(),
+            "tracking": {_digits(s.get("tracking_code")) for s in raw["shipments"]},
+            "txs": raw["transactions"],
         })
     return out
 
