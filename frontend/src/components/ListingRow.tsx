@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { api, KeywordPoolItem, Listing, ListingHistory } from "@/lib/api";
-import ListingHistoryPanel from "@/components/ListingHistoryPanel";
+import ListingAnalysisPanel from "@/components/listings/analysis/ListingAnalysisPanel";
 import { PublishJob } from "@/lib/publishJobs";
 import PublishBar from "@/components/listings/PublishBar";
 import { competitionFill, normalizedScore, poolRanges } from "@/lib/keywordScore";
@@ -181,7 +181,7 @@ export default function ListingRow({
             </span>
           )}
           <button onClick={() => setHistoryOpen((v) => !v)} className={pill}>
-            {historyOpen ? t("Geçmişi gizle", "Hide history") : t("Geçmiş", "History")}
+            {historyOpen ? t("Analizi gizle", "Hide analysis") : t("Analiz", "Analysis")}
           </button>
           <button onClick={handleToggleKeywordPool} disabled={keywordPoolLoading} className={`${pill} disabled:opacity-50`}>
             {keywordPoolLoading ? t("Yükleniyor…", "Loading…") : keywordPool ? t("Havuzu gizle", "Hide pool") : t("Kelime Havuzu", "Keyword pool")}
@@ -204,7 +204,7 @@ export default function ListingRow({
       {(error || publishError) && <p className="px-4 pb-3 text-sm text-red-600">{error ?? publishError}</p>}
       {job && <PublishBar id={listing.listing_id} job={job} />}
 
-      {historyOpen && <ListingHistoryPanel shopId={shopId} listingId={listing.listing_id} initialHistory={mockHistory} />}
+      {historyOpen && <ListingAnalysisPanel shopId={shopId} listingId={listing.listing_id} initialHistory={mockHistory} />}
 
       {keywordPool && (
         <div className="border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/50 p-4 space-y-2">

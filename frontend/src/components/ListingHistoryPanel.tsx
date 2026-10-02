@@ -276,20 +276,11 @@ function HealthBanner({ shopId, listingId }: { shopId: number; listingId: number
   );
 }
 
-export default function ListingHistoryPanel({
-  shopId,
-  listingId,
-  initialHistory,
-}: {
-  shopId: number;
-  listingId: number;
-  /** Preview/test escape hatch: skip the network call and render this directly. */
-  initialHistory?: ListingHistory;
-}) {
-  const { t, locale } = useT();
+/** Performans ve değişiklik geçmişi aynı istekten gelir; oturum boyunca önbellekte durur (panel yeniden açılınca anında görünür). */
+export function useListingHistory(shopId: number, listingId: number, initialHistory?: ListingHistory) {
+  const { t } = useT();
   const [history, setHistory] = useState<ListingHistory | null>(initialHistory ?? historyCache.get(`${shopId}:${listingId}`) ?? null);
   const [error, setError] = useState<string | null>(null);
-  const [showAllHistory, setShowAllHistory] = useState(false);
 
   useEffect(() => {
     if (initialHistory) return;
@@ -303,42 +294,48 @@ export default function ListingHistoryPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shopId, listingId, initialHistory]);
 
-  // Performans ve geçmiş AYNI ANDA yüklenir (art arda değil); geçmiş gelene kadar performans kartı zaten görünür.
-  if (error) return <p className="text-sm text-red-600 px-4 py-3">{error}</p>;
-  if (!history)
-    return (
-      <div className="border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/50 p-4 space-y-4">
-        {listingId > 0 && <HealthBanner shopId={shopId} listingId={listingId} />}
-        {listingId > 0 && <PerformanceSummary shopId={shopId} listingId={listingId} />}
-        <BlockSpinner />
-      </div>
-    );
+  return { history, error };
+}
 
-  const appliedEvents = history.versions
+/** Performans sekmesi: sağlık durumu, dönem performansı ve görüntülenme/favori grafikleri. */
+export function PerformanceTab({ shopId, listingId, history }: { shopId: number; listingId: number; history: ListingHistory | null }) {
+  const { t } = useT();
+  const appliedEvents = (history?.versions ?? [])
     .filter((v) => v.status === "applied" && v.applied_at)
     .map((v) => ({ date: v.applied_at as string }));
-
   return (
-    <div className="border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/50 p-4 space-y-4">
+    <div className="space-y-4">
       {listingId > 0 && <HealthBanner shopId={shopId} listingId={listingId} />}
       {listingId > 0 && <PerformanceSummary shopId={shopId} listingId={listingId} />}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <TrendChart
-          label={t("Görüntülenme", "Views")}
-          color="views"
-          data={history.stats.map((s) => ({ date: s.captured_at, value: s.views }))}
-          events={appliedEvents}
-        />
-        <TrendChart
-          label={t("Favori", "Favorites")}
-          color="favorites"
-          data={history.stats.map((s) => ({ date: s.captured_at, value: s.favorites }))}
-          events={appliedEvents}
-        />
-      </div>
+      {history ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <TrendChart
+            label={t("Görüntülenme", "Views")}
+            color="views"
+            data={history.stats.map((s) => ({ date: s.captured_at, value: s.views }))}
+            events={appliedEvents}
+          />
+          <TrendChart
+            label={t("Favori", "Favorites")}
+            color="favorites"
+            data={history.stats.map((s) => ({ date: s.captured_at, value: s.favorites }))}
+            events={appliedEvents}
+          />
+        </div>
+      ) : (
+        <BlockSpinner />
+      )}
+    </div>
+  );
+}
 
+/** Değişiklik geçmişi sekmesi: AI önerileri ve elle yapılan değişiklikler, uygulanma tarihleriyle. */
+export function ChangeHistoryTab({ history }: { history: ListingHistory | null }) {
+  const { t, locale } = useT();
+  const [showAllHistory, setShowAllHistory] = useState(false);
+  if (!history) return <BlockSpinner />;
+  return (
       <div>
-        <p className="text-xs font-medium text-neutral-400 dark:text-neutral-500 mb-2">{t("Değişiklik geçmişi", "Change history")}</p>
         {history.versions.length === 0 ? (
           <p className="text-sm text-neutral-400 dark:text-neutral-500">{t("Henüz bir öneri üretilmedi.", "No suggestions yet.")}</p>
         ) : (
@@ -349,10 +346,10 @@ export default function ListingHistoryPanel({
                 <span
                   className={`mt-0.5 flex-shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${
                     v.status === "applied"
-                      ? "bg-green-50 text-green-600"
+                      ? "bg-green-50 text-green-600 dark:bg-green-950/40 dark:text-green-400"
                       : v.status === "dismissed"
                         ? "bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400"
-                        : "bg-[#D97757]/10 text-[#B4553A]"
+                        : "bg-[#D97757]/10 text-[#B4553A] dark:text-[#E89A7F]"
                   }`}
                 >
                   {STATUS_LABEL[v.status] ? t(...STATUS_LABEL[v.status]) : v.status}
@@ -371,7 +368,7 @@ export default function ListingHistoryPanel({
             <button
               type="button"
               onClick={() => setShowAllHistory((v) => !v)}
-              className="mt-2 text-xs font-medium text-[#B4553A] hover:underline"
+              className="mt-2 text-xs font-medium text-[#B4553A] hover:underline dark:text-[#E89A7F]"
             >
               {showAllHistory ? t("Daha az göster", "Show less") : t(`Daha fazla göster (${history.versions.length - 3} tane daha)`, `Show more (${history.versions.length - 3} more)`)}
             </button>
@@ -379,6 +376,5 @@ export default function ListingHistoryPanel({
           </>
         )}
       </div>
-    </div>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import DescriptionTemplatePicker from "@/components/listing-editor/DescriptionTemplatePicker";
+import DiagnosisStrip from "@/components/listings/analysis/DiagnosisStrip";
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { api, Suggestion } from "@/lib/api";
@@ -208,6 +209,8 @@ export default function ListingEditPage() {
                 {aiBusy ? t("Üretiliyor…", "Generating…") : t("✨ AI Önerisi Üret", "✨ Generate AI suggestion")}
               </button>
             </div>
+
+            {listingId > 0 && <DiagnosisStrip shopId={activeShop.id} listingId={listingId} />}
 
             <ProgressBar
               busy={aiBusy}

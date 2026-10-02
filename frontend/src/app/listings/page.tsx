@@ -12,7 +12,7 @@ import { onPublishFinished, startPublish, usePublishJobs } from "@/lib/publishJo
 import ListingCard, { CardAction } from "@/components/listings/ListingCard";
 import ListingPreviewModal from "@/components/listings/ListingPreviewModal";
 import BulkEditModal, { BulkOp } from "@/components/listings/BulkEditModal";
-import ListingHistoryPanel from "@/components/ListingHistoryPanel";
+import ListingAnalysisPanel from "@/components/listings/analysis/ListingAnalysisPanel";
 import { Modal, btnGhost } from "@/components/listing-editor/Modal";
 import { ReconnectNotice, isPermissionError } from "@/components/shipping/shared";
 import ListingFilters, { applyFilters, EMPTY_FILTERS, Filters, Reference } from "@/components/listings/ListingFilters";
@@ -741,7 +741,7 @@ export default function Home() {
             </button>
           }
         >
-          <ListingHistoryPanel shopId={activeShop.id} listingId={statsFor.listing_id} />
+          <ListingAnalysisPanel shopId={activeShop.id} listingId={statsFor.listing_id} />
         </Modal>
       )}
     </AppShell>

@@ -41,6 +41,7 @@ from app.jobs.scheduler import start_scheduler, stop_scheduler
 from app.keywords.router import router as keywords_router
 from app.listings.router import router as listings_router
 from app.listings.templates_router import router as description_templates_router
+from app.insights.router import router as insights_router
 from app.orders.router import router as orders_router
 from app.shops.router import router as shops_router
 from app.taxonomy.router import router as taxonomy_router
@@ -122,6 +123,7 @@ app.include_router(account_router)
 app.include_router(shops_router)
 app.include_router(listings_router)
 app.include_router(description_templates_router)
+app.include_router(insights_router)
 app.include_router(orders_router)
 app.include_router(finance_router)
 app.include_router(finance_invoices_router)

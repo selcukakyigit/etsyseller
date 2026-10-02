@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, defer
 
 from app.ai import quality, seo
+from app.insights import diagnosis
 from app.listings import performance
 from app.etsy import images as etsy_images
 from app.etsy import inventory as etsy_inventory
@@ -481,8 +482,16 @@ def create_suggestion(
         if item["tag"] in cached_trends:
             item["google_score"] = cached_trends[item["tag"]]
 
+    # Satış teşhisi (yalnızca Etsy'deki listing'ler için): öneri, listing'in neden düştüğüne göre odaklanır.
+    brief = ""
+    if listing_id > 0:
+        try:
+            brief = diagnosis.prompt_brief(diagnosis.diagnose(db, shop, listing_id))
+        except Exception:  # noqa: BLE001 — teşhis hesaplanamazsa öneri yine üretilir
+            logger.warning("Teşhis hesaplanamadı (listing %s)", listing_id, exc_info=True)
+
     try:
-        suggestion = seo.generate_seo_suggestion(listing, keyword_pool=keyword_pool, others=quality.shop_others(db, shop.id, exclude_id=listing_id))
+        suggestion = seo.generate_seo_suggestion(listing, keyword_pool=keyword_pool, others=quality.shop_others(db, shop.id, exclude_id=listing_id), diagnosis_brief=brief)
     except (ValueError, json.JSONDecodeError) as exc:
         raise SuggestionError(f"SEO önerisi üretilemedi: {exc}") from exc
 

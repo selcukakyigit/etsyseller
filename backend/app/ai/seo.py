@@ -9,15 +9,14 @@ SYSTEM_PROMPT = """Sen bir Etsy SEO uzmanısın. Sana bir listing'in mevcut baş
 açıklaması verilecek. Görevin, Etsy'nin 2026 "Context Update" sonrası arama algoritmasına göre optimize \
 edilmiş yeni bir başlık, 13 etiket ve açıklama önerisi üretmek.
 
-Etsy 2026 başlık kuralları (önemli, eski keyword-stuffing yaklaşımı artık cezalandırılıyor):
-- Etsy artık başlığı NLP ile bütün bağlam olarak değerlendiriyor, tek tek kelime eşleşmesine bakmıyor — \
-virgülle ayrılmış keyword listesi gibi görünen başlıklar tespit edilip sıralamada geriye düşürülüyor
-- İlk 40 karakter en kritik kısım (mobil/masaüstü sonuçlarında başlık orada kesiliyor) — en güçlü, en çok \
-aranan öbek başta olmalı
-- Yapı: doğal okunan 2-3 anlamlı öbek — [ana ürün + en güçlü anahtar kelime öbeği] | [ikincil özellik/varyant] \
-| [kullanım amacı/hediye/alıcı öbeği] — virgülle ayrılmış tekil kelime listesi DEĞİL
-- Tek başına geniş kelime hedefleme (ör. sadece "Kolye"), bunun yerine 3-5 kelimelik spesifik uzun kuyruk öbekler kullan
-- Karakter sınırı 140 ama "sweet spot" 80-120 arası — okunabilirlik için sona kadar zorlama
+Etsy başlık kuralları (Etsy'nin Ağustos 2025 resmî rehberi; arama artık anlamı büyük dil modelleriyle anlıyor, \
+anahtar kelime doldurma cezalandırılıyor):
+- Başlık KISA ve NET: 15 kelimeden az. Önce ürünün NE olduğu (ana anahtar öbeği ilk 40 karakterde), ardından \
+renk, boyut, malzeme, stil gibi NESNEL tanımlar. Örn. "Personalized Metal Farm Sign, Black Steel Ranch Name Plaque, 24 Inch"
+- Başlıkta OLMAYACAKLAR: hediye/alıcı ifadeleri ("gift for dad", "for her"), öznel sözcükler ("beautiful", "perfect", \
+"best"), kargo/indirim bilgisi, aynı kelimenin tekrarı, virgülle sıralanmış kelime listesi
+- Başlıktan çıkardığın hediye/alıcı/kullanım yeri/vesile ifadelerini SİLME: etiketlere ve açıklamaya taşı (Etsy bunları \
+oralardan da okur)
 
 Diğer kurallar:
 - tags: tam olarak 13 adet, her biri en fazla 20 karakter, çoğu çok kelimeli uzun kuyruk (long-tail) ifadeler \
@@ -111,7 +110,7 @@ def _others_block(title: str, tags: list[str], others: list[dict]) -> str:
     )
 
 
-def generate_seo_suggestion(listing: dict, keyword_pool: list[dict] | None = None, others: list[dict] | None = None) -> dict:
+def generate_seo_suggestion(listing: dict, keyword_pool: list[dict] | None = None, others: list[dict] | None = None, diagnosis_brief: str = "") -> dict:
     """`others`: mağazanın diğer listing'leri (başlık/etiket/açıklama). Verilirse öneri hem biçim kurallarına hem de
     "diğer listing'lerin kopyası olmama" denetimine tabi tutulur; ihlalde model geri bildirimle yeniden denenir."""
     others = others or []
@@ -126,6 +125,8 @@ def generate_seo_suggestion(listing: dict, keyword_pool: list[dict] | None = Non
     if keyword_pool:
         user_content += f"\n\nKullanılabilir anahtar kelime havuzu:\n{_format_keyword_pool(keyword_pool)}"
     user_content += _others_block(listing_payload["title"], listing_payload["tags"], others)
+    if diagnosis_brief:
+        user_content += f"\n\n{diagnosis_brief}\nGerekçede (rationale) bu teşhise göre neyi neden değiştirdiğini açıkla."
 
     suggestion = _call(user_content)
     problems: list[str] = []

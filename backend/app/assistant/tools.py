@@ -475,8 +475,7 @@ _RISKY_CLAIMS = re.compile(
 def _quality_problems(title: str, tags: list[str], product_description: str) -> list[str]:
     """Taslak oluşturulmadan önce kaliteyi denetler; sorun varsa model düzeltip tekrar dener (yanlış/eksik içerik yayına gitmesin)."""
     out = []
-    if len(title) < 80:
-        out.append(f"Başlık {len(title)} karakter; 80–120 karakter olmalı (boyut, malzeme, kullanım yeri ve alıcı gibi doğal öbekler ekle).")
+    out += quality.title_problems(title)
     if len(tags) < 13:
         out.append(f"{len(tags)} etiket var; tam 13 olmalı.")
     single = [t for t in tags if " " not in t]
@@ -788,6 +787,21 @@ def read_shipping_invoice(ctx: Ctx, a: dict) -> dict:
         "eslesmeyen": sum(1 for c in cands if not c["matches"]), "zaten_kayitli": sum(1 for c in cands if c["already_saved"]),
         "not": "HİÇBİR ŞEY KAYDEDİLMEDİ. Ekrandaki fatura kartında kullanıcı her satırın siparişini kontrol edip 'Onayla' ile kaydeder. "
                "Kısa özet ver: kaç satır, kaçı yüksek güvenle eşleşti, hangileri belirsiz/eşleşmedi, hangileri zaten kayıtlı. Kayıt yaptığını SÖYLEME.",
+    }
+
+
+def listing_diagnosis(ctx: Ctx, a: dict) -> dict:
+    """Listing'in satış teşhisi (Analiz panelindeki Teşhis sekmesiyle aynı hesap)."""
+    from app.insights import diagnosis
+
+    d = diagnosis.diagnose(ctx.db, ctx.shop, int(a["listing_id"]), ctx.today)
+    if d is None:
+        return {"error": "Listing bulunamadı (yerelde yok olabilir; senkronize edilmesi gerekebilir)."}
+    return {
+        "durum": d["status"], "baslik": d["headline"], "sebep": d["cause"], "guven": d["confidence"],
+        "onerilen_hamle": d["action"]["text"], "mevsim": d["season"]["text"], "dusus_baslangici": d["decline_start"],
+        "kanitlar": [e["text"] for e in d["evidence"]], "olaylar": d["events"][:8], "metrikler": d["metrics"],
+        "not": "Kullanıcıya kısa özetle: neden düştüğü, kanıtlar ve önerilen tek hamle. Önerilen hamle metin değişikliğiyse update_listing ile taslak önerebilirsin; mevsim uyarısını mutlaka belirt.",
     }
 
 
@@ -1394,6 +1408,7 @@ TOOLS: list[dict] = [
     {"name": "keep_watching_listing", "description": "Bir listing için 'durdurmayı değerlendir' önerisini reddedip izlemeye devam eder (sayaç sıfırlanır). Etsy'ye hiçbir şey göndermez.", "input_schema": _obj({"listing_id": {"type": "integer"}}, ["listing_id"])},
     {"name": "publish_listing_draft", "description": "ONAY GEREKİR. Bir listing'in taslağını/yerel değişikliklerini GERÇEKTEN Etsy'ye yayınlar (canlıya yansır). confirm=true verilmeden yalnızca ne yayınlanacağını özetler.", "input_schema": _obj({"listing_id": {"type": "integer"}, "confirm": {"type": "boolean"}, "force": {"type": "boolean", "description": "Etsy'de sonradan değişen alanları da ezer (çakışma varsa)"}}, ["listing_id"])},
     {"name": "deactivate_listing", "description": "ONAY GEREKİR. Listing'i Etsy'de INACTIVE yapar (satışa kapanır). confirm=true verilmeden yalnızca ne olacağını özetler.", "input_schema": _obj({"listing_id": {"type": "integer"}, "confirm": {"type": "boolean"}}, ["listing_id"])},
+    {"name": "listing_diagnosis", "description": "Bir listing'in satış teşhisi: neden düştüğü (mağaza geneli mi listing'e özel mi, fiyat, içerik değişikliği, yorumlar, görünürlük/dönüşüm), düşüşün başladığı ay, mevsim (zirveye kaç hafta) ve önerilen tek hamle. 'Bu listing neden satmıyor/düştü' sorularında ve bir listing'i iyileştirmeden önce MUTLAKA kullan.", "input_schema": _obj({"listing_id": {"type": "integer"}}, ["listing_id"])},
     {"name": "read_shipping_invoice", "description": "Kargo/gümrük faturasını okur ve her gönderi satırını siparişlerle eşleştirir; KAYDETMEZ, kullanıcıya onay kartı gösterir. Kullanıcı sohbete fatura PDF'i/fotoğrafı/Excel/CSV/HTML eklediyse file_id ver; fatura metnini mesaja yapıştırdıysa file_id verme (mesajın kendisi okunur). Ürün fotoğrafını fatura sanma.", "input_schema": _obj({
         "file_id": {"type": "string", "description": "Sohbete eklenen dosyanın/resmin id'si"},
     })},
@@ -1439,6 +1454,7 @@ TOOL_LABELS = {
     "publish_listing_draft": "Etsy'ye yayınlıyor",
     "deactivate_listing": "Listing'i pasife alıyor",
     "mark_order_shipped": "Siparişi kargoya verildi işaretliyor",
+    "listing_diagnosis": "Listing'in satış teşhisini çıkarıyor",
     "read_shipping_invoice": "Faturayı okuyup siparişlerle eşleştiriyor",
     "list_description_templates": "Hazır açıklama metinlerine bakıyor",
     "save_description_template": "Açıklama şablonunu kaydediyor",
@@ -1479,6 +1495,7 @@ TOOL_LABELS_EN = {
     "publish_listing_draft": "Publishing to Etsy",
     "deactivate_listing": "Deactivating the listing",
     "mark_order_shipped": "Marking the order as shipped",
+    "listing_diagnosis": "Diagnosing the listing's sales",
     "read_shipping_invoice": "Reading the invoice and matching orders",
     "list_description_templates": "Checking description templates",
     "save_description_template": "Saving the description template",
@@ -1494,7 +1511,7 @@ EXECUTORS = {
     "regenerate_listing_image": regenerate_listing_image, "generate_missing_alt_texts": generate_missing_alt_texts,
     "listing_health_status": listing_health_status, "keep_watching_listing": keep_watching_listing,
     "publish_listing_draft": publish_listing_draft, "deactivate_listing": deactivate_listing, "mark_order_shipped": mark_order_shipped,
-    "read_shipping_invoice": read_shipping_invoice,
+    "read_shipping_invoice": read_shipping_invoice, "listing_diagnosis": listing_diagnosis,
     "list_description_templates": list_description_templates, "save_description_template": save_description_template,
     "delete_description_templates": delete_description_templates,
 }

@@ -213,6 +213,34 @@ export type BulkChanges = {
 
 export type DescriptionTemplate = { id: number; name: string; body: string; is_default: boolean; updated_at: string | null };
 
+/** Listing satış teşhisi (bkz. backend app/insights/diagnosis.py). Metinler istek dilinde gelir. */
+export type DiagnosisStatus = "new" | "low_data" | "declining" | "stable" | "growing";
+export type DiagnosisCause = "visibility" | "appeal" | "conversion" | "shop_wide" | "demand";
+export interface ListingDiagnosis {
+  listing_id: number;
+  status: DiagnosisStatus;
+  cause: DiagnosisCause | null;
+  confidence: "high" | "medium" | "low" | null;
+  headline: string;
+  action: { key: string; text: string };
+  metrics: {
+    last12: number;
+    prev12: number;
+    recent90: number;
+    prev90: number;
+    age_days: number | null;
+    change_pct: number | null;
+    shop_change_pct: number | null;
+    peak_month: string | null;
+    peak_units: number;
+  };
+  decline_start: string | null;
+  season: { peak_months: number[]; source: "listing" | "shop"; in_peak: boolean; weeks_to_peak: number | null; advice: "in_peak" | "prepare" | "off_season" | null; text: string };
+  months: { month: string; units: number; prev_year_units: number }[];
+  evidence: { kind: string; tone: "bad" | "good" | "info"; text: string }[];
+  events: { date: string; kind: string; text: string }[];
+}
+
 export type BulkResult = { id: number; ok: boolean; changed: boolean; error: string | null };
 
 export type KeywordPoolItem = {
@@ -1048,6 +1076,9 @@ export interface DashboardData {
 }
 
 export const api = {
+  insights: {
+    diagnosis: (shopId: number, listingId: number) => request<ListingDiagnosis>(`/api/shops/${shopId}/insights/listings/${listingId}/diagnosis`),
+  },
   descriptionTemplates: {
     list: (shopId: number) =>
       request<{ templates: DescriptionTemplate[]; placeholders: string[] }>(`/api/shops/${shopId}/description-templates`),

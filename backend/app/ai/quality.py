@@ -6,6 +6,8 @@ import html
 import json
 import re
 
+from app.core.i18n import tr
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -60,13 +62,62 @@ def fix_long_tags(tags: list[str]) -> list[str]:
     return out
 
 
+# Etsy'nin Ağustos 2025 başlık rehberi: başlık kısa ve net (15 kelimeden az), önce ürünün ne olduğu, sonra renk/boyut/
+# malzeme gibi nesnel tanımlar. Hediye/alıcı ifadeleri ve öznel sözcükler etiketlere, özelliklere ve açıklamaya taşınır;
+# kargo/indirim bilgisi ve kelime tekrarı başlıkta olmaz.
+TITLE_MAX_WORDS = 15
+TITLE_MIN_CHARS = 20
+_GIFT = re.compile(r"\b(gifts?|for (?:him|her|them|mom|mum|dad|men|women|kids|teens|wife|husband|boyfriend|girlfriend|grandma|grandpa|friends?))\b", re.I)
+_SUBJECTIVE = re.compile(r"\b(beautiful|perfect|best|amazing|stunning|cute|lovely|unique|awesome|gorgeous|must[- ]have)\b", re.I)
+_PROMO = re.compile(r"(free shipping|fast shipping|on sale|\bsale\b|discount|%\s*off|\boff\b\s*\d)", re.I)
+
+
+def title_problems(title: str) -> list[str]:
+    """Başlığın Etsy'nin güncel başlık rehberine uyumu."""
+    out: list[str] = []
+    words = [w for w in re.split(r"[\s,|/–—-]+", title.strip()) if w]
+    if len(title) > 140:
+        out.append(tr(f"Başlık {len(title)} karakter; en fazla 140 olabilir.", f"The title is {len(title)} characters; the limit is 140."))
+    if len(words) > TITLE_MAX_WORDS:
+        out.append(tr(
+            f"Başlık {len(words)} kelime; Etsy 15 kelimeden kısa, net başlık öneriyor. Önce ürünün ne olduğunu, sonra renk/boyut/malzemeyi yaz; gerisini etiketlere ve açıklamaya taşı.",
+            f"The title has {len(words)} words; Etsy recommends clear titles under 15 words. Say what the item is first, then color/size/material; move the rest to tags and the description.",
+        ))
+    if len(title.strip()) < TITLE_MIN_CHARS:
+        out.append(tr(
+            "Başlık çok kısa; ürünün ne olduğunu ve en az bir nesnel tanımı (malzeme, boyut ya da renk) yaz.",
+            "The title is too short; say what the item is and add at least one objective detail (material, size or color).",
+        ))
+    gift = sorted({m.group(0).lower() for m in _GIFT.finditer(title)})
+    if gift:
+        out.append(tr(
+            f"Başlıkta hediye/alıcı ifadesi var ({', '.join(gift)}); Etsy bunları etiketlere ve özelliklere taşımayı öneriyor.",
+            f"The title has gift/recipient wording ({', '.join(gift)}); Etsy recommends moving it to tags and attributes.",
+        ))
+    subjective = sorted({m.group(0).lower() for m in _SUBJECTIVE.finditer(title)})
+    if subjective:
+        out.append(tr(
+            f"Başlıkta öznel sözcük var ({', '.join(subjective)}); başlıkta yalnızca nesnel tanımlar olsun.",
+            f"The title has subjective words ({', '.join(subjective)}); keep the title to objective details.",
+        ))
+    if _PROMO.search(title):
+        out.append(tr("Başlıkta kargo/indirim bilgisi var; bu bilgi başlıkta olmamalı.", "The title mentions shipping or a discount; that does not belong in the title."))
+    counts: dict[str, int] = {}
+    for w in (m.lower() for m in _WORD.findall(title)):
+        if w not in _STOP and len(w) > 2:
+            counts[w] = counts.get(w, 0) + 1
+    repeated = sorted(w for w, n in counts.items() if n > 1)
+    if repeated:
+        out.append(tr(
+            f"Başlıkta tekrar eden kelime var ({', '.join(repeated)}); her kelimeyi bir kez kullan, eş anlamlıları etiketlere koy.",
+            f"The title repeats words ({', '.join(repeated)}); use each word once and put synonyms in the tags.",
+        ))
+    return out
+
+
 def basic_problems(title: str, tags: list[str], product_description: str = "") -> list[str]:
     """Başlık/etiket/açıklama biçim kuralları."""
-    out = []
-    if len(title) < 80:
-        out.append(f"Başlık {len(title)} karakter; 80–120 karakter olmalı (boyut, malzeme, kullanım yeri, alıcı gibi doğal öbekler ekle).")
-    if len(title) > 140:
-        out.append(f"Başlık {len(title)} karakter; en fazla 140 olabilir.")
+    out = title_problems(title)
     if len(tags) != 13:
         out.append(f"{len(tags)} etiket var; tam 13 olmalı.")
     long_tags = [t for t in tags if len(t) > TAG_MAX_LEN]
