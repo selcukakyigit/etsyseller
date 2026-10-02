@@ -206,7 +206,7 @@ export default function BulkEditModal({
             {templates !== null && templates.length === 0 ? (
               <p className="text-sm text-neutral-600 dark:text-neutral-300">
                 {t("Henüz şablon yok.", "No templates yet.")}{" "}
-                <Link href="/settings/templates" className="underline">
+                <Link href="/templates" className="underline">
                   {t("Şablon oluştur", "Create a template")}
                 </Link>
               </p>

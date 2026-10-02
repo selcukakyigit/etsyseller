@@ -43,7 +43,7 @@ export default function DescriptionTemplatePicker({
 
   if (items !== null && items.length === 0) {
     return (
-      <Link href="/settings/templates" className="text-xs text-neutral-500 underline hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200">
+      <Link href="/templates" className="text-xs text-neutral-500 underline hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200">
         {t("Açıklama şablonu oluştur", "Create a description template")}
       </Link>
     );

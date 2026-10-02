@@ -4,7 +4,7 @@ import Link from "next/link";
 import Avatar from "@/components/Avatar";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import AppShell from "@/components/AppShell";
-import { ChevronRightIcon, DocumentIcon, HelpIcon, KeyIcon, ShieldIcon, StoreIcon, UserIcon } from "@/components/icons";
+import { ChevronRightIcon, HelpIcon, KeyIcon, ShieldIcon, StoreIcon, UserIcon } from "@/components/icons";
 import { useT } from "@/lib/i18n-client";
 import { PageSpinner } from "@/components/ui/Spinner";
 
@@ -29,13 +29,6 @@ const CARDS = [
     color: "bg-green-600",
     title: ["Mağaza Bağlantısı", "Shop connection"],
     description: ["Etsy mağaza bağlantı durumunu görüntüle", "View your Etsy shop connection"],
-  },
-  {
-    href: "/settings/templates",
-    icon: DocumentIcon,
-    color: "bg-amber-600",
-    title: ["Açıklama Şablonları", "Description templates"],
-    description: ["Hazır açıklama metinlerini yönet", "Manage ready-made description texts"],
   },
   {
     href: "/settings/ai",
