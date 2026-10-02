@@ -38,6 +38,8 @@ export type Shop = {
   etsy_shop_id: number;
   shop_name: string;
   connected: boolean;
+  /** Etsy incelemesi için kopya mağaza: alıcı bilgileri anonim, Etsy'ye hiçbir istek gitmez. */
+  is_demo?: boolean;
   /** Elle sabitlenmiş rapor para birimi (ör. "USD"); boşsa finans raporu siparişlerden otomatik seçer. */
   currency: string | null;
   icon_url: string | null;

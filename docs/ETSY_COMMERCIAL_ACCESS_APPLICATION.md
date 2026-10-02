@@ -11,7 +11,7 @@ Ulagg (https://ulagg.com) is a web application for Etsy sellers. It helps them m
 fulfil orders, and see the real profit of each order and product. Sellers connect their own shop with
 Etsy OAuth 2.0 (PKCE). Ulagg reads and writes data only for shops whose owners have granted consent.
 
-Operator: CATCHOPS YAZILIM SAN. VE TİC. LTD. ŞTİ. (Türkiye). Contact: [support e-mail], https://ulagg.com/contact
+Operator: CATCHOPS YAZILIM SAN. VE TİC. LTD. ŞTİ. (Türkiye). Contact: support@ulagg.com, https://ulagg.com/contact
 
 ## Features
 
@@ -63,7 +63,7 @@ We do **not** request access to `buyer_email`. Buyer e-mail addresses are not st
 
 These are estimates. They have not yet been measured with many shops.
 
-- Shops in the first 12 months: [e.g. 50–200]
+- Shops in the first 12 months: 50–200
 - First connection: about 1,000–1,500 requests per shop (one-time import of order history and ledger).
 - Steady state: about 100–200 requests per shop per day (background refresh plus normal use).
 - All requests go through one app-wide limiter (≤ 5 QPS) and a daily budget for background jobs, and 429 responses
@@ -72,5 +72,7 @@ These are estimates. They have not yet been measured with many shops.
 
 ## Test access for the review
 
-- Screen recording of the app connected to our own shop (buyer details blurred): [link]
-- A test account can be provided on request.
+- Demo account: demo@ulagg.com / [password, entered only in the form]
+  The demo shop is a copy of 20 listings and 20 orders from our own shop. Buyer names, addresses, messages,
+  personalization text and tracking numbers are replaced with placeholders. The demo shop has no Etsy token,
+  so nothing is sent to Etsy from this account; a banner in the app says so.

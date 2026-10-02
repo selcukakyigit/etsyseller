@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.errors import register_error_handlers
-from app.etsy.client import EtsyApiError, EtsyAuthError
+from app.etsy.client import DemoShopError, EtsyApiError, EtsyAuthError
 
 # Uygulama logları (Etsy'ye giden yazma istekleri, yayın adımları) uvicorn çıktısıyla aynı yere düşsün.
 logging.getLogger("app").setLevel(logging.INFO)
@@ -91,6 +91,11 @@ app.mount("/static/avatars", StaticFiles(directory=str(AVATAR_DIR)), name="avata
 @app.exception_handler(EtsyAuthError)
 async def etsy_auth_error_handler(_: Request, exc: EtsyAuthError):
     return JSONResponse(status_code=401, content={"detail": str(exc), "code": 401})
+
+
+@app.exception_handler(DemoShopError)
+async def demo_shop_error_handler(_: Request, exc: DemoShopError):
+    return JSONResponse(status_code=403, content={"detail": exc.message, "code": 403})
 
 
 @app.exception_handler(EtsyApiError)

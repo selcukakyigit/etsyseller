@@ -15,7 +15,7 @@ export const COMPANY = {
   tradeRegistry: "114386",
   whatsapp: "905417718590",
   whatsappDisplay: "+90 541 771 85 90",
-  email: `support@${BRAND_DOMAIN}`, // TODO: gerçek destek adresi
+  email: `support@${BRAND_DOMAIN}`,
   kvkkEmail: `privacy@${BRAND_DOMAIN}`, // TODO: gizlilik / KVKK başvurularının alınacağı adres
   // Harita işaretçisi: 5 Temmuz Kurtuluş Caddesi'nin Ünsal Mahallesi'ndeki kesimi (OpenStreetMap verisi). Bina numarası
   // haritada kayıtlı olmadığı için yaklaşıktır; Google Haritalar'da binaya sağ tıklayıp tam koordinatları buraya yazabilirsin.

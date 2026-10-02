@@ -72,6 +72,13 @@ class EtsyApiError(Exception):
         self.message = message
 
 
+class DemoShopError(EtsyApiError):
+    """Demo mağazada Etsy'ye giden her istek (okuma/yazma) durdurulur; veri yalnızca yerel kopyadan gösterilir."""
+
+    def __init__(self):
+        super().__init__(403, "Demo shop: changes are not sent to Etsy. / Demo mağaza: değişiklikler Etsy'ye gönderilmez.")
+
+
 class EtsyClient:
     """Authenticated Etsy API client bound to one shop's OAuth token.
 
@@ -84,6 +91,8 @@ class EtsyClient:
         self.shop = shop
 
     def _token(self) -> OAuthToken:
+        if self.shop.is_demo:
+            raise DemoShopError()
         token = self.shop.oauth_token
         if token is None:
             raise EtsyAuthError("Bu mağaza Etsy'ye bağlı değil.")

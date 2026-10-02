@@ -1,6 +1,7 @@
 import datetime as dt
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy.sql import false as sa_false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.crypto import EncryptedText
@@ -25,6 +26,8 @@ class Shop(Base):
     # İlan listesinin Etsy ile en son tam doğrulandığı an. Etsy kuralı: ilan verisi en fazla 6 saat eski gösterilebilir;
     # bu damga hem zamanlanmış yenilemeyi hem arayüzdeki "güncel mi" kararını yönetir.
     listings_synced_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    # Etsy incelemesi için kopya mağaza (bkz. scripts/create_demo_account.py): token'ı yoktur, Etsy'ye hiç istek atılmaz.
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa_false())
 
     user: Mapped["User"] = relationship(back_populates="shops")
     workspace: Mapped["Workspace"] = relationship(back_populates="shops")
