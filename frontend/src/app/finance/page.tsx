@@ -12,6 +12,7 @@ import { onSyncDone } from "@/lib/syncEvents";
 import TopOrders from "@/components/finance/TopOrders";
 import { tNow, useT } from "@/lib/i18n-client";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { useStoredState } from "@/lib/useStoredState";
 
 const regionNames: Record<string, Intl.DisplayNames> = {};
 const countryOf = (code: string) => {
@@ -60,10 +61,13 @@ export default function FinancePage() {
   const shopId = activeShop?.id;
   const [tab, setTab] = useUrlTab<(typeof TABS)[number]>("tab", "overview", TABS);
   const [topTab, setTopTab] = useState<"customers" | "best" | "worst">("customers");
-  const [period, setPeriod] = useState("month");
-  const [customStart, setCustomStart] = useState(() => iso(new Date(Date.now() - 29 * 864e5)));
-  const [customEnd, setCustomEnd] = useState(() => iso(new Date()));
-  const [country, setCountry] = useState("");
+  // Dönem, özel tarih aralığı ve ülke seçimi bu tarayıcıda hatırlanır (sayfaya dönünce ya da yenileyince aynı kalır).
+  const [defaultStart] = useState(() => iso(new Date(Date.now() - 29 * 864e5)));
+  const [defaultEnd] = useState(() => iso(new Date()));
+  const [period, setPeriod] = useStoredState<string>("finance.period", "month");
+  const [customStart, setCustomStart] = useStoredState<string>("finance.customStart", defaultStart);
+  const [customEnd, setCustomEnd] = useStoredState<string>("finance.customEnd", defaultEnd);
+  const [country, setCountry] = useStoredState<string>("finance.country", "");
   const [report, setReport] = useState<FinReport | null>(null);
   // period built-in bir seçenekse rangeFor'dan, "custom" ise kullanıcının seçtiği iki tarihten, "all" ise ilk
   // siparişten bugüne (henüz veri gelmediyse Etsy'nin kuruluş yılı 2005 güvenli bir alt sınır) gelir;

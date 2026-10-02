@@ -18,6 +18,7 @@ import { ReconnectNotice, isPermissionError } from "@/components/shipping/shared
 import ListingFilters, { applyFilters, EMPTY_FILTERS, Filters, Reference } from "@/components/listings/ListingFilters";
 import { useT } from "@/lib/i18n-client";
 import { useCached } from "@/lib/pageCache";
+import { useStoredState } from "@/lib/useStoredState";
 import { PageSpinner, Spinner } from "@/components/ui/Spinner";
 
 type PublishOutcome = { id: number; title: string; ok: boolean; error?: string; updated?: string[]; warnings?: string[] };
@@ -38,8 +39,8 @@ export default function Home() {
   const router = useRouter();
   const [filters, setFilters] = useState<Filters>({ ...EMPTY_FILTERS, status: "active" });
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState("ending");
-  const [view, setView] = useState<"grid" | "list">("grid");
+  const [sort, setSort] = useStoredState<string>("listings.sort", "ending");
+  const [view, setView] = useStoredState<"grid" | "list">("listings.view", "grid", ["grid", "list"]);
   const [cachedReference, setReference] = useCached<Reference>(cacheShopId !== undefined ? `listing-reference:${cacheShopId}` : null);
   const reference = cachedReference ?? EMPTY_REFERENCE;
   const [publishingIds, setPublishingIds] = useState<Set<number>>(new Set());

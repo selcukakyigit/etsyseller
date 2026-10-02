@@ -14,6 +14,7 @@ import { onSyncDone } from "@/lib/syncEvents";
 import { useUrlTab } from "@/lib/useUrlTab";
 import { useT } from "@/lib/i18n-client";
 import { useCached } from "@/lib/pageCache";
+import { useStoredState } from "@/lib/useStoredState";
 import { PageSpinner } from "@/components/ui/Spinner";
 
 const TABS: [Tab, string, string][] = [
@@ -38,8 +39,10 @@ export default function OrdersPage() {
   const [filters, setFilters] = useState<OrderFilters>(EMPTY_ORDER_FILTERS);
   const [queryInput, setQueryInput] = useState("");
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState("shipby");
-  const [perPage, setPerPage] = useState(50);
+  const [sort, setSort] = useStoredState<string>("orders.sort", "shipby");
+  const [perPageRaw, setPerPageRaw] = useStoredState("orders.perPage", "50", ["25", "50", "100"]);
+  const perPage = Number(perPageRaw);
+  const setPerPage = (n: number) => setPerPageRaw(String(n) as typeof perPageRaw);
   const [page, setPage] = useState(0);
   // Seçim sayfalar arasında korunur; sipariş nesneleri de tutulur (sayfa değişince kaybolmasın).
   const [selected, setSelected] = useState<Map<number, Order>>(new Map());
