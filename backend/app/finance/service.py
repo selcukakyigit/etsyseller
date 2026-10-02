@@ -9,6 +9,7 @@ import json
 import logging
 import statistics
 import threading
+from types import SimpleNamespace
 from collections import Counter, defaultdict
 
 from sqlalchemy import func, select
@@ -289,10 +290,6 @@ def _sync_payments(db: Session, client: EtsyClient, shop: Shop, st: dict) -> Non
 def _link_receipts(db: Session, shop: Shop) -> None:
     """Ledger satırlarının sipariş bağlantısını tamamlar (işlem -> sipariş, ödeme -> sipariş)."""
     pay = {p: r for p, r in db.execute(select(FinPayment.payment_id, FinPayment.receipt_id).where(FinPayment.shop_id == shop.id))}
-    tx: dict[int, int] = {}
-    for rid, raw in db.execute(select(OrderCache.receipt_id, OrderCache.raw_json).where(OrderCache.shop_id == shop.id)):
-        for t in json.loads(raw).get("transactions") or []:
-            tx[t["transaction_id"]] = rid
     rows = db.scalars(
         select(LedgerEntry).where(LedgerEntry.shop_id == shop.id).where(LedgerEntry.receipt_id.is_(None))
         .where(LedgerEntry.reference_type.in_(["transaction", "shop_payment", "processing_fee"]))
@@ -394,6 +391,31 @@ def _finance_version(db: Session, shop: Shop) -> tuple:
     return (n, str(last), pays, ln, ll, shop.currency)
 
 
+_TX_KEYS = ("transaction_id", "listing_id", "title", "price", "quantity", "is_digital", "sku", "shipping_cost")
+
+
+def _slim_receipt(raw: dict) -> dict:
+    """Rapor için gereken alanlar. Ham sipariş JSON'unun tamamı (ürün açıklamaları, adresler…) bellekte tutulmaz:
+    önbellek tüm sipariş geçmişini taşıdığı için bu, 512 MB'lık sunucuda belleğin dolup sürecin çökmesine yol açıyordu."""
+    return {
+        "grandtotal": raw.get("grandtotal"),
+        "total_tax_cost": raw.get("total_tax_cost"),
+        "buyer_user_id": raw.get("buyer_user_id"),
+        "refunds": [{"amount": r.get("amount"), "status": r.get("status")} for r in raw.get("refunds") or []],
+        "shipments": [{"tracking_code": sh.get("tracking_code")} for sh in raw.get("shipments") or [] if sh.get("tracking_code")],
+        "transactions": [
+            {
+                **{k: t.get(k) for k in _TX_KEYS},
+                "variations": [
+                    {"formatted_name": v.get("formatted_name"), "formatted_value": v.get("formatted_value"), "question_id": v.get("question_id")}
+                    for v in t.get("variations") or []
+                ],
+            }
+            for t in raw.get("transactions") or []
+        ],
+    }
+
+
 def _order_finance(db: Session, shop: Shop) -> tuple[list[dict], dict, dict]:
     """Her sipariş için ledger toplamları ve para birimi çarpanları. Ayrıca rapor para biriminde aylık ortanca kur."""
     version = _finance_version(db, shop)
@@ -425,8 +447,15 @@ def _order_finance(db: Session, shop: Shop) -> tuple[list[dict], dict, dict]:
         if lt == "PAYMENT_PROCESSING_FEE":
             has_pp.add(rid)
     orders = []
-    for row in db.scalars(select(OrderCache).where(OrderCache.shop_id == shop.id)):
-        raw = json.loads(row.raw_json)
+    cols = (OrderCache.receipt_id, OrderCache.created_at, OrderCache.country_iso, OrderCache.is_canceled, OrderCache.buyer_name,
+            OrderCache.status, OrderCache.expected_ship_date, OrderCache.raw_json)
+    # Parça parça okunur (tüm ham JSON'lar aynı anda belleğe alınmaz); ORM nesnesi yerine hafif bir kayıt tutulur.
+    for rid, created_at, country_iso, is_canceled, buyer_name, status, expected_ship_date, raw_json in db.execute(
+        select(*cols).where(OrderCache.shop_id == shop.id).execution_options(yield_per=200)
+    ):
+        raw = _slim_receipt(json.loads(raw_json))
+        row = SimpleNamespace(receipt_id=rid, created_at=created_at, country_iso=country_iso, is_canceled=is_canceled,
+                              buyer_name=buyer_name, status=status, expected_ship_date=expected_ship_date)
         kc, kl = _factors(tbl, row.receipt_id)
         gross = pays.get(row.receipt_id)
         led = by_receipt.get(row.receipt_id)

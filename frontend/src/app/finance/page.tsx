@@ -347,16 +347,8 @@ export default function FinancePage() {
         </div>
         </div>
 
-        {!displayReport && !error && (
-          <div className="space-y-5 pt-2" aria-live="polite">
-            <div className="h-48 animate-pulse rounded-xl border border-neutral-200 bg-neutral-200/70 dark:border-neutral-800 dark:bg-neutral-800/80" />
-            <div className="grid gap-3 md:grid-cols-3">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="h-32 animate-pulse rounded-xl border border-neutral-200 bg-neutral-200/70 dark:border-neutral-800 dark:bg-neutral-800/80" />
-              ))}
-            </div>
-            <div className="h-72 animate-pulse rounded-xl border border-neutral-200 bg-neutral-200/70 dark:border-neutral-800 dark:bg-neutral-800/80" />
-          </div>
+        {user && !displayReport && !error && (
+          <PageSpinner />
         )}
 
         {displayReport && k && pk && (
