@@ -471,6 +471,8 @@ def create_suggestion(
         listing = json.loads(row.raw_json)
         # Varyasyonlar: düzenleyicide değiştirildiyse yerel sürümden, yoksa Etsy'deki hâlinden
         inventory = local_data.get("inventory") or json.loads(row.inventory_json or "{}")
+    # Uydurma denetiminin kaynağı: formdaki değerler uygulanmadan önceki hâl (Etsy'deki listing ya da yeni taslak)
+    fact_source = {k: listing.get(k) for k in ("title", "description", "materials")}
     # Formdaki (taslaktaki) güncel değerler verildiyse AI onları iyileştirir.
     if overrides is not None:
         for key, value in overrides.model_dump(exclude_none=True).items():
@@ -495,7 +497,7 @@ def create_suggestion(
             logger.warning("Teşhis hesaplanamadı (listing %s)", listing_id, exc_info=True)
 
     try:
-        suggestion = seo.generate_seo_suggestion(listing, keyword_pool=keyword_pool, others=quality.shop_others(db, shop.id, exclude_id=listing_id), diagnosis_brief=brief, variations=quality.variation_values(inventory))
+        suggestion = seo.generate_seo_suggestion(listing, keyword_pool=keyword_pool, others=quality.shop_others(db, shop.id, exclude_id=listing_id), diagnosis_brief=brief, variations=quality.variation_values(inventory), fact_source=fact_source)
     except (ValueError, json.JSONDecodeError) as exc:
         raise SuggestionError(f"SEO önerisi üretilemedi: {exc}") from exc
 

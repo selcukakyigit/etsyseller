@@ -100,6 +100,11 @@ def title_problems(title: str) -> list[str]:
             f"Başlıkta öznel sözcük var ({', '.join(subjective)}); başlıkta yalnızca nesnel tanımlar olsun.",
             f"The title has subjective words ({', '.join(subjective)}); keep the title to objective details.",
         ))
+    if _SIZE.search(title):
+        out.append(tr(
+            "Başlıkta ölçü var; başlığa ölçü yazılmaz, ölçüler varyasyonlarda ve açıklamada.",
+            "The title contains a size; sizes do not go in the title, they belong in the variations and description.",
+        ))
     if _PROMO.search(title):
         out.append(tr("Başlıkta kargo/indirim bilgisi var; bu bilgi başlıkta olmamalı.", "The title mentions shipping or a discount; that does not belong in the title."))
     counts: dict[str, int] = {}
@@ -170,6 +175,23 @@ def fact_problems(title: str, description: str, source_text: str, variations: di
                 f"The title names only one of the \"{name}\" options ({hits[0]}) although {len(vals)} are offered; do not put a single option in the title.",
             ))
     return out
+
+
+def clean_title(title: str, variations: dict[str, list[str]]) -> str:
+    """Model denemelere rağmen başlığa ölçü ya da birden çok seçeneği olan bir varyasyonun tek değerini yazdıysa onu
+    başlıktan çıkarır; kalan noktalama toparlanır."""
+    t = _SIZE.sub("", title)
+    for vals in variations.values():
+        if len(vals) < 2:
+            continue
+        for v in vals:
+            word = re.sub(r"[^\w\s'&-]", "", v).strip()
+            if word and not any(ch.isdigit() for ch in word):
+                t = re.sub(rf"(?i)\b(?:in\s+)?{re.escape(word)}\b", "", t)
+    t = re.sub(r"\s+,", ",", t)
+    t = re.sub(r",\s*,+", ",", t)
+    t = re.sub(r"\s{2,}", " ", t)
+    return t.strip(" ,-–|/")
 
 
 def basic_problems(title: str, tags: list[str], product_description: str = "") -> list[str]:
