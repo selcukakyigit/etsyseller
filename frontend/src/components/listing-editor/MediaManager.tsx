@@ -448,7 +448,7 @@ export default function MediaManager({
               onClick={() => void (selected.size > 0 ? regenerateSelected() : regenerateAll())}
               disabled={anyRegenBusy}
               title={selected.size > 0 ? "Yalnızca seçili fotoğrafları yapay zekâyla yeniden oluşturur" : "Tüm fotoğrafları, ürünü koruyarak yapay zekâyla tek tek yeniden oluşturur"}
-              className="rounded-full border border-[#F1641E] px-3 py-1.5 text-xs font-semibold text-[#F1641E] hover:bg-orange-50 disabled:opacity-50 dark:hover:bg-orange-950"
+              className="rounded-full border border-[#D97757] px-3 py-1.5 text-xs font-semibold text-[#D97757] hover:bg-orange-50 disabled:opacity-50 dark:hover:bg-orange-950"
             >
               {bulkRegen
                 ? "🪄 Yeniden oluşturuluyor…"
@@ -470,7 +470,7 @@ export default function MediaManager({
               if (dragIdx !== null) move(dragIdx, i);
               setDragIdx(null);
             }}
-            className={`${tile} group cursor-grab ${selected.has(img.listing_image_id) ? "ring-2 ring-[#F1641E]" : ""}`}
+            className={`${tile} group cursor-grab ${selected.has(img.listing_image_id) ? "ring-2 ring-[#D97757]" : ""}`}
           >
             <RegenImage
               src={img.url_570xN}
@@ -768,7 +768,7 @@ export default function MediaManager({
               <details className="group rounded-lg border border-neutral-200 dark:border-neutral-800">
                 <summary className="flex cursor-pointer list-none items-center justify-between p-3 text-xs font-semibold text-neutral-700 dark:text-neutral-300">
                   <span>
-                    🎯 Ürün referansı (opsiyonel){viewSubjectId !== null && <span className="ml-2 font-normal text-[#F1641E]">seçili</span>}
+                    🎯 Ürün referansı (opsiyonel){viewSubjectId !== null && <span className="ml-2 font-normal text-[#D97757]">seçili</span>}
                   </span>
                   <span className="text-neutral-400 transition group-open:rotate-180">▾</span>
                 </summary>
@@ -783,7 +783,7 @@ export default function MediaManager({
                       onClick={() => setViewSubjectId(null)}
                       className={`rounded-lg border px-2 py-1 text-xs font-medium ${
                         viewSubjectId === null
-                          ? "border-[#F1641E] text-[#F1641E]"
+                          ? "border-[#D97757] text-[#D97757]"
                           : "border-neutral-300 text-neutral-500 hover:border-neutral-400 dark:border-neutral-700 dark:text-neutral-400"
                       }`}
                     >
@@ -797,7 +797,7 @@ export default function MediaManager({
                           type="button"
                           onClick={() => setViewSubjectId(viewSubjectId === img.listing_image_id ? null : img.listing_image_id)}
                           className={`overflow-hidden rounded-lg border-2 ${
-                            viewSubjectId === img.listing_image_id ? "border-[#F1641E]" : "border-transparent"
+                            viewSubjectId === img.listing_image_id ? "border-[#D97757]" : "border-transparent"
                           }`}
                           title="Ürün referansı olarak seç"
                         >
@@ -837,7 +837,7 @@ export default function MediaManager({
                   });
                 }}
                 disabled={regenJobs.get(ordered[viewIdx].listing_image_id)?.phase === "running"}
-                className="rounded-full bg-[#F1641E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#d9550f] disabled:opacity-50"
+                className="rounded-full bg-[#D97757] px-4 py-2 text-sm font-semibold text-white hover:bg-[#d9550f] disabled:opacity-50"
               >
                 {regenJobs.get(ordered[viewIdx].listing_image_id)?.phase === "running" ? "Oluşturuluyor…" : "🪄 Yeniden oluştur"}
               </button>

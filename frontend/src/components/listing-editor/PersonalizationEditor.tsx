@@ -56,7 +56,7 @@ const sameField = (a: PersonalizationQuestion, b: PersonalizationQuestion) =>
   a.question_text === b.question_text && a.question_type === b.question_type && a.instructions === b.instructions;
 
 const inputCls =
-  "rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#F1641E]";
+  "rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]";
 const labelCls = "mb-1 block text-xs font-semibold text-neutral-700 dark:text-neutral-200";
 const hintCls = "mb-1.5 text-xs text-neutral-500 dark:text-neutral-400";
 const iconBtn =
@@ -76,7 +76,7 @@ function BuyerPreview({ questions, highlight }: { questions: PersonalizationQues
         {questions.map((q, i) => {
           const kind = kindOf(q.question_type);
           return (
-            <div key={i} className={i === highlight ? "rounded-lg bg-[#F1641E]/5 p-2 -m-2" : ""}>
+            <div key={i} className={i === highlight ? "rounded-lg bg-[#D97757]/5 p-2 -m-2" : ""}>
               <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
                 {q.question_text || <span className="text-neutral-400">Alan başlığı</span>}
                 {!q.required && <span className="font-normal text-neutral-500"> (isteğe bağlı)</span>}
@@ -206,7 +206,7 @@ function FieldEditor({
               <label className={labelCls}>Bu alan alıcılar için zorunlu mu?</label>
               {[true, false].map((v) => (
                 <label key={String(v)} className="flex items-center gap-2 py-0.5 text-sm text-neutral-800 dark:text-neutral-100">
-                  <input type="radio" checked={q.required === v} onChange={() => patch({ required: v })} className="accent-[#F1641E]" />
+                  <input type="radio" checked={q.required === v} onChange={() => patch({ required: v })} className="accent-[#D97757]" />
                   {v ? "Evet, alıcılar doldurmak zorunda" : "Hayır, isteğe bağlı"}
                 </label>
               ))}

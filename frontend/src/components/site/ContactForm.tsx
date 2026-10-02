@@ -61,7 +61,7 @@ function fmtSize(n: number) {
 }
 
 const field =
-  "w-full rounded-lg border border-black/15 bg-white px-3 py-2.5 text-sm text-neutral-900 outline-none transition focus:border-[#F1641E] dark:border-white/15 dark:bg-[#171513] dark:text-neutral-100";
+  "w-full rounded-lg border border-black/15 bg-white px-3 py-2.5 text-sm text-neutral-900 outline-none transition focus:border-[#D97757] dark:border-white/15 dark:bg-[#171513] dark:text-neutral-100";
 const label = "mb-1.5 block text-xs font-medium text-neutral-600 dark:text-neutral-400";
 
 export default function ContactForm({ lang }: { lang: Lang }) {

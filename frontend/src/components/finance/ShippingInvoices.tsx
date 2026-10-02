@@ -35,7 +35,7 @@ function ProgressBar({ p }: { p: Progress }) {
   return (
     <div className="mt-3" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
       <div className="relative h-5 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
-        <div className="h-full rounded-full bg-[#F1641E]/70 transition-[width] duration-200 ease-out" style={{ width: `${pct}%` }} />
+        <div className="h-full rounded-full bg-[#D97757]/70 transition-[width] duration-200 ease-out" style={{ width: `${pct}%` }} />
         <span className="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-neutral-900 dark:text-neutral-50">
           {p.name} okunuyor… %{pct} ({p.done}/{p.total})
         </span>
@@ -223,7 +223,7 @@ export default function ShippingInvoices({
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-base font-semibold">Onay bekleyenler ({reviews.length})</h2>
             {sure.length > 0 && (
-              <button type="button" disabled={saving} onClick={() => void confirmSure()} className="rounded-full bg-[#F1641E] px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-40">
+              <button type="button" disabled={saving} onClick={() => void confirmSure()} className="rounded-full bg-[#D97757] px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-40">
                 Kesin eşleşenleri onayla ({sure.length})
               </button>
             )}
@@ -399,7 +399,7 @@ export default function ShippingInvoices({
                       checked={allOnPage}
                       onChange={(e) => setSelected(e.target.checked ? new Set(saved.map(shipKey)) : new Set())}
                       aria-label="Sayfadakilerin hepsini seç"
-                      className="h-4 w-4 accent-[#F1641E]"
+                      className="h-4 w-4 accent-[#D97757]"
                     />
                   </th>
                   <th className="w-5 py-2" />
@@ -421,7 +421,7 @@ export default function ShippingInvoices({
                     <Fragment key={key}>
                       <tr onClick={() => setExpanded((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; })} className="cursor-pointer border-b border-neutral-100 hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-800/40">
                         <td className="py-2 pr-1" onClick={(e) => e.stopPropagation()}>
-                          <input type="checkbox" checked={selected.has(key)} onChange={() => toggleSel(key)} aria-label="Gönderiyi seç" className="h-4 w-4 accent-[#F1641E]" />
+                          <input type="checkbox" checked={selected.has(key)} onChange={() => toggleSel(key)} aria-label="Gönderiyi seç" className="h-4 w-4 accent-[#D97757]" />
                         </td>
                         <td className="py-2 text-xs text-neutral-400">{open ? "▼" : "▶"}</td>
                         <td className="py-2 pr-3 font-medium">{g.buyer || "—"}</td>

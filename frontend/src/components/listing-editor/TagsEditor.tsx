@@ -80,7 +80,7 @@ export default function TagsEditor({
           type="button"
           onClick={() => void togglePool()}
           disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded-full bg-[#F1641E] px-3 py-1 text-[11px] font-semibold text-white shadow-sm transition hover:bg-[#d9550f] disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 rounded-full bg-[#D97757] px-3 py-1 text-[11px] font-semibold text-white shadow-sm transition hover:bg-[#d9550f] disabled:opacity-60"
         >
           {loading && <Spinner />}
           {loading ? "Yükleniyor…" : poolOpen ? "Havuzu gizle" : "🔑 Kelime havuzunu göster"}
@@ -132,7 +132,7 @@ export default function TagsEditor({
                 setDraft("");
               }
             }}
-            className="flex-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm outline-none focus:border-[#F1641E] dark:border-neutral-700 dark:bg-neutral-900"
+            className="flex-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm outline-none focus:border-[#D97757] dark:border-neutral-700 dark:bg-neutral-900"
             placeholder="Ekle ve Enter'a bas…"
           />
           <button
@@ -170,7 +170,7 @@ export default function TagsEditor({
                     disabled={atLimit}
                     title={`İlk ${k.sample_size} rakip listing'in ${k.score} tanesi kullanıyor`}
                     style={fill && pct !== null ? { background: `linear-gradient(to right, ${fill} ${pct}%, transparent ${pct}%)` } : undefined}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 px-2 py-0.5 text-xs text-neutral-600 hover:border-[#F1641E] disabled:opacity-40 dark:border-neutral-800 dark:text-neutral-300"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 px-2 py-0.5 text-xs text-neutral-600 hover:border-[#D97757] disabled:opacity-40 dark:border-neutral-800 dark:text-neutral-300"
                   >
                     {k.tag}
                     <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400">{scoreLabel(k)}</span>

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.finance import service
 from app.shops.models import Shop
 
-HEAD_FILL = PatternFill("solid", fgColor="F1641E")
+HEAD_FILL = PatternFill("solid", fgColor="D97757")
 MONEY = "#,##0.00"
 SORT_LABELS = {"sales": "satışa göre", "profit": "kâra göre", "margin": "marja göre"}
 

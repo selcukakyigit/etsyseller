@@ -327,7 +327,7 @@ export default function Card({ card, shopId }: { card: ChatCard; shopId: number 
           <button type="button" onClick={() => setPreview(true)} className="rounded-lg border border-emerald-600 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950">
             Önizle
           </button>
-          <Link href={card.edit_url} className="rounded-lg bg-[#F1641E] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#d9560f]">
+          <Link href={card.edit_url} className="rounded-lg bg-[#D97757] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#C6613F]">
             Düzenle ve yayınla →
           </Link>
         </div>
@@ -351,7 +351,7 @@ export default function Card({ card, shopId }: { card: ChatCard; shopId: number 
           <button type="button" onClick={() => setPreview(true)} className="rounded-lg border border-emerald-600 px-3 py-1.5 font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950">
             Önizle
           </button>
-          <Link href={card.edit_url} className="rounded-lg bg-[#F1641E] px-3 py-1.5 font-semibold text-white hover:bg-[#d9560f]">
+          <Link href={card.edit_url} className="rounded-lg bg-[#D97757] px-3 py-1.5 font-semibold text-white hover:bg-[#C6613F]">
             Aç ve yayınla →
           </Link>
         </div>

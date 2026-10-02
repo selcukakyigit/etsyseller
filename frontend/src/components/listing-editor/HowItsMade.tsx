@@ -45,7 +45,7 @@ export default function HowItsMade({
                 onClick={() => onChange({ who_made: value })}
                 className={`text-sm px-3 py-1.5 rounded-lg border transition ${
                   whoMade === value
-                    ? "border-[#F1641E] bg-[#F1641E]/10 text-[#c94f16]"
+                    ? "border-[#D97757] bg-[#D97757]/10 text-[#B4553A]"
                     : "border-neutral-200 text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
                 }`}
               >
@@ -60,7 +60,7 @@ export default function HowItsMade({
           <select
             value={whenMade ?? ""}
             onChange={(e) => onChange({ when_made: e.target.value })}
-            className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-[#F1641E] dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100 sm:w-64"
+            className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-[#D97757] dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100 sm:w-64"
           >
             <option value="" disabled>
               Seç…

@@ -186,7 +186,7 @@ export default function CameraCube({ value, onChange }: { value: CameraAngle | n
             }}
             className="select-none"
           >
-            <div onClick={() => selectAzimuth("front")} style={{ ...faceStyle(`translateZ(${HALF}px)`, "#F1641E"), cursor: "pointer" }}>ÖN</div>
+            <div onClick={() => selectAzimuth("front")} style={{ ...faceStyle(`translateZ(${HALF}px)`, "#D97757"), cursor: "pointer" }}>ÖN</div>
             <div onClick={() => selectAzimuth("back")} style={{ ...faceStyle(`rotateY(180deg) translateZ(${HALF}px)`, "#8a3610"), cursor: "pointer" }}>ARKA</div>
             <div onClick={() => selectAzimuth("right")} style={{ ...faceStyle(`rotateY(90deg) translateZ(${HALF}px)`, "#c9540f"), cursor: "pointer" }}>SAĞ</div>
             <div onClick={() => selectAzimuth("left")} style={{ ...faceStyle(`rotateY(-90deg) translateZ(${HALF}px)`, "#a8460f"), cursor: "pointer" }}>SOL</div>

@@ -35,7 +35,7 @@ const currencySymbol = (code: string) =>
   new Intl.NumberFormat("tr-TR", { style: "currency", currency: code }).formatToParts(0).find((p) => p.type === "currency")?.value ?? code;
 
 const inputCls =
-  "w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-2 py-1 outline-none focus:border-[#F1641E]";
+  "w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-2 py-1 outline-none focus:border-[#D97757]";
 
 function toRows(inventory: Inventory): EditableRow[] {
   return inventory.products.map((product) => {
@@ -362,7 +362,7 @@ export default function VariationTable({
                         checked={visible}
                         onChange={(e) => updateWhere(match, { enabled: e.target.checked })}
                         aria-label={`${key} görünür`}
-                        className="h-4 w-4 accent-[#F1641E]"
+                        className="h-4 w-4 accent-[#D97757]"
                       />
                     </td>
                   </tr>
@@ -462,7 +462,7 @@ export default function VariationTable({
                     checked={allSelected}
                     onChange={(e) => setSelected(e.target.checked ? new Set(rows.map((_, i) => i)) : new Set())}
                     aria-label="Tümünü seç"
-                    className="h-4 w-4 accent-[#F1641E]"
+                    className="h-4 w-4 accent-[#D97757]"
                   />
                 </th>
                 {links.propertyId != null && <th className="w-14 pb-2 pr-3">Fotoğraf</th>}
@@ -484,7 +484,7 @@ export default function VariationTable({
                 <tr
                   key={i}
                   className={`border-t border-neutral-100 dark:border-neutral-800 ${row.enabled ? "" : "opacity-50"} ${
-                    selected.has(i) ? "bg-[#F1641E]/5" : ""
+                    selected.has(i) ? "bg-[#D97757]/5" : ""
                   }`}
                 >
                   <td className="py-2 pr-2">
@@ -500,7 +500,7 @@ export default function VariationTable({
                         })
                       }
                       aria-label={`${variationLabel(row.product)} seç`}
-                      className="h-4 w-4 accent-[#F1641E]"
+                      className="h-4 w-4 accent-[#D97757]"
                     />
                   </td>
                   {links.propertyId != null && (
@@ -587,7 +587,7 @@ export default function VariationTable({
                 type="checkbox"
                 checked={first.enabled}
                 onChange={(e) => updateWhere(() => true, { enabled: e.target.checked })}
-                className="h-4 w-4 accent-[#F1641E]"
+                className="h-4 w-4 accent-[#D97757]"
               />
               Görünür
             </label>

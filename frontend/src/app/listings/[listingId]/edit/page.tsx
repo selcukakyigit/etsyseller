@@ -170,7 +170,7 @@ export default function ListingEditPage() {
             </p>
             <a
               href={api.shops.connectUrl()}
-              className="inline-block text-sm font-medium px-4 py-2 rounded-lg bg-[#F1641E] text-white hover:bg-[#d9560f] transition"
+              className="inline-block text-sm font-medium px-4 py-2 rounded-lg bg-[#D97757] text-white hover:bg-[#C6613F] transition"
             >
               Etsy&apos;ye Bağlan
             </a>
@@ -220,7 +220,7 @@ export default function ListingEditPage() {
 
             {aiError && <p className="text-sm text-red-600">{aiError}</p>}
             {ai && (
-              <div className="rounded-xl border border-[#F1641E]/40 bg-[#F1641E]/5 p-4 text-sm">
+              <div className="rounded-xl border border-[#D97757]/40 bg-[#D97757]/5 p-4 text-sm">
                 <div className="mb-1 flex items-center justify-between gap-3">
                   <p className="font-semibold text-neutral-900 dark:text-neutral-100">
                     AI önerisi forma uygulandı (başlık, etiketler, açıklama{ai.suggestion.suggested_materials?.length ? ", malzemeler" : ""})
@@ -287,7 +287,7 @@ export default function ListingEditPage() {
                   value={edit.title}
                   maxLength={140}
                   onChange={(e) => wc.patch({ title: e.target.value })}
-                  className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#F1641E]"
+                  className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
                 />
               </div>
 
@@ -299,7 +299,7 @@ export default function ListingEditPage() {
                   value={edit.description}
                   onChange={(e) => wc.patch({ description: e.target.value })}
                   rows={6}
-                  className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#F1641E]"
+                  className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
                 />
               </div>
 
@@ -498,7 +498,7 @@ export default function ListingEditPage() {
               <button
                 onClick={handlePublish}
                 disabled={(!wc.unsaved && !wc.hasLocal) || wc.publishing || wc.saveState === "saving"}
-                className="rounded-lg bg-[#F1641E] px-4 py-2 text-sm font-medium text-white shadow transition hover:bg-[#d9560f] disabled:opacity-50"
+                className="rounded-lg bg-[#D97757] px-4 py-2 text-sm font-medium text-white shadow transition hover:bg-[#C6613F] disabled:opacity-50"
               >
                 {wc.publishing ? "Yayınlanıyor…" : "Etsy'de yayınla"}
               </button>

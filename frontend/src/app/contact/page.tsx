@@ -56,7 +56,7 @@ export default async function ContactPage() {
         <div className="mt-12 grid gap-12 lg:grid-cols-[0.8fr_1.2fr]">
           <div className="space-y-8 text-sm">
             <div>
-              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-[#B4470F] dark:text-[#F59A6B]">{c.find}</h2>
+              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-[#A9502F] dark:text-[#F48771]">{c.find}</h2>
               <p className="mt-3 font-medium text-neutral-900 dark:text-neutral-100">{COMPANY.name}</p>
               <address className="mt-1 not-italic leading-relaxed text-neutral-600 dark:text-neutral-300">
                 {COMPANY.addressLines.map((l) => (

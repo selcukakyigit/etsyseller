@@ -70,7 +70,7 @@ export default function ListingCard({
   return (
     <div
       className={`flex flex-col overflow-hidden rounded-xl border bg-white dark:bg-neutral-900 ${
-        selected ? "border-[#F1641E]" : "border-neutral-200 dark:border-neutral-800"
+        selected ? "border-[#D97757]" : "border-neutral-200 dark:border-neutral-800"
       }`}
     >
       <Link href={`/listings/${listing.listing_id}/edit`} className="relative block aspect-square bg-neutral-100 dark:bg-neutral-800">
@@ -120,7 +120,7 @@ export default function ListingCard({
           checked={selected}
           onChange={(e) => onSelectChange(e.target.checked)}
           aria-label={`${listing.title} seç`}
-          className="h-4 w-4 accent-[#F1641E]"
+          className="h-4 w-4 accent-[#D97757]"
         />
         <button
           type="button"

@@ -48,10 +48,10 @@ function RatingDistribution({
             onClick={() => onSelect(Number(star))}
             className={`flex w-full items-center gap-2 rounded text-xs ${isActive ? "opacity-100" : "opacity-90 hover:opacity-100"}`}
           >
-            <span className={`w-8 shrink-0 text-left ${isActive ? "font-semibold text-[#F1641E]" : "text-neutral-500"}`}>{star}★</span>
+            <span className={`w-8 shrink-0 text-left ${isActive ? "font-semibold text-[#D97757]" : "text-neutral-500"}`}>{star}★</span>
             <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
               <div
-                className={`h-full rounded-full ${isActive ? "bg-[#F1641E]" : "bg-amber-400"}`}
+                className={`h-full rounded-full ${isActive ? "bg-[#D97757]" : "bg-amber-400"}`}
                 style={{ width: `${(n / max) * 100}%` }}
               />
             </div>
@@ -86,10 +86,10 @@ function MonthlyTrend({
             title={`${m.month}: ${m.count} yorum`}
           >
             <div
-              className={`w-full rounded-t ${isActive ? "bg-[#F1641E]" : "bg-[#F1641E]/80 hover:bg-[#F1641E]"}`}
+              className={`w-full rounded-t ${isActive ? "bg-[#D97757]" : "bg-[#D97757]/80 hover:bg-[#D97757]"}`}
               style={{ height: `${Math.max(2, (m.count / max) * 72)}px` }}
             />
-            <span className={`text-[9px] ${isActive ? "font-semibold text-[#F1641E]" : "text-neutral-400"}`}>{MONTH_LABEL(m.month)}</span>
+            <span className={`text-[9px] ${isActive ? "font-semibold text-[#D97757]" : "text-neutral-400"}`}>{MONTH_LABEL(m.month)}</span>
           </button>
         );
       })}
@@ -108,7 +108,7 @@ function ListingStatList({ items }: { items: ShopReviewStats["top_reviewed"] }) 
             href={`https://www.etsy.com/listing/${it.listing_id}`}
             target="_blank"
             rel="noreferrer"
-            className="min-w-0 flex-1 truncate text-neutral-700 hover:text-[#F1641E] hover:underline dark:text-neutral-300"
+            className="min-w-0 flex-1 truncate text-neutral-700 hover:text-[#D97757] hover:underline dark:text-neutral-300"
           >
             {it.title || `Listing #${it.listing_id}`}
           </a>
@@ -242,7 +242,7 @@ function ReviewsPageInner() {
                   <button
                     type="button"
                     onClick={() => toggleRating(ratingFilter)}
-                    className="inline-flex items-center gap-1 rounded-full bg-[#F1641E]/10 px-2.5 py-1 font-medium text-[#F1641E]"
+                    className="inline-flex items-center gap-1 rounded-full bg-[#D97757]/10 px-2.5 py-1 font-medium text-[#D97757]"
                   >
                     {ratingFilter}★ <span aria-hidden>×</span>
                   </button>
@@ -251,7 +251,7 @@ function ReviewsPageInner() {
                   <button
                     type="button"
                     onClick={() => toggleMonth(monthFilter)}
-                    className="inline-flex items-center gap-1 rounded-full bg-[#F1641E]/10 px-2.5 py-1 font-medium text-[#F1641E]"
+                    className="inline-flex items-center gap-1 rounded-full bg-[#D97757]/10 px-2.5 py-1 font-medium text-[#D97757]"
                   >
                     {MONTH_LABEL(monthFilter)} <span aria-hidden>×</span>
                   </button>
@@ -280,7 +280,7 @@ function ReviewsPageInner() {
                     href={`https://www.etsy.com/listing/${r.listing_id}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="mt-2 inline-block text-xs text-neutral-400 hover:text-[#F1641E] hover:underline"
+                    className="mt-2 inline-block text-xs text-neutral-400 hover:text-[#D97757] hover:underline"
                   >
                     Listing #{r.listing_id}
                   </a>

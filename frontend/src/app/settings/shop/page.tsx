@@ -79,7 +79,7 @@ export default function ShopSettingsPage() {
           <p className="text-neutral-600 dark:text-neutral-300">Henüz bağlı bir Etsy mağazan yok.</p>
           <a
             href={api.shops.connectUrl()}
-            className="inline-block text-sm font-medium px-4 py-2 rounded-lg bg-[#F1641E] text-white hover:bg-[#d9560f] transition"
+            className="inline-block text-sm font-medium px-4 py-2 rounded-lg bg-[#D97757] text-white hover:bg-[#C6613F] transition"
           >
             Etsy&apos;ye Bağlan
           </a>
@@ -97,7 +97,7 @@ export default function ShopSettingsPage() {
                 <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
                   {shop.shop_name}
                   {activeShop?.id === shop.id && (
-                    <span className="ml-2 text-[10px] font-medium text-[#F1641E] uppercase tracking-wide">Aktif</span>
+                    <span className="ml-2 text-[10px] font-medium text-[#D97757] uppercase tracking-wide">Aktif</span>
                   )}
                 </p>
                 <p className="text-xs text-neutral-400 dark:text-neutral-500">Etsy Shop ID: {shop.etsy_shop_id}</p>
@@ -127,7 +127,7 @@ export default function ShopSettingsPage() {
                 ) : (
                   <a
                     href={api.shops.connectUrl()}
-                    className="text-xs font-medium px-3 py-1.5 rounded-lg bg-[#F1641E] text-white hover:bg-[#d9560f] transition"
+                    className="text-xs font-medium px-3 py-1.5 rounded-lg bg-[#D97757] text-white hover:bg-[#C6613F] transition"
                   >
                     Yeniden Bağlan
                   </a>

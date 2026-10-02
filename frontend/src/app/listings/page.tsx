@@ -400,7 +400,7 @@ export default function Home() {
             <p className="text-neutral-600 dark:text-neutral-300 mb-4">Devam etmek için Etsy mağazanı bağlaman gerekiyor.</p>
             <a
               href={api.shops.connectUrl()}
-              className="inline-block text-sm font-medium px-4 py-2 rounded-lg bg-[#F1641E] text-white hover:bg-[#d9560f] transition"
+              className="inline-block text-sm font-medium px-4 py-2 rounded-lg bg-[#D97757] text-white hover:bg-[#C6613F] transition"
             >
               Etsy&apos;ye Bağlan
             </a>
@@ -441,7 +441,7 @@ export default function Home() {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Başlık, etiket veya SKU ara"
-                  className="w-full rounded-full border border-neutral-300 bg-white py-2 pl-4 pr-10 text-sm outline-none focus:border-[#F1641E] dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+                  className="w-full rounded-full border border-neutral-300 bg-white py-2 pl-4 pr-10 text-sm outline-none focus:border-[#D97757] dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
                 />
                 <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-neutral-400">⌕</span>
               </div>
@@ -460,7 +460,7 @@ export default function Home() {
                         return next;
                       })
                     }
-                    className="h-4 w-4 accent-[#F1641E]"
+                    className="h-4 w-4 accent-[#D97757]"
                   />
                   {selected.size > 0 ? `${selected.size} seçili` : "Tümünü seç"}
                 </label>
@@ -554,7 +554,7 @@ export default function Home() {
                 <button
                   onClick={publishSelected}
                   disabled={selectedDrafts.length === 0 || bulk?.running}
-                  className="ml-auto rounded-lg bg-[#F1641E] px-3 py-1.5 text-sm font-medium text-white transition hover:bg-[#d9560f] disabled:opacity-50"
+                  className="ml-auto rounded-lg bg-[#D97757] px-3 py-1.5 text-sm font-medium text-white transition hover:bg-[#C6613F] disabled:opacity-50"
                 >
                   Seçilenleri Etsy&apos;de yayınla ({selectedDrafts.length})
                 </button>

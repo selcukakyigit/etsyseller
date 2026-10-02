@@ -9,7 +9,7 @@ import OrderDetailModal from "./OrderDetailModal";
 import ProductThumb from "./ProductThumb";
 
 const card = "rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900";
-const inputBase = "w-20 rounded border px-2 py-1 text-right text-sm focus:border-[#F1641E] focus:outline-none";
+const inputBase = "w-20 rounded border px-2 py-1 text-right text-sm focus:border-[#D97757] focus:outline-none";
 const inputCls = `${inputBase} border-neutral-300 bg-white dark:border-neutral-700 dark:bg-neutral-900`;
 const filledCls = `${inputBase} border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/40`;
 
@@ -112,7 +112,7 @@ export function InfoDot({ filled = false }: { filled?: boolean }) {
   return (
     <span
       className={`flex h-4 w-4 items-center justify-center rounded-full border text-[10px] font-bold italic leading-none ${
-        filled ? "border-[#F1641E] bg-[#F1641E] text-white" : "border-[#F1641E] text-[#F1641E]"
+        filled ? "border-[#D97757] bg-[#D97757] text-white" : "border-[#D97757] text-[#D97757]"
       }`}
     >
       i

@@ -74,7 +74,7 @@ function PerformanceSummary({ shopId, listingId }: { shopId: number; listingId: 
                 setDays(r.days);
                 const cached = perfCache.get(`${shopId}:${listingId}:${r.days}`);
                 if (cached) setPerf(cached);
-              }} className={`rounded-full px-2.5 py-1 text-xs ${days === r.days ? "bg-[#F1641E] text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300"}`}>
+              }} className={`rounded-full px-2.5 py-1 text-xs ${days === r.days ? "bg-[#D97757] text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300"}`}>
               {r.label}
             </button>
           ))}
@@ -325,7 +325,7 @@ export default function ListingHistoryPanel({
                       ? "bg-green-50 text-green-600"
                       : v.status === "dismissed"
                         ? "bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400"
-                        : "bg-[#F1641E]/10 text-[#c94f16]"
+                        : "bg-[#D97757]/10 text-[#B4553A]"
                   }`}
                 >
                   {STATUS_LABEL[v.status] ?? v.status}
@@ -344,7 +344,7 @@ export default function ListingHistoryPanel({
             <button
               type="button"
               onClick={() => setShowAllHistory((v) => !v)}
-              className="mt-2 text-xs font-medium text-[#c94f16] hover:underline"
+              className="mt-2 text-xs font-medium text-[#B4553A] hover:underline"
             >
               {showAllHistory ? "Daha az göster" : `Daha fazla göster (${history.versions.length - 3} tane daha)`}
             </button>

@@ -54,7 +54,7 @@ export default function DistancePicker({
             title={s.hint}
             className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${vertical ? "w-full" : ""} ${
               value === s.key
-                ? "bg-[#F1641E] text-white"
+                ? "bg-[#D97757] text-white"
                 : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
             }`}
           >

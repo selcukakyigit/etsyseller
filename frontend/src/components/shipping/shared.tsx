@@ -4,7 +4,7 @@ import { ReactNode } from "react";
 import { ApiError, api } from "@/lib/api";
 
 export const inputCls =
-  "rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-[#F1641E] dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
+  "rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-[#D97757] dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
 export const labelCls = "mb-1 block text-xs font-semibold text-neutral-700 dark:text-neutral-200";
 export const iconBtn =
   "rounded-md px-2 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-30 dark:text-neutral-200 dark:hover:bg-neutral-800";
@@ -33,7 +33,7 @@ export function ReconnectNotice({ compact, scope = "shops_w" }: { compact?: bool
       {!compact && (
         <a
           href={api.shops.connectUrl()}
-          className="mt-3 inline-block rounded-full bg-[#F1641E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#d9560f]"
+          className="mt-3 inline-block rounded-full bg-[#D97757] px-4 py-2 text-sm font-semibold text-white hover:bg-[#C6613F]"
         >
           Etsy&apos;yi yeniden bağla
         </a>

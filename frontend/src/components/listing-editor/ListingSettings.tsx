@@ -80,7 +80,7 @@ export default function ListingSettings({
             }
             onChange({ shop_section_id: e.target.value ? Number(e.target.value) : null });
           }}
-          className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#F1641E]"
+          className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
         >
           <option value="">Yok</option>
           {sections?.map((s) => (
@@ -107,13 +107,13 @@ export default function ListingSettings({
                 }
               }}
               placeholder="Bölüm başlığı (en fazla 24 karakter)"
-              className="flex-1 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-1.5 text-sm outline-none focus:border-[#F1641E]"
+              className="flex-1 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-1.5 text-sm outline-none focus:border-[#D97757]"
             />
             <button
               type="button"
               onClick={() => void createSection()}
               disabled={creatingSection || !newSectionTitle.trim()}
-              className="rounded-lg bg-[#F1641E] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+              className="rounded-lg bg-[#D97757] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
             >
               {creatingSection ? "Ekleniyor…" : "Ekle"}
             </button>

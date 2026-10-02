@@ -48,7 +48,7 @@ export default function ProgressBar({
     <div className="space-y-1.5" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={shown}>
       <div className="relative h-7 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
         <div
-          className="h-full rounded-full bg-[#F1641E]/70 transition-[width] duration-200 ease-out"
+          className="h-full rounded-full bg-[#D97757]/70 transition-[width] duration-200 ease-out"
           style={{ width: `${pct}%` }}
         />
         <span className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-neutral-900 dark:text-neutral-50">

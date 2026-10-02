@@ -214,7 +214,7 @@ export default function FinancePage() {
   const PALETTE = ["#c4c4c4", "#93c5fd", "#a78bfa"];
   const chartSorted = [...chartYears].sort((a, b) => a - b); // eski yıl solda
   const others = chartYears.filter((y) => y !== baseYear).sort((a, b) => b - a); // en yakın yıl gri
-  const compareSeries = chartSorted.map((y) => ({ name: String(y), color: y === baseYear ? "#F1641E" : PALETTE[others.indexOf(y)] ?? PALETTE[2] }));
+  const compareSeries = chartSorted.map((y) => ({ name: String(y), color: y === baseYear ? "#D97757" : PALETTE[others.indexOf(y)] ?? PALETTE[2] }));
   const k = displayReport?.kpi;
   const pk = displayReport?.prev_kpi;
   const missingFees = displayReport?.coverage.orders_without_fees ?? 0;
@@ -235,7 +235,7 @@ export default function FinancePage() {
             <div className="rounded-xl border border-orange-200 bg-orange-50 p-3 text-sm text-orange-900 dark:border-orange-900 dark:bg-orange-950 dark:text-orange-200">
               {sync.phase || "Etsy hesap hareketleri indiriliyor"} · %{Math.round(sync.progress * 100)}
               <div className="mt-2 h-1.5 overflow-hidden rounded bg-orange-200 dark:bg-orange-900">
-                <div className="h-full bg-[#F1641E] transition-all" style={{ width: `${Math.round(sync.progress * 100)}%` }} />
+                <div className="h-full bg-[#D97757] transition-all" style={{ width: `${Math.round(sync.progress * 100)}%` }} />
               </div>
             </div>
           )}
@@ -301,7 +301,7 @@ export default function FinancePage() {
               disabled={exporting || !displayReport}
               onClick={() => exportExcel(false)}
               title="Bu sekmedeki dönem, ülke ve filtrelerle"
-              className="rounded-lg bg-[#F1641E] px-3 py-2 text-sm font-medium text-white hover:bg-[#d9560f] disabled:opacity-50"
+              className="rounded-lg bg-[#D97757] px-3 py-2 text-sm font-medium text-white hover:bg-[#C6613F] disabled:opacity-50"
             >
               {exporting ? "Hazırlanıyor…" : `Excel: ${tabLabel}`}
             </button>
@@ -329,7 +329,7 @@ export default function FinancePage() {
               key={v}
               type="button"
               onClick={() => setTab(v)}
-              className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === v ? "border-[#F1641E] text-neutral-900 dark:text-neutral-100" : "border-transparent text-neutral-500 hover:text-neutral-800"}`}
+              className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === v ? "border-[#D97757] text-neutral-900 dark:text-neutral-100" : "border-transparent text-neutral-500 hover:text-neutral-800"}`}
             >
               {l}
             </button>
@@ -366,7 +366,7 @@ export default function FinancePage() {
                         key={v}
                         type="button"
                         onClick={() => setTopTab(v)}
-                        className={`-mb-px border-b-2 px-3 py-2 text-sm font-semibold ${topTab === v ? "border-[#F1641E] text-neutral-900 dark:text-neutral-100" : "border-transparent text-neutral-500 hover:text-neutral-800"}`}
+                        className={`-mb-px border-b-2 px-3 py-2 text-sm font-semibold ${topTab === v ? "border-[#D97757] text-neutral-900 dark:text-neutral-100" : "border-transparent text-neutral-500 hover:text-neutral-800"}`}
                       >
                         {label}
                       </button>
@@ -515,7 +515,7 @@ export default function FinancePage() {
                     legend={[
                       { name: "Net kâr", color: "#10b981" },
                       { name: "Ürün + kargo", color: "#6366f1" },
-                      { name: "Sipariş ücretleri", color: "#F1641E" },
+                      { name: "Sipariş ücretleri", color: "#D97757" },
                       { name: "Reklam / diğer", color: "#f59e0b" },
                     ]}
                     fmt={fmt}
@@ -592,7 +592,7 @@ function CountryBars({ rows, fmt, cur, prev }: { rows: FinReport["countries"]; f
     <div className="space-y-3">
       <div className="flex gap-4 text-xs text-neutral-600 dark:text-neutral-300">
         <span className="inline-flex items-center gap-1.5">
-          <i className="inline-block h-2.5 w-2.5 rounded-sm bg-[#F1641E]" />
+          <i className="inline-block h-2.5 w-2.5 rounded-sm bg-[#D97757]" />
           {cur}
         </span>
         <span className="inline-flex items-center gap-1.5">
@@ -604,7 +604,7 @@ function CountryBars({ rows, fmt, cur, prev }: { rows: FinReport["countries"]; f
         <div key={r.iso} className="grid grid-cols-[7rem_1fr_9rem] items-center gap-3 text-sm">
           <span className="truncate font-medium">{r.iso === "??" ? "Bilinmiyor" : (names.of(r.iso) ?? r.iso)}</span>
           <div className="space-y-1">
-            <div className="h-2.5 rounded bg-[#F1641E]" style={{ width: `${(r.sales / max) * 100}%` }} />
+            <div className="h-2.5 rounded bg-[#D97757]" style={{ width: `${(r.sales / max) * 100}%` }} />
             <div className="h-2.5 rounded bg-neutral-300 dark:bg-neutral-600" style={{ width: `${(r.prev_sales / max) * 100}%` }} />
           </div>
           <span className="text-right text-xs text-neutral-500">

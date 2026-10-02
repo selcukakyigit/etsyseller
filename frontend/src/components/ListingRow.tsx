@@ -33,7 +33,7 @@ function ScoredKeywordPills({ items }: { items: KeywordPoolItem[] }) {
             style={{ background: `linear-gradient(to right, ${fill} ${normalized * 100}%, transparent ${normalized * 100}%)` }}
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-600 dark:text-neutral-300"
           >
-            {item.source === "own" && <span className="text-[9px] font-semibold text-[#F1641E]">SENİN</span>}
+            {item.source === "own" && <span className="text-[9px] font-semibold text-[#D97757]">SENİN</span>}
             {item.tag}
             <span className="text-neutral-400 dark:text-neutral-500">
               {item.source === "own" ? `${item.units ?? 0} satış` : `${item.score}/${item.sample_size}`}
@@ -120,7 +120,7 @@ export default function ListingRow({
   return (
     <div
       className={`border rounded-xl bg-white dark:bg-neutral-900 overflow-hidden ${
-        selected ? "border-[#F1641E]" : "border-neutral-200 dark:border-neutral-800"
+        selected ? "border-[#D97757]" : "border-neutral-200 dark:border-neutral-800"
       }`}
     >
       <div className="flex items-center gap-4 p-4">
@@ -130,7 +130,7 @@ export default function ListingRow({
             checked={!!selected}
             onChange={(e) => onSelectChange(e.target.checked)}
             aria-label={`${listing.title} seç`}
-            className="h-4 w-4 flex-shrink-0 accent-[#F1641E]"
+            className="h-4 w-4 flex-shrink-0 accent-[#D97757]"
           />
         )}
 
@@ -184,7 +184,7 @@ export default function ListingRow({
             <button
               onClick={onPublish}
               disabled={publishing}
-              className="text-sm font-medium px-3 py-1.5 rounded-lg bg-[#F1641E] text-white hover:bg-[#d9560f] transition disabled:opacity-50"
+              className="text-sm font-medium px-3 py-1.5 rounded-lg bg-[#D97757] text-white hover:bg-[#C6613F] transition disabled:opacity-50"
             >
               {publishing ? "Yayınlanıyor…" : "Etsy'de yayınla"}
             </button>

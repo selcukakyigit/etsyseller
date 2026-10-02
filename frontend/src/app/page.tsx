@@ -90,7 +90,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
-  return <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#B4470F] dark:text-[#F59A6B]">{children}</p>;
+  return <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#A9502F] dark:text-[#F48771]">{children}</p>;
 }
 
 export default async function LandingPage() {
@@ -111,7 +111,7 @@ export default async function LandingPage() {
           <div className="min-w-0">
             <Eyebrow>{c.eyebrow}</Eyebrow>
             <h1 className={`${serif.className} mt-5 text-5xl leading-[1.05] tracking-tight text-neutral-900 dark:text-neutral-50 md:text-6xl`}>
-              {c.h1a} <em className="text-[#F1641E] not-italic">{c.h1b}</em> {c.h1c}
+              {c.h1a} <em className="text-[#D97757] not-italic">{c.h1b}</em> {c.h1c}
             </h1>
             <p className="mt-6 max-w-xl text-lg leading-relaxed text-neutral-600 dark:text-neutral-300">{c.sub}</p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -140,7 +140,7 @@ export default async function LandingPage() {
             <div className="mt-12 grid gap-x-16 gap-y-12 md:grid-cols-2">
               {c.features.map(([title, text], i) => (
                 <div key={title} className="border-t border-black/10 pt-5 dark:border-white/15">
-                  <p className={`${serif.className} text-2xl text-[#F1641E]`}>{String(i + 1).padStart(2, "0")}</p>
+                  <p className={`${serif.className} text-2xl text-[#D97757]`}>{String(i + 1).padStart(2, "0")}</p>
                   <h3 className="mt-2 text-lg font-semibold text-neutral-900 dark:text-neutral-100">{title}</h3>
                   <p className="mt-2 leading-relaxed text-neutral-600 dark:text-neutral-300">{text}</p>
                 </div>
@@ -197,7 +197,7 @@ export default async function LandingPage() {
             <p className="mx-auto mt-3 max-w-md text-neutral-300">{c.endSub}</p>
             <Link
               href="/login?mode=register"
-              className="mt-7 inline-flex items-center rounded-full bg-[#F1641E] px-6 py-3 text-sm font-medium text-white transition hover:bg-[#d9540f]"
+              className="mt-7 inline-flex items-center rounded-full bg-[#D97757] px-6 py-3 text-sm font-medium text-white transition hover:bg-[#d9540f]"
             >
               {c.cta}
             </Link>

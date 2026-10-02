@@ -218,7 +218,7 @@ export default function OrdersPage() {
         {user && shops !== null && !activeShop && (
           <div className="rounded-xl border border-neutral-200 bg-white p-8 text-center dark:border-neutral-800 dark:bg-neutral-900">
             <p className="mb-4 text-neutral-600 dark:text-neutral-300">Siparişleri görmek için önce Etsy mağazanı bağlaman gerekiyor.</p>
-            <a href={api.shops.connectUrl()} className="inline-block rounded-lg bg-[#F1641E] px-4 py-2 text-sm font-medium text-white hover:bg-[#d9560f]">
+            <a href={api.shops.connectUrl()} className="inline-block rounded-lg bg-[#D97757] px-4 py-2 text-sm font-medium text-white hover:bg-[#C6613F]">
               Etsy&apos;ye Bağlan
             </a>
           </div>
@@ -245,7 +245,7 @@ export default function OrdersPage() {
                   value={queryInput}
                   onChange={(e) => setQueryInput(e.target.value)}
                   placeholder="Alıcı, sipariş no, ürün, kişiselleştirme ya da SKU ara"
-                  className="w-full rounded-full border border-neutral-300 bg-white py-2 pl-4 pr-10 text-sm outline-none focus:border-[#F1641E] dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+                  className="w-full rounded-full border border-neutral-300 bg-white py-2 pl-4 pr-10 text-sm outline-none focus:border-[#D97757] dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
                 />
                 <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-neutral-400">⌕</span>
               </div>
@@ -263,7 +263,7 @@ export default function OrdersPage() {
                       return next;
                     })
                   }
-                  className="h-4 w-4 accent-[#F1641E]"
+                  className="h-4 w-4 accent-[#D97757]"
                 />
                 {selected.size > 0 ? `${selected.size} seçili` : "Bu sayfayı seç"}
               </label>

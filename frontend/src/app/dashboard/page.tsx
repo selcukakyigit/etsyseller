@@ -73,7 +73,7 @@ export default function DashboardPage() {
         {user && shops !== null && !activeShop && (
           <div className="rounded-xl border border-neutral-200 bg-white p-8 text-center dark:border-neutral-800 dark:bg-neutral-900">
             <p className="mb-4 text-neutral-600 dark:text-neutral-300">Asistanı kullanmak için önce Etsy mağazanı bağlaman gerekiyor.</p>
-            <a href={api.shops.connectUrl()} className="inline-block rounded-lg bg-[#F1641E] px-4 py-2 text-sm font-medium text-white hover:bg-[#d9560f]">
+            <a href={api.shops.connectUrl()} className="inline-block rounded-lg bg-[#D97757] px-4 py-2 text-sm font-medium text-white hover:bg-[#C6613F]">
               Etsy&apos;ye Bağlan
             </a>
           </div>
@@ -85,7 +85,7 @@ export default function DashboardPage() {
 
             <aside className="space-y-3">
               {(activeShop?.icon_url || profile) && (
-                <Link href="/reviews" className={`${tile} block hover:border-[#F1641E]`}>
+                <Link href="/reviews" className={`${tile} block hover:border-[#D97757]`}>
                   <div className="flex items-center gap-2.5">
                     {activeShop?.icon_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -127,13 +127,13 @@ export default function DashboardPage() {
                 <div className="text-xs text-neutral-500">{data ? `${data.today.orders} sipariş` : ""}</div>
               </div>
 
-              <Link href="/orders" className={`${tile} block hover:border-[#F1641E]`}>
+              <Link href="/orders" className={`${tile} block hover:border-[#D97757]`}>
                 <div className="text-xs font-medium text-neutral-500">Gönderilecek siparişler</div>
                 <div className="mt-1 text-2xl font-semibold">{data ? data.to_ship : "—"}</div>
                 {data && data.overdue > 0 ? <div className="text-xs font-medium text-red-600">{data.overdue} tanesi gecikmiş</div> : <div className="text-xs text-neutral-500">gecikmiş yok</div>}
               </Link>
 
-              <Link href="/finance" className={`${tile} block hover:border-[#F1641E]`}>
+              <Link href="/finance" className={`${tile} block hover:border-[#D97757]`}>
                 <div className="text-xs font-medium text-neutral-500">Bu ay ({data?.month.label ?? "…"})</div>
                 <div className="mt-1 text-2xl font-semibold">{data ? money(data.month.sales) : "—"}</div>
                 {data && <Change cur={data.month.sales} prev={data.month.prev_sales} label={`${lastYear} aynı dönem`} />}

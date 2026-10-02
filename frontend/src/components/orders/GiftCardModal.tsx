@@ -43,7 +43,7 @@ export function configForOrder(order: Order): GiftCardConfig {
 
 const labelCls = "mb-1 block text-xs font-semibold text-neutral-700 dark:text-neutral-200";
 const inputCls =
-  "w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-[#F1641E] dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
+  "w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-[#D97757] dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
 
 function Seg<T extends string>({ value, options, onChange }: { value: T; options: [T, string][]; onChange: (v: T) => void }) {
   return (
@@ -165,12 +165,12 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
             />
             <div className="mt-1.5 flex flex-wrap gap-2 text-xs">
               {order.gift_message && (
-                <button type="button" onClick={() => update({ message: order.gift_message ?? "" })} className="text-[#c94f16] hover:underline">
+                <button type="button" onClick={() => update({ message: order.gift_message ?? "" })} className="text-[#B4553A] hover:underline">
                   Hediye mesajından doldur
                 </button>
               )}
               {order.buyer_note && (
-                <button type="button" onClick={() => update({ message: order.buyer_note ?? "" })} className="text-[#c94f16] hover:underline">
+                <button type="button" onClick={() => update({ message: order.buyer_note ?? "" })} className="text-[#B4553A] hover:underline">
                   Alıcı notundan doldur
                 </button>
               )}
@@ -178,7 +178,7 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
                 <button
                   type="button"
                   onClick={() => update({ message: TEMPLATES.find((t) => t.id === cfg.template)?.sample ?? "" })}
-                  className="text-[#c94f16] hover:underline"
+                  className="text-[#B4553A] hover:underline"
                 >
                   Tema için örnek mesaj ekle
                 </button>
@@ -228,7 +228,7 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
 
           <div>
             <label className={labelCls}>Yazı boyutu: {cfg.fontSize} pt</label>
-            <input type="range" min={10} max={48} value={cfg.fontSize} onChange={(e) => update({ fontSize: Number(e.target.value) })} className="w-full accent-[#F1641E]" />
+            <input type="range" min={10} max={48} value={cfg.fontSize} onChange={(e) => update({ fontSize: Number(e.target.value) })} className="w-full accent-[#D97757]" />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -244,11 +244,11 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
           <div>
             <div className="flex items-center justify-between">
               <label className={labelCls}>İnce dikey kaydırma: {cfg.offsetY}%</label>
-              <button type="button" onClick={() => update({ align: "center", vAlign: "middle", offsetY: 0 })} className="text-xs text-[#c94f16] hover:underline">
+              <button type="button" onClick={() => update({ align: "center", vAlign: "middle", offsetY: 0 })} className="text-xs text-[#B4553A] hover:underline">
                 Ortala
               </button>
             </div>
-            <input type="range" min={-30} max={30} value={cfg.offsetY} onChange={(e) => update({ offsetY: Number(e.target.value) })} className="w-full accent-[#F1641E]" />
+            <input type="range" min={-30} max={30} value={cfg.offsetY} onChange={(e) => update({ offsetY: Number(e.target.value) })} className="w-full accent-[#D97757]" />
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -284,7 +284,7 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
                     <button type="button" onClick={() => setAddingSize(false)} className="text-xs text-neutral-500 hover:underline">
                       Vazgeç
                     </button>
-                    <button type="button" onClick={saveNewSize} className="rounded-lg bg-[#F1641E] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#d9560f]">
+                    <button type="button" onClick={saveNewSize} className="rounded-lg bg-[#D97757] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#C6613F]">
                       Kaydet
                     </button>
                   </div>

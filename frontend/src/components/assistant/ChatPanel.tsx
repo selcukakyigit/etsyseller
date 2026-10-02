@@ -39,7 +39,7 @@ function Thinking({ step }: { step: string }) {
       <div className="flex items-center gap-3 rounded-2xl bg-neutral-100 px-4 py-3 text-sm text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
         <span className="flex items-end gap-1" aria-hidden>
           {[0, 1, 2].map((i) => (
-            <span key={i} className="inline-block h-2 w-2 animate-bounce rounded-full bg-[#F1641E]" style={{ animationDelay: `${i * 150}ms` }} />
+            <span key={i} className="inline-block h-2 w-2 animate-bounce rounded-full bg-[#D97757]" style={{ animationDelay: `${i * 150}ms` }} />
           ))}
         </span>
         <span className="transition-opacity">{step || "Düşünüyor"}…</span>
@@ -257,7 +257,7 @@ export default function ChatPanel({ shopId, onSent }: { shopId: number; onSent?:
 
   return (
     <div
-      className={`relative flex h-[calc(100vh-11rem)] min-h-[32rem] rounded-2xl border bg-white dark:bg-neutral-900 ${dragging ? "border-[#F1641E]" : "border-neutral-200 dark:border-neutral-800"}`}
+      className={`relative flex h-[calc(100vh-11rem)] min-h-[32rem] rounded-2xl border bg-white dark:bg-neutral-900 ${dragging ? "border-[#D97757]" : "border-neutral-200 dark:border-neutral-800"}`}
       onDragOver={(e) => {
         e.preventDefault();
         setDragging(true);
@@ -297,7 +297,7 @@ export default function ChatPanel({ shopId, onSent }: { shopId: number; onSent?:
             <p className="mb-4 text-sm text-neutral-500">Sor, listing oluştur, kâr-zarar durumuna bak. Resimleri sürükleyip bırakabilir ya da yapıştırabilirsin. Değişiklikler önce yerel taslak olur, Etsy&apos;ye gitmez.</p>
             <div className="flex flex-wrap justify-center gap-2">
               {SUGGESTIONS.map((s) => (
-                <button key={s} type="button" onClick={() => void send(s)} disabled={!!noKey} className="rounded-full border border-neutral-200 px-3 py-1.5 text-xs hover:border-[#F1641E] hover:text-[#F1641E] disabled:opacity-40 dark:border-neutral-700">
+                <button key={s} type="button" onClick={() => void send(s)} disabled={!!noKey} className="rounded-full border border-neutral-200 px-3 py-1.5 text-xs hover:border-[#D97757] hover:text-[#D97757] disabled:opacity-40 dark:border-neutral-700">
                   {s}
                 </button>
               ))}
@@ -316,7 +316,7 @@ export default function ChatPanel({ shopId, onSent }: { shopId: number; onSent?:
                 </div>
               )}
               {m.content && (
-                <div className={`whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm ${m.role === "user" ? "ml-auto w-fit bg-[#F1641E] text-white" : "bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"}`}>
+                <div className={`whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm ${m.role === "user" ? "ml-auto w-fit bg-[#D97757] text-white" : "bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"}`}>
                   <Text text={m.content} />
                 </div>
               )}
@@ -363,13 +363,13 @@ export default function ChatPanel({ shopId, onSent }: { shopId: number; onSent?:
             onPaste={onPaste}
             rows={2}
             placeholder="Bir şey sor ya da yaptır… (Enter gönderir, Shift+Enter satır atlar)"
-            className="max-h-40 min-h-[2.75rem] flex-1 resize-none rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-[#F1641E] focus:outline-none dark:border-neutral-700 dark:bg-neutral-900"
+            className="max-h-40 min-h-[2.75rem] flex-1 resize-none rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-[#D97757] focus:outline-none dark:border-neutral-700 dark:bg-neutral-900"
           />
           <button
             type="button"
             onClick={() => void send()}
             disabled={busy || uploading > 0 || (!input.trim() && pending.length === 0) || !!noKey}
-            className="rounded-xl bg-[#F1641E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#d9560f] disabled:opacity-40"
+            className="rounded-xl bg-[#D97757] px-4 py-2 text-sm font-semibold text-white hover:bg-[#C6613F] disabled:opacity-40"
           >
             Gönder
           </button>
@@ -389,20 +389,20 @@ export default function ChatPanel({ shopId, onSent }: { shopId: number; onSent?:
                 setSelectMode((v) => !v);
                 setSelected(new Set());
               }}
-              className="text-xs font-medium text-[#F1641E] hover:underline"
+              className="text-xs font-medium text-[#D97757] hover:underline"
             >
               {selectMode ? "İptal" : "Seç"}
             </button>
           )}
         </div>
-        <button type="button" onClick={newChat} className="mx-2 mt-2 rounded-lg border border-dashed border-neutral-300 px-3 py-2 text-left text-sm font-medium text-[#F1641E] hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">
+        <button type="button" onClick={newChat} className="mx-2 mt-2 rounded-lg border border-dashed border-neutral-300 px-3 py-2 text-left text-sm font-medium text-[#D97757] hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">
           + Yeni sohbet
         </button>
         <div className="flex-1 space-y-0.5 overflow-y-auto p-2">
           {sessions.length === 0 && <p className="px-2 py-3 text-xs text-neutral-400">Kayıtlı sohbet yok.</p>}
           {sessions.map((s) => (
             <div key={s.id} className={`group flex items-center gap-1 rounded-lg ${s.id === sessionId ? "bg-orange-50 dark:bg-neutral-800" : "hover:bg-neutral-50 dark:hover:bg-neutral-800"}`}>
-              {selectMode && <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSelected(s.id)} className="ml-2 h-4 w-4 flex-shrink-0 accent-[#F1641E]" aria-label={`${s.title} seç`} />}
+              {selectMode && <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSelected(s.id)} className="ml-2 h-4 w-4 flex-shrink-0 accent-[#D97757]" aria-label={`${s.title} seç`} />}
               <button type="button" onClick={() => (selectMode ? toggleSelected(s.id) : void openSession(s.id))} className="min-w-0 flex-1 px-2 py-1.5 text-left">
                 <div className={`truncate text-sm ${s.id === sessionId ? "font-semibold" : ""}`}>{s.title}</div>
                 <div className="text-[11px] text-neutral-400">{when(s.updated_at)}</div>

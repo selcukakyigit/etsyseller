@@ -51,7 +51,7 @@ export default function VersionDots({
           title={v.created_at ? new Date(v.created_at).toLocaleString("tr-TR") : "Orijinal"}
           onClick={() => !isCurrent(v) && onSelect(v)}
           className={`pointer-events-auto h-2.5 w-2.5 rounded-full transition ${
-            isCurrent(v) ? "bg-[#F1641E]" : "bg-white/50 hover:bg-white/80"
+            isCurrent(v) ? "bg-[#D97757]" : "bg-white/50 hover:bg-white/80"
           }`}
           aria-label={i === 0 ? "Orijinal fotoğraf" : `Sürüm ${i + 1}`}
         />

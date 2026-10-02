@@ -93,7 +93,7 @@ export default function ProfileSettingsPage() {
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 px-3 py-2 text-sm outline-none focus:border-[#F1641E]"
+              className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
             />
           </div>
 

@@ -13,7 +13,7 @@ import { AUTH_COPY, translateAuthError } from "@/lib/copy-auth";
 type Mode = "login" | "register" | "forgot";
 
 const input =
-  "w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#F1641E]";
+  "w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]";
 const label = "block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1";
 
 export default function LoginPage() {

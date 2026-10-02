@@ -33,7 +33,7 @@ function SecretField({
         placeholder={masked || "Ayarlanmadı"}
         autoComplete="off"
         spellCheck={false}
-        className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 px-3 py-2 text-sm font-mono outline-none focus:border-[#F1641E] break-all"
+        className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 px-3 py-2 text-sm font-mono outline-none focus:border-[#D97757] break-all"
       />
       {masked && (
         <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1 break-all">
@@ -66,7 +66,7 @@ function ModelSelect({
       <select
         value={isCustom ? CUSTOM_MODEL : value}
         onChange={(e) => onChange(e.target.value === CUSTOM_MODEL ? "" : e.target.value)}
-        className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 text-sm font-mono outline-none focus:border-[#F1641E]"
+        className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 text-sm font-mono outline-none focus:border-[#D97757]"
       >
         {options.map((option) => (
           <option key={option} value={option}>
@@ -80,7 +80,7 @@ function ModelSelect({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Model adını gir"
-          className="mt-2 w-full rounded-lg border border-neutral-200 dark:border-neutral-800 px-3 py-2 text-sm font-mono outline-none focus:border-[#F1641E]"
+          className="mt-2 w-full rounded-lg border border-neutral-200 dark:border-neutral-800 px-3 py-2 text-sm font-mono outline-none focus:border-[#D97757]"
         />
       )}
     </div>
@@ -253,7 +253,7 @@ export default function ApiKeysSettingsPage() {
 
           <div className="space-y-3 pb-6 border-b border-neutral-100 dark:border-neutral-800">
             <h3 className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wide">
-              OpenAI {aiProvider === "openai" && <span className="text-[#F1641E]">(aktif)</span>}
+              OpenAI {aiProvider === "openai" && <span className="text-[#D97757]">(aktif)</span>}
             </h3>
             <SecretField
               label="OpenAI API Key"
@@ -267,7 +267,7 @@ export default function ApiKeysSettingsPage() {
 
           <div className="space-y-3 pb-6 border-b border-neutral-100 dark:border-neutral-800">
             <h3 className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wide">
-              Claude (Anthropic) {aiProvider === "anthropic" && <span className="text-[#F1641E]">(aktif)</span>}
+              Claude (Anthropic) {aiProvider === "anthropic" && <span className="text-[#D97757]">(aktif)</span>}
             </h3>
             <SecretField
               label="Anthropic API Key"
@@ -304,7 +304,7 @@ export default function ApiKeysSettingsPage() {
               <select
                 value={googleImageSize}
                 onChange={(e) => setGoogleImageSize(e.target.value)}
-                className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 text-sm font-mono outline-none focus:border-[#F1641E]"
+                className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 text-sm font-mono outline-none focus:border-[#D97757]"
               >
                 <option value="1K">1K (~1024px) — en ucuz</option>
                 <option value="2K">2K (~2048px) — Etsy&apos;nin önerdiği eşik, varsayılan</option>

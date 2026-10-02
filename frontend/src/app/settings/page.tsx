@@ -17,7 +17,7 @@ const CARDS = [
   {
     href: "/settings/api-keys",
     icon: KeyIcon,
-    color: "bg-[#F1641E]",
+    color: "bg-[#D97757]",
     title: "API Anahtarları",
     description: "Etsy, OpenAI ve Claude bağlantılarını yönet",
   },
@@ -73,7 +73,7 @@ export default function SettingsHub() {
         </div>
 
         {user && (
-          <div className="rounded-2xl bg-gradient-to-r from-[#F1641E] to-[#c94f16] p-5 flex items-center gap-4 text-white">
+          <div className="rounded-2xl bg-gradient-to-r from-[#D97757] to-[#B4553A] p-5 flex items-center gap-4 text-white">
             <Avatar user={user} size={56} className="border-2 border-white/30" />
             <div className="min-w-0">
               <p className="font-semibold truncate">{user.name || "İsimsiz kullanıcı"}</p>

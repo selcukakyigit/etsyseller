@@ -54,7 +54,7 @@ export default function ProductMock({ lang }: { lang: Lang }) {
         </div>
         <svg viewBox="0 0 120 44" className="h-11 w-28" role="presentation">
           {BARS.map((h, i) => (
-            <rect key={i} x={i * 10} y={44 - h * 0.5} width="6" height={h * 0.5} rx="1.5" className={i === BARS.length - 1 ? "fill-[#F1641E]" : "fill-neutral-200 dark:fill-neutral-700"} />
+            <rect key={i} x={i * 10} y={44 - h * 0.5} width="6" height={h * 0.5} rx="1.5" className={i === BARS.length - 1 ? "fill-[#D97757]" : "fill-neutral-200 dark:fill-neutral-700"} />
           ))}
         </svg>
       </div>
@@ -90,7 +90,7 @@ export default function ProductMock({ lang }: { lang: Lang }) {
       <div className="mt-4 rounded-xl bg-[#FBF1EA] p-3.5 dark:bg-[#2A1D15]">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-[#B4470F] dark:text-[#F59A6B]">{t.health}</p>
+            <p className="text-[11px] font-medium uppercase tracking-wide text-[#A9502F] dark:text-[#F48771]">{t.health}</p>
             <p className="mt-0.5 truncate text-sm font-medium text-neutral-900 dark:text-neutral-100">{t.healthRow}</p>
             <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">{t.healthHint}</p>
           </div>

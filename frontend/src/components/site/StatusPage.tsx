@@ -31,7 +31,7 @@ export default function StatusPage({
       <Link href="/" aria-label="Ulagg">
         <Logo height={28} />
       </Link>
-      <p className={`${serif.className} mt-14 text-8xl leading-none text-[#F1641E] sm:text-9xl`}>{code}</p>
+      <p className={`${serif.className} mt-14 text-8xl leading-none text-[#D97757] sm:text-9xl`}>{code}</p>
       <h1 className="mt-6 text-2xl font-semibold text-neutral-900 dark:text-neutral-50">{copy.title}</h1>
       <p className="mt-3 max-w-md leading-relaxed text-neutral-600 dark:text-neutral-300">{copy.message}</p>
       <div className="mt-8 flex flex-wrap items-center justify-center gap-3">

@@ -7,7 +7,7 @@ const names = new Intl.DisplayNames(["tr"], { type: "region", fallback: "code" }
 function Radio({ checked, onChange, children, count }: { checked: boolean; onChange: () => void; children: React.ReactNode; count?: number }) {
   return (
     <label className="flex cursor-pointer items-center gap-2 py-0.5 text-sm text-neutral-700 dark:text-neutral-200">
-      <input type="radio" checked={checked} onChange={onChange} className="accent-[#F1641E]" />
+      <input type="radio" checked={checked} onChange={onChange} className="accent-[#D97757]" />
       {children}
       {count !== undefined && <span className="rounded bg-neutral-100 px-1.5 text-[11px] text-neutral-500 dark:bg-neutral-800">{count}</span>}
     </label>
@@ -17,7 +17,7 @@ function Radio({ checked, onChange, children, count }: { checked: boolean; onCha
 function Check({ checked, onChange, children }: { checked: boolean; onChange: (v: boolean) => void; children: React.ReactNode }) {
   return (
     <label className="flex cursor-pointer items-center gap-2 py-0.5 text-sm text-neutral-700 dark:text-neutral-200">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 accent-[#F1641E]" />
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 accent-[#D97757]" />
       {children}
     </label>
   );

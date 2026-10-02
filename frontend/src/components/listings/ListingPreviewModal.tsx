@@ -141,7 +141,7 @@ export default function ListingPreviewModal({ shopId, listingId, shopName, onClo
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Link href={`/listings/${listingId}/edit`} className="rounded-lg bg-[#F1641E] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#d9560f]">
+            <Link href={`/listings/${listingId}/edit`} className="rounded-lg bg-[#D97757] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#C6613F]">
               Düzenle
             </Link>
             <button type="button" onClick={onClose} aria-label="Kapat" className="rounded-full p-1.5 text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-800">

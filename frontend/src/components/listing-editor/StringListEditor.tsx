@@ -57,7 +57,7 @@ export default function StringListEditor({
                 add();
               }
             }}
-            className="flex-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm outline-none focus:border-[#F1641E]"
+            className="flex-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm outline-none focus:border-[#D97757]"
             placeholder="Ekle ve Enter'a bas…"
           />
           <button

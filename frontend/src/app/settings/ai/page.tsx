@@ -54,7 +54,7 @@ export default function AiSettingsPage() {
               aria-checked={enabled}
               disabled={saving}
               onClick={() => void toggle(!enabled)}
-              className={`relative mt-1 h-6 w-11 shrink-0 rounded-full transition disabled:opacity-60 ${enabled ? "bg-[#F1641E]" : "bg-neutral-300 dark:bg-neutral-700"}`}
+              className={`relative mt-1 h-6 w-11 shrink-0 rounded-full transition disabled:opacity-60 ${enabled ? "bg-[#D97757]" : "bg-neutral-300 dark:bg-neutral-700"}`}
             >
               <span
                 className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${enabled ? "left-[22px]" : "left-0.5"}`}

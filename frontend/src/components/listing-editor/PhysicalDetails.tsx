@@ -73,7 +73,7 @@ export default function PhysicalDetails({
           <input
             value={itemWeight ?? ""}
             onChange={(e) => onChange({ item_weight: numberOrNull(e.target.value) })}
-            className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#F1641E]"
+            className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
           />
         </div>
         <div>
@@ -81,7 +81,7 @@ export default function PhysicalDetails({
           <select
             value={itemWeightUnit ?? ""}
             onChange={(e) => onChange({ item_weight_unit: e.target.value || null })}
-            className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#F1641E]"
+            className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
           >
             <option value="">—</option>
             {WEIGHT_UNITS.map((u) => (
@@ -98,7 +98,7 @@ export default function PhysicalDetails({
           <select
             value={itemDimensionsUnit ?? ""}
             onChange={(e) => onChange({ item_dimensions_unit: e.target.value || null })}
-            className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#F1641E]"
+            className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
           >
             <option value="">—</option>
             {DIMENSION_UNITS.map((u) => (
@@ -116,7 +116,7 @@ export default function PhysicalDetails({
           <input
             value={itemLength ?? ""}
             onChange={(e) => onChange({ item_length: numberOrNull(e.target.value) })}
-            className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#F1641E]"
+            className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
           />
         </div>
         <div>
@@ -124,7 +124,7 @@ export default function PhysicalDetails({
           <input
             value={itemWidth ?? ""}
             onChange={(e) => onChange({ item_width: numberOrNull(e.target.value) })}
-            className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#F1641E]"
+            className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
           />
         </div>
         <div>
@@ -132,7 +132,7 @@ export default function PhysicalDetails({
           <input
             value={itemHeight ?? ""}
             onChange={(e) => onChange({ item_height: numberOrNull(e.target.value) })}
-            className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#F1641E]"
+            className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
           />
         </div>
       </div>
@@ -170,7 +170,7 @@ export default function PhysicalDetails({
                   value={ecgtGaranBrand ?? ""}
                   maxLength={25}
                   onChange={(e) => onChange({ ecgt_garan_brand: e.target.value || null })}
-                  className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#F1641E]"
+                  className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
                 />
               </div>
               <div>
@@ -181,7 +181,7 @@ export default function PhysicalDetails({
                   value={ecgtGaranModel ?? ""}
                   maxLength={20}
                   onChange={(e) => onChange({ ecgt_garan_model: e.target.value || null })}
-                  className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#F1641E]"
+                  className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
                 />
               </div>
             </div>
@@ -192,7 +192,7 @@ export default function PhysicalDetails({
               <input
                 value={ecgtGaranYears ?? ""}
                 onChange={(e) => onChange({ ecgt_garan_years: numberOrNull(e.target.value) })}
-                className="w-full sm:w-40 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#F1641E]"
+                className="w-full sm:w-40 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
               />
             </div>
             <div>
@@ -204,7 +204,7 @@ export default function PhysicalDetails({
                 maxLength={255}
                 rows={2}
                 onChange={(e) => onChange({ ecgt_garan_guarantee_details: e.target.value || null })}
-                className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#F1641E]"
+                className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
               />
             </div>
             <div>
@@ -216,7 +216,7 @@ export default function PhysicalDetails({
                 maxLength={255}
                 rows={2}
                 onChange={(e) => onChange({ ecgt_after_sales_service_info: e.target.value || null })}
-                className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#F1641E]"
+                className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
               />
             </div>
             <div>
@@ -228,7 +228,7 @@ export default function PhysicalDetails({
                 maxLength={255}
                 rows={2}
                 onChange={(e) => onChange({ ecgt_other_commercial_guarantee_details: e.target.value || null })}
-                className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#F1641E]"
+                className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
               />
             </div>
           </div>

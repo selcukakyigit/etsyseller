@@ -90,7 +90,7 @@ export default function CategoryPicker({
           }}
           onBlur={() => setTimeout(() => setOpen(false), 150)}
           placeholder="Kategori ara (en az 2 karakter)…"
-          className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[#F1641E]"
+          className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
         />
         {open && filtered.length > 0 && (
           <ul className="absolute z-10 mt-1 w-full max-h-60 overflow-y-auto rounded-lg border border-neutral-200 bg-white shadow-lg">
@@ -121,7 +121,7 @@ export default function CategoryPicker({
               type="button"
               title={n.path}
               onClick={() => onChange(n.id, n.path)}
-              className="font-medium text-neutral-800 hover:text-[#F1641E]"
+              className="font-medium text-neutral-800 hover:text-[#D97757]"
             >
               + {n.name}
             </button>

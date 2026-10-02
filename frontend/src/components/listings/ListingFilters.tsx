@@ -84,7 +84,7 @@ function Radio({
 }) {
   return (
     <label className={`flex items-center gap-2 py-0.5 text-sm ${disabled ? "text-neutral-400" : "cursor-pointer text-neutral-700 dark:text-neutral-200"}`}>
-      <input type="radio" checked={checked} onChange={onChange} disabled={disabled} className="accent-[#F1641E]" />
+      <input type="radio" checked={checked} onChange={onChange} disabled={disabled} className="accent-[#D97757]" />
       {children}
       {count !== undefined && <span className="rounded bg-neutral-100 px-1.5 text-[11px] text-neutral-500 dark:bg-neutral-800">{count}</span>}
     </label>
@@ -167,7 +167,7 @@ export default function ListingFilters({
           <button
             type="button"
             onClick={() => setManageSections(true)}
-            className="text-xs font-medium text-[#F1641E] hover:underline"
+            className="text-xs font-medium text-[#D97757] hover:underline"
           >
             Yönet
           </button>

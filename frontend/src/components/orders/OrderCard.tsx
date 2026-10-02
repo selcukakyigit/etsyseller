@@ -63,7 +63,7 @@ export default function OrderCard({
   return (
     <article
       className={`rounded-xl border bg-white p-5 dark:bg-neutral-900 ${
-        selected ? "border-[#F1641E]" : "border-neutral-200 dark:border-neutral-800"
+        selected ? "border-[#D97757]" : "border-neutral-200 dark:border-neutral-800"
       }`}
     >
       <div className="flex flex-col gap-5 lg:flex-row">
@@ -72,7 +72,7 @@ export default function OrderCard({
           checked={selected}
           onChange={(e) => onSelect(e.target.checked)}
           aria-label={`${order.buyer_name} siparişini seç`}
-          className="mt-1 h-4 w-4 shrink-0 accent-[#F1641E]"
+          className="mt-1 h-4 w-4 shrink-0 accent-[#D97757]"
         />
 
         <div className="min-w-0 flex-1">

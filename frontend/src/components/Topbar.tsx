@@ -103,7 +103,7 @@ export default function Topbar({ activeShop }: { activeShop: Shop | null }) {
       {syncing && pct !== null && (
         <div className="mr-1.5 flex items-center gap-2" title={`${progress?.done} / ${progress?.total} listing`}>
           <div className="h-2.5 w-28 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
-            <div className="h-full min-w-[3px] rounded-full bg-[#F1641E] transition-[width]" style={{ width: `${pct}%` }} />
+            <div className="h-full min-w-[3px] rounded-full bg-[#D97757] transition-[width]" style={{ width: `${pct}%` }} />
           </div>
           <span className="text-xs font-medium tabular-nums text-neutral-500 dark:text-neutral-400">%{pct}</span>
         </div>
@@ -128,7 +128,7 @@ export default function Topbar({ activeShop }: { activeShop: Shop | null }) {
         >
           <BellIcon />
           {notificationCount > 0 && (
-            <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-[#F1641E]" />
+            <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-[#D97757]" />
           )}
         </button>
 
