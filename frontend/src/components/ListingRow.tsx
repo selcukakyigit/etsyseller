@@ -4,12 +4,13 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { api, KeywordPoolItem, Listing, ListingHistory } from "@/lib/api";
 import ListingAnalysisPanel from "@/components/listings/analysis/ListingAnalysisPanel";
+import { toast } from "@/lib/toast";
 import { PublishJob } from "@/lib/publishJobs";
 import PublishBar from "@/components/listings/PublishBar";
 import { competitionFill, normalizedScore, poolRanges } from "@/lib/keywordScore";
 import { useT } from "@/lib/i18n-client";
 
-function ScoredKeywordPills({ items }: { items: KeywordPoolItem[] }) {
+function ScoredKeywordPills({ items, onTrack }: { items: KeywordPoolItem[]; onTrack?: (keyword: string) => void }) {
   // Normalized against the min/max *within this pool*, not the raw
   // score/sample_size ratio — competitor scores rarely get anywhere near
   // the sample size (13 tags spread across 50 listings), so every tag ends
@@ -42,12 +43,35 @@ function ScoredKeywordPills({ items }: { items: KeywordPoolItem[] }) {
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-600 dark:text-neutral-300"
           >
             {item.source === "own" && <span className="text-[9px] font-semibold text-[#D97757]">{t("SENİN", "YOURS")}</span>}
+            {item.source === "etsy" && <span className="text-[9px] font-semibold text-violet-600 dark:text-violet-400">ETSY</span>}
             {item.tag}
             <span className="text-neutral-400 dark:text-neutral-500">
-              {item.source === "own" ? `${item.units ?? 0} ${t("satış", "sales")}` : `${item.score}/${item.sample_size}`}
+              {item.source === "own"
+                ? `${item.units ?? 0} ${t("satış", "sales")}`
+                : item.source === "etsy"
+                  ? t(`${item.etsy_clicks ?? 0} tık · ${item.etsy_orders ?? 0} sip.`, `${item.etsy_clicks ?? 0} clicks · ${item.etsy_orders ?? 0} orders`)
+                  : `${item.score}/${item.sample_size}`}
             </span>
             {item.in_listing && <span className="text-emerald-500" title={t("Bu listing'de zaten var", "Already in this listing")}>✓</span>}
             {item.google_score !== undefined && <span className="text-blue-500 dark:text-blue-400">G:{item.google_score}</span>}
+            {item.etsy_searches ? (
+              <span
+                className="text-violet-600 dark:text-violet-400"
+                title={t("Etsy'de aylık arama (Marketplace Insights)", "Monthly searches on Etsy (Marketplace Insights)")}
+              >
+                E:{item.etsy_searches >= 1000 ? `${(item.etsy_searches / 1000).toFixed(1)}k` : item.etsy_searches}
+              </span>
+            ) : null}
+            {onTrack && (
+              <button
+                type="button"
+                onClick={() => onTrack(item.tag)}
+                title={t("Bu aramada sıra takibine al", "Track rank for this search")}
+                className="ml-0.5 rounded-full px-1 text-neutral-400 hover:bg-[#D97757]/15 hover:text-[#B4553A] dark:hover:text-[#E89A7F]"
+              >
+                ⌖
+              </button>
+            )}
           </span>
         );
       })}
@@ -103,6 +127,15 @@ export default function ListingRow({
       setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error"));
     } finally {
       setKeywordPoolLoading(false);
+    }
+  }
+
+  async function handleTrack(keyword: string) {
+    try {
+      await api.insights.addKeyword(shopId, listing.listing_id, keyword);
+      toast.success(t(`"${keyword}" sıra takibine eklendi; Analiz > Sıralama'da görünür.`, `"${keyword}" added to rank tracking; see Analysis > Rankings.`));
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : t("Takibe alınamadı", "Could not start tracking"));
     }
   }
 
@@ -211,8 +244,8 @@ export default function ListingRow({
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <p className="text-xs font-medium text-neutral-400 dark:text-neutral-500">
               {t(
-                "SENİN: bu listing'e benzeyen kendi listing'lerinden gelen etiket; sayı, o etiketi taşıyan listing'lerin son 180 gündeki toplam satışı (✓ = bu listing'de zaten var). Rakip etiketlerde 11/50 = ilk 50 rakip listing'in 11'i kullanıyor (yüksek = kalabalık). G: Google Trends ilgisi (0-100, Etsy içi arama hacmi değil; \"Google Trend Ekle\" ile yüklenir). \"AI Önerisi Üret\" bu havuzdan uygun olanları seçer.",
-                "YOURS: a tag from your own listings similar to this one; the number is the total sales of listings with that tag in the last 180 days (✓ = already in this listing). For competitor tags, 11/50 = 11 of the top 50 competitor listings use it (high = crowded). G: Google Trends interest (0-100, not Etsy search volume; loaded with \"Add Google Trends\"). \"Generate AI suggestion\" picks suitable tags from this pool.",
+                "SENİN: bu listing'e benzeyen kendi listing'lerinden gelen etiket; sayı, o etiketi taşıyan listing'lerin son 180 gündeki toplam satışı (✓ = bu listing'de zaten var). Rakip etiketlerde 11/50 = ilk 50 rakip listing'in 11'i kullanıyor (yüksek = kalabalık). ETSY: Etsy verisine göre listing'i gerçekten getiren arama. E: Etsy'de aylık arama (Analiz > Etsy verisi'nden). G: Google Trends ilgisi (0-100, Etsy içi arama hacmi değil). ⌖ ile aramayı sıra takibine alırsın. \"AI Önerisi Üret\" bu havuzdan uygun olanları seçer.",
+                "YOURS: a tag from your own listings similar to this one; the number is the total sales of listings with that tag in the last 180 days (✓ = already in this listing). For competitor tags, 11/50 = 11 of the top 50 competitor listings use it (high = crowded). ETSY: a search that actually brought visits, according to Etsy data. E: monthly searches on Etsy (from Analysis > Etsy data). G: Google Trends interest (0-100, not Etsy search volume). ⌖ adds the search to rank tracking. \"Generate AI suggestion\" picks suitable tags from this pool.",
               )}
             </p>
             <button
@@ -224,7 +257,7 @@ export default function ListingRow({
             </button>
           </div>
           {keywordPool.length > 0 ? (
-            <ScoredKeywordPills items={keywordPool} />
+            <ScoredKeywordPills items={keywordPool} onTrack={listing.listing_id > 0 ? (k) => void handleTrack(k) : undefined} />
           ) : (
             <p className="text-sm text-neutral-500 dark:text-neutral-400">
               {t("Havuz boş — henüz yeterli performans geçmişi veya kategori verisi yok.", "The pool is empty — not enough performance history or category data yet.")}

@@ -42,3 +42,28 @@ class RankSnapshot(Base):
     own_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     currency: Mapped[str] = mapped_column(String(10), default="")
     captured_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+
+class EtsyKeywordData(Base):
+    """Kullanıcının Etsy panelinden yapıştırdığı arama verisi (Etsy bunu API'de vermez). `source`:
+    marketplace_insights (aylık arama + rekabet), search_terms (listing'i getiren aramalar + ziyaret), ads (Etsy Ads
+    arama terimleri: görüntülenme, tıklama, sipariş). `listing_id` yoksa veri mağaza geneli bir kelime araştırmasıdır.
+    Her yapıştırma tarihli yeni satırlar ekler; ekranda kelime+kaynak başına en yenisi kullanılır."""
+
+    __tablename__ = "etsy_keyword_data"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
+    listing_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
+    keyword: Mapped[str] = mapped_column(String(100), index=True)
+    source: Mapped[str] = mapped_column(String(30))
+    searches: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    competition: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    listings_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    views: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    clicks: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    orders: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    period_start: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    period_end: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    captured_on: Mapped[dt.date] = mapped_column(Date, default=dt.date.today)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)

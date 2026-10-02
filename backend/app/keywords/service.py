@@ -166,4 +166,27 @@ def build_keyword_pool(db: Session, shop: Shop, listing: dict) -> list[dict]:
             continue
         seen.add(tag)
 
+    _add_etsy_data(db, shop, listing, pool, seen, mine)
     return pool
+
+
+def _add_etsy_data(db: Session, shop: Shop, listing: dict, pool: list[dict], seen: set[str], mine: set[str]) -> None:
+    """Kullanıcının Etsy'den yapıştırdığı veri: havuzdaki kelimelere Marketplace Insights arama/rekabet bilgisi eklenir;
+    listing'i gerçekten getiren aramalar (arama terimleri / reklam) havuza "etsy" kaynağıyla girer."""
+    from app.insights import etsy_data
+
+    lid = listing.get("listing_id")
+    extra = [r for r in (etsy_data.for_listing(db, shop, lid) if lid else []) if r["source"] in ("search_terms", "ads") and r["listing_id"] == lid]
+    for r in extra[:10]:
+        if r["keyword"] in seen:
+            continue
+        seen.add(r["keyword"])
+        pool.append({
+            "tag": r["keyword"], "source": "etsy", "score": r["orders"] or r["clicks"] or r["views"] or 0, "sample_size": 0,
+            "in_listing": r["keyword"] in mine, "etsy_views": r["views"], "etsy_clicks": r["clicks"], "etsy_orders": r["orders"],
+        })
+    info = etsy_data.keyword_index(db, shop, {p["tag"] for p in pool})
+    for p in pool:
+        if p["tag"] in info:
+            p["etsy_searches"] = info[p["tag"]]["searches"]
+            p["etsy_competition"] = info[p["tag"]]["competition"]

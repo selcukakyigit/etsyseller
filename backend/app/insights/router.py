@@ -1,13 +1,14 @@
 import datetime as dt
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
+from app.core.uploads import read_limited
 from app.etsy.client import EtsyApiError
-from app.insights import diagnosis, rank
-from app.shops.deps import get_owned_shop
+from app.insights import diagnosis, etsy_data, rank
+from app.shops.deps import get_owned_shop, require_ai_enabled
 from app.shops.models import Shop
 
 router = APIRouter(prefix="/api/shops/{shop_id}/insights", tags=["insights"])
@@ -63,3 +64,59 @@ def measure_now(listing_id: int, shop: Shop = Depends(get_owned_shop), db: Sessi
     except EtsyApiError as exc:
         raise HTTPException(502, str(exc)) from exc
     return rank.listing_ranks(db, shop, listing_id)
+
+
+# ------------------------------------------------------------------ Etsy verisi (yapıştırılan)
+
+class EtsyDataRow(BaseModel):
+    keyword: str = Field(min_length=1, max_length=100)
+    searches: int | None = None
+    competition: str | None = None
+    listings_count: int | None = None
+    views: int | None = None
+    clicks: int | None = None
+    orders: int | None = None
+
+
+class EtsyDataIn(BaseModel):
+    listing_id: int | None = None
+    source: str
+    period_start: str | None = None
+    period_end: str | None = None
+    rows: list[EtsyDataRow] = Field(min_length=1, max_length=etsy_data.MAX_ROWS)
+
+
+class IdsIn(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=500)
+
+
+@router.post("/etsy-data/parse", dependencies=[Depends(require_ai_enabled)])
+async def parse_etsy_data(text: str | None = Form(default=None), file: UploadFile | None = File(default=None), shop: Shop = Depends(get_owned_shop)):
+    """Yapıştırılan tabloyu ya da ekran görüntüsünü okur; KAYDETMEZ (onay ekranı için)."""
+    image = None
+    if file is not None:
+        if not (file.content_type or "").startswith("image/"):
+            raise HTTPException(400, "Yalnızca ekran görüntüsü (resim) yüklenebilir")
+        image = (await read_limited(file, 15 * 1024 * 1024, "Resim"), file.content_type or "image/png")
+    try:
+        return etsy_data.parse(text, image)
+    except etsy_data.EtsyDataError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@router.post("/etsy-data")
+def save_etsy_data(payload: EtsyDataIn, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    try:
+        return etsy_data.save(db, shop, payload.listing_id, payload.source, [r.model_dump() for r in payload.rows], payload.period_start, payload.period_end)
+    except etsy_data.EtsyDataError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.get("/listings/{listing_id}/etsy-data")
+def listing_etsy_data(listing_id: int, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    return {"rows": etsy_data.for_listing(db, shop, listing_id), "to_check": etsy_data.to_check(db, shop)}
+
+
+@router.post("/etsy-data/delete")
+def delete_etsy_data(payload: IdsIn, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    return {"deleted": etsy_data.delete(db, shop, payload.ids)}

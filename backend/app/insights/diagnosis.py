@@ -329,7 +329,33 @@ def rank_signal(c: Ctx) -> tuple[list[Evidence], list[Vote]]:
     return out, votes
 
 
-SIGNALS: list[Signal] = [shop_signal, content_signal, price_signal, review_signal, funnel_signal, rank_signal]
+def etsy_data_signal(c: Ctx) -> tuple[list[Evidence], list[Vote]]:
+    """Kullanıcının yapıştırdığı Etsy verisi: listing'i getiren aramalar ve aranan ama görünülmeyen kelimeler."""
+    from app.insights import etsy_data, rank
+
+    rows = etsy_data.for_listing(c.db, c.shop, c.listing_id)
+    if not rows:
+        return [], []
+    out: list[Evidence] = []
+    votes: list[Vote] = []
+    bring = [r for r in rows if r["source"] in ("search_terms", "ads") and r["listing_id"] == c.listing_id and (r["orders"] or r["clicks"] or r["views"])]
+    if bring:
+        top = ", ".join(f"\"{r['keyword']}\"" for r in bring[:3])
+        out.append(Evidence("etsy", "info", tr(f"Etsy verisine göre listing'i en çok getiren aramalar: {top}.", f"According to Etsy data, the searches bringing the most traffic: {top}.")))
+    ranks = {k["keyword"]: k for k in rank.listing_ranks(c.db, c.shop, c.listing_id, days=30, today=c.today)["keywords"] if k["measured"]}
+    hidden = [r for r in rows if r["source"] == "marketplace_insights" and (r["searches"] or 0) >= 500 and r["keyword"] in ranks and ranks[r["keyword"]]["position"] is None]
+    if hidden:
+        r = hidden[0]
+        out.append(Evidence("etsy", "bad", tr(
+            f"\"{r['keyword']}\" Etsy'de ayda {r['searches']} kez aranıyor ama listing ilk {rank.MAX_RESULTS} sonuçta yok.",
+            f"\"{r['keyword']}\" is searched {r['searches']} times a month on Etsy, but the listing is not in the top {rank.MAX_RESULTS}.",
+        )))
+        if c.status == "declining":
+            votes.append(Vote("visibility", 1.0))
+    return out, votes
+
+
+SIGNALS: list[Signal] = [shop_signal, content_signal, price_signal, review_signal, funnel_signal, rank_signal, etsy_data_signal]
 
 
 # ------------------------------------------------------------------ sonuç

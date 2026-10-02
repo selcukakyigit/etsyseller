@@ -81,8 +81,17 @@ def _format_keyword_pool(pool: list[dict]) -> str:
     for item in pool:
         if item.get("source") == "own":
             info = f"senin benzer listing'lerinde kullanılıyor, bu listing'lerin son 180 günde toplam {item.get('units', 0)} satışı var"
+        elif item.get("source") == "etsy":
+            info = (
+                "ETSY VERİSİ: bu listing'e gerçekten bu aramayla gelinmiş "
+                f"(görüntülenme {item.get('etsy_views') or 0}, tıklama {item.get('etsy_clicks') or 0}, sipariş {item.get('etsy_orders') or 0}) — yüksek öncelik"
+            )
         else:
             info = f"rakip kullanım: {item['score']}/{item['sample_size']}"
+        if item.get("etsy_searches"):
+            info += f", Etsy'de aylık {item['etsy_searches']} arama"
+            if item.get("etsy_competition"):
+                info += f" (rekabet: {item['etsy_competition']})"
         if item.get("google_score") is not None:
             info += f", google ilgisi: {item['google_score']}/100"
         lines.append(f'- "{item["tag"]}" [{info}]')

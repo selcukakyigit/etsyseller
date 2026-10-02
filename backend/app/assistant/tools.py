@@ -832,6 +832,31 @@ def track_keywords(ctx: Ctx, a: dict) -> dict:
     }
 
 
+def read_etsy_keyword_data(ctx: Ctx, a: dict) -> dict:
+    """Etsy panelinden yapıştırılan arama verisini (Marketplace Insights, arama terimleri, Etsy Ads) okur; KAYDETMEZ.
+    Kullanıcı sohbetteki kartta kontrol edip kaydeder."""
+    from app.assistant.models import ChatImage
+    from app.core import blobstore
+    from app.insights import etsy_data
+
+    try:
+        if a.get("file_id"):
+            f = ctx.db.get(ChatImage, str(a["file_id"]))
+            if f is None or f.shop_id != ctx.shop.id or not f.content_type.startswith("image/"):
+                return {"error": "Ekran görüntüsü bulunamadı."}
+            parsed = etsy_data.parse(None, (blobstore.read(f.path), f.content_type))
+        else:
+            parsed = etsy_data.parse(ctx.message)
+    except etsy_data.EtsyDataError as exc:
+        return {"error": str(exc)}
+    lid = int(a["listing_id"]) if a.get("listing_id") else None
+    ctx.cards.append({"type": "etsy_data_review", "listing_id": lid, **parsed})
+    return {
+        "tur": parsed["source"], "satir": len(parsed["rows"]), "ilk_satirlar": parsed["rows"][:10], "listing_id": lid,
+        "not": "HİÇBİR ŞEY KAYDEDİLMEDİ. Ekrandaki kartta kullanıcı satırları kontrol edip 'Kaydet' ile kaydeder. Kısa özet ver: hangi tür veri, kaç satır, öne çıkan kelimeler. Kaydettiğini SÖYLEME.",
+    }
+
+
 def creation_cleanup(ctx: Ctx, lid: int) -> None:
     """Başarısız taslak oluşturmada boş kalan yerel kaydı siler."""
     drafts.discard_local(ctx.db, ctx.shop, lid)
@@ -1439,6 +1464,9 @@ TOOLS: list[dict] = [
     {"name": "track_keywords", "description": "Bir listing'in Etsy aramalarındaki sırasını takip etmeyi yönetir: arama ekle (add), çıkar (remove), measure_now=true ile hemen ölç. Argümansız çağrılırsa mevcut takibi ve önerileri döner. Listing başına en fazla 3 arama, mağaza başına 10 listing.", "input_schema": _obj({
         "listing_id": {"type": "integer"}, "add": {"type": "array", "items": {"type": "string"}}, "remove": {"type": "array", "items": {"type": "string"}}, "measure_now": {"type": "boolean"},
     }, ["listing_id"])},
+    {"name": "read_etsy_keyword_data", "description": "Kullanıcının Etsy panelinden kopyaladığı arama verisini okur: Marketplace Insights (aylık arama, rekabet), listing'i getiren arama terimleri ya da Etsy Ads arama terimleri raporu. KAYDETMEZ; onay kartı gösterir. Tablo mesaja yapıştırıldıysa file_id verme; ekran görüntüsüyse file_id ver. Veri belirli bir listing'e aitse listing_id ver. Kargo faturasıyla karıştırma.", "input_schema": _obj({
+        "file_id": {"type": "string"}, "listing_id": {"type": "integer"},
+    })},
     {"name": "read_shipping_invoice", "description": "Kargo/gümrük faturasını okur ve her gönderi satırını siparişlerle eşleştirir; KAYDETMEZ, kullanıcıya onay kartı gösterir. Kullanıcı sohbete fatura PDF'i/fotoğrafı/Excel/CSV/HTML eklediyse file_id ver; fatura metnini mesaja yapıştırdıysa file_id verme (mesajın kendisi okunur). Ürün fotoğrafını fatura sanma.", "input_schema": _obj({
         "file_id": {"type": "string", "description": "Sohbete eklenen dosyanın/resmin id'si"},
     })},
@@ -1486,6 +1514,7 @@ TOOL_LABELS = {
     "mark_order_shipped": "Siparişi kargoya verildi işaretliyor",
     "listing_diagnosis": "Listing'in satış teşhisini çıkarıyor",
     "track_keywords": "Arama sırası takibini güncelliyor",
+    "read_etsy_keyword_data": "Etsy arama verisini okuyor",
     "read_shipping_invoice": "Faturayı okuyup siparişlerle eşleştiriyor",
     "list_description_templates": "Hazır açıklama metinlerine bakıyor",
     "save_description_template": "Açıklama şablonunu kaydediyor",
@@ -1528,6 +1557,7 @@ TOOL_LABELS_EN = {
     "mark_order_shipped": "Marking the order as shipped",
     "listing_diagnosis": "Diagnosing the listing's sales",
     "track_keywords": "Updating search rank tracking",
+    "read_etsy_keyword_data": "Reading the Etsy search data",
     "read_shipping_invoice": "Reading the invoice and matching orders",
     "list_description_templates": "Checking description templates",
     "save_description_template": "Saving the description template",
@@ -1543,7 +1573,7 @@ EXECUTORS = {
     "regenerate_listing_image": regenerate_listing_image, "generate_missing_alt_texts": generate_missing_alt_texts,
     "listing_health_status": listing_health_status, "keep_watching_listing": keep_watching_listing,
     "publish_listing_draft": publish_listing_draft, "deactivate_listing": deactivate_listing, "mark_order_shipped": mark_order_shipped,
-    "read_shipping_invoice": read_shipping_invoice, "listing_diagnosis": listing_diagnosis, "track_keywords": track_keywords,
+    "read_shipping_invoice": read_shipping_invoice, "listing_diagnosis": listing_diagnosis, "track_keywords": track_keywords, "read_etsy_keyword_data": read_etsy_keyword_data,
     "list_description_templates": list_description_templates, "save_description_template": save_description_template,
     "delete_description_templates": delete_description_templates,
 }

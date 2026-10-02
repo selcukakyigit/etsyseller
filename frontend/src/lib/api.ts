@@ -258,6 +258,31 @@ export interface RankKeyword {
   change_30d: number | null;
   history: { day: string; position: number | null }[];
 }
+export type EtsyDataSource = "marketplace_insights" | "search_terms" | "ads";
+export interface EtsyDataRow {
+  keyword: string;
+  searches: number | null;
+  competition: "low" | "medium" | "high" | null;
+  listings_count: number | null;
+  views: number | null;
+  clicks: number | null;
+  orders: number | null;
+}
+export interface EtsyDataParsed {
+  source: EtsyDataSource;
+  period_start: string | null;
+  period_end: string | null;
+  rows: EtsyDataRow[];
+}
+export interface EtsyDataSaved extends EtsyDataRow {
+  id: number;
+  listing_id: number | null;
+  source: EtsyDataSource;
+  period_start: string | null;
+  period_end: string | null;
+  captured_on: string;
+}
+
 export interface ListingRanks {
   keywords: RankKeyword[];
   max_keywords: number;
@@ -272,7 +297,8 @@ export type BulkResult = { id: number; ok: boolean; changed: boolean; error: str
 
 export type KeywordPoolItem = {
   tag: string;
-  source: "own" | "competitor";
+  /** etsy: Etsy verisine göre listing'i gerçekten getiren arama (yapıştırılan arama terimleri / reklam raporu) */
+  source: "own" | "competitor" | "etsy";
   score: number;
   sample_size: number;
   google_score?: number;
@@ -281,6 +307,12 @@ export type KeywordPoolItem = {
   from_listings?: string[];
   /** Etiket bu listing'de zaten kullanılıyor */
   in_listing?: boolean;
+  /** Marketplace Insights: Etsy'de aylık arama ve rekabet (kullanıcının yapıştırdığı veriden) */
+  etsy_searches?: number | null;
+  etsy_competition?: "low" | "medium" | "high" | null;
+  etsy_views?: number | null;
+  etsy_clicks?: number | null;
+  etsy_orders?: number | null;
 };
 
 export type OrderVariation = { name: string; value: string; personalization: boolean };
@@ -1066,6 +1098,7 @@ export type ChatCard =
   | { type: "status"; title: string; rows: { label: string; value: number }[] }
   | { type: "listing_update"; listing_id: number; title: string; edit_url: string; changes: string[]; tags: string[] }
   | { type: "invoice_review"; source: string; currency: string; candidates: InvoiceCandidate[] }
+  | ({ type: "etsy_data_review"; listing_id: number | null } & EtsyDataParsed)
   | { type: "performance"; title: string; listing_id: number; period: { start: string; end: string }; previous_period: { start: string; end: string }; sales: { units: number; revenue: number; prev_units: number; prev_revenue: number }; views_now: ListingPerformance["views_now"]; conversion_percent: number | null; freshness: ListingPerformance["freshness"]; lifetime: { views: number; favorites: number }; price: number | null }
   | { type: "stale"; title: string; rows: { listing_id: number; title: string; days: number; exact: boolean; units_recent: number; units_previous: number; views: number }[] }
   | { type: "ad_report"; title: string; spend: number; views: number; clicks: number; orders: number; revenue: number; metrics: { ctr_yuzde: number | null; tiklama_basina_maliyet: number | null; roas: number | null; tiklama_siparis_donusumu_yuzde: number | null }; close: string[]; good: string[] };
@@ -1112,6 +1145,18 @@ export const api = {
       request<ListingRanks>(`/api/shops/${shopId}/insights/listings/${listingId}/keywords?keyword=${encodeURIComponent(keyword)}`, { method: "DELETE" }),
     stopTracking: (shopId: number, listingId: number) =>
       request<ListingRanks>(`/api/shops/${shopId}/insights/listings/${listingId}/tracking`, { method: "DELETE" }),
+    parseEtsyData: (shopId: number, input: { text?: string; image?: File }) => {
+      const fd = new FormData();
+      if (input.text) fd.append("text", input.text);
+      if (input.image) fd.append("file", input.image, input.image.name || "screenshot.png");
+      return requestForm<EtsyDataParsed>(`/api/shops/${shopId}/insights/etsy-data/parse`, fd);
+    },
+    saveEtsyData: (shopId: number, body: { listing_id: number | null; source: EtsyDataSource; period_start: string | null; period_end: string | null; rows: EtsyDataRow[] }) =>
+      request<{ saved: number; tracked: string[] }>(`/api/shops/${shopId}/insights/etsy-data`, { method: "POST", body: JSON.stringify(body) }),
+    listingEtsyData: (shopId: number, listingId: number) =>
+      request<{ rows: EtsyDataSaved[]; to_check: { keyword: string; listing_id: number; listing_title: string }[] }>(`/api/shops/${shopId}/insights/listings/${listingId}/etsy-data`),
+    deleteEtsyData: (shopId: number, ids: number[]) =>
+      request<{ deleted: number }>(`/api/shops/${shopId}/insights/etsy-data/delete`, { method: "POST", body: JSON.stringify({ ids }) }),
     measureNow: (shopId: number, listingId: number) =>
       request<ListingRanks>(`/api/shops/${shopId}/insights/listings/${listingId}/ranks/measure`, { method: "POST" }),
   },

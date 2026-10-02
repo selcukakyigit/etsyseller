@@ -5,7 +5,8 @@ import { KeywordPoolItem } from "@/lib/api";
  * rakip zaten bunu kullanıyor" demek (doymuş → kırmızı); kendi etiketinde yüksek skor "kendi en çok satan
  * listing'lerin kullandığı, kanıtlanmış" demek (iyi → yeşil). Yön kaynağa göre ters çevriliyor. */
 export function competitionFill(normalized: number, source: KeywordPoolItem["source"]): string {
-  const favorable = source === "own" ? normalized : 1 - normalized;
+  // Rakipte yüksek kullanım = kalabalık (kötü); kendi satışın ve Etsy verisinde yüksek değer = iyi.
+  const favorable = source === "competitor" ? 1 - normalized : normalized;
   const hue = favorable * 130; // 0 = kırmızı, 130 = yeşil
   return `hsla(${hue}, 70%, 45%, 0.3)`;
 }
@@ -26,7 +27,7 @@ export function poolRanges(items: KeywordPoolItem[]): Map<string, { min: number;
 
 export function normalizedScore(item: KeywordPoolItem, ranges: Map<string, { min: number; max: number }>): number {
   const range = ranges.get(item.source);
-  if (!range) return item.source === "own" ? 0.5 : 1;
+  if (!range) return item.source === "competitor" ? 1 : 0.5;
   const value = item.source === "own" ? (item.units ?? 0) : item.score;
-  return range.max > range.min ? (value - range.min) / (range.max - range.min) : item.source === "own" ? 0.5 : 1;
+  return range.max > range.min ? (value - range.min) / (range.max - range.min) : item.source === "competitor" ? 1 : 0.5;
 }

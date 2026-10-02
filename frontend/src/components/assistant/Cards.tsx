@@ -5,6 +5,7 @@ import { useState } from "react";
 import { ChatCard } from "@/lib/api";
 import ListingPreviewModal from "@/components/listings/ListingPreviewModal";
 import InvoiceReviewCard from "./InvoiceReviewCard";
+import EtsyDataReviewCard from "./EtsyDataReviewCard";
 import { useT } from "@/lib/i18n-client";
 
 const box = "mt-2 overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900";
@@ -305,6 +306,10 @@ export default function Card({ card, shopId }: { card: ChatCard; shopId: number 
         </div>
       </div>
     );
+  }
+
+  if (card.type === "etsy_data_review") {
+    return <EtsyDataReviewCard shopId={shopId} listingId={card.listing_id} data={card} />;
   }
 
   if (card.type === "invoice_review") {

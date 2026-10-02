@@ -22,6 +22,7 @@ def tr(tr_text: str, en_text: str) -> str:
 
 # Sabit hata/uyarı metinleri: Türkçe → İngilizce.
 EN_MESSAGES: dict[str, str] = {
+    "Yalnızca ekran görüntüsü (resim) yüklenebilir": "Only a screenshot (image) can be uploaded",
     "Listing bulunamadı": "Listing not found",
     "Fatura metni çok kısa.": "The invoice text is too short.",
     "Şablon bulunamadı": "Template not found",
