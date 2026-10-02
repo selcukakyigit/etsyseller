@@ -5,12 +5,13 @@ import { useT } from "@/lib/i18n-client";
 import { useStoredState } from "@/lib/useStoredState";
 import { ChangeHistoryTab, PerformanceTab, useListingHistory } from "@/components/ListingHistoryPanel";
 import DiagnosisTab from "./DiagnosisTab";
+import RankTab from "./RankTab";
 
 // Sekmeler; yeni bir analiz eklemek için buraya bir giriş ve aşağıya bir dal eklenir.
-const TABS = ["diagnosis", "performance", "history"] as const;
+const TABS = ["diagnosis", "performance", "ranks", "history"] as const;
 type Tab = (typeof TABS)[number];
 
-/** Listing satırındaki "Analiz" paneli: Teşhis, Performans ve Değişiklik geçmişi sekmeleri. Seçili sekme hatırlanır.
+/** Listing satırındaki "Analiz" paneli: Teşhis, Performans, Sıralama ve Değişiklik geçmişi sekmeleri. Seçili sekme hatırlanır.
  * Henüz Etsy'de olmayan (yeni) listing'de yalnızca değişiklik geçmişi anlamlıdır. */
 export default function ListingAnalysisPanel({ shopId, listingId, initialHistory }: { shopId: number; listingId: number; initialHistory?: ListingHistory }) {
   const { t } = useT();
@@ -21,6 +22,7 @@ export default function ListingAnalysisPanel({ shopId, listingId, initialHistory
   const label: Record<Tab, string> = {
     diagnosis: t("Teşhis", "Diagnosis"),
     performance: t("Performans", "Performance"),
+    ranks: t("Sıralama", "Rankings"),
     history: t("Değişiklik geçmişi", "Change history"),
   };
 
@@ -47,6 +49,7 @@ export default function ListingAnalysisPanel({ shopId, listingId, initialHistory
       {error && tab !== "diagnosis" && <p className="mb-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
       {tab === "diagnosis" && <DiagnosisTab shopId={shopId} listingId={listingId} />}
       {tab === "performance" && <PerformanceTab shopId={shopId} listingId={listingId} history={history} />}
+      {tab === "ranks" && <RankTab shopId={shopId} listingId={listingId} />}
       {tab === "history" && <ChangeHistoryTab history={history} />}
     </div>
   );

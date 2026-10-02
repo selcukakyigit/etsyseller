@@ -805,6 +805,33 @@ def listing_diagnosis(ctx: Ctx, a: dict) -> dict:
     }
 
 
+def track_keywords(ctx: Ctx, a: dict) -> dict:
+    """Listing'in Etsy aramasındaki sırasının takibi: arama ekle/çıkar, istenirse hemen ölç."""
+    from app.insights import rank
+
+    lid = int(a["listing_id"])
+    errors = []
+    for kw in a.get("remove") or []:
+        rank.remove_keyword(ctx.db, ctx.shop, lid, str(kw))
+    for kw in a.get("add") or []:
+        try:
+            rank.add_keyword(ctx.db, ctx.shop, lid, str(kw))
+        except rank.RankError as exc:
+            errors.append(str(exc))
+    if a.get("measure_now"):
+        try:
+            rank.measure_listing(ctx.db, ctx.shop, lid)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"Ölçülemedi: {str(exc)[:150]}")
+    data = rank.listing_ranks(ctx.db, ctx.shop, lid)
+    return {
+        "takip_edilen_aramalar": [{"arama": k["keyword"], "sira": k["position"], "olculdu": k["measured"], "rakip": k["total_results"], "degisim_30g": k["change_30d"]} for k in data["keywords"]],
+        "oneriler": data["suggestions"], "sinirlar": f"listing başına {data['max_keywords']} arama, mağaza başına {data['max_listings']} listing ({data['tracked_listings']} takipte)",
+        "hatalar": errors,
+        "not": "Sıra her sabah otomatik ölçülür; sira=None ve olculdu doluysa listing ilk 200 sonuçta yok demektir.",
+    }
+
+
 def creation_cleanup(ctx: Ctx, lid: int) -> None:
     """Başarısız taslak oluşturmada boş kalan yerel kaydı siler."""
     drafts.discard_local(ctx.db, ctx.shop, lid)
@@ -1409,6 +1436,9 @@ TOOLS: list[dict] = [
     {"name": "publish_listing_draft", "description": "ONAY GEREKİR. Bir listing'in taslağını/yerel değişikliklerini GERÇEKTEN Etsy'ye yayınlar (canlıya yansır). confirm=true verilmeden yalnızca ne yayınlanacağını özetler.", "input_schema": _obj({"listing_id": {"type": "integer"}, "confirm": {"type": "boolean"}, "force": {"type": "boolean", "description": "Etsy'de sonradan değişen alanları da ezer (çakışma varsa)"}}, ["listing_id"])},
     {"name": "deactivate_listing", "description": "ONAY GEREKİR. Listing'i Etsy'de INACTIVE yapar (satışa kapanır). confirm=true verilmeden yalnızca ne olacağını özetler.", "input_schema": _obj({"listing_id": {"type": "integer"}, "confirm": {"type": "boolean"}}, ["listing_id"])},
     {"name": "listing_diagnosis", "description": "Bir listing'in satış teşhisi: neden düştüğü (mağaza geneli mi listing'e özel mi, fiyat, içerik değişikliği, yorumlar, görünürlük/dönüşüm), düşüşün başladığı ay, mevsim (zirveye kaç hafta) ve önerilen tek hamle. 'Bu listing neden satmıyor/düştü' sorularında ve bir listing'i iyileştirmeden önce MUTLAKA kullan.", "input_schema": _obj({"listing_id": {"type": "integer"}}, ["listing_id"])},
+    {"name": "track_keywords", "description": "Bir listing'in Etsy aramalarındaki sırasını takip etmeyi yönetir: arama ekle (add), çıkar (remove), measure_now=true ile hemen ölç. Argümansız çağrılırsa mevcut takibi ve önerileri döner. Listing başına en fazla 3 arama, mağaza başına 10 listing.", "input_schema": _obj({
+        "listing_id": {"type": "integer"}, "add": {"type": "array", "items": {"type": "string"}}, "remove": {"type": "array", "items": {"type": "string"}}, "measure_now": {"type": "boolean"},
+    }, ["listing_id"])},
     {"name": "read_shipping_invoice", "description": "Kargo/gümrük faturasını okur ve her gönderi satırını siparişlerle eşleştirir; KAYDETMEZ, kullanıcıya onay kartı gösterir. Kullanıcı sohbete fatura PDF'i/fotoğrafı/Excel/CSV/HTML eklediyse file_id ver; fatura metnini mesaja yapıştırdıysa file_id verme (mesajın kendisi okunur). Ürün fotoğrafını fatura sanma.", "input_schema": _obj({
         "file_id": {"type": "string", "description": "Sohbete eklenen dosyanın/resmin id'si"},
     })},
@@ -1455,6 +1485,7 @@ TOOL_LABELS = {
     "deactivate_listing": "Listing'i pasife alıyor",
     "mark_order_shipped": "Siparişi kargoya verildi işaretliyor",
     "listing_diagnosis": "Listing'in satış teşhisini çıkarıyor",
+    "track_keywords": "Arama sırası takibini güncelliyor",
     "read_shipping_invoice": "Faturayı okuyup siparişlerle eşleştiriyor",
     "list_description_templates": "Hazır açıklama metinlerine bakıyor",
     "save_description_template": "Açıklama şablonunu kaydediyor",
@@ -1496,6 +1527,7 @@ TOOL_LABELS_EN = {
     "deactivate_listing": "Deactivating the listing",
     "mark_order_shipped": "Marking the order as shipped",
     "listing_diagnosis": "Diagnosing the listing's sales",
+    "track_keywords": "Updating search rank tracking",
     "read_shipping_invoice": "Reading the invoice and matching orders",
     "list_description_templates": "Checking description templates",
     "save_description_template": "Saving the description template",
@@ -1511,7 +1543,7 @@ EXECUTORS = {
     "regenerate_listing_image": regenerate_listing_image, "generate_missing_alt_texts": generate_missing_alt_texts,
     "listing_health_status": listing_health_status, "keep_watching_listing": keep_watching_listing,
     "publish_listing_draft": publish_listing_draft, "deactivate_listing": deactivate_listing, "mark_order_shipped": mark_order_shipped,
-    "read_shipping_invoice": read_shipping_invoice, "listing_diagnosis": listing_diagnosis,
+    "read_shipping_invoice": read_shipping_invoice, "listing_diagnosis": listing_diagnosis, "track_keywords": track_keywords,
     "list_description_templates": list_description_templates, "save_description_template": save_description_template,
     "delete_description_templates": delete_description_templates,
 }

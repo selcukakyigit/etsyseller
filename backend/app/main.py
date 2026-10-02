@@ -29,6 +29,7 @@ from app.finance import models as _finance_models  # noqa: F401
 from app.assistant import models as _assistant_models  # noqa: F401
 from app.keywords import models as _keyword_models  # noqa: F401
 from app.contact import models as _contact_models  # noqa: F401
+from app.insights import models as _insights_models  # noqa: F401
 
 from app.account.router import router as account_router
 from app.account.service import AVATAR_DIR

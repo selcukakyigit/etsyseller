@@ -271,7 +271,65 @@ def funnel_signal(c: Ctx) -> tuple[list[Evidence], list[Vote]]:
     return ([Evidence("funnel", "bad", text)], [Vote(cause, 1.5)]) if cause else ([], [])
 
 
-SIGNALS: list[Signal] = [shop_signal, content_signal, price_signal, review_signal, funnel_signal]
+FIRST_PAGE = 48  # Etsy arama sonuçlarının ilk sayfası
+
+
+def rank_signal(c: Ctx) -> tuple[list[Evidence], list[Vote]]:
+    """Sıra takibi: listing takip edilen aramalarda kayboluyor mu, yoksa görünüp satmıyor mu? Rakip fiyatlarıyla kıyas."""
+    from app.insights import rank
+
+    data = rank.listing_ranks(c.db, c.shop, c.listing_id, days=60, today=c.today)
+    measured = [k for k in data["keywords"] if k["measured"]]
+    if not measured:
+        if data["is_tracked"]:
+            return [Evidence("rank", "info", tr("Sıra takibi açık; ilk ölçüm bekleniyor.", "Rank tracking is on; waiting for the first measurement."))], []
+        return [], []
+    out: list[Evidence] = []
+    for k in measured:
+        pos = tr(f"{k['position']}. sırada", f"position {k['position']}") if k["position"] else tr(f"ilk {data['max_results']} sonuçta yok", f"not in the top {data['max_results']}")
+        ch = k["change_30d"]
+        move = ""
+        if ch is not None and ch != 0:
+            move = tr(f", 30 günde {abs(ch)} sıra {'yükseldi' if ch > 0 else 'düştü'}", f", {'up' if ch > 0 else 'down'} {abs(ch)} places in 30 days")
+        lost = k["position"] is None or (ch is not None and ch <= -10)
+        tone = "bad" if lost else "good" if k["position"] and k["position"] <= FIRST_PAGE else "info"
+        total_tr = f"{k['total_results']:,}".replace(",", ".")
+        out.append(Evidence("rank", tone, tr(
+            f"\"{k['keyword']}\" aramasında {pos}{move} ({total_tr} listing).",
+            f"For \"{k['keyword']}\": {pos}{move} ({k['total_results']:,} listings).",
+        )))
+    votes: list[Vote] = []
+    lost = [k for k in measured if k["position"] is None or (k["change_30d"] is not None and k["change_30d"] <= -10)]
+    visible = [k for k in measured if k["position"] and k["position"] <= FIRST_PAGE]
+    if c.status == "declining":
+        if len(lost) * 2 >= len(measured):
+            votes.append(Vote("visibility", 2.0))
+        elif visible:
+            out.append(Evidence("rank", "bad", tr(
+                "Aramanın ilk sayfasında görünüyor ama satış düşük: alıcılar görüyor, tıklamıyor ya da satın almıyor.",
+                "It shows on the first page of search but sales are low: buyers see it but do not click or buy.",
+            )))
+            votes.append(Vote("appeal", 1.0))
+    priced = next((k for k in measured if k["top_price_median"] and k["own_price"]), None)
+    if priced:
+        ratio = priced["own_price"] / priced["top_price_median"]
+        cur = priced["currency"]
+        if ratio >= 1.3:
+            out.append(Evidence("price", "bad", tr(
+                f"Fiyatın ({priced['own_price']:.0f} {cur}) ilk 20 rakibin ortanca fiyatının (%{round((ratio - 1) * 100)}) üstünde ({priced['top_price_median']:.0f} {cur}).",
+                f"Your price ({priced['own_price']:.0f} {cur}) is {round((ratio - 1) * 100)}% above the median of the top 20 competitors ({priced['top_price_median']:.0f} {cur}).",
+            )))
+            if c.status == "declining":
+                votes.append(Vote("conversion", 1.0))
+        elif ratio <= 0.7:
+            out.append(Evidence("price", "info", tr(
+                f"Fiyatın ilk 20 rakibin ortancasından düşük ({priced['own_price']:.0f} / {priced['top_price_median']:.0f} {cur}); fiyat engel görünmüyor.",
+                f"Your price is below the top 20 competitors' median ({priced['own_price']:.0f} / {priced['top_price_median']:.0f} {cur}); price does not look like the blocker.",
+            )))
+    return out, votes
+
+
+SIGNALS: list[Signal] = [shop_signal, content_signal, price_signal, review_signal, funnel_signal, rank_signal]
 
 
 # ------------------------------------------------------------------ sonuç

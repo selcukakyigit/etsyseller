@@ -18,7 +18,7 @@ UPLOADS = Path(__file__).resolve().parents[2] / "uploads"
 # Etsy'den gelen (yeniden çekilebilen) veriyi tutan tablolar; hepsinde shop_id vardır.
 ETSY_DERIVED_TABLES = (
     "listing_cache", "order_cache", "review_cache", "ledger_entries", "fin_payments",
-    "listing_stat_snapshots", "listing_health", "shipping_reference_cache",
+    "listing_stat_snapshots", "listing_health", "shipping_reference_cache", "rank_snapshots",
 )
 
 

@@ -12,6 +12,7 @@ from app.jobs.finance_sync import sync_all_shops as sync_finance
 from app.jobs.listing_health import evaluate_all_shops
 from app.jobs.listing_refresh import refresh_all_shops
 from app.jobs.order_sync import sync_all_shops
+from app.jobs.rank_tracking import track_all_shops
 from app.jobs.retention import purge_expired_records
 from app.jobs.reviews import sync_all_shops as sync_reviews
 from app.jobs.shop_profile import sync_all_shops as sync_shop_profile
@@ -71,6 +72,12 @@ def start_scheduler() -> None:
         id="reviews",
         replace_existing=True,
     )
+    _scheduler.add_job(
+        track_all_shops,
+        trigger=CronTrigger(hour=5, minute=30),
+        id="rank_tracking",
+        replace_existing=True,
+    )
     _scheduler.start()
 
     # Yeni süreç başlayınca her işi bir kez de çalıştır ki arayüz ilk günden veri görsün. Hepsi aynı anda değil, 45 sn
@@ -85,6 +92,7 @@ def start_scheduler() -> None:
             (evaluate_all_shops, "listing_health_initial_run"),
             (refresh_all_shops, "listing_refresh_initial_run"),
             (sync_finance, "finance_sync_initial_run"),
+            (track_all_shops, "rank_tracking_initial_run"),
         ],
         start=1,
     ):

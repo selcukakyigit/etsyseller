@@ -241,6 +241,33 @@ export interface ListingDiagnosis {
   events: { date: string; kind: string; text: string }[];
 }
 
+/** Bir listing'in takip edilen Etsy aramaları ve sırası (bkz. backend app/insights/rank.py). */
+export interface RankKeyword {
+  keyword: string;
+  source: "auto" | "user" | "etsy_data";
+  position: number | null;
+  measured: string | null;
+  total_results: number | null;
+  top_price_median: number | null;
+  top_price_low: number | null;
+  top_price_high: number | null;
+  own_price: number | null;
+  currency: string;
+  /** Pozitif = yükseldi. */
+  change_7d: number | null;
+  change_30d: number | null;
+  history: { day: string; position: number | null }[];
+}
+export interface ListingRanks {
+  keywords: RankKeyword[];
+  max_keywords: number;
+  max_listings: number;
+  max_results: number;
+  tracked_listings: number;
+  is_tracked: boolean;
+  suggestions: string[];
+}
+
 export type BulkResult = { id: number; ok: boolean; changed: boolean; error: string | null };
 
 export type KeywordPoolItem = {
@@ -1078,6 +1105,15 @@ export interface DashboardData {
 export const api = {
   insights: {
     diagnosis: (shopId: number, listingId: number) => request<ListingDiagnosis>(`/api/shops/${shopId}/insights/listings/${listingId}/diagnosis`),
+    ranks: (shopId: number, listingId: number) => request<ListingRanks>(`/api/shops/${shopId}/insights/listings/${listingId}/ranks`),
+    addKeyword: (shopId: number, listingId: number, keyword: string) =>
+      request<ListingRanks>(`/api/shops/${shopId}/insights/listings/${listingId}/keywords`, { method: "POST", body: JSON.stringify({ keyword }) }),
+    removeKeyword: (shopId: number, listingId: number, keyword: string) =>
+      request<ListingRanks>(`/api/shops/${shopId}/insights/listings/${listingId}/keywords?keyword=${encodeURIComponent(keyword)}`, { method: "DELETE" }),
+    stopTracking: (shopId: number, listingId: number) =>
+      request<ListingRanks>(`/api/shops/${shopId}/insights/listings/${listingId}/tracking`, { method: "DELETE" }),
+    measureNow: (shopId: number, listingId: number) =>
+      request<ListingRanks>(`/api/shops/${shopId}/insights/listings/${listingId}/ranks/measure`, { method: "POST" }),
   },
   descriptionTemplates: {
     list: (shopId: number) =>
