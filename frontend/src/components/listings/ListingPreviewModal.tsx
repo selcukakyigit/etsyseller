@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { api, WorkingCopy } from "@/lib/api";
 import { useT } from "@/lib/i18n-client";
+import { BlockSpinner } from "@/components/ui/Spinner";
 
 type Loaded = { id: number; data: WorkingCopy; local: boolean } | { id: number; error: string };
 
@@ -157,7 +158,7 @@ export default function ListingPreviewModal({ shopId, listingId, shopName, onClo
           </div>
         </div>
 
-        {!view && <p className="p-8 text-center text-sm text-neutral-400">{t("Yükleniyor…", "Loading…")}</p>}
+        {!view && <BlockSpinner />}
         {view && "error" in view && <p className="p-8 text-center text-sm text-red-600">{view.error}</p>}
 
         {data && info && (

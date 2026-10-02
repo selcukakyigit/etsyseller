@@ -7,6 +7,7 @@ import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { countryList, countryName } from "./countries";
 import { SectionHeader, errorText, iconBtn, inputCls, isPermissionError, labelCls, outlineBtn } from "./shared";
 import { T, tNow, useT } from "@/lib/i18n-client";
+import { BlockSpinner } from "@/components/ui/Spinner";
 
 type Kind = "country" | "eu" | "non_eu" | "everywhere";
 
@@ -362,7 +363,7 @@ export default function ShippingProfilesSection({
         }
       />
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
-      {profiles === null && <p className="text-sm text-neutral-400">{t("Yükleniyor…", "Loading…")}</p>}
+      {profiles === null && <BlockSpinner />}
       <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
         <table className="w-full text-sm">
           <thead>

@@ -6,6 +6,7 @@ import Avatar from "@/components/Avatar";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import SettingsSubpage from "@/components/SettingsSubpage";
 import { useT } from "@/lib/i18n-client";
+import { PageSpinner } from "@/components/ui/Spinner";
 
 export default function ProfileSettingsPage() {
   const { user, shops, activeShop, setActiveShopId, error: bootError, refreshUser } = useAuthAndShop();
@@ -64,7 +65,7 @@ export default function ProfileSettingsPage() {
       {(bootError || error) && <p className="text-sm text-red-600">{bootError ?? error}</p>}
 
       <div className="min-h-[20px]">
-        {!user && !bootError && <p className="text-sm text-neutral-400 dark:text-neutral-500">{t("Yükleniyor…", "Loading…")}</p>}
+        {!user && !bootError && <PageSpinner />}
       </div>
 
       {user && (

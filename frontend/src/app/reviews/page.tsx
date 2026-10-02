@@ -7,6 +7,8 @@ import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import AppShell from "@/components/AppShell";
 import { Pager } from "@/components/shipping/shared";
 import { useT } from "@/lib/i18n-client";
+import { useCached } from "@/lib/pageCache";
+import { PageSpinner } from "@/components/ui/Spinner";
 
 const PAGE_SIZE = 20;
 const MONTH_LABEL = (m: string, locale: string) => {
@@ -153,10 +155,12 @@ function ReviewsPageInner() {
   const toggleRating = (star: number) => navigate({ page: 0, rating: ratingFilter === star ? null : star });
   const toggleMonth = (month: string) => navigate({ page: 0, month: monthFilter === month ? null : month });
 
-  const [total, setTotal] = useState<number | null>(null);
-  const [average, setAverage] = useState<number | null>(null);
-  const [reviews, setReviews] = useState<ShopReview[] | null>(null);
-  const [stats, setStats] = useState<ShopReviewStats | null>(null);
+  const listKey = shopId !== undefined ? `reviews:${shopId}:${page}:${ratingFilter ?? ""}:${monthFilter ?? ""}` : null;
+  const [list, setList] = useCached<{ total: number; average: number | null; reviews: ShopReview[] }>(listKey, { keepPrevious: true });
+  const total = list?.total ?? null;
+  const average = list?.average ?? null;
+  const reviews = list?.reviews ?? null;
+  const [stats, setStats] = useCached<ShopReviewStats | null>(shopId !== undefined ? `review-stats:${shopId}` : null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -167,14 +171,12 @@ function ReviewsPageInner() {
         rating: ratingFilter ?? undefined, month: monthFilter ?? undefined,
       })
       .then((r) => {
-        setTotal(r.total);
-        setAverage(r.average);
-        setReviews(r.reviews);
+        setList({ total: r.total, average: r.average, reviews: r.reviews });
         setError(null);
       })
       .catch((e) => setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error")));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shopId, page, ratingFilter, monthFilter]);
+  }, [shopId, page, ratingFilter, monthFilter, setList]);
 
   useEffect(() => {
     load();
@@ -187,7 +189,7 @@ function ReviewsPageInner() {
       .reviewStats(shopId)
       .then(setStats)
       .catch(() => setStats(null));
-  }, [shopId]);
+  }, [shopId, setStats]);
 
   const pages = total !== null ? Math.max(1, Math.ceil(total / PAGE_SIZE)) : 1;
 
@@ -265,7 +267,7 @@ function ReviewsPageInner() {
             )}
 
             <div className="space-y-3">
-              {reviews === null && <p className="text-sm text-neutral-400">{t("Yükleniyor…", "Loading…")}</p>}
+              {reviews === null && <PageSpinner />}
               {reviews && reviews.length === 0 && <p className="text-sm text-neutral-400">{t("Henüz yorum yok.", "No reviews yet.")}</p>}
               {(reviews ?? []).map((r) => (
                 <div

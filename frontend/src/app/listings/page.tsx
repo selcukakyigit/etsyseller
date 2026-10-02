@@ -17,16 +17,20 @@ import { Modal, btnGhost } from "@/components/listing-editor/Modal";
 import { ReconnectNotice, isPermissionError } from "@/components/shipping/shared";
 import ListingFilters, { applyFilters, EMPTY_FILTERS, Filters, Reference } from "@/components/listings/ListingFilters";
 import { useT } from "@/lib/i18n-client";
+import { useCached } from "@/lib/pageCache";
+import { PageSpinner, Spinner } from "@/components/ui/Spinner";
 
 type PublishOutcome = { id: number; title: string; ok: boolean; error?: string; updated?: string[]; warnings?: string[] };
 
 const SYNC_POLL_INTERVAL_MS = 3000;
+const EMPTY_REFERENCE: Reference = { sections: [], shipping: [], returns: [], partners: [] };
 const STALE_AFTER_MS = 5 * 60 * 60 * 1000; // 5 saat: 6 saatlik sınırın altında kal
 
 export default function Home() {
   const { user, shops, activeShop, setActiveShopId, error: bootError } = useAuthAndShop();
   const { t } = useT();
-  const [listings, setListings] = useState<Listing[] | null>(null);
+  const cacheShopId = activeShop?.id;
+  const [listings, setListings] = useCached<Listing[]>(cacheShopId !== undefined ? `listings:${cacheShopId}` : null);
   const [bootstrapSyncing, setBootstrapSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirm, confirmElement] = useConfirm();
@@ -36,7 +40,8 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("ending");
   const [view, setView] = useState<"grid" | "list">("grid");
-  const [reference, setReference] = useState<Reference>({ sections: [], shipping: [], returns: [], partners: [] });
+  const [cachedReference, setReference] = useCached<Reference>(cacheShopId !== undefined ? `listing-reference:${cacheShopId}` : null);
+  const reference = cachedReference ?? EMPTY_REFERENCE;
   const [publishingIds, setPublishingIds] = useState<Set<number>>(new Set());
   const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
   const jobs = usePublishJobs();
@@ -49,7 +54,7 @@ export default function Home() {
       .then(setListings)
       .catch((e) => setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error")));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeShop]);
+  }, [activeShop, setListings]);
 
   useEffect(() => {
     loadListings();
@@ -156,7 +161,7 @@ export default function Home() {
       api.shops.returnPolicies(id).catch(() => []),
       api.shops.productionPartners(id).catch(() => []),
     ]).then(([sections, shipping, returns, partners]) => setReference({ sections, shipping, returns, partners }));
-  }, [activeShop]);
+  }, [activeShop, setReference]);
 
   useEffect(() => {
     loadReference();
@@ -411,13 +416,13 @@ export default function Home() {
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/listings">
       <div className="max-w-7xl mx-auto px-6 pb-8 pt-0">
         <div>
-          {!user && !bootError && <p className="text-sm text-neutral-400 dark:text-neutral-500">{t("Yükleniyor…", "Loading…")}</p>}
+          {!user && !bootError && <PageSpinner />}
         </div>
 
         {(bootError || error) && <p className="text-sm text-red-600 mb-4">{bootError ?? error}</p>}
 
         <div>
-          {user && shops === null && !bootError && <p className="text-sm text-neutral-400 dark:text-neutral-500">{t("Mağazalar yükleniyor…", "Loading shops…")}</p>}
+          {user && shops === null && !bootError && <PageSpinner />}
         </div>
 
         {user && shops !== null && !activeShop && (
@@ -433,7 +438,7 @@ export default function Home() {
         )}
 
         {activeShop && listings === null && !error && (
-          <p className="text-sm text-neutral-400 dark:text-neutral-500">{t("Listing'ler yükleniyor…", "Loading listings…")}</p>
+          <PageSpinner />
         )}
 
         {activeShop && listings && listings.length === 0 && bootstrapSyncing && (
@@ -693,7 +698,7 @@ export default function Home() {
                 )}
                 {hasMore && (
                   <div ref={sentinelRef} className="py-8 text-center text-xs text-neutral-400 dark:text-neutral-500">
-                    {t("Daha fazla listing yükleniyor…", "Loading more listings…")}
+                    <Spinner size={20} />
                   </div>
                 )}
               </div>

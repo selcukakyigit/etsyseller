@@ -24,6 +24,7 @@ import PersonalizationEditor from "@/components/listing-editor/PersonalizationEd
 import StringListEditor from "@/components/listing-editor/StringListEditor";
 import TagsEditor from "@/components/listing-editor/TagsEditor";
 import { useT } from "@/lib/i18n-client";
+import { PageSpinner } from "@/components/ui/Spinner";
 
 export default function ListingEditPage() {
   const { user, shops, activeShop, setActiveShopId, error: bootError } = useAuthAndShop();
@@ -190,7 +191,7 @@ export default function ListingEditPage() {
 
         {activeShop && !edit && !wc.error && (
           <div className="min-h-[20px]">
-            <p className="text-sm text-neutral-400 dark:text-neutral-500">{t("Yükleniyor…", "Loading…")}</p>
+            <PageSpinner />
           </div>
         )}
 

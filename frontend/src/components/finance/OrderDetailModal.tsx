@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api, FinOrderDetail } from "@/lib/api";
 import ProductThumb from "./ProductThumb";
 import { tNow as t } from "@/lib/i18n";
+import { BlockSpinner } from "@/components/ui/Spinner";
 
 const box = "rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-700 dark:bg-neutral-900";
 
@@ -87,7 +88,7 @@ export default function OrderDetailModal({ shopId, receiptId, onClose }: { shopI
 
         <div className="space-y-4 px-6 py-5">
           {error && <p className="text-sm text-red-600">{error}</p>}
-          {loading && !error && <p className="text-sm text-neutral-400">{t("Yükleniyor…", "Loading…")}</p>}
+          {loading && !error && <BlockSpinner />}
 
           {data && !loading && e && tab === "earnings" && (
             <>

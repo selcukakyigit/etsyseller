@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, ListingProperty, TaxonomyProperty } from "@/lib/api";
 import { tNow as t } from "@/lib/i18n";
+import { BlockSpinner } from "@/components/ui/Spinner";
 
 // Etsy çok değerli özelliklerde en fazla 5 seçime izin verir (Craft, Room, Materials...).
 const MAX_MULTI = 5;
@@ -249,7 +250,7 @@ export default function PropertyFields({
       </p>
 
       {!taxonomyId && <p className="text-sm text-neutral-400">{t("Önce bir kategori seç.", "Choose a category first.")}</p>}
-      {taxonomyId && defs === null && !error && <p className="text-sm text-neutral-400">{t("Yükleniyor…", "Loading…")}</p>}
+      {taxonomyId && defs === null && !error && <BlockSpinner />}
       {taxonomyId && defs && defs.length === 0 && <p className="text-sm text-neutral-400">{t("Bu kategori için ek özellik yok.", "No extra attributes for this category.")}</p>}
 
       <div className="space-y-2">

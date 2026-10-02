@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Modal } from "@/components/listing-editor/Modal";
 import { api, FinOrderDetail } from "@/lib/api";
 import { tNow as t } from "@/lib/i18n";
+import { BlockSpinner } from "@/components/ui/Spinner";
 
 const KIND: Record<string, [string, string]> = {
   nakliye: ["Nakliye", "Freight"],
@@ -40,7 +41,7 @@ export default function OrderCostBreakdown({
     <Modal title={d ? `${t("Sipariş maliyeti", "Order cost")} · ${d.buyer}` : t("Sipariş maliyeti", "Order cost")} widthClass="max-w-xl" z={120} onClose={onClose}>
       <div className="text-left" onClick={(ev) => ev.stopPropagation()}>
         {error && <p className="text-sm text-red-600">{error}</p>}
-        {!d && !error && <p className="text-sm text-neutral-400">{t("Yükleniyor…", "Loading…")}</p>}
+        {!d && !error && <BlockSpinner />}
         {d && e && (
           <>
             <p className="mb-1 text-xs font-semibold text-neutral-500">{t("Ürünler", "Items")}</p>

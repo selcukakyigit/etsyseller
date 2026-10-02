@@ -44,6 +44,8 @@ export function useAuthAndShop() {
     api.shops
       .list()
       .then((s) => {
+        // Arka plan tazelemesi aynı listeyi getirdiyse eski nesneyi koru: activeShop'a bağlı efektler boşuna yeniden çalışmasın.
+        if (sessionCache.shops && JSON.stringify(sessionCache.shops) === JSON.stringify(s)) return;
         sessionCache.shops = s;
         setShops(s);
       })
@@ -73,6 +75,7 @@ export function useAuthAndShop() {
             return;
           }
         }
+        if (sessionCache.user && JSON.stringify(sessionCache.user) === JSON.stringify(u)) return;
         sessionCache.user = u;
         setUser(u);
       })

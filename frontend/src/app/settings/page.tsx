@@ -6,6 +6,7 @@ import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import AppShell from "@/components/AppShell";
 import { ChevronRightIcon, HelpIcon, KeyIcon, ShieldIcon, StoreIcon, UserIcon } from "@/components/icons";
 import { useT } from "@/lib/i18n-client";
+import { PageSpinner } from "@/components/ui/Spinner";
 
 const CARDS = [
   {
@@ -71,7 +72,7 @@ export default function SettingsHub() {
         {bootError && <p className="text-sm text-red-600">{bootError}</p>}
 
         <div className="min-h-[20px]">
-          {!user && !bootError && <p className="text-sm text-neutral-400 dark:text-neutral-500">{t("Yükleniyor…", "Loading…")}</p>}
+          {!user && !bootError && <PageSpinner />}
         </div>
 
         {user && (

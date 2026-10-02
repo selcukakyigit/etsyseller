@@ -6,6 +6,7 @@ import { Modal, btnGhost, btnPrimary } from "@/components/listing-editor/Modal";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { Pager, SectionHeader, errorText, iconBtn, inputCls, isPermissionError, labelCls, outlineBtn } from "./shared";
 import { tNow, useT } from "@/lib/i18n-client";
+import { BlockSpinner } from "@/components/ui/Spinner";
 
 const PAGE = 5;
 
@@ -185,7 +186,7 @@ export default function ProcessingProfilesSection({
         }
       />
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
-      {profiles === null && <p className="text-sm text-neutral-400">{t("Yükleniyor…", "Loading…")}</p>}
+      {profiles === null && <BlockSpinner />}
       <div className="space-y-2">
         {visible.map((p) => (
           <div key={p.readiness_state_id} className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900">

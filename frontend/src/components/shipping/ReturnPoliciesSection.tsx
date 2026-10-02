@@ -6,6 +6,7 @@ import { Modal, btnGhost, btnPrimary } from "@/components/listing-editor/Modal";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { SectionHeader, errorText, iconBtn, inputCls, isPermissionError, labelCls, outlineBtn } from "./shared";
 import { tNow, useT } from "@/lib/i18n-client";
+import { BlockSpinner } from "@/components/ui/Spinner";
 
 const DEADLINES = [7, 14, 21, 30, 45, 60, 90];
 
@@ -152,7 +153,7 @@ export default function ReturnPoliciesSection({
         }
       />
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
-      {policies === null && <p className="text-sm text-neutral-400">{t("Yükleniyor…", "Loading…")}</p>}
+      {policies === null && <BlockSpinner />}
       <div className="space-y-2">
         {(policies ?? []).map((p) => (
           <div key={p.return_policy_id} className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900">

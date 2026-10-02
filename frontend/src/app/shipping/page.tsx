@@ -9,13 +9,15 @@ import ReturnPoliciesSection from "@/components/shipping/ReturnPoliciesSection";
 import ShippingProfilesSection from "@/components/shipping/ShippingProfilesSection";
 import { ReconnectNotice } from "@/components/shipping/shared";
 import { useT } from "@/lib/i18n-client";
+import { useCached } from "@/lib/pageCache";
 
 export default function ShippingSettingsPage() {
   const { user, shops, activeShop, setActiveShopId, error: bootError } = useAuthAndShop();
   const { t } = useT();
-  const [processing, setProcessing] = useState<ReadinessStateDefinition[] | null>(null);
-  const [profiles, setProfiles] = useState<ShippingProfile[] | null>(null);
-  const [policies, setPolicies] = useState<ReturnPolicy[] | null>(null);
+  const sid = activeShop?.id;
+  const [processing, setProcessing] = useCached<ReadinessStateDefinition[]>(sid !== undefined ? `processing:${sid}` : null);
+  const [profiles, setProfiles] = useCached<ShippingProfile[]>(sid !== undefined ? `shipping-profiles:${sid}` : null);
+  const [policies, setPolicies] = useCached<ReturnPolicy[]>(sid !== undefined ? `return-policies:${sid}` : null);
   const [needsReconnect, setNeedsReconnect] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,7 +31,7 @@ export default function ShippingSettingsPage() {
     api.shops.shippingProfiles(shopId).then(setProfiles).catch(fail);
     api.shops.returnPolicies(shopId).then(setPolicies).catch(fail);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shopId]);
+  }, [shopId, setProcessing, setProfiles, setPolicies]);
 
   useEffect(() => {
     load();

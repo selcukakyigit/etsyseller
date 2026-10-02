@@ -13,6 +13,8 @@ import { EMPTY_ORDER_FILTERS, OrderFilters, Tab, addressText, copyText, groupByS
 import { onSyncDone } from "@/lib/syncEvents";
 import { useUrlTab } from "@/lib/useUrlTab";
 import { useT } from "@/lib/i18n-client";
+import { useCached } from "@/lib/pageCache";
+import { PageSpinner } from "@/components/ui/Spinner";
 
 const TABS: [Tab, string, string][] = [
   ["toship", "Gönderilecek", "To ship"],
@@ -30,7 +32,6 @@ const localToday = () => {
 export default function OrdersPage() {
   const { user, shops, activeShop, setActiveShopId, error: bootError } = useAuthAndShop();
   const { t, locale } = useT();
-  const [data, setData] = useState<OrdersPageData | null>(null);
   const [loadedKey, setLoadedKey] = useState<string | null>(null); // hangi sorgunun sonucu ekranda
   const [syncInfo, setSyncInfo] = useState<OrdersSyncStatus | null>(null);
   const [tab, setTab] = useUrlTab<Tab>("tab", "toship", TAB_VALUES);
@@ -59,6 +60,9 @@ export default function OrdersPage() {
   }, []);
   const bootstrapped = useRef<number | null>(null);
   const shopId = activeShop?.id;
+  const queryKey = JSON.stringify([shopId, tab, query, filters, sort, page, perPage]);
+  // Bu sorgunun verisi henüz yoksa (yeni sekme/filtre) bir öncekini soluk göster; ekran boşalıp zıplamasın.
+  const [data, setData, dataIsCurrent] = useCached<OrdersPageData>(shopId !== undefined ? `orders:${queryKey}` : null, { keepPrevious: true });
 
   // Arama kutusu: yazmayı bitirince (350 ms) sunucuya gider.
   useEffect(() => {
@@ -71,7 +75,7 @@ export default function OrdersPage() {
 
   const load = useCallback(() => {
     if (shopId === undefined) return;
-    const key = JSON.stringify([shopId, tab, query, filters, sort, page, perPage]);
+    const key = queryKey;
     api.orders
       .page(shopId, {
         tab,
@@ -98,7 +102,7 @@ export default function OrdersPage() {
         setLoadedKey(key);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shopId, tab, query, filters, sort, page, perPage]);
+  }, [shopId, tab, query, filters, sort, page, perPage, setData]);
 
   useEffect(() => {
     load();
@@ -161,7 +165,7 @@ export default function OrdersPage() {
     });
   }, [shopId, load]);
 
-  const loading = loadedKey !== JSON.stringify([shopId, tab, query, filters, sort, page, perPage]);
+  const loading = loadedKey !== queryKey && !dataIsCurrent;
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
   const counts = data?.counts ?? { toship: 0, completed: 0, canceled: 0, all: 0 };
@@ -214,7 +218,7 @@ export default function OrdersPage() {
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/orders">
       <div className="mx-auto max-w-6xl px-6 pb-8 pt-0">
         <div>
-          {!user && !bootError && <p className="text-sm text-neutral-400">{t("Yükleniyor…", "Loading…")}</p>}
+          {!user && !bootError && <PageSpinner />}
         </div>
         {(bootError || error) && <p className="mb-4 text-sm text-red-600">{bootError ?? error}</p>}
 
@@ -359,7 +363,7 @@ export default function OrdersPage() {
 
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
               <div className={`min-w-0 flex-1 space-y-5 ${loading ? "opacity-60" : ""}`}>
-                {data === null && !error && <p className="text-sm text-neutral-400">{t("Siparişler yükleniyor…", "Loading orders…")}</p>}
+                {data === null && !error && <PageSpinner />}
                 {data && (
                   <p className="text-xs text-neutral-500">
                     {total.toLocaleString(locale)} {t("sipariş", "orders")} · {t("sayfa", "page")} {page + 1}/{pages}

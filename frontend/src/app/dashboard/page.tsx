@@ -7,6 +7,8 @@ import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import AppShell from "@/components/AppShell";
 import ChatPanel from "@/components/assistant/ChatPanel";
 import { T, useT } from "@/lib/i18n-client";
+import { useCached } from "@/lib/pageCache";
+import { PageSpinner } from "@/components/ui/Spinner";
 
 const localToday = () => {
   const d = new Date();
@@ -29,10 +31,10 @@ export default function DashboardPage() {
   const { user, shops, activeShop, setActiveShopId, error: bootError } = useAuthAndShop();
   const { t, locale } = useT();
   const shopId = activeShop?.id;
-  const [data, setData] = useState<DashboardData | null>(null);
+  const [data, setData] = useCached<DashboardData>(shopId !== undefined ? `dashboard:${shopId}:${localToday()}` : null);
   const [error, setError] = useState<string | null>(null);
-  const [profile, setProfile] = useState<ShopProfile | null>(null);
-  const [reviews, setReviews] = useState<ShopReview[] | null>(null);
+  const [profile, setProfile] = useCached<ShopProfile | null>(shopId !== undefined ? `profile:${shopId}` : null);
+  const [reviews, setReviews] = useCached<ShopReview[]>(shopId !== undefined ? `reviews-top:${shopId}` : null);
 
   const load = useCallback(() => {
     if (shopId === undefined) return;
@@ -43,7 +45,7 @@ export default function DashboardPage() {
         setError(null);
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, [shopId]);
+  }, [shopId, setData]);
 
   useEffect(() => {
     load();
@@ -58,7 +60,7 @@ export default function DashboardPage() {
       .reviews(shopId, { limit: 3 })
       .then((r) => setReviews(r.reviews))
       .catch(() => setReviews([]));
-  }, [shopId]);
+  }, [shopId, setProfile, setReviews]);
 
   const money = (n: number, digits = 0) => new Intl.NumberFormat(locale, { style: "currency", currency: data?.currency ?? "USD", maximumFractionDigits: digits }).format(n);
   const now = new Date();
@@ -68,7 +70,7 @@ export default function DashboardPage() {
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/dashboard">
       <div className="mx-auto max-w-[96rem] px-6 py-6">
         <div className="min-h-[20px]">
-          {!user && !bootError && <p className="text-sm text-neutral-400">{t("Yükleniyor…", "Loading…")}</p>}
+          {!user && !bootError && <PageSpinner />}
         </div>
         {(bootError || error) && <p className="mb-4 text-sm text-red-600">{bootError ?? error}</p>}
 

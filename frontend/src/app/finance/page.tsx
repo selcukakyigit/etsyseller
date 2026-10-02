@@ -11,6 +11,7 @@ import ShippingInvoices from "@/components/finance/ShippingInvoices";
 import { onSyncDone } from "@/lib/syncEvents";
 import TopOrders from "@/components/finance/TopOrders";
 import { tNow, useT } from "@/lib/i18n-client";
+import { PageSpinner } from "@/components/ui/Spinner";
 
 const regionNames: Record<string, Intl.DisplayNames> = {};
 const countryOf = (code: string) => {
@@ -232,7 +233,7 @@ export default function FinancePage() {
         {/* Sabit yükseklik: bu satır `user` gelince DOM'dan tamamen kalkıyor — sarmalayıcı olmadan
             altındaki başlık/filtre satırı bir anda yukarı kayıyordu ("UI zıplaması"). */}
         <div>
-          {!user && !bootError && <p className="text-sm text-neutral-400">{t("Yükleniyor…", "Loading…")}</p>}
+          {!user && !bootError && <PageSpinner />}
         </div>
         {(bootError || error) && <p className="mb-4 text-sm text-red-600">{bootError ?? error}</p>}
 

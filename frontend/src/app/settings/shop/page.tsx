@@ -6,6 +6,7 @@ import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import SettingsSubpage from "@/components/SettingsSubpage";
 import DangerConfirmModal from "@/components/settings/DangerConfirmModal";
 import { useT } from "@/lib/i18n-client";
+import { PageSpinner } from "@/components/ui/Spinner";
 
 function CurrencyPicker({ shopId, value }: { shopId: number; value: string | null }) {
   const { t } = useT();
@@ -73,7 +74,7 @@ export default function ShopSettingsPage() {
 
       {user && shops === null && !bootError && (
         <div className="min-h-[20px]">
-          <p className="text-sm text-neutral-400 dark:text-neutral-500">{t("Yükleniyor…", "Loading…")}</p>
+          <PageSpinner />
         </div>
       )}
 

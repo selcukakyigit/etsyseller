@@ -5,6 +5,7 @@ import { api, ListingHealth, ListingHistory, ListingPerformance } from "@/lib/ap
 import TrendChart from "@/components/TrendChart";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { T, useT } from "@/lib/i18n-client";
+import { BlockSpinner } from "@/components/ui/Spinner";
 
 const STATUS_LABEL: Record<string, [string, string]> = {
   pending: ["Bekliyor", "Pending"],
@@ -84,7 +85,7 @@ function PerformanceSummary({ shopId, listingId }: { shopId: number; listingId: 
         </div>
       </div>
       {error && <p className="text-xs text-red-600">{error}</p>}
-      {loading && !error && <p className="text-xs text-neutral-400">{t("Yükleniyor…", "Loading…")}</p>}
+      {loading && !error && <BlockSpinner />}
       {perf && !error && (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -309,7 +310,7 @@ export default function ListingHistoryPanel({
       <div className="border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/50 p-4 space-y-4">
         {listingId > 0 && <HealthBanner shopId={shopId} listingId={listingId} />}
         {listingId > 0 && <PerformanceSummary shopId={shopId} listingId={listingId} />}
-        <p className="text-sm text-neutral-400 dark:text-neutral-500">{t("Değişiklik geçmişi yükleniyor…", "Loading change history…")}</p>
+        <BlockSpinner />
       </div>
     );
 

@@ -6,6 +6,7 @@ import { Modal, btnGhost, btnPrimary } from "@/components/listing-editor/Modal";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { SectionHeader, errorText, iconBtn, inputCls, isPermissionError, outlineBtn } from "./shared";
 import { useT } from "@/lib/i18n-client";
+import { BlockSpinner } from "@/components/ui/Spinner";
 
 const TITLE_MAX = 24; // Etsy'nin mağaza bölümü başlığı sınırı
 const MAX_SECTIONS = 20; // Etsy: bir mağaza en fazla 20 bölüm kullanabilir
@@ -169,7 +170,7 @@ export default function ShopSectionsSection({
         </p>
       )}
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
-      {sections === null && <p className="text-sm text-neutral-400">{t("Yükleniyor…", "Loading…")}</p>}
+      {sections === null && <BlockSpinner />}
       <div className="space-y-2">
         {(sections ?? []).map((s) => (
           <div
