@@ -3,33 +3,33 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, Inventory, ReadinessStateDefinition, ReturnPolicy, ShippingProfile } from "@/lib/api";
 import { Modal, btnGhost } from "./Modal";
+import { tNow as t } from "@/lib/i18n";
 
 const PAGE_SIZE = 5;
 
-const money = (n: number, currency: string) => new Intl.NumberFormat("tr-TR", { style: "currency", currency }).format(n);
+const money = (n: number, currency: string) => new Intl.NumberFormat(t("tr-TR", "en-US"), { style: "currency", currency }).format(n);
 const amount = (m: { amount: number; divisor: number } | null | undefined) => (m ? m.amount / m.divisor : null);
 
-const regionNames = new Intl.DisplayNames(["tr"], { type: "region" });
 function destinationName(d: { destination_country_iso?: string | null; destination_region?: string | null }): string {
   if (d.destination_country_iso) {
     try {
-      return regionNames.of(d.destination_country_iso) ?? d.destination_country_iso;
+      return new Intl.DisplayNames([t("tr", "en")], { type: "region" }).of(d.destination_country_iso) ?? d.destination_country_iso;
     } catch {
       return d.destination_country_iso;
     }
   }
-  if (d.destination_region === "eu") return "Avrupa Birliği";
-  if (d.destination_region === "non_eu") return "AB dışı Avrupa";
-  return "Diğer tüm ülkeler";
+  if (d.destination_region === "eu") return t("Avrupa Birliği", "European Union");
+  if (d.destination_region === "non_eu") return t("AB dışı Avrupa", "Europe (non-EU)");
+  return t("Diğer tüm ülkeler", "Everywhere else");
 }
 
 function processingTitle(d: ReadinessStateDefinition): string {
-  return d.readiness_state === "made_to_order" ? "Sipariş üzerine üretim" : "Kargoya hazır";
+  return d.readiness_state === "made_to_order" ? t("Sipariş üzerine üretim", "Made to order") : t("Kargoya hazır", "Ready to ship");
 }
 
 function returnTitle(p: ReturnPolicy): string {
-  if (!p.accepts_returns && !p.accepts_exchanges) return "İade ve değişim kabul edilmiyor";
-  return p.accepts_returns && p.accepts_exchanges ? "İade ve değişim" : p.accepts_returns ? "İade" : "Değişim";
+  if (!p.accepts_returns && !p.accepts_exchanges) return t("İade ve değişim kabul edilmiyor", "No returns or exchanges");
+  return p.accepts_returns && p.accepts_exchanges ? t("İade ve değişim", "Returns and exchanges") : p.accepts_returns ? t("İade", "Returns") : t("Değişim", "Exchanges");
 }
 
 type PickItem = { id: number; title: string; badge?: string; lines: string[] };
@@ -65,14 +65,14 @@ function PickCard({
         ))}
       </div>
       {applied ? (
-        <span className="shrink-0 text-sm font-semibold text-green-700 dark:text-green-400">✓ Uygulandı</span>
+        <span className="shrink-0 text-sm font-semibold text-green-700 dark:text-green-400">✓ {t("Uygulandı", "Applied")}</span>
       ) : (
         <button
           type="button"
           onClick={onPick}
           className="shrink-0 rounded-full bg-neutral-200 px-4 py-1.5 text-sm font-semibold text-neutral-900 hover:bg-neutral-300 dark:bg-neutral-700 dark:text-neutral-100"
         >
-          Uygula
+          {t("Uygula", "Apply")}
         </button>
       )}
     </div>
@@ -108,7 +108,7 @@ function PickerModal({
       title={title}
       footer={
         <button type="button" onClick={onClose} className={btnGhost}>
-          Vazgeç
+          {t("Vazgeç", "Cancel")}
         </button>
       }
     >
@@ -120,7 +120,7 @@ function PickerModal({
       )}
       {others.length > 0 && (
         <>
-          <p className="mb-2 text-sm font-semibold text-neutral-900 dark:text-neutral-100">Diğer profiller</p>
+          <p className="mb-2 text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("Diğer profiller", "Other profiles")}</p>
           <div className="space-y-2">
             {visible.map((item) => (
               <PickCard
@@ -187,7 +187,7 @@ export default function ShippingAndReturns({
   const [previewOpen, setPreviewOpen] = useState(false);
 
   useEffect(() => {
-    const fail = (e: unknown) => setError(e instanceof Error ? e.message : "Bilinmeyen hata");
+    const fail = (e: unknown) => setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error"));
     api.shops.shippingProfiles(shopId).then(setProfiles).catch(fail);
     api.shops.returnPolicies(shopId).then(setPolicies).catch(fail);
     api.shops.readinessStateDefinitions(shopId).then(setStates).catch(() => setStates([]));
@@ -228,10 +228,10 @@ export default function ShippingAndReturns({
       (profiles ?? []).map((p) => ({
         id: p.shipping_profile_id,
         title: p.title,
-        badge: p.profile_type === "calculated" ? "Hesaplanan" : "Sabit",
+        badge: p.profile_type === "calculated" ? t("Hesaplanan", "Calculated") : t("Sabit", "Fixed"),
         lines: [
-          p.origin_postal_code ? `${p.origin_postal_code} çıkışlı` : (p.origin_country_iso ?? ""),
-          `${p.active_listings_count ?? 0} listing kullanıyor`,
+          p.origin_postal_code ? t(`${p.origin_postal_code} çıkışlı`, `Ships from ${p.origin_postal_code}`) : (p.origin_country_iso ?? ""),
+          t(`${p.active_listings_count ?? 0} listing kullanıyor`, `Used by ${p.active_listings_count ?? 0} listings`),
         ].filter(Boolean),
       })),
     [profiles]
@@ -241,7 +241,7 @@ export default function ShippingAndReturns({
       (policies ?? []).map((p) => ({
         id: p.return_policy_id,
         title: returnTitle(p),
-        lines: [p.return_deadline ? `${p.return_deadline} gün içinde` : "Süre belirtilmemiş"],
+        lines: [p.return_deadline ? t(`${p.return_deadline} gün içinde`, `Within ${p.return_deadline} days`) : t("Süre belirtilmemiş", "No window set")],
       })),
     [policies]
   );
@@ -251,30 +251,32 @@ export default function ShippingAndReturns({
   return (
     <section className="space-y-6 rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
       <div>
-        <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Kargo, işlem süresi ve iade</h2>
+        <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("Kargo, işlem süresi ve iade", "Shipping, processing and returns")}</h2>
         <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-          Etsy&apos;de oluşturduğun profillerden seçim yapılır. Profillerin kendisini (ülkeler, ücretler) düzenlemek mağazadaki tüm
-          listing&apos;leri etkilediği için Etsy&apos;nin kendi panelinden yapılır.
+          {t(
+            "Etsy'de oluşturduğun profillerden seçim yapılır. Profillerin kendisini (ülkeler, ücretler) düzenlemek mağazadaki tüm listing'leri etkilediği için Kargo ayarları sayfasından yapılır.",
+            "Pick from the profiles in your shop. Editing a profile itself (countries, rates) affects every listing in the shop, so it is done on the Shipping settings page.",
+          )}
         </p>
       </div>
 
       <div>
-        <p className={heading}>İşlem profili</p>
+        <p className={heading}>{t("İşlem profili", "Processing profile")}</p>
         <div className={cardCls}>
           {readinessVaries ? (
             <p className="text-sm text-neutral-600 dark:text-neutral-300">
-              İşlem profili varyasyona göre değişiyor. Varyasyon tablosundan düzenle.
+              {t("İşlem profili varyasyona göre değişiyor. Varyasyon tablosundan düzenle.", "The processing profile varies by variation. Edit it in the variations table.")}
             </p>
           ) : (
             <>
               <div>
                 <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                  {readiness ? processingTitle(readiness) : states === null ? "Yükleniyor…" : "Seçilmemiş"}
+                  {readiness ? processingTitle(readiness) : states === null ? t("Yükleniyor…", "Loading…") : t("Seçilmemiş", "Not selected")}
                 </p>
                 {readiness && <p className="text-xs text-neutral-500">{readiness.processing_days_display_label}</p>}
               </div>
               <button type="button" onClick={() => setPicker("processing")} className={changeBtn}>
-                Profili değiştir
+                {t("Profili değiştir", "Change profile")}
               </button>
             </>
           )}
@@ -282,26 +284,26 @@ export default function ShippingAndReturns({
       </div>
 
       <div>
-        <p className={heading}>Kargo seçeneği</p>
+        <p className={heading}>{t("Kargo seçeneği", "Shipping option")}</p>
         <div className={cardCls}>
           <div className="min-w-0">
             <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-              {profile ? profile.title : profiles === null ? "Yükleniyor…" : "Seçilmemiş"}
+              {profile ? profile.title : profiles === null ? t("Yükleniyor…", "Loading…") : t("Seçilmemiş", "Not selected")}
               {profile && (
                 <span className="ml-2 rounded-full border border-neutral-400 px-2 py-0.5 text-[10px] font-medium text-neutral-600 dark:text-neutral-300">
-                  {profile.profile_type === "calculated" ? "Hesaplanan" : "Sabit"}
+                  {profile.profile_type === "calculated" ? t("Hesaplanan", "Calculated") : t("Sabit", "Fixed")}
                 </span>
               )}
             </p>
             {profile && (
               <p className="text-xs text-neutral-500">
-                {profile.origin_postal_code ? `${profile.origin_postal_code} çıkışlı` : profile.origin_country_iso} ·{" "}
-                {profile.active_listings_count ?? 0} listing kullanıyor
+                {profile.origin_postal_code ? t(`${profile.origin_postal_code} çıkışlı`, `Ships from ${profile.origin_postal_code}`) : profile.origin_country_iso} ·{" "}
+                {t(`${profile.active_listings_count ?? 0} listing kullanıyor`, `Used by ${profile.active_listings_count ?? 0} listings`)}
               </p>
             )}
           </div>
           <button type="button" onClick={() => setPicker("shipping")} className={changeBtn}>
-            Değiştir
+            {t("Değiştir", "Change")}
           </button>
         </div>
 
@@ -313,17 +315,17 @@ export default function ShippingAndReturns({
               className="text-sm font-semibold text-neutral-800 dark:text-neutral-100"
               aria-expanded={previewOpen}
             >
-              Kargo ücreti önizlemesi {previewOpen ? "▴" : "▾"}
+              {t("Kargo ücreti önizlemesi", "Shipping rate preview")} {previewOpen ? "▴" : "▾"}
             </button>
             {previewOpen && (
               <div className="mt-2 overflow-x-auto rounded-xl border border-neutral-200 dark:border-neutral-800">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-xs text-neutral-500">
-                      <th className="px-3 py-2">Hedef</th>
-                      <th className="px-3 py-2">Ücret (1 ürün)</th>
-                      <th className="px-3 py-2">Ek ürün</th>
-                      <th className="px-3 py-2">Teslimat</th>
+                      <th className="px-3 py-2">{t("Hedef", "Destination")}</th>
+                      <th className="px-3 py-2">{t("Ücret (1 ürün)", "Rate (1 item)")}</th>
+                      <th className="px-3 py-2">{t("Ek ürün", "Additional item")}</th>
+                      <th className="px-3 py-2">{t("Teslimat", "Delivery")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -334,11 +336,11 @@ export default function ShippingAndReturns({
                       return (
                         <tr key={i} className="border-t border-neutral-100 dark:border-neutral-800">
                           <td className="px-3 py-2">{destinationName(d)}</td>
-                          <td className="px-3 py-2">{one === null ? "—" : one === 0 ? "Ücretsiz" : money(one, cur)}</td>
-                          <td className="px-3 py-2">{more === null ? "—" : more === 0 ? "Ücretsiz" : money(more, cur)}</td>
+                          <td className="px-3 py-2">{one === null ? "—" : one === 0 ? t("Ücretsiz", "Free") : money(one, cur)}</td>
+                          <td className="px-3 py-2">{more === null ? "—" : more === 0 ? t("Ücretsiz", "Free") : money(more, cur)}</td>
                           <td className="px-3 py-2">
                             {d.min_delivery_days != null && d.max_delivery_days != null
-                              ? `${d.min_delivery_days}–${d.max_delivery_days} iş günü`
+                              ? `${d.min_delivery_days}–${d.max_delivery_days} ${t("iş günü", "business days")}`
                               : "—"}
                           </td>
                         </tr>
@@ -353,16 +355,16 @@ export default function ShippingAndReturns({
       </div>
 
       <div>
-        <p className={heading}>İade ve değişim</p>
+        <p className={heading}>{t("İade ve değişim", "Returns and exchanges")}</p>
         <div className={cardCls}>
           <div>
             <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-              {policy ? returnTitle(policy) : policies === null ? "Yükleniyor…" : "Seçilmemiş"}
-              {policy?.return_deadline ? ` · ${policy.return_deadline} gün` : ""}
+              {policy ? returnTitle(policy) : policies === null ? t("Yükleniyor…", "Loading…") : t("Seçilmemiş", "Not selected")}
+              {policy?.return_deadline ? ` · ${policy.return_deadline} ${t("gün", "days")}` : ""}
             </p>
           </div>
           <button type="button" onClick={() => setPicker("returns")} className={changeBtn}>
-            Politikayı değiştir
+            {t("Politikayı değiştir", "Change policy")}
           </button>
         </div>
       </div>
@@ -371,8 +373,8 @@ export default function ShippingAndReturns({
 
       {picker === "processing" && (
         <PickerModal
-          title="İşlem profillerin"
-          subtitle="Bir profil seç."
+          title={t("İşlem profillerin", "Your processing profiles")}
+          subtitle={t("Bir profil seç.", "Choose a profile.")}
           items={processingItems}
           selectedId={currentReadinessId}
           onApply={applyReadiness}
@@ -381,8 +383,8 @@ export default function ShippingAndReturns({
       )}
       {picker === "shipping" && (
         <PickerModal
-          title="Kargo seçenekleri"
-          subtitle="Bir kargo profili seç."
+          title={t("Kargo seçenekleri", "Shipping options")}
+          subtitle={t("Bir kargo profili seç.", "Choose a shipping profile.")}
           items={shippingItems}
           selectedId={shippingProfileId}
           onApply={(id) => onChange({ shipping_profile_id: id })}
@@ -391,8 +393,8 @@ export default function ShippingAndReturns({
       )}
       {picker === "returns" && (
         <PickerModal
-          title="İade ve değişim politikaların"
-          subtitle="Bir politika seç."
+          title={t("İade ve değişim politikaların", "Your return and exchange policies")}
+          subtitle={t("Bir politika seç.", "Choose a policy.")}
           items={returnItems}
           selectedId={returnPolicyId}
           onApply={(id) => onChange({ return_policy_id: id })}

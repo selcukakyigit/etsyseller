@@ -10,6 +10,7 @@ import {
 } from "@/lib/api";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { Modal, btnGhost, btnPrimary } from "./Modal";
+import { tNow as t } from "@/lib/i18n";
 
 const MAX_QUESTIONS = 5;
 const TITLE_MAX = 45;
@@ -20,14 +21,17 @@ const FILES_MAX = 10;
 
 type Kind = "text" | "list" | "upload";
 
-const KIND_LABELS: Record<Kind, { label: string; hint: string; icon: string }> = {
-  text: { label: "Metin kutusu", hint: "İsim, tarih veya alıntı gibi bilgiler toplayın", icon: "T|" },
-  list: { label: "Seçenek listesi", hint: "Alıcının seçeceği seçenekler sunun", icon: "☰" },
-  upload: { label: "Dosya yükleme", hint: "Alıcılardan dosya isteyin", icon: "▣" },
+const KIND_TEXT: Record<Kind, { label: [string, string]; hint: [string, string]; icon: string }> = {
+  text: { label: ["Metin kutusu", "Text box"], hint: ["İsim, tarih veya alıntı gibi bilgiler toplayın", "Collect info like names, dates or quotes"], icon: "T|" },
+  list: { label: ["Seçenek listesi", "Option list"], hint: ["Alıcının seçeceği seçenekler sunun", "Offer options for the buyer to pick"], icon: "☰" },
+  upload: { label: ["Dosya yükleme", "File upload"], hint: ["Alıcılardan dosya isteyin", "Ask buyers for files"], icon: "▣" },
+};
+const KIND_LABELS = {
+  get: (k: Kind) => ({ label: t(...KIND_TEXT[k].label), hint: t(...KIND_TEXT[k].hint), icon: KIND_TEXT[k].icon }),
 };
 
-const kindOf = (t: PersonalizationQuestionType): Kind =>
-  t === "text_input" ? "text" : t === "dropdown" ? "list" : "upload";
+const kindOf = (type: PersonalizationQuestionType): Kind =>
+  type === "text_input" ? "text" : type === "dropdown" ? "list" : "upload";
 
 function blank(kind: Kind): PersonalizationQuestion {
   return {
@@ -45,9 +49,9 @@ function blank(kind: Kind): PersonalizationQuestion {
 
 function summary(q: PersonalizationQuestion): string {
   const kind = kindOf(q.question_type);
-  const parts: string[] = [KIND_LABELS[kind].label, q.required ? "Zorunlu" : "İsteğe bağlı"];
-  if (kind === "list") parts.push(`${q.options.length} seçenek`);
-  else if (kind === "upload") parts.push(`${q.max_allowed_files ?? 1} dosya`);
+  const parts: string[] = [KIND_LABELS.get(kind).label, q.required ? t("Zorunlu", "Required") : t("İsteğe bağlı", "Optional")];
+  if (kind === "list") parts.push(t(`${q.options.length} seçenek`, `${q.options.length} options`));
+  else if (kind === "upload") parts.push(t(`${q.max_allowed_files ?? 1} dosya`, `${q.max_allowed_files ?? 1} files`));
   else if (q.instructions) parts.push(q.instructions);
   return parts.join(" • ");
 }
@@ -78,8 +82,8 @@ function BuyerPreview({ questions, highlight }: { questions: PersonalizationQues
           return (
             <div key={i} className={i === highlight ? "rounded-lg bg-[#D97757]/5 p-2 -m-2" : ""}>
               <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                {q.question_text || <span className="text-neutral-400">Alan başlığı</span>}
-                {!q.required && <span className="font-normal text-neutral-500"> (isteğe bağlı)</span>}
+                {q.question_text || <span className="text-neutral-400">{t("Alan başlığı", "Field title")}</span>}
+                {!q.required && <span className="font-normal text-neutral-500"> {t("(isteğe bağlı)", "(optional)")}</span>}
               </p>
               {q.instructions && <p className="whitespace-pre-line text-xs text-neutral-500">{q.instructions}</p>}
               {kind === "text" && (
@@ -95,19 +99,19 @@ function BuyerPreview({ questions, highlight }: { questions: PersonalizationQues
                     onClick={() => setOpenIdx(openIdx === i ? null : i)}
                     className="flex h-9 w-full items-center justify-between rounded-lg border border-neutral-300 px-3 text-sm text-neutral-600 hover:border-neutral-400 dark:border-neutral-700 dark:text-neutral-300"
                   >
-                    Seçenek seç <span className={openIdx === i ? "rotate-180" : ""}>▾</span>
+                    {t("Seçenek seç", "Select an option")} <span className={openIdx === i ? "rotate-180" : ""}>▾</span>
                   </button>
                   {openIdx === i && (
                     <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
                       {q.options.length === 0 ? (
-                        <p className="px-3 py-2 text-xs text-neutral-400">Henüz seçenek eklenmedi</p>
+                        <p className="px-3 py-2 text-xs text-neutral-400">{t("Henüz seçenek eklenmedi", "No options added yet")}</p>
                       ) : (
                         q.options.map((o, oi) => (
                           <div
                             key={oi}
                             className="px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 dark:text-neutral-200 dark:hover:bg-neutral-800"
                           >
-                            {o.label.trim() || <span className="text-neutral-400">(boş seçenek)</span>}
+                            {o.label.trim() || <span className="text-neutral-400">{t("(boş seçenek)", "(empty option)")}</span>}
                           </div>
                         ))
                       )}
@@ -117,9 +121,9 @@ function BuyerPreview({ questions, highlight }: { questions: PersonalizationQues
               )}
               {kind === "upload" && (
                 <div className="mt-1.5 rounded-lg border border-dashed border-neutral-300 p-3 text-center text-xs text-neutral-500 dark:border-neutral-700">
-                  + Dosyalarını ekle
+                  {t("+ Dosyalarını ekle", "+ Add your files")}
                   <br />
-                  En fazla {q.max_allowed_files ?? 1} dosya
+                  {t(`En fazla ${q.max_allowed_files ?? 1} dosya`, `Up to ${q.max_allowed_files ?? 1} files`)}
                   {q.question_type === "labeled_upload" && q.options.length > 0 && (
                     <span className="mt-1 block text-neutral-400">{q.options.map((o) => o.label || "…").join(" · ")}</span>
                   )}
@@ -168,14 +172,14 @@ function FieldEditor({
     <Modal
       z={95}
       widthClass="max-w-4xl"
-      title={`${isNew ? "Yeni" : "Düzenle:"} ${KIND_LABELS[kind].label.toLowerCase()}`}
+      title={`${isNew ? t("Yeni", "New") : t("Düzenle:", "Edit:")} ${KIND_LABELS.get(kind).label.toLowerCase()}`}
       footer={
         <>
           <button onClick={onCancel} className={btnGhost}>
-            Vazgeç
+            {t("Vazgeç", "Cancel")}
           </button>
           <button onClick={() => onDone(q)} disabled={!valid} className={btnPrimary}>
-            Tamam
+            {t("Tamam", "Done")}
           </button>
         </>
       }
@@ -183,9 +187,9 @@ function FieldEditor({
       <div className="grid gap-6 md:grid-cols-2">
         <div className="space-y-5">
           <div>
-            <label className={labelCls}>Alan başlığı</label>
+            <label className={labelCls}>{t("Alan başlığı", "Field title")}</label>
             <p className={hintCls}>
-              {kind === "upload" ? "Alıcılara ne yüklemeleri gerektiğini söyleyin" : "İhtiyacınız olan bilgiyi açıklayan bir başlık yazın"}
+              {kind === "upload" ? t("Alıcılara ne yüklemeleri gerektiğini söyleyin", "Tell buyers what to upload") : t("İhtiyacınız olan bilgiyi açıklayan bir başlık yazın", "Write a title that explains the info you need")}
             </p>
             <input
               value={q.question_text}
@@ -199,15 +203,15 @@ function FieldEditor({
           {kind === "upload" ? (
             <label className="flex items-center gap-2 text-sm text-neutral-800 dark:text-neutral-100">
               <input type="checkbox" checked={q.required} onChange={(e) => patch({ required: e.target.checked })} className="h-4 w-4" />
-              Bu alan zorunlu
+              {t("Bu alan zorunlu", "This field is required")}
             </label>
           ) : (
             <div>
-              <label className={labelCls}>Bu alan alıcılar için zorunlu mu?</label>
+              <label className={labelCls}>{t("Bu alan alıcılar için zorunlu mu?", "Is this field required for buyers?")}</label>
               {[true, false].map((v) => (
                 <label key={String(v)} className="flex items-center gap-2 py-0.5 text-sm text-neutral-800 dark:text-neutral-100">
                   <input type="radio" checked={q.required === v} onChange={() => patch({ required: v })} className="accent-[#D97757]" />
-                  {v ? "Evet, alıcılar doldurmak zorunda" : "Hayır, isteğe bağlı"}
+                  {v ? t("Evet, alıcılar doldurmak zorunda", "Yes, buyers must fill it in") : t("Hayır, isteğe bağlı", "No, it is optional")}
                 </label>
               ))}
             </div>
@@ -215,15 +219,15 @@ function FieldEditor({
 
           {q.add_on_price && (
             <p className="text-xs text-neutral-500">
-              Bu alanda Etsy&apos;de tanımlı bir ek ücret var; olduğu gibi korunur (buradan düzenlenemez).
+              {t("Bu alanda Etsy'de tanımlı bir ek ücret var; olduğu gibi korunur (buradan düzenlenemez).", "This field has an add-on price set on Etsy; it is kept as is (it cannot be edited here).")}
             </p>
           )}
 
           {kind === "upload" && (
             <>
               <div>
-                <label className={labelCls}>İzin verilen dosya sayısı</label>
-                <p className={hintCls}>Alıcılar .jpg, .png, .svg, .pdf ve .heic dosyaları ekleyebilir (100 MB&apos;a kadar)</p>
+                <label className={labelCls}>{t("İzin verilen dosya sayısı", "Number of files allowed")}</label>
+                <p className={hintCls}>{t("Alıcılar .jpg, .png, .svg, .pdf ve .heic dosyaları ekleyebilir (100 MB'a kadar)", "Buyers can add .jpg, .png, .svg, .pdf and .heic files (up to 100 MB)")}</p>
                 <select
                   value={q.max_allowed_files ?? 1}
                   onChange={(e) => patch({ max_allowed_files: Number(e.target.value) })}
@@ -249,17 +253,17 @@ function FieldEditor({
                     }
                     className="h-4 w-4"
                   />
-                  Her dosyayı etiketle
+                  {t("Her dosyayı etiketle", "Label each file")}
                 </label>
-                <p className={`${hintCls} mt-1`}>Yerleşimi belirtmek veya farklı fotoğraf açıları istemek için etiket ekleyin</p>
+                <p className={`${hintCls} mt-1`}>{t("Yerleşimi belirtmek veya farklı fotoğraf açıları istemek için etiket ekleyin", "Add labels to specify placement or ask for different photo angles")}</p>
               </div>
             </>
           )}
 
           {kind !== "list" && (
             <div>
-              <label className={labelCls}>Talimat (isteğe bağlı)</label>
-              <p className={hintCls}>Alıcılara yardımcı olacak yönergeler verin</p>
+              <label className={labelCls}>{t("Talimat (isteğe bağlı)", "Instructions (optional)")}</label>
+              <p className={hintCls}>{t("Alıcılara yardımcı olacak yönergeler verin", "Give buyers helpful directions")}</p>
               <textarea
                 value={q.instructions}
                 onChange={(e) => patch({ instructions: e.target.value })}
@@ -269,8 +273,10 @@ function FieldEditor({
               <Counter n={q.instructions.length} max={INSTRUCTIONS_MAX} />
               {q.instructions.length > INSTRUCTIONS_MAX && (
                 <p className="text-xs text-amber-600">
-                  Etsy&apos;nin yeni sınırı {INSTRUCTIONS_MAX} karakter; eski bir alan olduğu için korunuyor, ama düzenleyip
-                  yayınlarken Etsy reddedebilir.
+                  {t(
+                    `Etsy'nin yeni sınırı ${INSTRUCTIONS_MAX} karakter; eski bir alan olduğu için korunuyor, ama düzenleyip yayınlarken Etsy reddedebilir.`,
+                    `Etsy's new limit is ${INSTRUCTIONS_MAX} characters; this older field is kept, but Etsy may reject it when you edit and publish.`,
+                  )}
                 </p>
               )}
             </div>
@@ -278,9 +284,9 @@ function FieldEditor({
 
           {kind === "text" && (
             <div>
-              <label className={labelCls}>Karakter sınırı</label>
+              <label className={labelCls}>{t("Karakter sınırı", "Character limit")}</label>
               <p className={hintCls}>
-                {CHARS_MIN} ile {CHARS_MAX} arasında bir sınır belirleyin
+                {t(`${CHARS_MIN} ile ${CHARS_MAX} arasında bir sınır belirleyin`, `Set a limit between ${CHARS_MIN} and ${CHARS_MAX}`)}
               </p>
               <input
                 type="number"
@@ -295,14 +301,14 @@ function FieldEditor({
 
           {(kind === "list" || labeled) && (
             <div>
-              <label className={labelCls}>{labeled ? "Dosya etiketleri" : "Seçenekler"}</label>
+              <label className={labelCls}>{labeled ? t("Dosya etiketleri", "File labels") : t("Seçenekler", "Options")}</label>
               <ul className="space-y-2">
                 {q.options.map((o, oi) => (
                   <li key={o.option_id ?? `o-${oi}`} className="flex items-center gap-2">
                     <input
                       value={o.label}
                       onChange={(e) => patch({ options: q.options.map((x, xi) => (xi === oi ? { ...x, label: e.target.value } : x)) })}
-                      placeholder={`${labeled ? "Etiket" : "Seçenek"} ${oi + 1}`}
+                      placeholder={`${labeled ? t("Etiket", "Label") : t("Seçenek", "Option")} ${oi + 1}`}
                       className={`${inputCls} flex-1`}
                     />
                     <button
@@ -311,7 +317,7 @@ function FieldEditor({
                       disabled={q.options.length <= 1}
                       onClick={() => patch({ options: q.options.filter((_, xi) => xi !== oi) })}
                     >
-                      Kaldır
+                      {t("Kaldır", "Remove")}
                     </button>
                   </li>
                 ))}
@@ -321,14 +327,14 @@ function FieldEditor({
                 className={`${iconBtn} mt-2 border border-neutral-200 dark:border-neutral-800`}
                 onClick={() => patch({ options: [...q.options, { label: "", option_id: null }] })}
               >
-                + {labeled ? "Etiket" : "Seçenek"} ekle
+                {labeled ? t("+ Etiket ekle", "+ Add label") : t("+ Seçenek ekle", "+ Add option")}
               </button>
             </div>
           )}
         </div>
 
         <div>
-          <p className="mb-2 text-center text-xs font-semibold text-neutral-500">Alıcılar bunu görecek</p>
+          <p className="mb-2 text-center text-xs font-semibold text-neutral-500">{t("Alıcılar bunu görecek", "Buyers will see this")}</p>
           <BuyerPreview questions={preview} highlight={index} />
         </div>
       </div>
@@ -380,8 +386,8 @@ export default function PersonalizationEditor({
   if (!value) {
     return (
       <section className={section}>
-        <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Kişiselleştirme (Özel seçenekler)</h2>
-        <p className="text-sm text-neutral-400">Kişiselleştirme bilgisi Etsy&apos;den okunamadı.</p>
+        <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("Kişiselleştirme (Özel seçenekler)", "Personalization (custom options)")}</h2>
+        <p className="text-sm text-neutral-400">{t("Kişiselleştirme bilgisi Etsy'den okunamadı.", "Personalization could not be read from Etsy.")}</p>
       </section>
     );
   }
@@ -395,9 +401,12 @@ export default function PersonalizationEditor({
 
   async function remove(i: number) {
     const ok = await confirm({
-      title: "Alan silinsin mi?",
-      message: `"${questions[i].question_text || "Adsız alan"}" kaldırılacak. Değişiklik Etsy'ye yayınlayınca uygulanır.`,
-      confirmLabel: "Sil",
+      title: t("Alan silinsin mi?", "Delete field?"),
+      message: t(
+        `"${questions[i].question_text || "Adsız alan"}" kaldırılacak. Değişiklik Etsy'ye yayınlayınca uygulanır.`,
+        `"${questions[i].question_text || "Untitled field"}" will be removed. The change applies when you publish to Etsy.`,
+      ),
+      confirmLabel: t("Sil", "Delete"),
       destructive: true,
     });
     if (ok) setQuestions(questions.filter((_, idx) => idx !== i));
@@ -415,10 +424,12 @@ export default function PersonalizationEditor({
   return (
     <section className={section}>
       <div>
-        <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Kişiselleştirme (Özel seçenekler)</h2>
+        <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("Kişiselleştirme (Özel seçenekler)", "Personalization (custom options)")}</h2>
         <p className="text-xs text-neutral-500 dark:text-neutral-400">
-          Alıcılardan metin, görsel veya isim gibi bilgiler toplamak için en fazla {MAX_QUESTIONS} alan oluştur. Mevcut
-          stoğu etkilemez.
+          {t(
+            `Alıcılardan metin, görsel veya isim gibi bilgiler toplamak için en fazla ${MAX_QUESTIONS} alan oluştur. Mevcut stoğu etkilemez.`,
+            `Create up to ${MAX_QUESTIONS} fields to collect info like text, images or names from buyers. It does not affect inventory.`,
+          )}
         </p>
       </div>
 
@@ -429,15 +440,15 @@ export default function PersonalizationEditor({
             className="flex items-center gap-2 rounded-xl border border-neutral-200 px-3 py-2.5 dark:border-neutral-800"
           >
             <span className="w-6 text-center text-xs text-neutral-400" aria-hidden>
-              {KIND_LABELS[kindOf(q.question_type)].icon}
+              {KIND_LABELS.get(kindOf(q.question_type)).icon}
             </span>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                {q.question_text || <span className="text-neutral-400">Adsız alan</span>}
+                {q.question_text || <span className="text-neutral-400">{t("Adsız alan", "Untitled field")}</span>}
               </p>
               <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">{summary(q)}</p>
             </div>
-            <button type="button" className={iconBtn} disabled={i === 0} onClick={() => move(i, -1)} aria-label="Yukarı taşı">
+            <button type="button" className={iconBtn} disabled={i === 0} onClick={() => move(i, -1)} aria-label={t("Yukarı taşı", "Move up")}>
               ↑
             </button>
             <button
@@ -445,15 +456,15 @@ export default function PersonalizationEditor({
               className={iconBtn}
               disabled={i === questions.length - 1}
               onClick={() => move(i, 1)}
-              aria-label="Aşağı taşı"
+              aria-label={t("Aşağı taşı", "Move down")}
             >
               ↓
             </button>
             <button type="button" className={iconBtn} onClick={() => setEditing({ index: i, q: structuredClone(q), isNew: false })}>
-              Düzenle
+              {t("Düzenle", "Edit")}
             </button>
             <button type="button" className={`${iconBtn} text-red-600`} onClick={() => remove(i)}>
-              Sil
+              {t("Sil", "Delete")}
             </button>
           </li>
         ))}
@@ -467,13 +478,13 @@ export default function PersonalizationEditor({
             disabled={full}
             className="rounded-full border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800"
           >
-            + Alan ekle
+            {t("+ Alan ekle", "+ Add field")}
           </button>
           {menuOpen && (
             <div className="absolute left-0 top-full z-40 mt-2 max-h-80 w-80 overflow-y-auto rounded-xl border border-neutral-200 bg-white py-2 shadow-xl dark:border-neutral-700 dark:bg-neutral-900">
               {reusable.length > 0 && (
                 <>
-                  <p className="px-4 pb-1 pt-1 text-[11px] font-medium text-neutral-500">Daha önce kullanılanlar</p>
+                  <p className="px-4 pb-1 pt-1 text-[11px] font-medium text-neutral-500">{t("Daha önce kullanılanlar", "Used before")}</p>
                   {reusable.map((item, i) => (
                     <button
                       key={i}
@@ -481,12 +492,12 @@ export default function PersonalizationEditor({
                       onClick={() => addFromLibrary(item)}
                       className="flex w-full items-start gap-3 px-4 py-2 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800"
                     >
-                      <span className="mt-0.5 w-5 text-center text-xs text-neutral-500">{KIND_LABELS[kindOf(item.question_type)].icon}</span>
+                      <span className="mt-0.5 w-5 text-center text-xs text-neutral-500">{KIND_LABELS.get(kindOf(item.question_type)).icon}</span>
                       <span className="min-w-0">
                         <span className="block truncate text-sm text-neutral-900 dark:text-neutral-100">{item.question_text}</span>
                         <span className="block truncate text-xs text-neutral-500">
                           {summary(item)}
-                          {item.count > 1 ? ` · ${item.count} listing'de` : ""}
+                          {item.count > 1 ? t(` · ${item.count} listing'de`, ` · in ${item.count} listings`) : ""}
                         </span>
                       </span>
                     </button>
@@ -494,8 +505,8 @@ export default function PersonalizationEditor({
                   <div className="my-1 border-t border-neutral-100 dark:border-neutral-800" />
                 </>
               )}
-              <p className="px-4 pb-1 pt-1 text-[11px] font-medium text-neutral-500">Yeni oluştur</p>
-              {(Object.keys(KIND_LABELS) as Kind[]).map((k) => (
+              <p className="px-4 pb-1 pt-1 text-[11px] font-medium text-neutral-500">{t("Yeni oluştur", "Create new")}</p>
+              {(Object.keys(KIND_TEXT) as Kind[]).map((k) => (
                 <button
                   key={k}
                   type="button"
@@ -505,10 +516,10 @@ export default function PersonalizationEditor({
                   }}
                   className="flex w-full items-start gap-3 px-4 py-2 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800"
                 >
-                  <span className="mt-0.5 w-5 text-center text-xs text-neutral-500">{KIND_LABELS[k].icon}</span>
+                  <span className="mt-0.5 w-5 text-center text-xs text-neutral-500">{KIND_LABELS.get(k).icon}</span>
                   <span>
-                    <span className="block text-sm text-neutral-900 dark:text-neutral-100">{KIND_LABELS[k].label}</span>
-                    <span className="block text-xs text-neutral-500">{KIND_LABELS[k].hint}</span>
+                    <span className="block text-sm text-neutral-900 dark:text-neutral-100">{KIND_LABELS.get(k).label}</span>
+                    <span className="block text-xs text-neutral-500">{KIND_LABELS.get(k).hint}</span>
                   </span>
                 </button>
               ))}
@@ -516,7 +527,7 @@ export default function PersonalizationEditor({
           )}
         </div>
         <span className="text-xs text-neutral-500 dark:text-neutral-400">
-          {questions.length}/{MAX_QUESTIONS} alan kullanılıyor
+          {t(`${questions.length}/${MAX_QUESTIONS} alan kullanılıyor`, `${questions.length}/${MAX_QUESTIONS} fields used`)}
         </span>
       </div>
 

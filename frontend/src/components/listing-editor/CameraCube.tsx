@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { tNow as t } from "@/lib/i18n";
 
 /**
  * Sürüklenerek döndürülen küp — kamera açısını seçmenin arayüzü. Gerçek bir 3D render/önizleme YAPMAZ
@@ -9,20 +10,20 @@ import { useRef, useState } from "react";
  */
 
 const AZIMUTH_STEPS = [
-  { key: "front", deg: 0, label: "Ön" },
-  { key: "front_right", deg: 45, label: "Ön-Sağ" },
-  { key: "right", deg: 90, label: "Sağ" },
-  { key: "back_right", deg: 135, label: "Arka-Sağ" },
-  { key: "back", deg: 180, label: "Arka" },
-  { key: "back_left", deg: 225, label: "Arka-Sol" },
-  { key: "left", deg: 270, label: "Sol" },
-  { key: "front_left", deg: 315, label: "Ön-Sol" },
+  { key: "front", deg: 0, label: ["Ön", "Front"] },
+  { key: "front_right", deg: 45, label: ["Ön-Sağ", "Front-right"] },
+  { key: "right", deg: 90, label: ["Sağ", "Right"] },
+  { key: "back_right", deg: 135, label: ["Arka-Sağ", "Back-right"] },
+  { key: "back", deg: 180, label: ["Arka", "Back"] },
+  { key: "back_left", deg: 225, label: ["Arka-Sol", "Back-left"] },
+  { key: "left", deg: 270, label: ["Sol", "Left"] },
+  { key: "front_left", deg: 315, label: ["Ön-Sol", "Front-left"] },
 ] as const;
 
 const ELEVATION_STEPS = [
-  { key: "low", deg: -28, label: "Alçak" },
-  { key: "eye", deg: 0, label: "Göz hizası" },
-  { key: "high", deg: 28, label: "Yüksek" },
+  { key: "low", deg: -28, label: ["Alçak", "Low"] },
+  { key: "eye", deg: 0, label: ["Göz hizası", "Eye level"] },
+  { key: "high", deg: 28, label: ["Yüksek", "High"] },
 ] as const;
 
 const AZIMUTH_PHRASE: Record<string, string> = {
@@ -151,20 +152,22 @@ export default function CameraCube({ value, onChange }: { value: CameraAngle | n
     onChange({ azimuth: azKey, elevation: key });
   };
 
-  const azLabel = value ? AZIMUTH_STEPS.find((s) => s.key === value.azimuth)?.label : null;
-  const elLabel = value ? ELEVATION_STEPS.find((s) => s.key === value.elevation)?.label : null;
+  const az = value ? AZIMUTH_STEPS.find((s) => s.key === value.azimuth)?.label : null;
+  const el = value ? ELEVATION_STEPS.find((s) => s.key === value.elevation)?.label : null;
+  const azLabel = az ? t(az[0], az[1]) : null;
+  const elLabel = el ? t(el[0], el[1]) : null;
 
   return (
     <div>
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">📐 Kamera açısı</p>
+        <p className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">📐 {t("Kamera açısı", "Camera angle")}</p>
         {value && (
           <button
             type="button"
             onClick={() => onChange(null)}
             className="text-[11px] font-medium text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
           >
-            Temizle
+            {t("Temizle", "Clear")}
           </button>
         )}
       </div>
@@ -186,22 +189,22 @@ export default function CameraCube({ value, onChange }: { value: CameraAngle | n
             }}
             className="select-none"
           >
-            <div onClick={() => selectAzimuth("front")} style={{ ...faceStyle(`translateZ(${HALF}px)`, "#D97757"), cursor: "pointer" }}>ÖN</div>
-            <div onClick={() => selectAzimuth("back")} style={{ ...faceStyle(`rotateY(180deg) translateZ(${HALF}px)`, "#8a3610"), cursor: "pointer" }}>ARKA</div>
-            <div onClick={() => selectAzimuth("right")} style={{ ...faceStyle(`rotateY(90deg) translateZ(${HALF}px)`, "#c9540f"), cursor: "pointer" }}>SAĞ</div>
-            <div onClick={() => selectAzimuth("left")} style={{ ...faceStyle(`rotateY(-90deg) translateZ(${HALF}px)`, "#a8460f"), cursor: "pointer" }}>SOL</div>
-            <div onClick={() => selectElevation("high")} style={{ ...faceStyle(`rotateX(90deg) translateZ(${HALF}px)`, "#ff8a4c"), cursor: "pointer" }}>ÜST</div>
-            <div onClick={() => selectElevation("low")} style={{ ...faceStyle(`rotateX(-90deg) translateZ(${HALF}px)`, "#7a2f0c"), cursor: "pointer" }}>ALT</div>
+            <div onClick={() => selectAzimuth("front")} style={{ ...faceStyle(`translateZ(${HALF}px)`, "#D97757"), cursor: "pointer" }}>{t("ÖN", "FRONT")}</div>
+            <div onClick={() => selectAzimuth("back")} style={{ ...faceStyle(`rotateY(180deg) translateZ(${HALF}px)`, "#8a3610"), cursor: "pointer" }}>{t("ARKA", "BACK")}</div>
+            <div onClick={() => selectAzimuth("right")} style={{ ...faceStyle(`rotateY(90deg) translateZ(${HALF}px)`, "#c9540f"), cursor: "pointer" }}>{t("SAĞ", "RIGHT")}</div>
+            <div onClick={() => selectAzimuth("left")} style={{ ...faceStyle(`rotateY(-90deg) translateZ(${HALF}px)`, "#a8460f"), cursor: "pointer" }}>{t("SOL", "LEFT")}</div>
+            <div onClick={() => selectElevation("high")} style={{ ...faceStyle(`rotateX(90deg) translateZ(${HALF}px)`, "#ff8a4c"), cursor: "pointer" }}>{t("ÜST", "TOP")}</div>
+            <div onClick={() => selectElevation("low")} style={{ ...faceStyle(`rotateX(-90deg) translateZ(${HALF}px)`, "#7a2f0c"), cursor: "pointer" }}>{t("ALT", "BOTTOM")}</div>
           </div>
         </div>
         <div className="min-w-0 flex-1 text-xs text-neutral-500 dark:text-neutral-400">
           {value ? (
             <p>
-              Seçili: <b className="text-neutral-700 dark:text-neutral-200">{azLabel}</b> ·{" "}
+              {t("Seçili", "Selected")}: <b className="text-neutral-700 dark:text-neutral-200">{azLabel}</b> ·{" "}
               <b className="text-neutral-700 dark:text-neutral-200">{elLabel}</b>
             </p>
           ) : (
-            <p>Küpü sürükleyerek çevir, bırakınca en yakın açıya yerleşir. Seçmezsen kamera açısı belirtilmez.</p>
+            <p>{t("Küpü sürükleyerek çevir, bırakınca en yakın açıya yerleşir. Seçmezsen kamera açısı belirtilmez.", "Drag the cube to rotate it; it snaps to the nearest angle when released. If you don't choose one, no camera angle is set.")}</p>
           )}
         </div>
       </div>

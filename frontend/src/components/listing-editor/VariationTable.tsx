@@ -13,6 +13,7 @@ import {
 import VariationManager from "./VariationManager";
 import { Switch } from "./Modal";
 import { VarProperty, VarSettings, thumbUrl } from "./variationTypes";
+import { tNow as t } from "@/lib/i18n";
 
 type EditableRow = {
   product: InventoryProduct;
@@ -28,11 +29,17 @@ type OnProp = { price: number[]; quantity: number[]; sku: number[]; readiness: n
 type Links = { propertyId: number | null; images: Record<string, number> };
 
 const FIELDS: Field[] = ["price", "quantity", "sku", "readinessStateId"];
-const LABEL: Record<Field, string> = { price: "Fiyat", quantity: "Stok", sku: "SKU", readinessStateId: "İşlem profili" };
+const LABEL: Record<Field, [string, string]> = {
+  price: ["Fiyat", "Price"],
+  quantity: ["Stok", "Quantity"],
+  sku: ["SKU", "SKU"],
+  readinessStateId: ["İşlem profili", "Processing profile"],
+};
+const label = (f: Field) => t(...LABEL[f]);
 const DEP_KEY: Record<Field, keyof OnProp> = { price: "price", quantity: "quantity", sku: "sku", readinessStateId: "readiness" };
 
 const currencySymbol = (code: string) =>
-  new Intl.NumberFormat("tr-TR", { style: "currency", currency: code }).formatToParts(0).find((p) => p.type === "currency")?.value ?? code;
+  new Intl.NumberFormat(t("tr-TR", "en-US"), { style: "currency", currency: code }).formatToParts(0).find((p) => p.type === "currency")?.value ?? code;
 
 const inputCls =
   "w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-2 py-1 outline-none focus:border-[#D97757]";
@@ -58,7 +65,7 @@ const valueKey = (p: InventoryProduct, propertyId: number) =>
 const depKey = (p: InventoryProduct, ids: number[]) => ids.map((id) => valueKey(p, id)).join("|");
 
 const variationLabel = (p: InventoryProduct) =>
-  p.property_values.length === 0 ? "Tek ürün" : p.property_values.map((pv) => pv.values.join("/")).join(" · ");
+  p.property_values.length === 0 ? t("Tek ürün", "Single item") : p.property_values.map((pv) => pv.values.join("/")).join(" · ");
 
 // Aynı grupta olan satırlar ilk satırın değerini paylaşır (Etsy *_on_property kuralı).
 function normalize(rows: EditableRow[], onProp: OnProp): EditableRow[] {
@@ -323,19 +330,19 @@ export default function VariationTable({
     return (
       <div key={prop.id} className="mb-6">
         <p className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">{prop.name}</p>
-        <p className="mb-2 text-xs text-neutral-400 dark:text-neutral-500">{keys.length} seçenek</p>
+        <p className="mb-2 text-xs text-neutral-400 dark:text-neutral-500">{t(`${keys.length} seçenek`, `${keys.length} options`)}</p>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs text-neutral-400 dark:text-neutral-500">
-                {links.propertyId === prop.id && <th className={`${th} w-14`}>Fotoğraf</th>}
+                {links.propertyId === prop.id && <th className={`${th} w-14`}>{t("Fotoğraf", "Photo")}</th>}
                 <th className={th}>{prop.name}</th>
                 {cols.map((f) => (
                   <th key={f} className={`${th} w-32`}>
-                    {LABEL[f]}
+                    {label(f)}
                   </th>
                 ))}
-                <th className="w-20 pb-2">Görünür</th>
+                <th className="w-20 pb-2">{t("Görünür", "Visible")}</th>
               </tr>
             </thead>
             <tbody>
@@ -361,7 +368,7 @@ export default function VariationTable({
                         type="checkbox"
                         checked={visible}
                         onChange={(e) => updateWhere(match, { enabled: e.target.checked })}
-                        aria-label={`${key} görünür`}
+                        aria-label={t(`${key} görünür`, `${key} visible`)}
                         className="h-4 w-4 accent-[#D97757]"
                       />
                     </td>
@@ -377,7 +384,7 @@ export default function VariationTable({
             onClick={() => setShowAllVariants((v) => !v)}
             className="mt-2 text-xs font-semibold text-neutral-600 hover:underline dark:text-neutral-300"
           >
-            {showAllVariants ? "Daha az göster" : `Daha fazla göster (${keys.length - VISIBLE_ROWS} tane daha)`}
+            {showAllVariants ? t("Daha az göster", "Show less") : t(`Daha fazla göster (${keys.length - VISIBLE_ROWS} tane daha)`, `Show more (${keys.length - VISIBLE_ROWS} more)`)}
           </button>
         )}
       </div>
@@ -389,7 +396,7 @@ export default function VariationTable({
     const varying = FIELDS.filter((f) => dep(f).length >= 1);
     const symbol = currencySymbol(rows[0]?.product.offerings[0]?.price.currency_code ?? "USD");
     const allSelected = rows.length > 0 && selected.size === rows.length;
-    const title = properties.map((p) => p.name).join(" ve ");
+    const title = properties.map((p) => p.name).join(t(" ve ", " and "));
 
     function applyBulk() {
       const idx = [...selected];
@@ -412,16 +419,16 @@ export default function VariationTable({
     return (
       <div className="mb-6">
         <p className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">{title}</p>
-        <p className="mb-3 text-xs text-neutral-400 dark:text-neutral-500">{rows.length} varyant</p>
+        <p className="mb-3 text-xs text-neutral-400 dark:text-neutral-500">{t(`${rows.length} varyant`, `${rows.length} variants`)}</p>
 
         {selected.size > 0 && (
           <div className="mb-3 flex flex-wrap items-end gap-3 rounded-xl bg-neutral-100 p-3 dark:bg-neutral-800">
             <span className="self-center text-sm font-medium text-neutral-800 dark:text-neutral-100">
-              {selected.size} varyant seçili
+              {t(`${selected.size} varyant seçili`, `${selected.size} variants selected`)}
             </span>
             {varying.map((f) => (
               <label key={f} className="w-32 text-xs text-neutral-500 dark:text-neutral-400">
-                {LABEL[f]}
+                {label(f)}
                 <div className="mt-1">
                   <FieldCell
                     field={f}
@@ -438,16 +445,16 @@ export default function VariationTable({
               disabled={!Object.values(bulk).some((v) => v)}
               className="rounded-full bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-40 dark:bg-neutral-100 dark:text-neutral-900"
             >
-              Seçililere uygula
+              {t("Seçililere uygula", "Apply to selected")}
             </button>
             <button type="button" onClick={() => setVisible(true)} className="text-sm font-medium text-neutral-700 hover:underline dark:text-neutral-200">
-              Görünür yap
+              {t("Görünür yap", "Make visible")}
             </button>
             <button type="button" onClick={() => setVisible(false)} className="text-sm font-medium text-neutral-700 hover:underline dark:text-neutral-200">
-              Gizle
+              {t("Gizle", "Hide")}
             </button>
             <button type="button" onClick={() => setSelected(new Set())} className="text-sm text-neutral-500 hover:underline">
-              Seçimi temizle
+              {t("Seçimi temizle", "Clear selection")}
             </button>
           </div>
         )}
@@ -461,11 +468,11 @@ export default function VariationTable({
                     type="checkbox"
                     checked={allSelected}
                     onChange={(e) => setSelected(e.target.checked ? new Set(rows.map((_, i) => i)) : new Set())}
-                    aria-label="Tümünü seç"
+                    aria-label={t("Tümünü seç", "Select all")}
                     className="h-4 w-4 accent-[#D97757]"
                   />
                 </th>
-                {links.propertyId != null && <th className="w-14 pb-2 pr-3">Fotoğraf</th>}
+                {links.propertyId != null && <th className="w-14 pb-2 pr-3">{t("Fotoğraf", "Photo")}</th>}
                 {properties.map((prop) => (
                   <th key={prop.id} className="whitespace-nowrap pb-2 pr-4">
                     {prop.name}
@@ -473,10 +480,10 @@ export default function VariationTable({
                 ))}
                 {varying.map((f) => (
                   <th key={f} className="min-w-[7.5rem] pb-2 pr-3">
-                    {LABEL[f]}
+                    {label(f)}
                   </th>
                 ))}
-                <th className="w-20 pb-2 text-center">Görünür</th>
+                <th className="w-20 pb-2 text-center">{t("Görünür", "Visible")}</th>
               </tr>
             </thead>
             <tbody>
@@ -499,7 +506,7 @@ export default function VariationTable({
                           return next;
                         })
                       }
-                      aria-label={`${variationLabel(row.product)} seç`}
+                      aria-label={t(`${variationLabel(row.product)} seç`, `Select ${variationLabel(row.product)}`)}
                       className="h-4 w-4 accent-[#D97757]"
                     />
                   </td>
@@ -530,7 +537,7 @@ export default function VariationTable({
                       <Switch
                         checked={row.enabled}
                         onChange={(on) => setRows((prev) => prev.map((r, j) => (j === i ? { ...r, enabled: on } : r)))}
-                        label={`${variationLabel(row.product)} görünür`}
+                        label={t(`${variationLabel(row.product)} görünür`, `${variationLabel(row.product)} visible`)}
                       />
                     </div>
                   </td>
@@ -545,7 +552,7 @@ export default function VariationTable({
             onClick={() => setShowAllVariants((v) => !v)}
             className="mt-2 text-xs font-semibold text-neutral-600 hover:underline dark:text-neutral-300"
           >
-            {showAllVariants ? "Daha az göster" : `Daha fazla göster (${rows.length - VISIBLE_ROWS} tane daha)`}
+            {showAllVariants ? t("Daha az göster", "Show less") : t(`Daha fazla göster (${rows.length - VISIBLE_ROWS} tane daha)`, `Show more (${rows.length - VISIBLE_ROWS} more)`)}
           </button>
         )}
       </div>
@@ -556,17 +563,19 @@ export default function VariationTable({
     <section className="rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-xl">
-          <h2 className="mb-1 text-sm font-semibold text-neutral-900 dark:text-neutral-100">Fiyat &amp; Stok</h2>
+          <h2 className="mb-1 text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("Fiyat & Stok", "Price & Inventory")}</h2>
           <p className="text-xs text-neutral-400 dark:text-neutral-500">
-            Değişikliklerin taslağa otomatik kaydedilir; Etsy&apos;ye &quot;Yayınla&quot; ile gider. Varyasyon eklemek, silmek veya
-            fiyat/stoğun neye göre değiştiğini seçmek için &quot;Varyasyonları yönet&quot;i kullan.
+            {t(
+              'Değişikliklerin taslağa otomatik kaydedilir; Etsy\'ye "Yayınla" ile gider. Varyasyon eklemek, silmek veya fiyat/stoğun neye göre değiştiğini seçmek için "Varyasyonları yönet"i kullan.',
+              'Changes save to the draft automatically and go to Etsy when you publish. Use "Manage variations" to add or delete variations or choose what price and quantity vary by.',
+            )}
           </p>
         </div>
         <button
           onClick={() => setManaging(true)}
           className="rounded-full border border-neutral-300 px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800"
         >
-          Varyasyonları yönet
+          {t("Varyasyonları yönet", "Manage variations")}
         </button>
       </div>
 
@@ -574,8 +583,8 @@ export default function VariationTable({
         <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {sharedFields.map((f) => (
             <label key={f} className="text-xs text-neutral-400 dark:text-neutral-500">
-              {LABEL[f]}
-              {hasProps ? " (tümü)" : ""}
+              {label(f)}
+              {hasProps ? t(" (tümü)", " (all)") : ""}
               <div className="mt-1">
                 <FieldCell field={f} value={first[f]} states={states} onChange={(v) => setField(f, first.product, v)} />
               </div>
@@ -589,7 +598,7 @@ export default function VariationTable({
                 onChange={(e) => updateWhere(() => true, { enabled: e.target.checked })}
                 className="h-4 w-4 accent-[#D97757]"
               />
-              Görünür
+              {t("Görünür", "Visible")}
             </label>
           )}
         </div>
@@ -598,7 +607,7 @@ export default function VariationTable({
       {combinedFields.length > 0 ? renderUnifiedTable() : properties.map(renderPropertyTable)}
 
       {!rows.some((r) => r.enabled) && (
-        <p className="mt-2 text-sm text-red-600">Etsy&apos;de yayınlamak için en az bir varyasyon görünür olmalı.</p>
+        <p className="mt-2 text-sm text-red-600">{t("Etsy'de yayınlamak için en az bir varyasyon görünür olmalı.", "At least one variation must be visible to publish on Etsy.")}</p>
       )}
 
       {managing && (

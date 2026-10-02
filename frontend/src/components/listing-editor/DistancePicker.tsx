@@ -3,10 +3,12 @@
 /** Çekim mesafesi/kadraj seçici — kamera açısı küpüyle aynı mantık: sabit, test edilmiş fotoğrafçılık
  * cümleleri arasından seçim, serbest metinle karışmaz (bkz. CameraCube.tsx, ai/image_gen.py _build_prompt). */
 
+import { tNow as t } from "@/lib/i18n";
+
 const DISTANCE_STEPS = [
-  { key: "close", label: "Yakın çekim", hint: "Ürün detayına odaklı" },
-  { key: "medium", label: "Orta plan", hint: "Ürün + biraz sahne" },
-  { key: "wide", label: "Geniş plan", hint: "Tüm sahne" },
+  { key: "close", label: ["Yakın çekim", "Close-up"], hint: ["Ürün detayına odaklı", "Focused on product detail"] },
+  { key: "medium", label: ["Orta plan", "Medium shot"], hint: ["Ürün + biraz sahne", "Product + some scene"] },
+  { key: "wide", label: ["Geniş plan", "Wide shot"], hint: ["Tüm sahne", "The whole scene"] },
 ] as const;
 
 export type Distance = (typeof DISTANCE_STEPS)[number]["key"];
@@ -34,14 +36,14 @@ export default function DistancePicker({
   return (
     <div>
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">🖼️ Kadraj</p>
+        <p className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">🖼️ {t("Kadraj", "Framing")}</p>
         {value && (
           <button
             type="button"
             onClick={() => onChange(null)}
             className="text-[11px] font-medium text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
           >
-            Temizle
+            {t("Temizle", "Clear")}
           </button>
         )}
       </div>
@@ -51,14 +53,14 @@ export default function DistancePicker({
             key={s.key}
             type="button"
             onClick={() => onChange(value === s.key ? null : s.key)}
-            title={s.hint}
+            title={t(s.hint[0], s.hint[1])}
             className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${vertical ? "w-full" : ""} ${
               value === s.key
                 ? "bg-[#D97757] text-white"
                 : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
             }`}
           >
-            {s.label}
+            {t(s.label[0], s.label[1])}
           </button>
         ))}
       </div>
