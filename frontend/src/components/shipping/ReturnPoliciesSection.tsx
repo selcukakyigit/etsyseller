@@ -5,12 +5,17 @@ import { api, ReturnPolicy, ReturnPolicyInput } from "@/lib/api";
 import { Modal, btnGhost, btnPrimary } from "@/components/listing-editor/Modal";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { SectionHeader, errorText, iconBtn, inputCls, isPermissionError, labelCls, outlineBtn } from "./shared";
+import { tNow, useT } from "@/lib/i18n-client";
 
 const DEADLINES = [7, 14, 21, 30, 45, 60, 90];
 
 export function returnTitle(p: Pick<ReturnPolicy, "accepts_returns" | "accepts_exchanges">): string {
-  if (!p.accepts_returns && !p.accepts_exchanges) return "İade ve değişim kabul edilmiyor";
-  return p.accepts_returns && p.accepts_exchanges ? "İade ve değişim" : p.accepts_returns ? "Yalnızca iade" : "Yalnızca değişim";
+  if (!p.accepts_returns && !p.accepts_exchanges) return tNow("İade ve değişim kabul edilmiyor", "No returns or exchanges");
+  return p.accepts_returns && p.accepts_exchanges
+    ? tNow("İade ve değişim", "Returns and exchanges")
+    : p.accepts_returns
+      ? tNow("Yalnızca iade", "Returns only")
+      : tNow("Yalnızca değişim", "Exchanges only");
 }
 
 function PolicyForm({
@@ -24,6 +29,7 @@ function PolicyForm({
   onCancel: () => void;
   onSave: (v: ReturnPolicyInput) => Promise<void>;
 }) {
+  const { t } = useT();
   const [v, setV] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,14 +50,14 @@ function PolicyForm({
     <Modal
       z={95}
       widthClass="max-w-md"
-      title={editing ? "İade politikasını düzenle" : "Yeni iade politikası"}
+      title={editing ? t("İade politikasını düzenle", "Edit return policy") : t("Yeni iade politikası", "New return policy")}
       footer={
         <>
           <button onClick={onCancel} className={btnGhost}>
-            Vazgeç
+            {t("Vazgeç", "Cancel")}
           </button>
           <button onClick={submit} disabled={busy || (accepts && !v.return_deadline)} className={btnPrimary}>
-            {busy ? "Kaydediliyor…" : "Kaydet"}
+            {busy ? t("Kaydediliyor…", "Saving…") : t("Kaydet", "Save")}
           </button>
         </>
       }
@@ -59,26 +65,26 @@ function PolicyForm({
       <div className="space-y-4">
         <label className="flex items-center gap-2 text-sm text-neutral-800 dark:text-neutral-100">
           <input type="checkbox" checked={v.accepts_returns} onChange={(e) => setV({ ...v, accepts_returns: e.target.checked })} className="h-4 w-4" />
-          İade kabul ediyorum
+          {t("İade kabul ediyorum", "I accept returns")}
         </label>
         <label className="flex items-center gap-2 text-sm text-neutral-800 dark:text-neutral-100">
           <input type="checkbox" checked={v.accepts_exchanges} onChange={(e) => setV({ ...v, accepts_exchanges: e.target.checked })} className="h-4 w-4" />
-          Değişim kabul ediyorum
+          {t("Değişim kabul ediyorum", "I accept exchanges")}
         </label>
         {accepts && (
           <div>
-            <label className={labelCls}>İade süresi</label>
+            <label className={labelCls}>{t("İade süresi", "Return window")}</label>
             <select value={v.return_deadline ?? ""} onChange={(e) => setV({ ...v, return_deadline: e.target.value ? Number(e.target.value) : null })} className={`${inputCls} w-full`}>
-              <option value="">Seç…</option>
+              <option value="">{t("Seç…", "Choose…")}</option>
               {DEADLINES.map((d) => (
                 <option key={d} value={d}>
-                  {d} gün
+                  {d} {t("gün", "days")}
                 </option>
               ))}
             </select>
           </div>
         )}
-        {editing && <p className="text-xs text-amber-700 dark:text-amber-300">Bu politikayı kullanan tüm listing&apos;ler güncellenir.</p>}
+        {editing && <p className="text-xs text-amber-700 dark:text-amber-300">{t("Bu politikayı kullanan tüm listing'ler güncellenir.", "All listings using this policy are updated.")}</p>}
         {error && <p className="text-sm text-red-600">{error}</p>}
       </div>
     </Modal>
@@ -96,6 +102,7 @@ export default function ReturnPoliciesSection({
   onChanged: () => void;
   onPermissionError: () => void;
 }) {
+  const { t } = useT();
   const [form, setForm] = useState<{ id: number | null; initial: ReturnPolicyInput } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirm, confirmElement] = useConfirm();
@@ -114,9 +121,12 @@ export default function ReturnPoliciesSection({
 
   async function remove(p: ReturnPolicy) {
     const ok = await confirm({
-      title: "İade politikası silinsin mi?",
-      message: `"${returnTitle(p)}${p.return_deadline ? ` · ${p.return_deadline} gün` : ""}" Etsy'den silinecek.`,
-      confirmLabel: "Sil",
+      title: t("İade politikası silinsin mi?", "Delete return policy?"),
+      message: t(
+        `"${returnTitle(p)}${p.return_deadline ? ` · ${p.return_deadline} gün` : ""}" Etsy'den silinecek.`,
+        `"${returnTitle(p)}${p.return_deadline ? ` · ${p.return_deadline} days` : ""}" will be deleted from Etsy.`,
+      ),
+      confirmLabel: t("Sil", "Delete"),
       destructive: true,
     });
     if (!ok) return;
@@ -133,25 +143,25 @@ export default function ReturnPoliciesSection({
   return (
     <section>
       <SectionHeader
-        title="İade ve değişim politikaları"
-        description="Listing'lerde alıcıya gösterilen iade koşulları."
+        title={t("İade ve değişim politikaları", "Return and exchange policies")}
+        description={t("Listing'lerde alıcıya gösterilen iade koşulları.", "The return terms shown to buyers on listings.")}
         action={
           <button onClick={() => setForm({ id: null, initial: { accepts_returns: true, accepts_exchanges: true, return_deadline: 14 } })} className={outlineBtn}>
-            + Yeni oluştur
+            {t("+ Yeni oluştur", "+ Create new")}
           </button>
         }
       />
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
-      {policies === null && <p className="text-sm text-neutral-400">Yükleniyor…</p>}
+      {policies === null && <p className="text-sm text-neutral-400">{t("Yükleniyor…", "Loading…")}</p>}
       <div className="space-y-2">
         {(policies ?? []).map((p) => (
           <div key={p.return_policy_id} className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900">
             <div>
               <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
                 {returnTitle(p)}
-                {p.return_deadline ? ` · ${p.return_deadline} gün` : ""}
+                {p.return_deadline ? ` · ${p.return_deadline} ${t("gün", "days")}` : ""}
               </p>
-              <p className="text-xs text-neutral-500">{p.active_listings_count ?? 0} listing&apos;e uygulanmış</p>
+              <p className="text-xs text-neutral-500">{t(`${p.active_listings_count ?? 0} listing'e uygulanmış`, `Used by ${p.active_listings_count ?? 0} listings`)}</p>
             </div>
             <div className="flex items-center gap-1">
               <button
@@ -160,15 +170,15 @@ export default function ReturnPoliciesSection({
                   setForm({ id: p.return_policy_id, initial: { accepts_returns: p.accepts_returns, accepts_exchanges: p.accepts_exchanges, return_deadline: p.return_deadline } })
                 }
               >
-                Düzenle
+                {t("Düzenle", "Edit")}
               </button>
               <button
                 className={`${iconBtn} text-red-600`}
                 disabled={(p.active_listings_count ?? 0) > 0}
-                title={(p.active_listings_count ?? 0) > 0 ? "Listing'lerde kullanılıyor" : "Sil"}
+                title={(p.active_listings_count ?? 0) > 0 ? t("Listing'lerde kullanılıyor", "Used by listings") : t("Sil", "Delete")}
                 onClick={() => remove(p)}
               >
-                Sil
+                {t("Sil", "Delete")}
               </button>
             </div>
           </div>

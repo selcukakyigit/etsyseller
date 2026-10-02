@@ -8,9 +8,11 @@ import ProcessingProfilesSection from "@/components/shipping/ProcessingProfilesS
 import ReturnPoliciesSection from "@/components/shipping/ReturnPoliciesSection";
 import ShippingProfilesSection from "@/components/shipping/ShippingProfilesSection";
 import { ReconnectNotice } from "@/components/shipping/shared";
+import { useT } from "@/lib/i18n-client";
 
 export default function ShippingSettingsPage() {
   const { user, shops, activeShop, setActiveShopId, error: bootError } = useAuthAndShop();
+  const { t } = useT();
   const [processing, setProcessing] = useState<ReadinessStateDefinition[] | null>(null);
   const [profiles, setProfiles] = useState<ShippingProfile[] | null>(null);
   const [policies, setPolicies] = useState<ReturnPolicy[] | null>(null);
@@ -22,10 +24,11 @@ export default function ShippingSettingsPage() {
   const load = useCallback(() => {
     if (shopId === undefined) return;
     setError(null);
-    const fail = (e: unknown) => setError(e instanceof Error ? e.message : "Bilinmeyen hata");
+    const fail = (e: unknown) => setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error"));
     api.shops.readinessStateDefinitions(shopId).then(setProcessing).catch(fail);
     api.shops.shippingProfiles(shopId).then(setProfiles).catch(fail);
     api.shops.returnPolicies(shopId).then(setPolicies).catch(fail);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shopId]);
 
   useEffect(() => {
@@ -36,10 +39,12 @@ export default function ShippingSettingsPage() {
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/shipping">
       <div className="mx-auto max-w-4xl space-y-10 px-6 py-8">
         <div>
-          <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">Kargo ayarları</h1>
+          <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t("Kargo ayarları", "Shipping settings")}</h1>
           <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
-            Mağaza genelindeki işlem, kargo ve iade profilleri. Buradaki değişiklikler doğrudan Etsy&apos;ye yazılır ve profili
-            kullanan tüm listing&apos;leri etkiler.
+            {t(
+              "Mağaza genelindeki işlem, kargo ve iade profilleri. Buradaki değişiklikler doğrudan Etsy'ye yazılır ve profili kullanan tüm listing'leri etkiler.",
+              "Shop-wide processing, shipping and return profiles. Changes here are written directly to Etsy and affect every listing that uses the profile.",
+            )}
           </p>
         </div>
 
@@ -47,7 +52,7 @@ export default function ShippingSettingsPage() {
           <p className="text-sm text-red-600">
             {bootError ?? error}{" "}
             <button type="button" onClick={load} className="font-medium underline">
-              Yeniden dene
+              {t("Yeniden dene", "Try again")}
             </button>
           </p>
         )}
@@ -60,12 +65,14 @@ export default function ShippingSettingsPage() {
             <ReturnPoliciesSection shopId={activeShop.id} policies={policies} onChanged={load} onPermissionError={() => setNeedsReconnect(true)} />
           </>
         ) : (
-          user && shops !== null && <p className="text-sm text-neutral-500">Önce Etsy mağazanı bağla.</p>
+          user && shops !== null && <p className="text-sm text-neutral-500">{t("Önce Etsy mağazanı bağla.", "Connect your Etsy shop first.")}</p>
         )}
 
         <p className="text-xs text-neutral-500">
-          Etsy&apos;de olup burada olmayanlar: sipariş işleme takvimi, ABD ücretsiz kargo garantisi ve kargo yükseltmeleri
-          (Upgrades). Bunlar Etsy panelinden yönetilir.
+          {t(
+            "Etsy'de olup burada olmayanlar: sipariş işleme takvimi, ABD ücretsiz kargo garantisi ve kargo yükseltmeleri (Upgrades). Bunlar Etsy panelinden yönetilir.",
+            "Not available here (manage them on Etsy): the order processing schedule, the US free shipping guarantee and shipping upgrades.",
+          )}
         </p>
       </div>
     </AppShell>

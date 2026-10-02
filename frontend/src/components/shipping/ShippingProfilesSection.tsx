@@ -4,8 +4,9 @@ import { useMemo, useState } from "react";
 import { api, DestinationInput, ShippingProfile, ShippingProfileInput } from "@/lib/api";
 import { Modal, btnGhost, btnPrimary } from "@/components/listing-editor/Modal";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
-import { COUNTRIES, countryName } from "./countries";
+import { countryList, countryName } from "./countries";
 import { SectionHeader, errorText, iconBtn, inputCls, isPermissionError, labelCls, outlineBtn } from "./shared";
+import { T, tNow, useT } from "@/lib/i18n-client";
 
 type Kind = "country" | "eu" | "non_eu" | "everywhere";
 
@@ -31,9 +32,9 @@ const nextKey = () => `d${++keySeq}`;
 const money = (m: { amount: number; divisor: number } | null | undefined) => (m ? m.amount / m.divisor : 0);
 
 function kindName(d: Pick<FormDest, "kind" | "country">): string {
-  if (d.kind === "eu") return "Avrupa Birliği";
-  if (d.kind === "non_eu") return "AB dışı Avrupa";
-  if (d.kind === "everywhere") return "Diğer tüm ülkeler";
+  if (d.kind === "eu") return tNow("Avrupa Birliği", "European Union");
+  if (d.kind === "non_eu") return tNow("AB dışı Avrupa", "Europe (non-EU)");
+  if (d.kind === "everywhere") return tNow("Diğer tüm ülkeler", "Everywhere else");
   return countryName(d.country);
 }
 
@@ -58,7 +59,7 @@ function fromProfile(p: ShippingProfile, copy: boolean): FormState {
     };
   });
   return {
-    title: copy ? `${p.title} (kopya)` : p.title,
+    title: copy ? `${p.title} ${tNow("(kopya)", "(copy)")}` : p.title,
     origin: p.origin_country_iso ?? "TR",
     postal: p.origin_postal_code ?? "",
     dests,
@@ -67,18 +68,18 @@ function fromProfile(p: ShippingProfile, copy: boolean): FormState {
 
 const num = (s: string) => (s.trim() === "" ? NaN : Number(s.replace(",", ".")));
 
-function validate(f: FormState): string | null {
-  if (!f.title.trim()) return "Profil adı gerekli.";
-  if (!f.origin) return "Çıkış ülkesi gerekli.";
-  if (f.dests.length === 0) return "En az bir hedef gerekli.";
+function validate(f: FormState, t: T): string | null {
+  if (!f.title.trim()) return t("Profil adı gerekli.", "Profile name is required.");
+  if (!f.origin) return t("Çıkış ülkesi gerekli.", "Origin country is required.");
+  if (f.dests.length === 0) return t("En az bir hedef gerekli.", "At least one destination is required.");
   for (const d of f.dests) {
-    const name = kindName(d) || "Hedef";
-    if (d.kind === "country" && !d.country) return "Bir hedef için ülke seçilmemiş.";
-    if (!d.free && (!(num(d.primary) >= 0) || !(num(d.secondary) >= 0))) return `${name}: ücretleri gir (0 veya üzeri).`;
+    const name = kindName(d) || t("Hedef", "Destination");
+    if (d.kind === "country" && !d.country) return t("Bir hedef için ülke seçilmemiş.", "A destination has no country selected.");
+    if (!d.free && (!(num(d.primary) >= 0) || !(num(d.secondary) >= 0))) return t(`${name}: ücretleri gir (0 veya üzeri).`, `${name}: enter the rates (0 or more).`);
     if (!d.carrierBased) {
       const mn = num(d.min);
       const mx = num(d.max);
-      if (!(mn >= 1) || !(mx >= mn)) return `${name}: teslimat günleri (en az ≥ 1, en fazla ≥ en az) geçersiz.`;
+      if (!(mn >= 1) || !(mx >= mn)) return t(`${name}: teslimat günleri (en az ≥ 1, en fazla ≥ en az) geçersiz.`, `${name}: delivery days are invalid (min ≥ 1, max ≥ min).`);
     }
   }
   return null;
@@ -113,16 +114,18 @@ function ProfileForm({
   /** false döndürürse (kullanıcı onaydan vazgeçti) form açık kalır. */
   onSave: (v: ShippingProfileInput) => Promise<boolean>;
 }) {
+  const { t, lang, locale } = useT();
+  const countries = useMemo(() => countryList(), [lang]); // eslint-disable-line react-hooks/exhaustive-deps
   const [f, setF] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const symbol = useMemo(
-    () => new Intl.NumberFormat("tr-TR", { style: "currency", currency }).formatToParts(0).find((p) => p.type === "currency")?.value ?? currency,
-    [currency]
+    () => new Intl.NumberFormat(locale, { style: "currency", currency }).formatToParts(0).find((p) => p.type === "currency")?.value ?? currency,
+    [currency, locale]
   );
 
   const used = new Set(f.dests.map((d) => (d.kind === "country" ? `c:${d.country}` : d.kind)));
-  const problem = validate(f);
+  const problem = validate(f, t);
   const patchDest = (key: string, p: Partial<FormDest>) => setF((prev) => ({ ...prev, dests: prev.dests.map((d) => (d.key === key ? { ...d, ...p } : d)) }));
 
   function addDest(value: string) {
@@ -157,10 +160,14 @@ function ProfileForm({
       footer={
         <>
           <button onClick={onCancel} className={btnGhost}>
-            Vazgeç
+            {t("Vazgeç", "Cancel")}
           </button>
           <button onClick={submit} disabled={!!problem || busy} className={btnPrimary}>
-            {busy ? "Kaydediliyor…" : affectedListings > 0 ? `Kaydet ve uygula (${affectedListings} listing)` : "Kaydet"}
+            {busy
+              ? t("Kaydediliyor…", "Saving…")
+              : affectedListings > 0
+                ? t(`Kaydet ve uygula (${affectedListings} listing)`, `Save and apply (${affectedListings} listings)`)
+                : t("Kaydet", "Save")}
           </button>
         </>
       }
@@ -168,19 +175,22 @@ function ProfileForm({
       <div className="space-y-6">
         {affectedListings > 0 && (
           <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-            Bu profil <b>{affectedListings} listing</b>&apos;de kullanılıyor; değişiklik hepsini anında etkiler.
+            {t(
+              `Bu profil ${affectedListings} listing'de kullanılıyor; değişiklik hepsini anında etkiler.`,
+              `This profile is used by ${affectedListings} listings; the change affects all of them immediately.`,
+            )}
           </p>
         )}
 
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="sm:col-span-3">
-            <label className={labelCls}>Profil adı</label>
+            <label className={labelCls}>{t("Profil adı", "Profile name")}</label>
             <input value={f.title} maxLength={100} onChange={(e) => setF({ ...f, title: e.target.value })} className={`${inputCls} w-full`} />
           </div>
           <div className="sm:col-span-2">
-            <label className={labelCls}>Çıkış ülkesi</label>
+            <label className={labelCls}>{t("Çıkış ülkesi", "Origin country")}</label>
             <select value={f.origin} onChange={(e) => setF({ ...f, origin: e.target.value })} className={`${inputCls} w-full`}>
-              {COUNTRIES.map((c) => (
+              {countries.map((c) => (
                 <option key={c.code} value={c.code}>
                   {c.name}
                 </option>
@@ -188,33 +198,33 @@ function ProfileForm({
             </select>
           </div>
           <div>
-            <label className={labelCls}>Çıkış posta kodu</label>
+            <label className={labelCls}>{t("Çıkış posta kodu", "Origin postal code")}</label>
             <input value={f.postal} onChange={(e) => setF({ ...f, postal: e.target.value })} className={`${inputCls} w-full`} />
           </div>
         </div>
 
         <div>
-          <p className="mb-2 text-sm font-semibold text-neutral-900 dark:text-neutral-100">Standart kargo</p>
+          <p className="mb-2 text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("Standart kargo", "Standard shipping")}</p>
           <div className="space-y-4">
             {f.dests.map((d) => (
               <div key={d.key} className="rounded-xl border border-neutral-200 p-4 dark:border-neutral-800">
                 <div className="mb-3 flex items-center justify-between">
                   <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{kindName(d)}</p>
                   <button type="button" className={`${iconBtn} text-red-600`} disabled={f.dests.length <= 1} onClick={() => setF((prev) => ({ ...prev, dests: prev.dests.filter((x) => x.key !== d.key) }))}>
-                    Kaldır
+                    {t("Kaldır", "Remove")}
                   </button>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
-                    <label className={labelCls}>Ne kadar ücret alacaksın</label>
+                    <label className={labelCls}>{t("Ne kadar ücret alacaksın", "What you will charge")}</label>
                     <select value={d.free ? "free" : "fixed"} onChange={(e) => patchDest(d.key, { free: e.target.value === "free" })} className={`${inputCls} w-full`}>
-                      <option value="free">Ücretsiz kargo</option>
-                      <option value="fixed">Sabit ücret</option>
+                      <option value="free">{t("Ücretsiz kargo", "Free shipping")}</option>
+                      <option value="fixed">{t("Sabit ücret", "Fixed price")}</option>
                     </select>
                   </div>
                   {!d.carrierBased ? (
                     <div>
-                      <label className={labelCls}>Teslimat süresi (iş günü)</label>
+                      <label className={labelCls}>{t("Teslimat süresi (iş günü)", "Delivery time (business days)")}</label>
                       <div className="flex items-center gap-2">
                         <input value={d.min} onChange={(e) => patchDest(d.key, { min: e.target.value })} inputMode="numeric" className={`${inputCls} w-full`} />
                         <span>–</span>
@@ -222,19 +232,19 @@ function ProfileForm({
                       </div>
                     </div>
                   ) : (
-                    <p className="self-end text-xs text-neutral-500">Teslimat süresi kargo servisinden hesaplanır (değiştirilmez).</p>
+                    <p className="self-end text-xs text-neutral-500">{t("Teslimat süresi kargo servisinden hesaplanır (değiştirilmez).", "Delivery time is calculated from the carrier service (cannot be changed).")}</p>
                   )}
                   {!d.free && (
                     <>
                       <div>
-                        <label className={labelCls}>Bir ürün</label>
+                        <label className={labelCls}>{t("Bir ürün", "One item")}</label>
                         <div className="flex items-center gap-1.5">
                           <span className="text-neutral-500">{symbol}</span>
                           <input value={d.primary} onChange={(e) => patchDest(d.key, { primary: e.target.value })} inputMode="decimal" className={`${inputCls} w-full`} />
                         </div>
                       </div>
                       <div>
-                        <label className={labelCls}>Ek ürün</label>
+                        <label className={labelCls}>{t("Ek ürün", "Additional item")}</label>
                         <div className="flex items-center gap-1.5">
                           <span className="text-neutral-500">{symbol}</span>
                           <input value={d.secondary} onChange={(e) => patchDest(d.key, { secondary: e.target.value })} inputMode="decimal" className={`${inputCls} w-full`} />
@@ -248,13 +258,13 @@ function ProfileForm({
           </div>
 
           <div className="mt-3">
-            <label className={labelCls}>Hedef ekle</label>
+            <label className={labelCls}>{t("Hedef ekle", "Add destination")}</label>
             <select value="" onChange={(e) => addDest(e.target.value)} className={`${inputCls} w-full sm:w-72`}>
-              <option value="">Seç…</option>
-              {!used.has("eu") && <option value="eu">Avrupa Birliği</option>}
-              {!used.has("non_eu") && <option value="non_eu">AB dışı Avrupa</option>}
-              {!used.has("everywhere") && <option value="everywhere">Diğer tüm ülkeler</option>}
-              {COUNTRIES.filter((c) => !used.has(`c:${c.code}`)).map((c) => (
+              <option value="">{t("Seç…", "Choose…")}</option>
+              {!used.has("eu") && <option value="eu">{t("Avrupa Birliği", "European Union")}</option>}
+              {!used.has("non_eu") && <option value="non_eu">{t("AB dışı Avrupa", "Europe (non-EU)")}</option>}
+              {!used.has("everywhere") && <option value="everywhere">{t("Diğer tüm ülkeler", "Everywhere else")}</option>}
+              {countries.filter((c) => !used.has(`c:${c.code}`)).map((c) => (
                 <option key={c.code} value={`c:${c.code}`}>
                   {c.name}
                 </option>
@@ -281,6 +291,7 @@ export default function ShippingProfilesSection({
   onChanged: () => void;
   onPermissionError: () => void;
 }) {
+  const { t } = useT();
   const [form, setForm] = useState<{ id: number | null; title: string; initial: FormState; affected: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirm, confirmElement] = useConfirm();
@@ -290,9 +301,12 @@ export default function ShippingProfilesSection({
   async function save(v: ShippingProfileInput): Promise<boolean> {
     if (form?.id && form.affected > 0) {
       const ok = await confirm({
-        title: `${form.affected} listing etkilenecek`,
-        message: "Bu değişiklik profili kullanan tüm listing'lere anında uygulanır. Devam edilsin mi?",
-        confirmLabel: "Kaydet ve uygula",
+        title: t(`${form.affected} listing etkilenecek`, `${form.affected} listings will be affected`),
+        message: t(
+          "Bu değişiklik profili kullanan tüm listing'lere anında uygulanır. Devam edilsin mi?",
+          "This change applies immediately to every listing that uses the profile. Continue?",
+        ),
+        confirmLabel: t("Kaydet ve uygula", "Save and apply"),
       });
       if (!ok) return false;
     }
@@ -310,9 +324,9 @@ export default function ShippingProfilesSection({
 
   async function remove(p: ShippingProfile) {
     const ok = await confirm({
-      title: "Kargo profili silinsin mi?",
-      message: `"${p.title}" Etsy'den silinecek.`,
-      confirmLabel: "Sil",
+      title: t("Kargo profili silinsin mi?", "Delete shipping profile?"),
+      message: t(`"${p.title}" Etsy'den silinecek.`, `"${p.title}" will be deleted from Etsy.`),
+      confirmLabel: t("Sil", "Delete"),
       destructive: true,
     });
     if (!ok) return;
@@ -336,24 +350,27 @@ export default function ShippingProfilesSection({
   return (
     <section>
       <SectionHeader
-        title="Kargo profilleri"
-        description="Benzer kargo ücretli listing'ler için ortak profiller. Bir profili düzenlemek, onu kullanan tüm listing'leri etkiler."
+        title={t("Kargo profilleri", "Shipping profiles")}
+        description={t(
+          "Benzer kargo ücretli listing'ler için ortak profiller. Bir profili düzenlemek, onu kullanan tüm listing'leri etkiler.",
+          "Shared profiles for listings with similar shipping rates. Editing a profile affects every listing that uses it.",
+        )}
         action={
-          <button onClick={() => setForm({ id: null, title: "Yeni kargo profili", initial: blankForm(), affected: 0 })} className={outlineBtn}>
-            + Profil oluştur
+          <button onClick={() => setForm({ id: null, title: t("Yeni kargo profili", "New shipping profile"), initial: blankForm(), affected: 0 })} className={outlineBtn}>
+            {t("+ Profil oluştur", "+ Create profile")}
           </button>
         }
       />
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
-      {profiles === null && <p className="text-sm text-neutral-400">Yükleniyor…</p>}
+      {profiles === null && <p className="text-sm text-neutral-400">{t("Yükleniyor…", "Loading…")}</p>}
       <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs font-semibold text-neutral-500">
-              <th className="px-4 py-3">Ad</th>
-              <th className="px-4 py-3">Çıkış</th>
-              <th className="px-4 py-3">Aktif listing</th>
-              <th className="px-4 py-3 text-right">İşlemler</th>
+              <th className="px-4 py-3">{t("Ad", "Name")}</th>
+              <th className="px-4 py-3">{t("Çıkış", "Origin")}</th>
+              <th className="px-4 py-3">{t("Aktif listing", "Active listings")}</th>
+              <th className="px-4 py-3 text-right">{t("İşlemler", "Actions")}</th>
             </tr>
           </thead>
           <tbody>
@@ -365,7 +382,7 @@ export default function ShippingProfilesSection({
                   <td className="px-4 py-3 font-medium text-neutral-900 dark:text-neutral-100">
                     {p.title}
                     <span className="ml-2 rounded-full border border-neutral-400 px-2 py-0.5 text-[10px] font-medium text-neutral-600 dark:text-neutral-300">
-                      {calculated ? "Hesaplanan" : "Sabit"}
+                      {calculated ? t("Hesaplanan", "Calculated") : t("Sabit", "Fixed")}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-neutral-600 dark:text-neutral-300">{p.origin_postal_code ?? p.origin_country_iso}</td>
@@ -375,26 +392,26 @@ export default function ShippingProfilesSection({
                       <button
                         className={iconBtn}
                         disabled={calculated}
-                        title={calculated ? "Hesaplanan profiller yalnızca Etsy panelinden düzenlenir" : "Düzenle"}
-                        onClick={() => setForm({ id: p.shipping_profile_id, title: `Düzenle: ${p.title}`, initial: fromProfile(p, false), affected: n })}
+                        title={calculated ? t("Hesaplanan profiller yalnızca Etsy panelinden düzenlenir", "Calculated profiles can only be edited on Etsy") : t("Düzenle", "Edit")}
+                        onClick={() => setForm({ id: p.shipping_profile_id, title: `${t("Düzenle", "Edit")}: ${p.title}`, initial: fromProfile(p, false), affected: n })}
                       >
-                        Düzenle
+                        {t("Düzenle", "Edit")}
                       </button>
                       <button
                         className={iconBtn}
                         disabled={calculated}
-                        title="Kopyala"
-                        onClick={() => setForm({ id: null, title: "Profili kopyala", initial: fromProfile(p, true), affected: 0 })}
+                        title={t("Kopyala", "Copy")}
+                        onClick={() => setForm({ id: null, title: t("Profili kopyala", "Copy profile"), initial: fromProfile(p, true), affected: 0 })}
                       >
-                        Kopyala
+                        {t("Kopyala", "Copy")}
                       </button>
                       <button
                         className={`${iconBtn} text-red-600`}
                         disabled={n > 0}
-                        title={n > 0 ? "Listing'lerde kullanılıyor" : "Sil"}
+                        title={n > 0 ? t("Listing'lerde kullanılıyor", "Used by listings") : t("Sil", "Delete")}
                         onClick={() => remove(p)}
                       >
-                        Sil
+                        {t("Sil", "Delete")}
                       </button>
                     </div>
                   </td>
@@ -404,7 +421,12 @@ export default function ShippingProfilesSection({
           </tbody>
         </table>
       </div>
-      <p className="mt-2 text-xs text-neutral-500">Aktif listing sayısı yerel önbellekteki listing&apos;lerden hesaplanır; tam senkronizasyondan sonra Etsy ile aynı olur.</p>
+      <p className="mt-2 text-xs text-neutral-500">
+        {t(
+          "Aktif listing sayısı yerel önbellekteki listing'lerden hesaplanır; tam senkronizasyondan sonra Etsy ile aynı olur.",
+          "The active listing count is calculated from locally cached listings; it matches Etsy after a full sync.",
+        )}
+      </p>
       {form && (
         <ProfileForm
           initial={form.initial}

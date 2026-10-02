@@ -2,6 +2,7 @@
 
 import { ReactNode } from "react";
 import { ApiError, api } from "@/lib/api";
+import { tNow, useT } from "@/lib/i18n-client";
 
 export const inputCls =
   "rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-[#D97757] dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
@@ -13,29 +14,32 @@ export const outlineBtn =
 
 /** Yazma isteği Etsy yetkisi yüzünden reddedildiyse (shops_w yok) true. */
 export function isPermissionError(e: unknown): boolean {
-  if (e instanceof ApiError && e.status === 403) return true;
   const msg = e instanceof Error ? e.message : "";
+  if (msg.startsWith("Demo shop")) return false; // demo mağaza Etsy'ye hiç yazmaz; yeniden bağlanmak çözüm değil
+  if (e instanceof ApiError && e.status === 403) return true;
   return /scope|permission|forbidden|shops_w|yetki/i.test(msg);
 }
 
 export function errorText(e: unknown): string {
-  return e instanceof Error ? e.message : "Bilinmeyen hata";
+  return e instanceof Error ? e.message : tNow("Bilinmeyen hata", "Unknown error");
 }
 
 /** Etsy yazma yetkisi (shops_w) için hesabı yeniden bağlama uyarısı. */
 export function ReconnectNotice({ compact, scope = "shops_w" }: { compact?: boolean; scope?: string }) {
+  const { t } = useT();
   return (
     <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-      <p className="font-semibold">Etsy&apos;de yazma yetkisi gerekiyor</p>
+      <p className="font-semibold">{t("Etsy'de yazma yetkisi gerekiyor", "Etsy write permission needed")}</p>
       <p className="mt-1 text-xs">
-        Bu işlem için Etsy hesabını yeni yetkiyle (<code>{scope}</code>) bir kez yeniden bağlaman gerekiyor. Mevcut mağaza ve verilerin korunur.
+        {t("Bu işlem için Etsy hesabını yeni yetkiyle", "This action needs you to reconnect your Etsy account once with the new permission")} (<code>{scope}</code>)
+        {t(" bir kez yeniden bağlaman gerekiyor. Mevcut mağaza ve verilerin korunur.", ". Your shop and data are kept.")}
       </p>
       {!compact && (
         <a
           href={api.shops.connectUrl()}
           className="mt-3 inline-block rounded-full bg-[#D97757] px-4 py-2 text-sm font-semibold text-white hover:bg-[#C6613F]"
         >
-          Etsy&apos;yi yeniden bağla
+          {t("Etsy'yi yeniden bağla", "Reconnect Etsy")}
         </a>
       )}
     </div>

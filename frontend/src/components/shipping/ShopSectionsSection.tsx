@@ -5,6 +5,7 @@ import { api, ShopSection } from "@/lib/api";
 import { Modal, btnGhost, btnPrimary } from "@/components/listing-editor/Modal";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { SectionHeader, errorText, iconBtn, inputCls, isPermissionError, outlineBtn } from "./shared";
+import { useT } from "@/lib/i18n-client";
 
 const TITLE_MAX = 24; // Etsy'nin mağaza bölümü başlığı sınırı
 const MAX_SECTIONS = 20; // Etsy: bir mağaza en fazla 20 bölüm kullanabilir
@@ -20,17 +21,18 @@ function SectionForm({
   onCancel: () => void;
   onSave: (title: string) => Promise<void>;
 }) {
+  const { t } = useT();
   const [title, setTitle] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function submit() {
-    const t = title.trim();
-    if (!t) return;
+    const trimmed = title.trim();
+    if (!trimmed) return;
     setBusy(true);
     setError(null);
     try {
-      await onSave(t);
+      await onSave(trimmed);
     } catch (e) {
       setError(errorText(e));
       setBusy(false);
@@ -41,14 +43,14 @@ function SectionForm({
     <Modal
       z={95}
       widthClass="max-w-sm"
-      title={editing ? "Bölümü yeniden adlandır" : "Yeni bölüm"}
+      title={editing ? t("Bölümü yeniden adlandır", "Rename section") : t("Yeni bölüm", "New section")}
       footer={
         <>
           <button onClick={onCancel} className={btnGhost}>
-            Vazgeç
+            {t("Vazgeç", "Cancel")}
           </button>
           <button onClick={submit} disabled={busy || !title.trim()} className={btnPrimary}>
-            {busy ? "Kaydediliyor…" : "Kaydet"}
+            {busy ? t("Kaydediliyor…", "Saving…") : t("Kaydet", "Save")}
           </button>
         </>
       }
@@ -64,7 +66,7 @@ function SectionForm({
               void submit();
             }
           }}
-          placeholder="Bölüm başlığı"
+          placeholder={t("Bölüm başlığı", "Section title")}
           className={`${inputCls} w-full`}
         />
         <p className="text-right text-xs text-neutral-400">
@@ -94,6 +96,7 @@ export default function ShopSectionsSection({
    * başlığıyla çakışmasın diye; "+ Yeni bölüm" üstte, sade bir satırda kalır. */
   compact?: boolean;
 }) {
+  const { t } = useT();
   const [form, setForm] = useState<{ id: number | null; initial: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirm, confirmElement] = useConfirm();
@@ -113,9 +116,9 @@ export default function ShopSectionsSection({
 
   async function remove(s: ShopSection) {
     const ok = await confirm({
-      title: "Bölüm silinsin mi?",
-      message: `"${s.title}" Etsy'den silinecek.`,
-      confirmLabel: "Sil",
+      title: t("Bölüm silinsin mi?", "Delete section?"),
+      message: t(`"${s.title}" Etsy'den silinecek.`, `"${s.title}" will be deleted from Etsy.`),
+      confirmLabel: t("Sil", "Delete"),
       destructive: true,
     });
     if (!ok) return;
@@ -130,8 +133,8 @@ export default function ShopSectionsSection({
   }
 
   const addButton = (
-    <button onClick={() => setForm({ id: null, initial: "" })} disabled={atLimit} title={atLimit ? `Etsy sınırı: en fazla ${MAX_SECTIONS} bölüm` : undefined} className={`${outlineBtn} disabled:opacity-40`}>
-      + Yeni bölüm
+    <button onClick={() => setForm({ id: null, initial: "" })} disabled={atLimit} title={atLimit ? t(`Etsy sınırı: en fazla ${MAX_SECTIONS} bölüm`, `Etsy limit: up to ${MAX_SECTIONS} sections`) : undefined} className={`${outlineBtn} disabled:opacity-40`}>
+      {t("+ Yeni bölüm", "+ New section")}
     </button>
   );
 
@@ -140,24 +143,33 @@ export default function ShopSectionsSection({
       {compact ? (
         <div className="mb-3 flex items-center justify-between gap-3">
           <p className="text-xs text-neutral-500 dark:text-neutral-400">
-            {sections?.length ?? 0}/{MAX_SECTIONS} bölüm kullanılıyor · sıralama Etsy&apos;nin kendi mantığına göre belirleniyor
+            {t(
+              `${sections?.length ?? 0}/${MAX_SECTIONS} bölüm kullanılıyor · sıralama Etsy'nin kendi mantığına göre belirleniyor`,
+              `${sections?.length ?? 0}/${MAX_SECTIONS} sections used · Etsy decides the order`,
+            )}
           </p>
           {addButton}
         </div>
       ) : (
         <SectionHeader
-          title="Mağaza bölümleri"
-          description={`Listing'leri gruplamak için kullanılan bölümler (${sections?.length ?? 0}/${MAX_SECTIONS}). Etsy'nin API'si sıralamayı (rank) desteklemiyor; sıra Etsy'nin kendi mantığına göre belirleniyor.`}
+          title={t("Mağaza bölümleri", "Shop sections")}
+          description={t(
+            `Listing'leri gruplamak için kullanılan bölümler (${sections?.length ?? 0}/${MAX_SECTIONS}). Etsy'nin API'si sıralamayı (rank) desteklemiyor; sıra Etsy'nin kendi mantığına göre belirleniyor.`,
+            `Sections used to group listings (${sections?.length ?? 0}/${MAX_SECTIONS}). Etsy's API does not support ordering (rank); Etsy decides the order.`,
+          )}
           action={addButton}
         />
       )}
       {atLimit && (
         <p className="mb-2 text-xs text-amber-700 dark:text-amber-300">
-          Etsy sınırı: en fazla {MAX_SECTIONS} bölüm kullanılabilir. Yeni eklemek için önce kullanılmayan bir bölümü sil.
+          {t(
+            `Etsy sınırı: en fazla ${MAX_SECTIONS} bölüm kullanılabilir. Yeni eklemek için önce kullanılmayan bir bölümü sil.`,
+            `Etsy limit: up to ${MAX_SECTIONS} sections. Delete an unused section before adding a new one.`,
+          )}
         </p>
       )}
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
-      {sections === null && <p className="text-sm text-neutral-400">Yükleniyor…</p>}
+      {sections === null && <p className="text-sm text-neutral-400">{t("Yükleniyor…", "Loading…")}</p>}
       <div className="space-y-2">
         {(sections ?? []).map((s) => (
           <div
@@ -166,24 +178,24 @@ export default function ShopSectionsSection({
           >
             <div>
               <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{s.title}</p>
-              <p className="text-xs text-neutral-500">{s.active_listing_count ?? 0} aktif listing</p>
+              <p className="text-xs text-neutral-500">{t(`${s.active_listing_count ?? 0} aktif listing`, `${s.active_listing_count ?? 0} active listings`)}</p>
             </div>
             <div className="flex items-center gap-1">
               <button className={iconBtn} onClick={() => setForm({ id: s.shop_section_id, initial: s.title })}>
-                Yeniden adlandır
+                {t("Yeniden adlandır", "Rename")}
               </button>
               <button
                 className={`${iconBtn} text-red-600`}
                 disabled={(s.active_listing_count ?? 0) > 0}
-                title={(s.active_listing_count ?? 0) > 0 ? "Listing'lerde kullanılıyor" : "Sil"}
+                title={(s.active_listing_count ?? 0) > 0 ? t("Listing'lerde kullanılıyor", "Used by listings") : t("Sil", "Delete")}
                 onClick={() => remove(s)}
               >
-                Sil
+                {t("Sil", "Delete")}
               </button>
             </div>
           </div>
         ))}
-        {sections && sections.length === 0 && <p className="text-sm text-neutral-400">Henüz bölüm yok.</p>}
+        {sections && sections.length === 0 && <p className="text-sm text-neutral-400">{t("Henüz bölüm yok.", "No sections yet.")}</p>}
       </div>
       {form && <SectionForm initial={form.initial} editing={form.id !== null} onCancel={() => setForm(null)} onSave={save} />}
       {confirmElement}

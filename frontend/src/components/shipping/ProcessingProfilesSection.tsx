@@ -5,10 +5,12 @@ import { api, ProcessingProfileInput, ReadinessStateDefinition } from "@/lib/api
 import { Modal, btnGhost, btnPrimary } from "@/components/listing-editor/Modal";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { Pager, SectionHeader, errorText, iconBtn, inputCls, isPermissionError, labelCls, outlineBtn } from "./shared";
+import { tNow, useT } from "@/lib/i18n-client";
 
 const PAGE = 5;
 
-export const processingTitle = (state: string) => (state === "made_to_order" ? "Sipariş üzerine üretim" : "Kargoya hazır");
+export const processingTitle = (state: string) =>
+  state === "made_to_order" ? tNow("Sipariş üzerine üretim", "Made to order") : tNow("Kargoya hazır", "Ready to ship");
 
 /** Etsy etiketinden ("1-2 weeks", "3 days") süre ve birimi çıkarır; olmazsa gün değerlerine düşer. */
 function parseDuration(p: ReadinessStateDefinition): { min: number; max: number; unit: "days" | "weeks" } {
@@ -32,6 +34,7 @@ function ProfileForm({
   onCancel: () => void;
   onSave: (v: ProcessingProfileInput) => Promise<void>;
 }) {
+  const { t } = useT();
   const [v, setV] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,50 +55,50 @@ function ProfileForm({
     <Modal
       z={95}
       widthClass="max-w-md"
-      title={editing ? "İşlem profilini düzenle" : "Yeni işlem profili"}
+      title={editing ? t("İşlem profilini düzenle", "Edit processing profile") : t("Yeni işlem profili", "New processing profile")}
       footer={
         <>
           <button onClick={onCancel} className={btnGhost}>
-            Vazgeç
+            {t("Vazgeç", "Cancel")}
           </button>
           <button onClick={submit} disabled={!valid || busy} className={btnPrimary}>
-            {busy ? "Kaydediliyor…" : "Kaydet"}
+            {busy ? t("Kaydediliyor…", "Saving…") : t("Kaydet", "Save")}
           </button>
         </>
       }
     >
       <div className="space-y-4">
         <div>
-          <label className={labelCls}>Tür</label>
+          <label className={labelCls}>{t("Tür", "Type")}</label>
           <select
             value={v.readiness_state}
             onChange={(e) => setV({ ...v, readiness_state: e.target.value as ProcessingProfileInput["readiness_state"] })}
             className={`${inputCls} w-full`}
           >
-            <option value="ready_to_ship">Kargoya hazır</option>
-            <option value="made_to_order">Sipariş üzerine üretim</option>
+            <option value="ready_to_ship">{t("Kargoya hazır", "Ready to ship")}</option>
+            <option value="made_to_order">{t("Sipariş üzerine üretim", "Made to order")}</option>
           </select>
         </div>
         <div className="flex gap-3">
           <div className="flex-1">
-            <label className={labelCls}>En az</label>
+            <label className={labelCls}>{t("En az", "Minimum")}</label>
             <input type="number" min={1} value={v.min_processing_time} onChange={(e) => setV({ ...v, min_processing_time: Number(e.target.value) })} className={`${inputCls} w-full`} />
           </div>
           <div className="flex-1">
-            <label className={labelCls}>En fazla</label>
+            <label className={labelCls}>{t("En fazla", "Maximum")}</label>
             <input type="number" min={1} value={v.max_processing_time} onChange={(e) => setV({ ...v, max_processing_time: Number(e.target.value) })} className={`${inputCls} w-full`} />
           </div>
           <div className="flex-1">
-            <label className={labelCls}>Birim</label>
+            <label className={labelCls}>{t("Birim", "Unit")}</label>
             <select value={v.processing_time_unit} onChange={(e) => setV({ ...v, processing_time_unit: e.target.value as "days" | "weeks" })} className={`${inputCls} w-full`}>
-              <option value="days">Gün</option>
-              <option value="weeks">Hafta</option>
+              <option value="days">{t("Gün", "Days")}</option>
+              <option value="weeks">{t("Hafta", "Weeks")}</option>
             </select>
           </div>
         </div>
         {editing && (
           <p className="text-xs text-amber-700 dark:text-amber-300">
-            Bu profili kullanan tüm listing&apos;ler yeni süreyle güncellenir.
+            {t("Bu profili kullanan tüm listing'ler yeni süreyle güncellenir.", "All listings using this profile are updated with the new time.")}
           </p>
         )}
         {error && <p className="text-sm text-red-600">{error}</p>}
@@ -115,6 +118,7 @@ export default function ProcessingProfilesSection({
   onChanged: () => void;
   onPermissionError: () => void;
 }) {
+  const { t } = useT();
   const [page, setPage] = useState(0);
   const [form, setForm] = useState<{ id: number | null; initial: ProcessingProfileInput } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -142,9 +146,12 @@ export default function ProcessingProfilesSection({
 
   async function remove(p: ReadinessStateDefinition) {
     const ok = await confirm({
-      title: "İşlem profili silinsin mi?",
-      message: `"${processingTitle(p.readiness_state)} (${p.processing_days_display_label})" Etsy'den silinecek.`,
-      confirmLabel: "Sil",
+      title: t("İşlem profili silinsin mi?", "Delete processing profile?"),
+      message: t(
+        `"${processingTitle(p.readiness_state)} (${p.processing_days_display_label})" Etsy'den silinecek.`,
+        `"${processingTitle(p.readiness_state)} (${p.processing_days_display_label})" will be deleted from Etsy.`,
+      ),
+      confirmLabel: t("Sil", "Delete"),
       destructive: true,
     });
     if (!ok) return;
@@ -161,8 +168,11 @@ export default function ProcessingProfilesSection({
   return (
     <section>
       <SectionHeader
-        title="İşlem profilleri"
-        description="Siparişlerin ne kadar sürede hazırlanacağını belirleyen profiller. Listing'lere ya da varyasyonlara uygulanır."
+        title={t("İşlem profilleri", "Processing profiles")}
+        description={t(
+          "Siparişlerin ne kadar sürede hazırlanacağını belirleyen profiller. Listing'lere ya da varyasyonlara uygulanır.",
+          "Profiles that set how long orders take to prepare. They apply to listings or variations.",
+        )}
         action={
           <button
             onClick={() =>
@@ -170,12 +180,12 @@ export default function ProcessingProfilesSection({
             }
             className={outlineBtn}
           >
-            + Yeni oluştur
+            {t("+ Yeni oluştur", "+ Create new")}
           </button>
         }
       />
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
-      {profiles === null && <p className="text-sm text-neutral-400">Yükleniyor…</p>}
+      {profiles === null && <p className="text-sm text-neutral-400">{t("Yükleniyor…", "Loading…")}</p>}
       <div className="space-y-2">
         {visible.map((p) => (
           <div key={p.readiness_state_id} className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900">
@@ -183,7 +193,7 @@ export default function ProcessingProfilesSection({
               <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
                 {processingTitle(p.readiness_state)} ({p.processing_days_display_label})
               </p>
-              <p className="text-xs text-neutral-500">{p.active_listings_count ?? 0} listing&apos;e uygulanmış</p>
+              <p className="text-xs text-neutral-500">{t(`${p.active_listings_count ?? 0} listing'e uygulanmış`, `Used by ${p.active_listings_count ?? 0} listings`)}</p>
             </div>
             <div className="flex items-center gap-1">
               <button
@@ -201,15 +211,15 @@ export default function ProcessingProfilesSection({
                   });
                 }}
               >
-                Düzenle
+                {t("Düzenle", "Edit")}
               </button>
               <button
                 className={`${iconBtn} text-red-600`}
                 disabled={(p.active_listings_count ?? 0) > 0}
-                title={(p.active_listings_count ?? 0) > 0 ? "Listing'lerde kullanılıyor" : "Sil"}
+                title={(p.active_listings_count ?? 0) > 0 ? t("Listing'lerde kullanılıyor", "Used by listings") : t("Sil", "Delete")}
                 onClick={() => remove(p)}
               >
-                Sil
+                {t("Sil", "Delete")}
               </button>
             </div>
           </div>

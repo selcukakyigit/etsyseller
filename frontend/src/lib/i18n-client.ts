@@ -37,3 +37,9 @@ export function useT(): { t: T; lang: Lang; locale: string } {
   const lang = useLang();
   return { t: (tr, en) => (lang === "tr" ? tr : en), lang, locale: lang === "tr" ? "tr-TR" : "en-US" };
 }
+
+/** Hook kullanılamayan yerler (yardımcı fonksiyonlar, bildirimler) için: o anki dile göre metni seçer. */
+export function tNow(tr: string, en: string): string {
+  if (typeof document === "undefined") return en;
+  return snapshot() === "tr" ? tr : en;
+}
