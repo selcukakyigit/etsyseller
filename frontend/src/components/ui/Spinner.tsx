@@ -14,10 +14,11 @@ export function Spinner({ size = 20, className = "" }: { size?: number; classNam
   );
 }
 
-/** Sayfa verisi gelene kadar içerik alanının ortasında duran büyük spinner. */
+/** Sayfa verisi gelene kadar içerik alanının (kenar çubuğu ve üst bar hariç) ortasında duran büyük spinner.
+ * Sabit konumlu bir katmandır, sayfada yer kaplamaz: başlık ve filtreler aşağı itilmez, yerinde kalır. */
 export function PageSpinner() {
   return (
-    <div className="flex min-h-[60vh] items-center justify-center">
+    <div className="pointer-events-none fixed bottom-0 left-56 right-0 top-[49px] z-[5] flex items-center justify-center">
       <Spinner size={36} />
     </div>
   );

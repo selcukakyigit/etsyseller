@@ -906,16 +906,25 @@ def reorder_listing_images(db: Session, shop: Shop, listing_id: int, payload: Im
     client = EtsyClient(db, shop)
     current = [img["listing_image_id"] for img in etsy_images.list_images(client, listing_id)]
     wanted = payload.image_ids
-    if sorted(current) != sorted(wanted):
+    attached = set(current)
+    if attached - set(wanted) or len(set(wanted)) != len(wanted):
         raise ValueError("Görsel listesi Etsy'dekiyle uyuşmuyor; sayfayı yenileyip tekrar dene.")
-
-    start = next((i for i, (a, b) in enumerate(zip(current, wanted)) if a != b), None)
+    # `wanted` içinde Etsy'de şu an bağlı olmayan id'ler, bu listing'den daha önce silinmiş fotoğraflardır (ör. yarıda
+    # kalmış bir yayın): Etsy bunları aynı id ile yeniden bağlamaya izin verir, kuyrukla birlikte geri bağlanırlar.
+    start = next((i for i, image_id in enumerate(wanted) if i >= len(current) or current[i] != image_id), None)
     if start is not None:
         tail = wanted[start:]
+        # Etsy bir listing'in son fotoğrafının silinmesine izin vermez. Kuyruğun tamamı silinecekse (ör. öne çıkan
+        # fotoğraf değişti, start == 0) hepsini birden silmek "at least 1 image" hatası verir. Bu yüzden kuyrukta
+        # bağlı olan son fotoğraf yerinde bırakılır; sırası gelince, öncekiler geri bağlanmışken silinip yeniden bağlanır.
+        keep = next((i for i in reversed(tail) if i in attached), None)
         for image_id in tail:
-            etsy_images.delete_image(client, listing_id, image_id)
+            if image_id in attached and image_id != keep:
+                etsy_images.delete_image(client, listing_id, image_id)
         for offset, image_id in enumerate(tail):
             try:
+                if image_id == keep:
+                    etsy_images.delete_image(client, listing_id, image_id)
                 etsy_images.reassign_image(client, listing_id, image_id, start + offset + 1)
             except Exception:
                 # En iyi çaba: kalan görselleri geri bağla ki hiçbiri kaybolmasın.

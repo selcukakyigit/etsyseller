@@ -553,8 +553,10 @@ def publish_local(db: Session, shop: Shop, user_id: int, listing_id: int, force:
         state["id_map"] = id_map
         current = [i["listing_image_id"] for i in etsy_images.list_images(client, listing_id)]
         mapped = [id_map.get(i["listing_image_id"], i["listing_image_id"]) for i in desired]
-        # Benim sıram; Etsy'de sonradan eklenen fotoğraflar sona eklenerek korunur.
-        final = [i for i in mapped if i in set(current)] + [i for i in current if i not in set(mapped)]
+        # Benim sıram; Etsy'de sonradan eklenen fotoğraflar sona eklenerek korunur. Taslağın temel aldığı hâlde var olup
+        # şu an bağlı olmayanlar (yarıda kalmış bir yayında silinmiş) da tutulur: sıralama adımı onları geri bağlar.
+        on_etsy = set(current) | base_ids
+        final = [i for i in mapped if i in on_etsy] + [i for i in current if i not in set(mapped)]
         if current != final:
             service.reorder_listing_images(db, shop, listing_id, ImageOrderIn(image_ids=final))
 

@@ -141,7 +141,9 @@ export default function ShippingInvoices({
           added.push({ id: id++, candidate: c, receiptId: c.already_saved ? null : (c.matches[0]?.receipt_id ?? null) });
         }
       } catch (e) {
-        setError(`${list[i].name}: ${e instanceof Error ? e.message : t("okunamadı", "could not be read")}`);
+        // Ağ hatasında (sunucu yanıt vermediğinde) mesaj boş gelir; dosya adının yanında boşluk kalmasın.
+        const msg = e instanceof Error && e.message ? e.message : t("okunamadı, tekrar dene", "could not be read, try again");
+        setError(`${list[i].name}: ${msg}`);
       }
     }
     setNextId(id);
