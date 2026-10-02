@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.etsy.client import EtsyClient
-from app.listings import drafts, service
+from app.listings import drafts, service, templates
 from app.core import blobstore
 from app.listings.models import DraftFile, ListingCache, ListingDraft, ListingLocal
 from app.shops.models import Shop
@@ -84,6 +84,7 @@ class BulkChanges(BaseModel):
     readiness_state_id: int | None = None
     should_auto_renew: bool | None = None
     production_partner_ids: list[int] | None = None
+    description_template_id: int | None = None  # hazır açıklama metnini uygula (bkz. listings/templates.py)
 
     @model_validator(mode="after")
     def _any(self):
@@ -155,8 +156,16 @@ def _apply_price(inventory: dict, op: PriceOp) -> str | None:
     return None
 
 
-def apply_changes(work: dict, c: BulkChanges) -> str | None:
-    """Çalışma kopyasına değişiklikleri uygular; geçersizse hata metni döner (o listing atlanır)."""
+def template_applier(db: Session, shop: Shop, c: BulkChanges):
+    """Değişiklikte şablon varsa onu uygulayan fonksiyon (yoksa None). Şablon yoksa TemplateError."""
+    if c.description_template_id is None:
+        return None
+    return templates.applier(db, shop, templates.get(db, shop, c.description_template_id))
+
+
+def apply_changes(work: dict, c: BulkChanges, apply_template=None) -> str | None:
+    """Çalışma kopyasına değişiklikleri uygular; geçersizse hata metni döner (o listing atlanır).
+    `apply_template`: bkz. template_applier; şablon, açıklama değişikliğinden sonra uygulanır."""
     if c.title:
         work["title"] = _text(work["title"], c.title)
         if not work["title"].strip():
@@ -165,6 +174,8 @@ def apply_changes(work: dict, c: BulkChanges) -> str | None:
             return f"Başlık {TITLE_MAX} karakteri aşar ({len(work['title'])})."
     if c.description:
         work["description"] = _text(work["description"], c.description)
+    if apply_template is not None:
+        work["description"] = apply_template(work)
     if c.tags:
         tags = list(work["tags"])
         drop = {t.strip().lower() for t in c.tags.remove}
@@ -206,6 +217,7 @@ def bulk_stage(db: Session, shop: Shop, payload: BulkStageIn) -> list[dict]:
             select(ListingCache).where(ListingCache.shop_id == shop.id).where(ListingCache.listing_id.in_(payload.listing_ids))
         ).all()
     }
+    apply_template = template_applier(db, shop, payload.changes)
     results: list[dict] = []
     for lid in payload.listing_ids:
         row = rows.get(lid)
@@ -218,7 +230,7 @@ def bulk_stage(db: Session, shop: Shop, payload: BulkStageIn) -> list[dict]:
         live = snapshot_cached(row)
         local = drafts._local_row(db, shop, lid)
         work = json.loads(local.data_json) if local else copy.deepcopy(live)
-        err = apply_changes(work, payload.changes)
+        err = apply_changes(work, payload.changes, apply_template)
         if err:
             results.append({"id": lid, "ok": False, "changed": False, "error": err})
             continue

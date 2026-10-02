@@ -208,7 +208,10 @@ export type BulkChanges = {
   readiness_state_id?: number;
   should_auto_renew?: boolean;
   production_partner_ids?: number[];
+  description_template_id?: number;
 };
+
+export type DescriptionTemplate = { id: number; name: string; body: string; is_default: boolean; updated_at: string | null };
 
 export type BulkResult = { id: number; ok: boolean; changed: boolean; error: string | null };
 
@@ -1043,6 +1046,18 @@ export interface DashboardData {
 }
 
 export const api = {
+  descriptionTemplates: {
+    list: (shopId: number) =>
+      request<{ templates: DescriptionTemplate[]; placeholders: string[] }>(`/api/shops/${shopId}/description-templates`),
+    create: (shopId: number, body: { name: string; body: string; is_default: boolean }) =>
+      request<DescriptionTemplate>(`/api/shops/${shopId}/description-templates`, { method: "POST", body: JSON.stringify(body) }),
+    update: (shopId: number, id: number, body: { name?: string; body?: string; is_default?: boolean }) =>
+      request<DescriptionTemplate>(`/api/shops/${shopId}/description-templates/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    remove: (shopId: number, ids: number[]) =>
+      request<{ deleted: number }>(`/api/shops/${shopId}/description-templates/delete`, { method: "POST", body: JSON.stringify({ ids }) }),
+    apply: (shopId: number, id: number, listing: { description: string; title: string; materials: string[]; inventory: unknown }) =>
+      request<{ description: string }>(`/api/shops/${shopId}/description-templates/${id}/apply`, { method: "POST", body: JSON.stringify(listing) }),
+  },
   auth: {
     me: () => request<User>("/api/auth/me"),
     consent: (version: string) => request<User>("/api/auth/consent", { method: "POST", body: JSON.stringify({ version }) }),

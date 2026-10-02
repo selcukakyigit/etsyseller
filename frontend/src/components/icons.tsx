@@ -54,6 +54,14 @@ export function KeyIcon({ className = "" }: { className?: string }) {
   );
 }
 
+export function DocumentIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className={`w-5 h-5 ${className}`}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7 3h7l5 5v13H7zM14 3v5h5M10 12h6M10 16h6" />
+    </svg>
+  );
+}
+
 export function StoreIcon({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className={`w-5 h-5 ${className}`}>

@@ -1,16 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { api, BulkChanges, BulkTextOp, ReadinessStateDefinition, ReturnPolicy, ShippingProfile, ShopSection } from "@/lib/api";
+import { api, BulkChanges, BulkTextOp, DescriptionTemplate, ReadinessStateDefinition, ReturnPolicy, ShippingProfile, ShopSection } from "@/lib/api";
 import { Modal, btnGhost, btnPrimary } from "@/components/listing-editor/Modal";
+import Link from "next/link";
 import { useT } from "@/lib/i18n-client";
 
-export type BulkOp = "title" | "description" | "tags" | "price" | "section" | "shipping" | "returns" | "processing" | "renewal";
+export type BulkOp = "title" | "description" | "template" | "tags" | "price" | "section" | "shipping" | "returns" | "processing" | "renewal";
 
 const OPS: [BulkOp, string, string][] = [
   ["title", "Başlıkları düzenle", "Edit titles"],
   ["tags", "Etiketleri düzenle", "Edit tags"],
   ["description", "Açıklamaları düzenle", "Edit descriptions"],
+  ["template", "Açıklama şablonu uygula", "Apply a description template"],
   ["price", "Fiyatları düzenle", "Edit prices"],
   ["section", "Bölümü değiştir", "Change section"],
   ["shipping", "Kargo profilini değiştir", "Change shipping profile"],
@@ -89,12 +91,17 @@ export default function BulkEditModal({
   const [shipping, setShipping] = useState<ShippingProfile[]>([]);
   const [returns, setReturns] = useState<ReturnPolicy[]>([]);
   const [processing, setProcessing] = useState<ReadinessStateDefinition[]>([]);
+  const [templates, setTemplates] = useState<DescriptionTemplate[] | null>(null);
 
   useEffect(() => {
     api.shops.sections(shopId).then(setSections).catch(() => undefined);
     api.shops.shippingProfiles(shopId).then(setShipping).catch(() => undefined);
     api.shops.returnPolicies(shopId).then(setReturns).catch(() => undefined);
     api.shops.readinessStateDefinitions(shopId).then(setProcessing).catch(() => undefined);
+    api.descriptionTemplates
+      .list(shopId)
+      .then((r) => setTemplates(r.templates))
+      .catch(() => setTemplates([]));
   }, [shopId]);
 
   const splitTags = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
@@ -105,6 +112,8 @@ export default function BulkEditModal({
         return text.mode === "find_replace" ? (text.find ? { title: text } : null) : text.text?.trim() ? { title: text } : null;
       case "description":
         return text.mode === "find_replace" ? (text.find ? { description: text } : null) : text.text?.trim() ? { description: text } : null;
+      case "template":
+        return pick ? { description_template_id: Number(pick) } : null;
       case "tags": {
         const add = splitTags(tagsAdd);
         const remove = splitTags(tagsRemove);
@@ -192,6 +201,26 @@ export default function BulkEditModal({
 
         {op === "title" && <TextForm value={text} onChange={setText} field="title" />}
         {op === "description" && <TextForm value={text} onChange={setText} field="description" />}
+        {op === "template" && (
+          <div className="space-y-2">
+            {templates !== null && templates.length === 0 ? (
+              <p className="text-sm text-neutral-600 dark:text-neutral-300">
+                {t("Henüz şablon yok.", "No templates yet.")}{" "}
+                <Link href="/settings/templates" className="underline">
+                  {t("Şablon oluştur", "Create a template")}
+                </Link>
+              </p>
+            ) : (
+              select((templates ?? []).map((x) => ({ id: x.id, label: x.is_default ? `${x.name} (${t("varsayılan", "default")})` : x.name })))
+            )}
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              {t(
+                "Her listing'in açıklamasındaki eski şablon metni (bu ya da başka bir kayıtlı şablonun bugünkü veya önceki hâli) çıkarılır, seçilen şablon ürün yazısının etrafına konur. Tanınmayan metne dokunulmaz.",
+                "In each listing's description, old template text (the current or an earlier version of this or any saved template) is removed and the chosen template is placed around the product text. Text that is not recognized is left alone.",
+              )}
+            </p>
+          </div>
+        )}
         {op === "tags" && (
           <div className="space-y-3">
             <div>

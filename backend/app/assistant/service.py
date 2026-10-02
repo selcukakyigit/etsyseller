@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.core import blobstore
 from app.core.i18n import tr
+from app.listings import templates
 from app.assistant import llm, tools
 from app.assistant.models import ChatImage, ChatMessage, ChatSession
 from app.core.config import settings
@@ -289,6 +290,18 @@ def _title_examples(db: Session, shop: Shop) -> str:
 
 
 def _sections_summary(db: Session, shop: Shop) -> str:
+    saved = templates.list_templates(db, shop)
+    if saved:
+        lines = [
+            f"  - #{t.id} \"{t.name}\"{' (VARSAYILAN)' if t.is_default else ''}: \"{' '.join(t.body.split())[:60]}…\""
+            for t in saved
+        ]
+        return (
+            "  Kullanıcının kaydettiği HAZIR AÇIKLAMA METİNLERİ (şablonlar). create_listing_draft varsayılanı otomatik ekler; "
+            "kullanıcı başka birini isterse description_template_id ver, hiç istemezse 0. Var olan listing'e şablon uygulamak/değiştirmek "
+            "için update_listing ya da bulk_update_listings'e description_template_id ver. Şablonun sabit kısmını description'a SEN YAZMA.\n"
+            + "\n".join(lines)
+        )
     blocks = tools.standard_sections(db, shop.id)["blocks"]
     if not blocks:
         return "  (mağazada tekrar eden sabit bölüm bulunamadı)"

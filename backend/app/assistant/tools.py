@@ -20,7 +20,7 @@ from app.ai import quality
 from app.assistant.models import AdReport, ChatImage
 from app.finance import invoices
 from app.finance import service as fin
-from app.listings import bulk, creation, drafts, performance
+from app.listings import bulk, creation, drafts, performance, templates
 from app.listings import service as listing_service
 from app.keywords import service as keyword_service
 from app.listings import sync_status as listing_sync
@@ -644,7 +644,14 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         creation_cleanup(ctx, lid)
         return {"error": err}
     tags, shortened = _tags(a.get("tags") or [])
-    description, std_count = (_with_standard_sections(ctx.db, ctx.shop.id, str(a.get("description") or "")) if a.get("use_standard_sections", True) else (str(a.get("description") or ""), 0))
+    tpl, tpl_err = _pick_template(ctx, a)
+    if tpl_err:
+        creation_cleanup(ctx, lid)
+        return {"error": tpl_err}
+    if tpl is not None or not a.get("use_standard_sections", True):
+        description, std_count = str(a.get("description") or ""), 0  # şablon aşağıda, envanter hazır olunca uygulanır
+    else:
+        description, std_count = _with_standard_sections(ctx.db, ctx.shop.id, str(a.get("description") or ""))
     dims = a.get("dimensions") or {}
     unit = str(dims.get("unit") or "cm").lower()
     if any(dims.get(k) for k in ("length", "width", "height")) and unit in ("mm", "cm", "m", "in", "ft"):
@@ -658,6 +665,8 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     work["taxonomy_id"] = int(a["taxonomy_id"]) if a.get("taxonomy_id") else None
     work["shipping_profile_id"] = int(a["shipping_profile_id"]) if a.get("shipping_profile_id") else defaults["en_cok_kullanilan_kargo_profili_id"]
     work["return_policy_id"] = int(a["return_policy_id"]) if a.get("return_policy_id") else defaults["en_cok_kullanilan_iade_politikasi_id"]
+    if tpl is not None:
+        work["description"] = templates.applier(ctx.db, ctx.shop, tpl)(work)
 
     # Alt metinler: model resimleri zaten gördüğü için image_ids ile aynı sırada verir (en fazla 500 karakter, önerilen 125).
     ids_in = [str(i) for i in (a.get("image_ids") or [])[:10]]
@@ -690,10 +699,53 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         "listing_id": lid, "duzenleyici_baglantisi": f"/listings/{lid}/edit", "eklenen_resim": attached,
         "varyasyon_kombinasyonu": len(work["inventory"]["products"]) if work["inventory"]["products"][0]["property_values"] else 0,
         "kisaltilan_etiketler": shortened, "yayin_icin_eksikler": problems,
-        "mağaza_sabit_bolumleri_eklendi": std_count, "acilmayan_tek_secenekli_varyasyon": dropped_variations,
+        "mağaza_sabit_bolumleri_eklendi": std_count, "kullanilan_aciklama_sablonu": tpl.name if tpl is not None else None,
+        "acilmayan_tek_secenekli_varyasyon": dropped_variations,
         "varsayilanlar": {"fiyat_mağaza_tipik_degeri_kullanildi": price_assumed, "adet_mağaza_tipik_degeri_kullanildi": qty_assumed, "fiyat": price},
         "not": "Bu yalnızca yerel taslaktır; Etsy'ye gitmedi. Kullanıcı düzenleyicide kontrol edip 'Etsy'de yayınla' düğmesine basmalı.",
     }
+
+
+def _pick_template(ctx: Ctx, a: dict):
+    """create_listing_draft için şablon: verilen kimlik, 0 = şablonsuz, verilmediyse mağazanın varsayılanı."""
+    tid = a.get("description_template_id")
+    if tid is None:
+        return templates.default(ctx.db, ctx.shop), None
+    if int(tid) == 0:
+        return None, None
+    try:
+        return templates.get(ctx.db, ctx.shop, int(tid)), None
+    except templates.TemplateError as exc:
+        return None, str(exc)
+
+
+# ------------------------------------------------------------------ hazır açıklama metinleri (şablonlar)
+
+def list_description_templates(ctx: Ctx, a: dict) -> dict:
+    rows = templates.list_templates(ctx.db, ctx.shop)
+    return {
+        "sablonlar": [{"id": t.id, "ad": t.name, "varsayilan": t.is_default, "metin": t.body} for t in rows],
+        "yer_tutucular": [f"{{{p}}}" for p in templates.PLACEHOLDERS],
+        "not": "{product} satırı ürüne özel yazının yeridir (yoksa ürün yazısı başa gelir). Değeri boş yer tutucunun satırı atlanır.",
+    }
+
+
+def save_description_template(ctx: Ctx, a: dict) -> dict:
+    try:
+        if a.get("template_id"):
+            t = templates.edit(ctx.db, ctx.shop, int(a["template_id"]), a.get("name"), a.get("body"), a.get("is_default"))
+        else:
+            t = templates.create(ctx.db, ctx.shop, str(a.get("name") or ""), str(a.get("body") or ""), bool(a.get("is_default")))
+    except templates.TemplateError as exc:
+        return {"error": str(exc)}
+    return {"ok": True, "id": t.id, "ad": t.name, "varsayilan": t.is_default, "not": "Şablon kaydedildi (yalnızca uygulamada; Etsy'ye bir şey gitmedi)."}
+
+
+def delete_description_templates(ctx: Ctx, a: dict) -> dict:
+    ids = [int(i) for i in a.get("template_ids") or []]
+    if not ids:
+        return {"error": "Silinecek şablon seçilmedi."}
+    return {"ok": True, "silinen": templates.delete_many(ctx.db, ctx.shop, ids)}
 
 
 def creation_cleanup(ctx: Ctx, lid: int) -> None:
@@ -731,13 +783,19 @@ def update_listing(ctx: Ctx, a: dict) -> dict:
         return _update_variations(ctx, lid, work, ch, a, variations)
     changes = bulk.BulkChanges(**ch)
     if lid < 0:
-        err = bulk.apply_changes(work, changes)
+        try:
+            err = bulk.apply_changes(work, changes, bulk.template_applier(ctx.db, ctx.shop, changes))
+        except templates.TemplateError as exc:
+            return {"error": str(exc)}
         if err:
             return {"error": err}
         drafts.save_local(ctx.db, ctx.shop, lid, work, None)
         result = {"id": lid, "ok": True, "changed": True, "error": None}
     else:
-        result = bulk.bulk_stage(ctx.db, ctx.shop, bulk.BulkStageIn(listing_ids=[lid], changes=changes))[0]
+        try:
+            result = bulk.bulk_stage(ctx.db, ctx.shop, bulk.BulkStageIn(listing_ids=[lid], changes=changes))[0]
+        except templates.TemplateError as exc:
+            return {"error": str(exc)}
         if not result["ok"]:
             return {"error": result["error"]}
     after = _current_work(ctx, lid) or work
@@ -759,6 +817,7 @@ def _update_variations(ctx: Ctx, lid: int, work: dict, ch: dict, a: dict, variat
         if row is None:
             return {"error": "Listing yerelde yok (senkronize et)."}
         live = bulk.snapshot_cached(row)
+    tpl_id = ch.pop("description_template_id", None)  # şablon, yeni envanter kurulunca uygulanır ({sizes}/{colors} ondan gelir)
     if ch:
         err = bulk.apply_changes(work, bulk.BulkChanges(**ch))
         if err:
@@ -779,6 +838,12 @@ def _update_variations(ctx: Ctx, lid: int, work: dict, ch: dict, a: dict, variat
                 o["readiness_state_id"] = first["readiness_state_id"]
     # Eski varyasyon-fotoğraf bağları yeni seçeneklere uymaz: yeni taslakta boşalt, Etsy'deki listing'de dokunma.
     work["variation_links"] = None if lid > 0 else {"property_id": None, "images": {}}
+    if tpl_id is not None:
+        try:
+            work["description"] = templates.applier(ctx.db, ctx.shop, templates.get(ctx.db, ctx.shop, int(tpl_id)))(work)
+        except templates.TemplateError as exc:
+            return {"error": str(exc)}
+        ch["description_template_id"] = tpl_id
     drafts.save_local(ctx.db, ctx.shop, lid, work, live)
     ctx.cards.append({
         "type": "listing_update", "listing_id": lid, "title": work["title"], "edit_url": f"/listings/{lid}/edit",
@@ -790,7 +855,7 @@ def _update_variations(ctx: Ctx, lid: int, work: dict, ch: dict, a: dict, variat
 
 # ------------------------------------------------------------------ mağaza seçenekleri, toplu taslak, durum, sipariş, anahtar kelime
 
-_REF_FIELDS = ("shop_section_id", "shipping_profile_id", "return_policy_id", "readiness_state_id", "production_partner_ids", "should_auto_renew")
+_REF_FIELDS = ("shop_section_id", "shipping_profile_id", "return_policy_id", "readiness_state_id", "production_partner_ids", "should_auto_renew", "description_template_id")
 
 
 def _ref_changes(a: dict) -> dict:
@@ -1234,6 +1299,7 @@ TOOLS: list[dict] = [
         "price": {"type": "number", "description": "Mağaza para biriminde birim fiyat. Kullanıcı vermediyse similar_listings fiyatlarından mantıklı bir değer seç (boyut/malzeme farkını düşün); hiç veri yoksa boş bırak"},
         "price_source": {"type": "string", "enum": ["user", "similar", "typical"], "description": "Fiyatın kaynağı: user = kullanıcı verdi, similar = benzer listing'lerden çıkardım, typical = mağaza medyanı"},
         "dimensions": _obj({"length": {"type": "number"}, "width": {"type": "number"}, "height": {"type": "number"}, "unit": {"type": "string", "enum": ["mm", "cm", "m", "in", "ft"]}}),
+        "description_template_id": {"type": "integer", "description": "Kullanılacak hazır açıklama metni. Verilmezse mağazanın VARSAYILAN şablonu kullanılır; 0 = şablon kullanma. Şablon kullanılırken description'a kargo/garanti/iletişim gibi sabit kısımları YAZMA."},
         "use_standard_sections": {"type": "boolean", "description": "Mağazanın sabit açıklama bölümlerini (iletişim, işleme/teslimat, garanti, yasal uyarı) açıklamaya otomatik ekle. Varsayılan true"},
         "quantity": {"type": "integer", "description": "Stok adedi. Kullanıcı vermediyse BOŞ BIRAK: mağazanın tipik adedi kullanılır"},
         "materials": {"type": "array", "items": {"type": "string"}},
@@ -1258,6 +1324,7 @@ TOOLS: list[dict] = [
         "title_find": {"type": "string"}, "title_replace": {"type": "string"}, "title_prefix": {"type": "string"}, "title_suffix": {"type": "string"},
         "shop_section_id": {"type": "integer"}, "shipping_profile_id": {"type": "integer"}, "return_policy_id": {"type": "integer"}, "readiness_state_id": {"type": "integer"},
         "production_partner_ids": {"type": "array", "items": {"type": "integer"}}, "should_auto_renew": {"type": "boolean"},
+        "description_template_id": {"type": "integer", "description": "Hazır açıklama metni (list_description_templates). Eski sabit kısım (kargo/garanti vb.) çıkarılır, bu şablon ürün yazısının etrafına konur."},
     })},
     {"name": "update_listing", "description": "Var olan bir listing'in ya da daha önce oluşturduğun taslağın (negatif listing_id) başlık, açıklama, etiket, fiyat, VARYASYONLAR (boyut/renk vb.), bölüm, kargo profili, iade politikası, hazırlık süresi, üretim ortağı veya otomatik yenilemesini YEREL TASLAK olarak değiştirir (Etsy'ye göndermez). Kullanıcı sohbette konuşulan listing'e/taslağa bir şey eklemek ya da değiştirmek isterse HER ZAMAN bunu kullan; create_listing_draft ile yeni taslak AÇMA. Önce get_listing ile mevcut hâline bak.", "input_schema": _obj({
         "listing_id": {"type": "integer"}, "new_title": {"type": "string"}, "new_description": {"type": "string"},
@@ -1266,6 +1333,7 @@ TOOLS: list[dict] = [
         "set_price": {"type": "number"}, "price_change_percent": {"type": "number", "description": "Örn. 10 = %10 zam, -5 = %5 indirim"},
         "shop_section_id": {"type": "integer"}, "shipping_profile_id": {"type": "integer"}, "return_policy_id": {"type": "integer"}, "readiness_state_id": {"type": "integer"},
         "production_partner_ids": {"type": "array", "items": {"type": "integer"}}, "should_auto_renew": {"type": "boolean"},
+        "description_template_id": {"type": "integer", "description": "Hazır açıklama metni (list_description_templates). Eski sabit kısım (kargo/garanti vb.) çıkarılır, bu şablon ürün yazısının etrafına konur."},
         "set_variations": {"type": "array", "description": "Varyasyonları bununla BAŞTAN kurar (mevcutlar silinir). En fazla 3 varyasyon; fiyat yalnızca birine göre değişebilir. Örn. [{name: 'Size', values: [{value: 'L - 120x50', price: 150}, {value: 'M - 50x50', price: 90}]}, {name: 'Color', values: [{value: 'Black'}, {value: 'Gold'}]}]",
                            "items": _obj({"name": {"type": "string"}, "values": {"type": "array", "items": _obj({"value": {"type": "string"}, "price": {"type": "number"}}, ["value"])}}, ["name", "values"])},
         "quantity": {"type": "integer", "description": "set_variations ile birlikte: her kombinasyonun stoğu (verilmezse mevcut stok korunur)"},
@@ -1283,6 +1351,11 @@ TOOLS: list[dict] = [
     {"name": "keep_watching_listing", "description": "Bir listing için 'durdurmayı değerlendir' önerisini reddedip izlemeye devam eder (sayaç sıfırlanır). Etsy'ye hiçbir şey göndermez.", "input_schema": _obj({"listing_id": {"type": "integer"}}, ["listing_id"])},
     {"name": "publish_listing_draft", "description": "ONAY GEREKİR. Bir listing'in taslağını/yerel değişikliklerini GERÇEKTEN Etsy'ye yayınlar (canlıya yansır). confirm=true verilmeden yalnızca ne yayınlanacağını özetler.", "input_schema": _obj({"listing_id": {"type": "integer"}, "confirm": {"type": "boolean"}, "force": {"type": "boolean", "description": "Etsy'de sonradan değişen alanları da ezer (çakışma varsa)"}}, ["listing_id"])},
     {"name": "deactivate_listing", "description": "ONAY GEREKİR. Listing'i Etsy'de INACTIVE yapar (satışa kapanır). confirm=true verilmeden yalnızca ne olacağını özetler.", "input_schema": _obj({"listing_id": {"type": "integer"}, "confirm": {"type": "boolean"}}, ["listing_id"])},
+    {"name": "list_description_templates", "description": "Kullanıcının kaydettiği hazır açıklama metinlerini (şablonları) metinleriyle listeler; hangisinin varsayılan olduğunu gösterir.", "input_schema": _obj({})},
+    {"name": "save_description_template", "description": "Hazır açıklama metni (şablon) oluşturur ya da template_id verilirse düzenler; is_default=true ile varsayılan yapar (diğerlerinin varsayılanlığı kalkar). Metinde {product} satırı ürüne özel yazının yeridir; {title}, {shop_name}, {materials}, {sizes}, {colors}, {variations} yer tutucuları listing bilgisiyle dolar. Kullanıcı ne istediğini net söylediyse sormadan yap, sonra ne kaydettiğini özetle.", "input_schema": _obj({
+        "template_id": {"type": "integer", "description": "Düzenlenecek şablon; boşsa yeni şablon"}, "name": {"type": "string"}, "body": {"type": "string"}, "is_default": {"type": "boolean"},
+    })},
+    {"name": "delete_description_templates", "description": "Hazır açıklama metinlerini siler (listing'lere daha önce eklenmiş metinlere dokunmaz). Silmeden önce hangi şablonların silineceğini kullanıcıya söyleyip onay al.", "input_schema": _obj({"template_ids": {"type": "array", "items": {"type": "integer"}}}, ["template_ids"])},
     {"name": "mark_order_shipped", "description": "ONAY GEREKİR. Siparişi Etsy'de kargoya verildi işaretler (alıcıya bildirim gidebilir). confirm=true verilmeden yalnızca ne olacağını özetler.", "input_schema": _obj({"receipt_id": {"type": "integer"}, "confirm": {"type": "boolean"}, "tracking_code": {"type": "string"}, "carrier_name": {"type": "string"}}, ["receipt_id"])},
 ]
 
@@ -1320,6 +1393,9 @@ TOOL_LABELS = {
     "publish_listing_draft": "Etsy'ye yayınlıyor",
     "deactivate_listing": "Listing'i pasife alıyor",
     "mark_order_shipped": "Siparişi kargoya verildi işaretliyor",
+    "list_description_templates": "Hazır açıklama metinlerine bakıyor",
+    "save_description_template": "Açıklama şablonunu kaydediyor",
+    "delete_description_templates": "Açıklama şablonlarını siliyor",
 }
 
 # Arayüz İngilizce olduğunda gösterilen ilerleme metinleri (TOOL_LABELS ile aynı anahtarlar).
@@ -1356,6 +1432,9 @@ TOOL_LABELS_EN = {
     "publish_listing_draft": "Publishing to Etsy",
     "deactivate_listing": "Deactivating the listing",
     "mark_order_shipped": "Marking the order as shipped",
+    "list_description_templates": "Checking description templates",
+    "save_description_template": "Saving the description template",
+    "delete_description_templates": "Deleting description templates",
 }
 
 EXECUTORS = {
@@ -1367,6 +1446,8 @@ EXECUTORS = {
     "regenerate_listing_image": regenerate_listing_image, "generate_missing_alt_texts": generate_missing_alt_texts,
     "listing_health_status": listing_health_status, "keep_watching_listing": keep_watching_listing,
     "publish_listing_draft": publish_listing_draft, "deactivate_listing": deactivate_listing, "mark_order_shipped": mark_order_shipped,
+    "list_description_templates": list_description_templates, "save_description_template": save_description_template,
+    "delete_description_templates": delete_description_templates,
 }
 
 

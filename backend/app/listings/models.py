@@ -164,3 +164,22 @@ class ListingLocal(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
     # Yerel kopyanın alındığı Etsy hâli (üç yönlü karşılaştırma için); kayıtlar arasında korunur.
     base_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class DescriptionTemplate(Base):
+    """Kullanıcının kaydettiği hazır açıklama metni (kargo, garanti, iletişim gibi sabit kısım). Metindeki `{product}`
+    satırı ürüne özel yazının yeridir (yoksa ürün yazısı başa gelir); `{title}`, `{materials}`, `{sizes}`… yer
+    tutucuları listing'in bilgisiyle dolar (bkz. listings/templates.py). Mağaza başına en fazla bir varsayılan."""
+
+    __tablename__ = "description_templates"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    body: Mapped[str] = mapped_column(Text, default="")
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Metnin önceki sürümleri (JSON liste, en yenisi sonda): listing'lerde eski sürüm durabilir; şablon yeniden
+    # uygulanınca onun da tanınıp yenisiyle değişmesi için saklanır.
+    history_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow)

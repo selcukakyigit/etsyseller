@@ -1,5 +1,6 @@
 "use client";
 
+import DescriptionTemplatePicker from "@/components/listing-editor/DescriptionTemplatePicker";
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { api, Suggestion } from "@/lib/api";
@@ -309,9 +310,16 @@ export default function ListingEditPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">
-                  {t("Açıklama", "Description")}
-                </label>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                    {t("Açıklama", "Description")}
+                  </label>
+                  <DescriptionTemplatePicker
+                    shopId={activeShop.id}
+                    listing={{ description: edit.description, title: edit.title, materials: edit.materials ?? [], inventory: edit.inventory }}
+                    onApply={(description) => wc.patch({ description })}
+                  />
+                </div>
                 <textarea
                   value={edit.description}
                   onChange={(e) => wc.patch({ description: e.target.value })}

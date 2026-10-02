@@ -11,7 +11,7 @@ from app.core import blobstore
 from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.etsy.client import EtsyAuthError
-from app.listings import bulk, creation, drafts, health, performance, service
+from app.listings import bulk, creation, drafts, health, performance, service, templates
 from app.listings.schemas import (
     DraftSaveIn,
     ImageOrderIn,
@@ -61,7 +61,10 @@ def new_listing(payload: NewListingIn, shop: Shop = Depends(get_owned_shop), db:
 @router.post("/bulk-stage")
 def bulk_stage(payload: bulk.BulkStageIn, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
     """Toplu değişiklikleri seçili listing'lerin yerel sürümüne işler (Etsy'ye gitmez)."""
-    return bulk.bulk_stage(db, shop, payload)
+    try:
+        return bulk.bulk_stage(db, shop, payload)
+    except templates.TemplateError as exc:
+        raise HTTPException(404, str(exc)) from exc
 
 
 @router.delete("/{listing_id}")

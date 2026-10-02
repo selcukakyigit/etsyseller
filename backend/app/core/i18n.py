@@ -22,6 +22,11 @@ def tr(tr_text: str, en_text: str) -> str:
 
 # Sabit hata/uyarı metinleri: Türkçe → İngilizce.
 EN_MESSAGES: dict[str, str] = {
+    "Şablon bulunamadı": "Template not found",
+    "Şablon adı boş olamaz": "The template name cannot be empty",
+    "Şablon metni boş olamaz": "The template text cannot be empty",
+    "Şablon metni çok uzun": "The template text is too long",
+    "En fazla 50 şablon kaydedilebilir": "You can save up to 50 templates",
     "Geçersiz tarih": "Invalid date",
     "Bu mağaza Etsy'ye bağlı değil.": "This shop is not connected to Etsy.",
     "Hiçbir değişiklik seçilmedi.": "No change was selected.",
