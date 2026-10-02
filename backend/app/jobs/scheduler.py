@@ -8,6 +8,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from app.jobs.daily_stats import capture_daily_stats
+from app.jobs.finance_sync import sync_all_shops as sync_finance
 from app.jobs.listing_health import evaluate_all_shops
 from app.jobs.listing_refresh import refresh_all_shops
 from app.jobs.order_sync import sync_all_shops
@@ -38,6 +39,12 @@ def start_scheduler() -> None:
         refresh_all_shops,
         trigger=IntervalTrigger(hours=4),
         id="listing_refresh",
+        replace_existing=True,
+    )
+    _scheduler.add_job(
+        sync_finance,
+        trigger=IntervalTrigger(hours=6),
+        id="finance_sync",
         replace_existing=True,
     )
     _scheduler.add_job(
@@ -77,6 +84,7 @@ def start_scheduler() -> None:
             (sync_reviews, "reviews_initial_run"),
             (evaluate_all_shops, "listing_health_initial_run"),
             (refresh_all_shops, "listing_refresh_initial_run"),
+            (sync_finance, "finance_sync_initial_run"),
         ],
         start=1,
     ):
@@ -84,7 +92,7 @@ def start_scheduler() -> None:
 
     logger.info(
         "Scheduler started: daily_stats 03:00, listing_health 03:15 UTC; order_sync every 2h, "
-        "listing_refresh/shop_profile/reviews every 4h (all also run once shortly after start)."
+        "listing_refresh/shop_profile/reviews every 4h, finance_sync every 6h (all also run once shortly after start)."
     )
 
 

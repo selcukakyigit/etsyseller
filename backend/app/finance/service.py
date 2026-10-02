@@ -169,6 +169,17 @@ def start_sync(shop: Shop, full: bool = False) -> bool:
     return True
 
 
+def run_sync_now(shop: Shop) -> bool:
+    """Zamanlanmış iş için: senkronu çağıran iş parçacığında, bitene kadar çalıştırır (ayrı thread açmaz).
+    Ledger her 30 günlük pencereden sonra kaydedildiği için yarıda kesilirse bir sonraki çalıştırma kaldığı yerden devam eder."""
+    st = _state.setdefault(shop.id, {})
+    if st.get("running"):
+        return False
+    st.update(running=True, progress=0.0, phase="Başlıyor", error=None)
+    _run(shop.id, False)
+    return True
+
+
 def _run(shop_id: int, full: bool) -> None:
     db = SessionLocal()
     st = _state[shop_id]
