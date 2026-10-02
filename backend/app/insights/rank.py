@@ -125,8 +125,11 @@ def suggest_keywords(db: Session, shop: Shop, listing_id: int) -> list[str]:
 
 
 def auto_select(db: Session, shop: Shop, today: dt.date | None = None) -> int:
-    """Hiç takip yoksa: en çok düşen 5 ve en çok satan 5 listing'i, her birine 3 aday aramayla takibe alır."""
-    if _active(db, shop):
+    """Boş takip yerlerini doldurur: en çok düşen 5 ve en çok satan 5 listing, her birine 3 aday arama. Kullanıcı bir
+    takibi bilerek bıraktıysa (kapatılmış satır varsa) yerine otomatik yenisi konmaz; seçim artık kullanıcınındır."""
+    stopped = db.scalar(select(func.count()).select_from(TrackedKeyword).where(TrackedKeyword.shop_id == shop.id, TrackedKeyword.active.is_(False)))
+    already = set(tracked_listing_ids(db, shop))
+    if stopped or len(already) >= MAX_LISTINGS:
         return 0
     today = today or dt.date.today()
     idx = sales.index(db, shop)
@@ -142,14 +145,16 @@ def auto_select(db: Session, shop: Shop, today: dt.date | None = None) -> int:
         prev12 = sales.units_between(rows, today - dt.timedelta(days=729), today - dt.timedelta(days=365))
         stats.append((lid, last12, prev12))
     decliners = sorted((s for s in stats if s[2] >= 8 and s[1] < s[2] * 0.7), key=lambda s: s[1] - s[2])[:5]
-    chosen = [s[0] for s in decliners]
+    chosen = list(already) + [s[0] for s in decliners if s[0] not in already]
     for lid, _, _ in sorted(stats, key=lambda s: -s[1]):
         if len(chosen) >= MAX_LISTINGS:
             break
         if lid not in chosen:
             chosen.append(lid)
     added = 0
-    for lid in chosen:
+    for lid in chosen[:MAX_LISTINGS]:
+        if lid in already:
+            continue
         for kw in suggest_keywords(db, shop, lid)[:MAX_KEYWORDS]:
             try:
                 add_keyword(db, shop, lid, kw, source="auto")
