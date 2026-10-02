@@ -4,35 +4,37 @@ import { useEffect, useState } from "react";
 import { api, ListingHealth, ListingHistory, ListingPerformance } from "@/lib/api";
 import TrendChart from "@/components/TrendChart";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
+import { T, useT } from "@/lib/i18n-client";
 
-const STATUS_LABEL: Record<string, string> = {
-  pending: "Bekliyor",
-  applied: "Uygulandı",
-  dismissed: "Reddedildi",
+const STATUS_LABEL: Record<string, [string, string]> = {
+  pending: ["Bekliyor", "Pending"],
+  applied: ["Uygulandı", "Applied"],
+  dismissed: ["Reddedildi", "Dismissed"],
 };
 
-function formatDateTime(iso: string) {
-  return new Date(iso).toLocaleString("tr-TR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+function formatDateTime(iso: string, locale: string) {
+  return new Date(iso).toLocaleString(locale, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
-function formatDate(isoDate: string) {
-  return new Date(`${isoDate}T00:00:00`).toLocaleDateString("tr-TR", { day: "2-digit", month: "short", year: "numeric" });
+function formatDate(isoDate: string, locale: string) {
+  return new Date(`${isoDate}T00:00:00`).toLocaleDateString(locale, { day: "2-digit", month: "short", year: "numeric" });
 }
 
 // Oturum boyunca bellekte tutulan son sonuçlar: panel yeniden açılınca ya da dönem değişince eski veri anında görünür, arkada yenilenir.
 const perfCache = new Map<string, ListingPerformance>();
 const historyCache = new Map<string, ListingHistory>();
 
-const RANGES = [
-  { days: 30, label: "30 gün" },
-  { days: 90, label: "90 gün" },
-  { days: 180, label: "180 gün" },
-  { days: 365, label: "1 yıl" },
+const RANGES = (t: T) => [
+  { days: 30, label: t("30 gün", "30 days") },
+  { days: 90, label: t("90 gün", "90 days") },
+  { days: 180, label: t("180 gün", "180 days") },
+  { days: 365, label: t("1 yıl", "1 year") },
 ];
 const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 /** Seçilen dönemde satış (tam), görüntülenme/favori artışı (biriktirilen günlük anlık görüntülerden) ve içerik güncelliği. */
 function PerformanceSummary({ shopId, listingId }: { shopId: number; listingId: number }) {
+  const { t, locale } = useT();
   const [days, setDays] = useState(90);
   const [perf, setPerf] = useState<ListingPerformance | null>(() => perfCache.get(`${shopId}:${listingId}:90`) ?? null);
   const [error, setError] = useState<string | null>(null);
@@ -51,11 +53,12 @@ function PerformanceSummary({ shopId, listingId }: { shopId: number; listingId: 
         }
       })
       .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Performans yüklenemedi");
+        if (!cancelled) setError(e instanceof Error ? e.message : t("Performans yüklenemedi", "Performance could not be loaded"));
       });
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shopId, listingId, days]);
 
   const loading = !perf || perf.previous_period === undefined;
@@ -64,9 +67,9 @@ function PerformanceSummary({ shopId, listingId }: { shopId: number; listingId: 
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs font-medium text-neutral-500">Performans</p>
+        <p className="text-xs font-medium text-neutral-500">{t("Performans", "Performance")}</p>
         <div className="flex gap-1">
-          {RANGES.map((r) => (
+          {RANGES(t).map((r) => (
             <button
               key={r.days}
               type="button"
@@ -81,49 +84,63 @@ function PerformanceSummary({ shopId, listingId }: { shopId: number; listingId: 
         </div>
       </div>
       {error && <p className="text-xs text-red-600">{error}</p>}
-      {loading && !error && <p className="text-xs text-neutral-400">Yükleniyor…</p>}
+      {loading && !error && <p className="text-xs text-neutral-400">{t("Yükleniyor…", "Loading…")}</p>}
       {perf && !error && (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div>
-              <div className="text-[11px] text-neutral-500">Satış adedi</div>
+              <div className="text-[11px] text-neutral-500">{t("Satış adedi", "Units sold")}</div>
               <div className="text-lg font-semibold">{perf.sales.units}</div>
               <div className={`text-[11px] ${perf.sales.units >= perf.sales.prev_units ? "text-emerald-600" : "text-red-600"}`}>
-                {pct(perf.sales.units, perf.sales.prev_units)} <span className="text-neutral-400">önceki {perf.sales.prev_units}</span>
+                {pct(perf.sales.units, perf.sales.prev_units)} <span className="text-neutral-400">{t("önceki", "previous")} {perf.sales.prev_units}</span>
               </div>
             </div>
             <div>
-              <div className="text-[11px] text-neutral-500">Ciro</div>
-              <div className="text-lg font-semibold">${perf.sales.revenue.toLocaleString("tr-TR", { maximumFractionDigits: 0 })}</div>
+              <div className="text-[11px] text-neutral-500">{t("Ciro", "Revenue")}</div>
+              <div className="text-lg font-semibold">${perf.sales.revenue.toLocaleString(locale, { maximumFractionDigits: 0 })}</div>
               <div className={`text-[11px] ${perf.sales.revenue >= perf.sales.prev_revenue ? "text-emerald-600" : "text-red-600"}`}>{pct(perf.sales.revenue, perf.sales.prev_revenue)}</div>
             </div>
             <div>
-              <div className="text-[11px] text-neutral-500">Görüntülenme (dönem)</div>
+              <div className="text-[11px] text-neutral-500">{t("Görüntülenme (dönem)", "Views (period)")}</div>
               <div className="text-lg font-semibold">{perf.views_now.available ? perf.views_now.views : "—"}</div>
-              <div className="text-[11px] text-neutral-400">{perf.views_now.available ? (perf.views_now.partial ? `izleme ${perf.views_now.tracking_started}'de başladı` : `${perf.views_now.favorites} favori`) : "geçmiş henüz yok"}</div>
+              <div className="text-[11px] text-neutral-400">{perf.views_now.available
+                  ? perf.views_now.partial
+                    ? t(`izleme ${perf.views_now.tracking_started}'de başladı`, `tracking started ${perf.views_now.tracking_started}`)
+                    : `${perf.views_now.favorites} ${t("favori", "favorites")}`
+                  : t("geçmiş henüz yok", "no history yet")}</div>
             </div>
             <div>
-              <div className="text-[11px] text-neutral-500">İçerik güncelliği</div>
-              <div className="text-lg font-semibold">{f?.days_since_content_change !== undefined ? `${f.days_since_content_change} gün` : f?.unchanged_for_at_least_days ? `≥ ${f.unchanged_for_at_least_days} gün` : "bilinmiyor"}</div>
-              <div className="text-[11px] text-neutral-400">{f?.etsy_last_modified_days != null ? `Etsy son değişiklik: ${f.etsy_last_modified_days} gün önce` : ""}</div>
+              <div className="text-[11px] text-neutral-500">{t("İçerik güncelliği", "Content freshness")}</div>
+              <div className="text-lg font-semibold">{f?.days_since_content_change !== undefined
+                  ? `${f.days_since_content_change} ${t("gün", "days")}`
+                  : f?.unchanged_for_at_least_days
+                    ? `≥ ${f.unchanged_for_at_least_days} ${t("gün", "days")}`
+                    : t("bilinmiyor", "unknown")}</div>
+              <div className="text-[11px] text-neutral-400">{f?.etsy_last_modified_days != null ? t(`Etsy son değişiklik: ${f.etsy_last_modified_days} gün önce`, `Last changed on Etsy ${f.etsy_last_modified_days} days ago`) : ""}</div>
             </div>
           </div>
           <p className="mt-2 text-[11px] text-neutral-400">
-            Satışlar sipariş geçmişinden tamdır. Etsy görüntülenme/favori geçmişi vermez; günlük biriktiriyoruz (izleme {f?.tracking_days ?? 0} gündür). Toplam: {perf.lifetime.views} görüntülenme, {perf.lifetime.favorites} favori
-            {perf.conversion_percent !== null && ` · dönüşüm %${perf.conversion_percent}`}.
+            {t(
+              `Satışlar sipariş geçmişinden tamdır. Etsy görüntülenme/favori geçmişi vermez; günlük biriktiriyoruz (izleme ${f?.tracking_days ?? 0} gündür). Toplam: ${perf.lifetime.views} görüntülenme, ${perf.lifetime.favorites} favori`,
+              `Sales are complete from order history. Etsy does not provide view/favorite history, so we collect it daily (tracking for ${f?.tracking_days ?? 0} days). Total: ${perf.lifetime.views} views, ${perf.lifetime.favorites} favorites`,
+            )}
+            {perf.conversion_percent !== null && ` · ${t("dönüşüm", "conversion")} %${perf.conversion_percent}`}.
           </p>
           {perf.since_change ? (
             <div className="mt-3 rounded-lg border border-neutral-100 bg-neutral-50 p-2.5 dark:border-neutral-800 dark:bg-neutral-950">
               <p className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">
-                İçerik {formatDate(perf.since_change.content_changed_on)} tarihinde değişti — öncesi/sonrası (günde ortalama, {perf.since_change.window_days} gün baz alındı):
+                {t(
+                  `İçerik ${formatDate(perf.since_change.content_changed_on, locale)} tarihinde değişti — öncesi/sonrası (günde ortalama, ${perf.since_change.window_days} gün baz alındı):`,
+                  `Content changed on ${formatDate(perf.since_change.content_changed_on, locale)} — before/after (daily average over ${perf.since_change.window_days} days):`,
+                )}
               </p>
               <div className="mt-1.5 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
                 {(
                   [
-                    ["Görüntülenme/gün", "views_per_day"],
-                    ["Favori/gün", "favorites_per_day"],
-                    ["Satış adedi/gün", "units_per_day"],
-                    ["Ciro/gün", "revenue_per_day"],
+                    [t("Görüntülenme/gün", "Views/day"), "views_per_day"],
+                    [t("Favori/gün", "Favorites/day"), "favorites_per_day"],
+                    [t("Satış adedi/gün", "Units/day"), "units_per_day"],
+                    [t("Ciro/gün", "Revenue/day"), "revenue_per_day"],
                   ] as const
                 ).map(([label, key]) => {
                   const b = perf.since_change!.before[key];
@@ -145,7 +162,10 @@ function PerformanceSummary({ shopId, listingId }: { shopId: number; listingId: 
           ) : (
             f && !f.content_changed_on && (
               <p className="mt-2 text-[11px] text-neutral-400">
-                Değişiklik öncesi/sonrası kıyaslama için içeriğin ne zaman değiştiğinin izlenmiş olması ve öncesinde/sonrasında en az birkaç günlük veri olması gerekiyor.
+                {t(
+                  "Değişiklik öncesi/sonrası kıyaslama için içeriğin ne zaman değiştiğinin izlenmiş olması ve öncesinde/sonrasında en az birkaç günlük veri olması gerekiyor.",
+                  "A before/after comparison needs a tracked content change date and at least a few days of data on each side.",
+                )}
               </p>
             )
           )}
@@ -155,12 +175,12 @@ function PerformanceSummary({ shopId, listingId }: { shopId: number; listingId: 
   );
 }
 
-const STAGE_LABEL: Record<ListingHealth["stage"], string> = {
-  watching: "İzleniyor",
-  flagged: "Öneri var",
-  stable: "Stabil",
-  kill_candidate: "Durdurmayı değerlendir",
-  killed: "Durduruldu",
+const STAGE_LABEL: Record<ListingHealth["stage"], [string, string]> = {
+  watching: ["İzleniyor", "Watching"],
+  flagged: ["Öneri var", "Has suggestion"],
+  stable: ["Stabil", "Stable"],
+  kill_candidate: ["Durdurmayı değerlendir", "Consider deactivating"],
+  killed: ["Durduruldu", "Deactivated"],
 };
 
 const STAGE_STYLE: Record<ListingHealth["stage"], string> = {
@@ -174,6 +194,7 @@ const STAGE_STYLE: Record<ListingHealth["stage"], string> = {
 /** Listing "durdurmayı değerlendir" aşamasına gelene kadar sessiz kalır — bkz. listings/health.py:
  * en az 21 gün/100 görüntülenme birikmeden hiçbir şey söylemez, sonra mağaza medyanına göre teşhis eder. */
 function HealthBanner({ shopId, listingId }: { shopId: number; listingId: number }) {
+  const { t } = useT();
   const [healthState, setHealthState] = useState<ListingHealth | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirm, confirmElement] = useConfirm();
@@ -195,9 +216,12 @@ function HealthBanner({ shopId, listingId }: { shopId: number; listingId: number
 
   const handleKill = async () => {
     const ok = await confirm({
-      title: "Listing'i durdur",
-      message: "Bu listing Etsy'de inactive yapılacak (satışa kapanır). İstediğin zaman tekrar active edebilirsin. Devam edilsin mi?",
-      confirmLabel: "Durdur",
+      title: t("Listing'i durdur", "Deactivate listing"),
+      message: t(
+        "Bu listing Etsy'de inactive yapılacak (satışa kapanır). İstediğin zaman tekrar active edebilirsin. Devam edilsin mi?",
+        "This listing will be set to inactive on Etsy (no longer for sale). You can make it active again at any time. Continue?",
+      ),
+      confirmLabel: t("Durdur", "Deactivate"),
       destructive: true,
     });
     if (!ok) return;
@@ -223,7 +247,7 @@ function HealthBanner({ shopId, listingId }: { shopId: number; listingId: number
       {confirmElement}
       <div className="rounded-xl border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STAGE_STYLE[healthState.stage]}`}>{STAGE_LABEL[healthState.stage]}</span>
+          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STAGE_STYLE[healthState.stage]}`}>{t(...STAGE_LABEL[healthState.stage])}</span>
           {healthState.stage === "kill_candidate" && (
             <div className="flex gap-2">
               <button
@@ -232,7 +256,7 @@ function HealthBanner({ shopId, listingId }: { shopId: number; listingId: number
                 onClick={handleKeepWatching}
                 className="rounded-full px-3 py-1 text-xs font-medium bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 disabled:opacity-50"
               >
-                İzlemeye devam et
+                {t("İzlemeye devam et", "Keep watching")}
               </button>
               <button
                 type="button"
@@ -240,7 +264,7 @@ function HealthBanner({ shopId, listingId }: { shopId: number; listingId: number
                 onClick={handleKill}
                 className="rounded-full px-3 py-1 text-xs font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
               >
-                Listing&apos;i durdur
+                {t("Listing'i durdur", "Deactivate listing")}
               </button>
             </div>
           )}
@@ -261,6 +285,7 @@ export default function ListingHistoryPanel({
   /** Preview/test escape hatch: skip the network call and render this directly. */
   initialHistory?: ListingHistory;
 }) {
+  const { t, locale } = useT();
   const [history, setHistory] = useState<ListingHistory | null>(initialHistory ?? historyCache.get(`${shopId}:${listingId}`) ?? null);
   const [error, setError] = useState<string | null>(null);
   const [showAllHistory, setShowAllHistory] = useState(false);
@@ -273,7 +298,8 @@ export default function ListingHistoryPanel({
         historyCache.set(`${shopId}:${listingId}`, h);
         setHistory(h);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Bilinmeyen hata"));
+      .catch((e) => setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error")));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shopId, listingId, initialHistory]);
 
   // Performans ve geçmiş AYNI ANDA yüklenir (art arda değil); geçmiş gelene kadar performans kartı zaten görünür.
@@ -283,7 +309,7 @@ export default function ListingHistoryPanel({
       <div className="border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/50 p-4 space-y-4">
         {listingId > 0 && <HealthBanner shopId={shopId} listingId={listingId} />}
         {listingId > 0 && <PerformanceSummary shopId={shopId} listingId={listingId} />}
-        <p className="text-sm text-neutral-400 dark:text-neutral-500">Değişiklik geçmişi yükleniyor…</p>
+        <p className="text-sm text-neutral-400 dark:text-neutral-500">{t("Değişiklik geçmişi yükleniyor…", "Loading change history…")}</p>
       </div>
     );
 
@@ -297,13 +323,13 @@ export default function ListingHistoryPanel({
       {listingId > 0 && <PerformanceSummary shopId={shopId} listingId={listingId} />}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <TrendChart
-          label="Görüntülenme"
+          label={t("Görüntülenme", "Views")}
           color="views"
           data={history.stats.map((s) => ({ date: s.captured_at, value: s.views }))}
           events={appliedEvents}
         />
         <TrendChart
-          label="Favori"
+          label={t("Favori", "Favorites")}
           color="favorites"
           data={history.stats.map((s) => ({ date: s.captured_at, value: s.favorites }))}
           events={appliedEvents}
@@ -311,9 +337,9 @@ export default function ListingHistoryPanel({
       </div>
 
       <div>
-        <p className="text-xs font-medium text-neutral-400 dark:text-neutral-500 mb-2">Değişiklik geçmişi</p>
+        <p className="text-xs font-medium text-neutral-400 dark:text-neutral-500 mb-2">{t("Değişiklik geçmişi", "Change history")}</p>
         {history.versions.length === 0 ? (
-          <p className="text-sm text-neutral-400 dark:text-neutral-500">Henüz bir öneri üretilmedi.</p>
+          <p className="text-sm text-neutral-400 dark:text-neutral-500">{t("Henüz bir öneri üretilmedi.", "No suggestions yet.")}</p>
         ) : (
           <>
           <ol className="space-y-2">
@@ -328,13 +354,13 @@ export default function ListingHistoryPanel({
                         : "bg-[#D97757]/10 text-[#B4553A]"
                   }`}
                 >
-                  {STATUS_LABEL[v.status] ?? v.status}
+                  {STATUS_LABEL[v.status] ? t(...STATUS_LABEL[v.status]) : v.status}
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-neutral-700 dark:text-neutral-300 truncate">{v.suggested_title}</p>
                   <p className="text-xs text-neutral-400 dark:text-neutral-500">
-                    {formatDateTime(v.created_at)}
-                    {v.applied_at && ` · uygulandı: ${formatDateTime(v.applied_at)}`}
+                    {formatDateTime(v.created_at, locale)}
+                    {v.applied_at && ` · ${t("uygulandı", "applied")}: ${formatDateTime(v.applied_at, locale)}`}
                   </p>
                 </div>
               </li>
@@ -346,7 +372,7 @@ export default function ListingHistoryPanel({
               onClick={() => setShowAllHistory((v) => !v)}
               className="mt-2 text-xs font-medium text-[#B4553A] hover:underline"
             >
-              {showAllHistory ? "Daha az göster" : `Daha fazla göster (${history.versions.length - 3} tane daha)`}
+              {showAllHistory ? t("Daha az göster", "Show less") : t(`Daha fazla göster (${history.versions.length - 3} tane daha)`, `Show more (${history.versions.length - 3} more)`)}
             </button>
           )}
           </>

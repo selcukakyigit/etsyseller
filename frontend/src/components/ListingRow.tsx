@@ -7,6 +7,7 @@ import ListingHistoryPanel from "@/components/ListingHistoryPanel";
 import { PublishJob } from "@/lib/publishJobs";
 import PublishBar from "@/components/listings/PublishBar";
 import { competitionFill, normalizedScore, poolRanges } from "@/lib/keywordScore";
+import { useT } from "@/lib/i18n-client";
 
 function ScoredKeywordPills({ items }: { items: KeywordPoolItem[] }) {
   // Normalized against the min/max *within this pool*, not the raw
@@ -16,6 +17,7 @@ function ScoredKeywordPills({ items }: { items: KeywordPoolItem[] }) {
   // Comparing tags to each other instead spreads them across the full
   // green-to-red range, which is what's actually useful to look at.
   const ranges = useMemo(() => poolRanges(items), [items]);
+  const { t } = useT();
 
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -27,18 +29,24 @@ function ScoredKeywordPills({ items }: { items: KeywordPoolItem[] }) {
             key={item.tag}
             title={
               item.source === "own"
-                ? `Senin listing'lerinden: ${(item.from_listings ?? []).join(" · ")}. Bu etiketi taşıyan benzer listing'lerin son 180 günde toplam ${item.units ?? 0} satışı var.${item.in_listing ? " Bu listing'de zaten kullanılıyor." : ""}`
-                : `Rakip listing'lerden: ilk ${item.sample_size} rakip listing'in ${item.score} tanesi bu etiketi kullanıyor (yüksek = kalabalık/rekabetçi)`
+                ? t(
+                    `Senin listing'lerinden: ${(item.from_listings ?? []).join(" · ")}. Bu etiketi taşıyan benzer listing'lerin son 180 günde toplam ${item.units ?? 0} satışı var.${item.in_listing ? " Bu listing'de zaten kullanılıyor." : ""}`,
+                    `From your listings: ${(item.from_listings ?? []).join(" · ")}. Similar listings with this tag sold ${item.units ?? 0} units in the last 180 days.${item.in_listing ? " Already used in this listing." : ""}`,
+                  )
+                : t(
+                    `Rakip listing'lerden: ilk ${item.sample_size} rakip listing'in ${item.score} tanesi bu etiketi kullanıyor (yüksek = kalabalık/rekabetçi)`,
+                    `From competitor listings: ${item.score} of the top ${item.sample_size} competitor listings use this tag (high = crowded/competitive)`,
+                  )
             }
             style={{ background: `linear-gradient(to right, ${fill} ${normalized * 100}%, transparent ${normalized * 100}%)` }}
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-600 dark:text-neutral-300"
           >
-            {item.source === "own" && <span className="text-[9px] font-semibold text-[#D97757]">SENİN</span>}
+            {item.source === "own" && <span className="text-[9px] font-semibold text-[#D97757]">{t("SENİN", "YOURS")}</span>}
             {item.tag}
             <span className="text-neutral-400 dark:text-neutral-500">
-              {item.source === "own" ? `${item.units ?? 0} satış` : `${item.score}/${item.sample_size}`}
+              {item.source === "own" ? `${item.units ?? 0} ${t("satış", "sales")}` : `${item.score}/${item.sample_size}`}
             </span>
-            {item.in_listing && <span className="text-emerald-500" title="Bu listing'de zaten var">✓</span>}
+            {item.in_listing && <span className="text-emerald-500" title={t("Bu listing'de zaten var", "Already in this listing")}>✓</span>}
             {item.google_score !== undefined && <span className="text-blue-500 dark:text-blue-400">G:{item.google_score}</span>}
           </span>
         );
@@ -74,6 +82,7 @@ export default function ListingRow({
   job?: PublishJob;
   publishError?: string | null;
 }) {
+  const { t } = useT();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [keywordPool, setKeywordPool] = useState<KeywordPoolItem[] | null>(null);
@@ -91,7 +100,7 @@ export default function ListingRow({
       const result = await api.listings.keywordPool(shopId, listing.listing_id);
       setKeywordPool(result.keywords);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Bilinmeyen hata");
+      setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error"));
     } finally {
       setKeywordPoolLoading(false);
     }
@@ -111,7 +120,7 @@ export default function ListingRow({
           : prev
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Bilinmeyen hata");
+      setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error"));
     } finally {
       setTrendsLoading(false);
     }
@@ -129,7 +138,7 @@ export default function ListingRow({
             type="checkbox"
             checked={!!selected}
             onChange={(e) => onSelectChange(e.target.checked)}
-            aria-label={`${listing.title} seç`}
+            aria-label={t(`${listing.title} seç`, `Select ${listing.title}`)}
             className="h-4 w-4 flex-shrink-0 accent-[#D97757]"
           />
         )}
@@ -150,35 +159,35 @@ export default function ListingRow({
         <div className="min-w-0 flex-1">
           <p className="font-medium text-neutral-900 dark:text-neutral-100 truncate">{listing.title}</p>
           <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">
-            {listing.views ?? 0} görüntülenme · {listing.favorites ?? 0} favori · {listing.tags.length} etiket
+            {t(`${listing.views ?? 0} görüntülenme · ${listing.favorites ?? 0} favori · ${listing.tags.length} etiket`, `${listing.views ?? 0} views · ${listing.favorites ?? 0} favorites · ${listing.tags.length} tags`)}
           </p>
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
           {listing.has_local && (
             <span
-              title="Kaydedildi ama Etsy'ye henüz yayınlanmadı"
+              title={t("Kaydedildi ama Etsy'ye henüz yayınlanmadı", "Saved but not yet published to Etsy")}
               className="text-xs font-medium text-amber-700 px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300"
             >
-              Yayınlanmadı
+              {t("Yayınlanmadı", "Unpublished")}
             </span>
           )}
           {listing.has_draft && (
             <span
-              title="Bu listing için kayıtlı bir taslak var (listeyi etkilemez)"
+              title={t("Bu listing için kayıtlı bir taslak var (listeyi etkilemez)", "This listing has a saved draft (it does not affect the list)")}
               className="text-xs font-medium text-neutral-600 px-2.5 py-1 rounded-full bg-neutral-100 dark:bg-neutral-800 dark:text-neutral-300"
             >
-              Taslak
+              {t("Taslak", "Draft")}
             </span>
           )}
           <button onClick={() => setHistoryOpen((v) => !v)} className={pill}>
-            {historyOpen ? "Geçmişi gizle" : "Geçmiş"}
+            {historyOpen ? t("Geçmişi gizle", "Hide history") : t("Geçmiş", "History")}
           </button>
           <button onClick={handleToggleKeywordPool} disabled={keywordPoolLoading} className={`${pill} disabled:opacity-50`}>
-            {keywordPoolLoading ? "Yükleniyor…" : keywordPool ? "Havuzu gizle" : "Kelime Havuzu"}
+            {keywordPoolLoading ? t("Yükleniyor…", "Loading…") : keywordPool ? t("Havuzu gizle", "Hide pool") : t("Kelime Havuzu", "Keyword pool")}
           </button>
           <Link href={`/listings/${listing.listing_id}/edit`} className={pill}>
-            Düzenle
+            {t("Düzenle", "Edit")}
           </Link>
           {listing.has_local && onPublish && (
             <button
@@ -186,7 +195,7 @@ export default function ListingRow({
               disabled={publishing}
               className="text-sm font-medium px-3 py-1.5 rounded-lg bg-[#D97757] text-white hover:bg-[#C6613F] transition disabled:opacity-50"
             >
-              {publishing ? "Yayınlanıyor…" : "Etsy'de yayınla"}
+              {publishing ? t("Yayınlanıyor…", "Publishing…") : t("Etsy'de yayınla", "Publish to Etsy")}
             </button>
           )}
         </div>
@@ -201,22 +210,24 @@ export default function ListingRow({
         <div className="border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/50 p-4 space-y-2">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <p className="text-xs font-medium text-neutral-400 dark:text-neutral-500">
-              <b>SENİN</b>: bu listing&apos;e benzeyen kendi listing&apos;lerinden gelen etiket; sayı, o etiketi taşıyan listing&apos;lerin son 180 gündeki toplam satışı (✓ = bu listing&apos;de zaten var). Rakip etiketlerde <b>11/50</b> = ilk 50 rakip listing&apos;in 11&apos;i kullanıyor (yüksek = kalabalık). <b>G</b>: Google Trends
-              ilgisi (0-100, Etsy içi arama hacmi değil; &quot;Google Trend Ekle&quot; ile yüklenir). &quot;AI Önerisi Üret&quot; bu havuzdan uygun olanları seçer.
+              {t(
+                "SENİN: bu listing'e benzeyen kendi listing'lerinden gelen etiket; sayı, o etiketi taşıyan listing'lerin son 180 gündeki toplam satışı (✓ = bu listing'de zaten var). Rakip etiketlerde 11/50 = ilk 50 rakip listing'in 11'i kullanıyor (yüksek = kalabalık). G: Google Trends ilgisi (0-100, Etsy içi arama hacmi değil; \"Google Trend Ekle\" ile yüklenir). \"AI Önerisi Üret\" bu havuzdan uygun olanları seçer.",
+                "YOURS: a tag from your own listings similar to this one; the number is the total sales of listings with that tag in the last 180 days (✓ = already in this listing). For competitor tags, 11/50 = 11 of the top 50 competitor listings use it (high = crowded). G: Google Trends interest (0-100, not Etsy search volume; loaded with \"Add Google Trends\"). \"Generate AI suggestion\" picks suitable tags from this pool.",
+              )}
             </p>
             <button
               onClick={handleLoadTrends}
               disabled={trendsLoading}
               className={`${pill} flex-shrink-0 disabled:opacity-50`}
             >
-              {trendsLoading ? "Google Trend yükleniyor…" : "Google Trend Ekle"}
+              {trendsLoading ? t("Google Trend yükleniyor…", "Loading Google Trends…") : t("Google Trend Ekle", "Add Google Trends")}
             </button>
           </div>
           {keywordPool.length > 0 ? (
             <ScoredKeywordPills items={keywordPool} />
           ) : (
             <p className="text-sm text-neutral-500 dark:text-neutral-400">
-              Havuz boş — henüz yeterli performans geçmişi veya kategori verisi yok.
+              {t("Havuz boş — henüz yeterli performans geçmişi veya kategori verisi yok.", "The pool is empty — not enough performance history or category data yet.")}
             </p>
           )}
         </div>

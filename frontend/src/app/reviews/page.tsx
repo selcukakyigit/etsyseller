@@ -6,11 +6,12 @@ import { api, ShopReview, ShopReviewStats } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import AppShell from "@/components/AppShell";
 import { Pager } from "@/components/shipping/shared";
+import { useT } from "@/lib/i18n-client";
 
 const PAGE_SIZE = 20;
-const MONTH_LABEL = (m: string) => {
+const MONTH_LABEL = (m: string, locale: string) => {
   const [y, mo] = m.split("-");
-  return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString("tr-TR", { month: "short" });
+  return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString(locale, { month: "short" });
 };
 
 function Stars({ rating }: { rating: number }) {
@@ -22,8 +23,8 @@ function Stars({ rating }: { rating: number }) {
   );
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("tr-TR", { day: "2-digit", month: "short", year: "numeric" });
+function formatDate(iso: string, locale: string) {
+  return new Date(iso).toLocaleDateString(locale, { day: "2-digit", month: "short", year: "numeric" });
 }
 
 function RatingDistribution({
@@ -73,6 +74,7 @@ function MonthlyTrend({
   onSelect: (month: string) => void;
 }) {
   const max = Math.max(1, ...monthly.map((m) => m.count));
+  const { t, locale } = useT();
   return (
     <div className="flex h-24 items-end gap-1.5">
       {monthly.map((m) => {
@@ -83,13 +85,13 @@ function MonthlyTrend({
             type="button"
             onClick={() => onSelect(m.month)}
             className="flex flex-1 flex-col items-center gap-1"
-            title={`${m.month}: ${m.count} yorum`}
+            title={`${m.month}: ${m.count} ${t("yorum", "reviews")}`}
           >
             <div
               className={`w-full rounded-t ${isActive ? "bg-[#D97757]" : "bg-[#D97757]/80 hover:bg-[#D97757]"}`}
               style={{ height: `${Math.max(2, (m.count / max) * 72)}px` }}
             />
-            <span className={`text-[9px] ${isActive ? "font-semibold text-[#D97757]" : "text-neutral-400"}`}>{MONTH_LABEL(m.month)}</span>
+            <span className={`text-[9px] ${isActive ? "font-semibold text-[#D97757]" : "text-neutral-400"}`}>{MONTH_LABEL(m.month, locale)}</span>
           </button>
         );
       })}
@@ -98,7 +100,8 @@ function MonthlyTrend({
 }
 
 function ListingStatList({ items }: { items: ShopReviewStats["top_reviewed"] }) {
-  if (items.length === 0) return <p className="text-xs text-neutral-400">Henüz yeterli veri yok.</p>;
+  const { t } = useT();
+  if (items.length === 0) return <p className="text-xs text-neutral-400">{t("Henüz yeterli veri yok.", "Not enough data yet.")}</p>;
   return (
     <ol className="space-y-2">
       {items.map((it, i) => (
@@ -123,6 +126,7 @@ function ListingStatList({ items }: { items: ShopReviewStats["top_reviewed"] }) 
 
 function ReviewsPageInner() {
   const { user, shops, activeShop, setActiveShopId, error: bootError } = useAuthAndShop();
+  const { t, locale } = useT();
   const shopId = activeShop?.id;
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -168,7 +172,8 @@ function ReviewsPageInner() {
         setReviews(r.reviews);
         setError(null);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Bilinmeyen hata"));
+      .catch((e) => setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error")));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shopId, page, ratingFilter, monthFilter]);
 
   useEffect(() => {
@@ -193,10 +198,10 @@ function ReviewsPageInner() {
             altından geçer, sayfa değiştirince de bu blok yerinden oynamaz. */}
         <div className="sticky top-[49px] z-10 -mx-6 bg-neutral-50 px-6 pb-4 dark:bg-neutral-950">
           <div className="pt-2">
-            <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">Yorumlar</h1>
+            <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t("Yorumlar", "Reviews")}</h1>
             {total !== null && average !== null && (
               <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
-                ⭐ {average.toFixed(1)} · {total} yorum
+                ⭐ {average.toFixed(1)} · {total} {t("yorum", "reviews")}
               </p>
             )}
           </div>
@@ -210,19 +215,19 @@ function ReviewsPageInner() {
           {stats && (
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-                <p className="mb-2 text-xs font-semibold text-neutral-500">Puan dağılımı — tıklayınca filtreler</p>
+                <p className="mb-2 text-xs font-semibold text-neutral-500">{t("Puan dağılımı — tıklayınca filtreler", "Rating breakdown — click to filter")}</p>
                 <RatingDistribution dist={stats.rating_distribution} active={ratingFilter} onSelect={toggleRating} />
               </div>
               <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-                <p className="mb-2 text-xs font-semibold text-neutral-500">Aylık yorum sayısı (son 12 ay) — tıklayınca filtreler</p>
+                <p className="mb-2 text-xs font-semibold text-neutral-500">{t("Aylık yorum sayısı (son 12 ay) — tıklayınca filtreler", "Reviews per month (last 12 months) — click to filter")}</p>
                 <MonthlyTrend monthly={stats.monthly} active={monthFilter} onSelect={toggleMonth} />
               </div>
               <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-                <p className="mb-2 text-xs font-semibold text-neutral-500">En çok yorum alan listing&apos;ler</p>
+                <p className="mb-2 text-xs font-semibold text-neutral-500">{t("En çok yorum alan listing'ler", "Most reviewed listings")}</p>
                 <ListingStatList items={stats.top_reviewed} />
               </div>
               <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-                <p className="mb-2 text-xs font-semibold text-neutral-500">En sevilen listing&apos;ler (en az 3 yorum)</p>
+                <p className="mb-2 text-xs font-semibold text-neutral-500">{t("En sevilen listing'ler (en az 3 yorum)", "Top rated listings (at least 3 reviews)")}</p>
                 <ListingStatList items={stats.top_rated} />
               </div>
             </div>
@@ -231,13 +236,13 @@ function ReviewsPageInner() {
 
         {(bootError || error) && <p className="text-sm text-red-600">{bootError ?? error}</p>}
 
-        {!activeShop && user && shops !== null && <p className="text-sm text-neutral-500">Önce Etsy mağazanı bağla.</p>}
+        {!activeShop && user && shops !== null && <p className="text-sm text-neutral-500">{t("Önce Etsy mağazanı bağla.", "Connect your Etsy shop first.")}</p>}
 
         {activeShop && (
           <>
             {(ratingFilter || monthFilter) && (
               <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="text-neutral-400">Filtre:</span>
+                <span className="text-neutral-400">{t("Filtre:", "Filter:")}</span>
                 {ratingFilter && (
                   <button
                     type="button"
@@ -253,15 +258,15 @@ function ReviewsPageInner() {
                     onClick={() => toggleMonth(monthFilter)}
                     className="inline-flex items-center gap-1 rounded-full bg-[#D97757]/10 px-2.5 py-1 font-medium text-[#D97757]"
                   >
-                    {MONTH_LABEL(monthFilter)} <span aria-hidden>×</span>
+                    {MONTH_LABEL(monthFilter, locale)} <span aria-hidden>×</span>
                   </button>
                 )}
               </div>
             )}
 
             <div className="space-y-3">
-              {reviews === null && <p className="text-sm text-neutral-400">Yükleniyor…</p>}
-              {reviews && reviews.length === 0 && <p className="text-sm text-neutral-400">Henüz yorum yok.</p>}
+              {reviews === null && <p className="text-sm text-neutral-400">{t("Yükleniyor…", "Loading…")}</p>}
+              {reviews && reviews.length === 0 && <p className="text-sm text-neutral-400">{t("Henüz yorum yok.", "No reviews yet.")}</p>}
               {(reviews ?? []).map((r) => (
                 <div
                   key={r.transaction_id}
@@ -269,7 +274,7 @@ function ReviewsPageInner() {
                 >
                   <div className="flex items-center justify-between gap-3">
                     <Stars rating={r.rating} />
-                    <span className="text-xs text-neutral-400">{formatDate(r.created_at)}</span>
+                    <span className="text-xs text-neutral-400">{formatDate(r.created_at, locale)}</span>
                   </div>
                   {r.review && <p className="mt-2 text-sm text-neutral-700 dark:text-neutral-300">{r.review}</p>}
                   {r.image_url && (

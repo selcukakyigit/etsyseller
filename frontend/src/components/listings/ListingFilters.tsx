@@ -5,6 +5,7 @@ import { Listing, ProductionPartner, ReturnPolicy, ShippingProfile, ShopSection 
 import { Modal } from "@/components/listing-editor/Modal";
 import ShopSectionsSection from "@/components/shipping/ShopSectionsSection";
 import { ReconnectNotice } from "@/components/shipping/shared";
+import { T, useT } from "@/lib/i18n-client";
 
 export type Filters = {
   status: string; // "all" | Etsy state
@@ -35,12 +36,12 @@ export type Reference = {
   partners: ProductionPartner[];
 };
 
-const STATUSES: [string, string][] = [
-  ["active", "Aktif"],
-  ["draft", "Taslak"],
-  ["expired", "Süresi dolmuş"],
-  ["sold_out", "Tükenmiş"],
-  ["inactive", "Pasif"],
+const STATUSES: [string, string, string][] = [
+  ["active", "Aktif", "Active"],
+  ["draft", "Taslak", "Draft"],
+  ["expired", "Süresi dolmuş", "Expired"],
+  ["sold_out", "Tükenmiş", "Sold out"],
+  ["inactive", "Pasif", "Inactive"],
 ];
 
 export function applyFilters(listings: Listing[], f: Filters): Listing[] {
@@ -59,10 +60,13 @@ export function applyFilters(listings: Listing[], f: Filters): Listing[] {
   });
 }
 
-export function returnPolicyLabel(p: ReturnPolicy): string {
-  if (!p.accepts_returns && !p.accepts_exchanges) return "İade/değişim kabul edilmiyor";
-  const what = p.accepts_returns && p.accepts_exchanges ? "İade ve değişim" : p.accepts_returns ? "İade" : "Değişim";
-  return p.return_deadline ? `${what} · ${p.return_deadline} gün` : what;
+const trOnly: T = (tr) => tr;
+
+export function returnPolicyLabel(p: ReturnPolicy, t: T = trOnly): string {
+  if (!p.accepts_returns && !p.accepts_exchanges) return t("İade/değişim kabul edilmiyor", "No returns or exchanges");
+  const what =
+    p.accepts_returns && p.accepts_exchanges ? t("İade ve değişim", "Returns and exchanges") : p.accepts_returns ? t("İade", "Returns") : t("Değişim", "Exchanges");
+  return p.return_deadline ? `${what} · ${p.return_deadline} ${t("gün", "days")}` : what;
 }
 
 const label = "mb-2 mt-5 block text-sm font-semibold text-neutral-900 dark:text-neutral-100";
@@ -109,6 +113,7 @@ export default function ListingFilters({
   onSectionsChanged: () => void;
 }) {
   const set = (patch: Partial<Filters>) => onChange({ ...filters, ...patch });
+  const { t } = useT();
   const [manageSections, setManageSections] = useState(false);
   const [needsReconnect, setNeedsReconnect] = useState(false);
 
@@ -124,7 +129,7 @@ export default function ListingFilters({
       if (l.has_video) withVideo++;
       if (l.has_local) unpublished++;
       if (l.has_draft) drafts++;
-      l.tags.forEach((t) => tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1));
+      l.tags.forEach((tag) => tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1));
     }
     const tags = [...tagCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
     return { byState, withVideo, unpublished, drafts, tags };
@@ -133,12 +138,12 @@ export default function ListingFilters({
   return (
     <aside className="w-full shrink-0 lg:w-64 lg:sticky lg:self-start lg:overflow-y-auto lg:top-[14rem] lg:max-h-[calc(100vh-15rem)]">
       <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-        <span className="block text-sm font-semibold text-neutral-900 dark:text-neutral-100">Listing durumu</span>
+        <span className="block text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("Listing durumu", "Listing status")}</span>
         <div className="mt-2">
           <Radio checked={filters.status === "all"} onChange={() => set({ status: "all" })} count={listings.length}>
-            Tümü
+            {t("Tümü", "All")}
           </Radio>
-          {STATUSES.map(([key, name]) => (
+          {STATUSES.map(([key, tr, en]) => (
             <Radio
               key={key}
               checked={filters.status === key}
@@ -146,34 +151,34 @@ export default function ListingFilters({
               count={counts.byState[key] ?? 0}
               disabled={!counts.byState[key]}
             >
-              {name}
+              {t(tr, en)}
             </Radio>
           ))}
         </div>
 
-        <span className={label}>Yerel değişiklikler</span>
+        <span className={label}>{t("Yerel değişiklikler", "Local changes")}</span>
         <Radio checked={filters.local === "all"} onChange={() => set({ local: "all" })}>
-          Hepsi
+          {t("Hepsi", "All")}
         </Radio>
         <Radio checked={filters.local === "unpublished"} onChange={() => set({ local: "unpublished" })} count={counts.unpublished}>
-          Yayınlanmamış
+          {t("Yayınlanmamış", "Unpublished")}
         </Radio>
         <Radio checked={filters.local === "draft"} onChange={() => set({ local: "draft" })} count={counts.drafts}>
-          Taslağı olan
+          {t("Taslağı olan", "Has draft")}
         </Radio>
 
         <div className="mt-5 flex items-baseline justify-between">
-          <label className="block text-sm font-semibold text-neutral-900 dark:text-neutral-100">Bölümler</label>
+          <label className="block text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("Bölümler", "Sections")}</label>
           <button
             type="button"
             onClick={() => setManageSections(true)}
             className="text-xs font-medium text-[#D97757] hover:underline"
           >
-            Yönet
+            {t("Yönet", "Manage")}
           </button>
         </div>
         <select className={`${select} mt-2`} value={filters.section} onChange={(e) => set({ section: e.target.value })}>
-          <option value="">Tümü</option>
+          <option value="">{t("Tümü", "All")}</option>
           {reference.sections.map((s) => (
             <option key={s.shop_section_id} value={s.shop_section_id}>
               {s.title}
@@ -181,9 +186,9 @@ export default function ListingFilters({
           ))}
         </select>
 
-        <label className={label}>Kargo profilleri</label>
+        <label className={label}>{t("Kargo profilleri", "Shipping profiles")}</label>
         <select className={select} value={filters.shipping} onChange={(e) => set({ shipping: e.target.value })}>
-          <option value="">Tümü</option>
+          <option value="">{t("Tümü", "All")}</option>
           {reference.shipping.map((s) => (
             <option key={s.shipping_profile_id} value={s.shipping_profile_id}>
               {s.title}
@@ -191,19 +196,19 @@ export default function ListingFilters({
           ))}
         </select>
 
-        <label className={label}>İade ve değişim politikaları</label>
+        <label className={label}>{t("İade ve değişim politikaları", "Return and exchange policies")}</label>
         <select className={select} value={filters.returnPolicy} onChange={(e) => set({ returnPolicy: e.target.value })}>
-          <option value="">Tümü</option>
+          <option value="">{t("Tümü", "All")}</option>
           {reference.returns.map((r) => (
             <option key={r.return_policy_id} value={r.return_policy_id}>
-              {returnPolicyLabel(r)}
+              {returnPolicyLabel(r, t)}
             </option>
           ))}
         </select>
 
-        <label className={label}>Üretim ortakları</label>
+        <label className={label}>{t("Üretim ortakları", "Production partners")}</label>
         <select className={select} value={filters.partner} onChange={(e) => set({ partner: e.target.value })}>
-          <option value="">Tümü</option>
+          <option value="">{t("Tümü", "All")}</option>
           {reference.partners.map((p) => (
             <option key={p.production_partner_id} value={p.production_partner_id}>
               {p.partner_name}
@@ -211,20 +216,20 @@ export default function ListingFilters({
           ))}
         </select>
 
-        <span className={label}>Listing videoları</span>
+        <span className={label}>{t("Listing videoları", "Listing videos")}</span>
         <Radio checked={filters.video === "all"} onChange={() => set({ video: "all" })} count={listings.length}>
-          Tümü
+          {t("Tümü", "All")}
         </Radio>
         <Radio checked={filters.video === "with"} onChange={() => set({ video: "with" })} count={counts.withVideo}>
-          Videolu
+          {t("Videolu", "With video")}
         </Radio>
         <Radio checked={filters.video === "without"} onChange={() => set({ video: "without" })} count={listings.length - counts.withVideo}>
-          Videosuz
+          {t("Videosuz", "Without video")}
         </Radio>
 
-        <label className={label}>Etiketler</label>
+        <label className={label}>{t("Etiketler", "Tags")}</label>
         <select className={select} value={filters.tag} onChange={(e) => set({ tag: e.target.value })}>
-          <option value="">Tümü</option>
+          <option value="">{t("Tümü", "All")}</option>
           {counts.tags.map(([tag, n]) => (
             <option key={tag} value={tag}>
               {tag} ({n})
@@ -237,12 +242,12 @@ export default function ListingFilters({
           onClick={() => onChange(EMPTY_FILTERS)}
           className="mt-5 text-xs font-medium text-neutral-500 hover:underline"
         >
-          Filtreleri temizle
+          {t("Filtreleri temizle", "Clear filters")}
         </button>
       </div>
 
       {manageSections && (
-        <Modal z={95} widthClass="max-w-lg" title="Bölümleri yönet" onClose={() => setManageSections(false)}>
+        <Modal z={95} widthClass="max-w-lg" title={t("Bölümleri yönet", "Manage sections")} onClose={() => setManageSections(false)}>
           {needsReconnect && (
             <div className="mb-4">
               <ReconnectNotice compact />

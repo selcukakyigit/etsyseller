@@ -16,6 +16,7 @@ import ListingHistoryPanel from "@/components/ListingHistoryPanel";
 import { Modal, btnGhost } from "@/components/listing-editor/Modal";
 import { ReconnectNotice, isPermissionError } from "@/components/shipping/shared";
 import ListingFilters, { applyFilters, EMPTY_FILTERS, Filters, Reference } from "@/components/listings/ListingFilters";
+import { useT } from "@/lib/i18n-client";
 
 type PublishOutcome = { id: number; title: string; ok: boolean; error?: string; updated?: string[]; warnings?: string[] };
 
@@ -24,6 +25,7 @@ const STALE_AFTER_MS = 5 * 60 * 60 * 1000; // 5 saat: 6 saatlik sınırın altı
 
 export default function Home() {
   const { user, shops, activeShop, setActiveShopId, error: bootError } = useAuthAndShop();
+  const { t } = useT();
   const [listings, setListings] = useState<Listing[] | null>(null);
   const [bootstrapSyncing, setBootstrapSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +47,8 @@ export default function Home() {
     api.listings
       .list(activeShop.id)
       .then(setListings)
-      .catch((e) => setError(e instanceof Error ? e.message : "Bilinmeyen hata"));
+      .catch((e) => setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error")));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeShop]);
 
   useEffect(() => {
@@ -130,7 +133,7 @@ export default function Home() {
           pollUntilDone();
         }
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Bilinmeyen hata");
+        setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error"));
       }
     }
 
@@ -139,6 +142,7 @@ export default function Home() {
       cancelled = true;
       if (interval) clearInterval(interval);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeShop, listings, loadListings]);
 
   // Filtre paneli için Etsy referans verileri (sunucuda önbellekli). Bölümler modalinde ekle/sil/yeniden
@@ -170,10 +174,13 @@ export default function Home() {
     if (!activeShop) return;
     const res = await api.listings.bulkStage(activeShop.id, ids, changes);
     const byId = new Map((listings ?? []).map((l) => [l.listing_id, l]));
-    const errors = res.filter((r) => !r.ok).map((r) => ({ title: byId.get(r.id)?.title ?? String(r.id), error: r.error ?? "Hata" }));
+    const errors = res.filter((r) => !r.ok).map((r) => ({ title: byId.get(r.id)?.title ?? String(r.id), error: r.error ?? t("Hata", "Error") }));
     const changed = res.filter((r) => r.ok && r.changed).length;
     setStageMsg({
-      text: `${changed} listing yerelde hazırlandı${errors.length ? `, ${errors.length} listing hatalı` : ""}. Etsy'ye göndermek için "Etsy'de yayınla" de.`,
+      text: t(
+        `${changed} listing yerelde hazırlandı${errors.length ? `, ${errors.length} listing hatalı` : ""}. Etsy'ye göndermek için "Etsy'de yayınla" de.`,
+        `${changed} listings prepared locally${errors.length ? `, ${errors.length} failed` : ""}. Use "Publish to Etsy" to send them to Etsy.`,
+      ),
       errors,
     });
     loadListings();
@@ -181,19 +188,23 @@ export default function Home() {
 
   async function changeState(items: Listing[], state: "active" | "inactive", renew = false) {
     const verb = renew ? "yenilensin" : state === "active" ? "aktif edilsin" : "pasife alınsın";
+    const verbEn = renew ? "Renew" : state === "active" ? "Activate" : "Deactivate";
     const ok = await confirm({
-      title: `${items.length} listing ${verb} mi?`,
+      title: t(`${items.length} listing ${verb} mi?`, `${verbEn} ${items.length} listings?`),
       message: renew
-        ? "Süresi dolmuş/tükenmiş listing'ler yeniden aktif edilir; Etsy yenileme için listing ücreti (0,20 $) alır ve tükenmiş olanların stoğu 1 olur. Değişiklik yerelde hazırlanır, ücret ancak \"Etsy'de yayınla\" deyince alınır."
-        : "Değişiklik yerelde hazırlanır; Etsy'ye \"Etsy'de yayınla\" deyince gider.",
-      confirmLabel: renew ? "Yenile" : state === "active" ? "Aktif et" : "Pasife al",
+        ? t(
+            "Süresi dolmuş/tükenmiş listing'ler yeniden aktif edilir; Etsy yenileme için listing ücreti (0,20 $) alır ve tükenmiş olanların stoğu 1 olur. Değişiklik yerelde hazırlanır, ücret ancak \"Etsy'de yayınla\" deyince alınır.",
+            "Expired or sold-out listings become active again; Etsy charges the listing fee ($0.20) to renew, and sold-out ones get a quantity of 1. The change is prepared locally; the fee is only charged when you use \"Publish to Etsy\".",
+          )
+        : t("Değişiklik yerelde hazırlanır; Etsy'ye \"Etsy'de yayınla\" deyince gider.", "The change is prepared locally and goes to Etsy when you use \"Publish to Etsy\"."),
+      confirmLabel: renew ? t("Yenile", "Renew") : state === "active" ? t("Aktif et", "Activate") : t("Pasife al", "Deactivate"),
     });
     if (!ok) return;
     setBusyAction(true);
     try {
       await stage(items.map((l) => l.listing_id), { state });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Bilinmeyen hata");
+      setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error"));
     } finally {
       setBusyAction(false);
     }
@@ -203,7 +214,12 @@ export default function Home() {
     if (!activeShop || items.length === 0) return;
     if (items.every((l) => l.is_new)) {
       // Yalnızca yerelde var olan yeni listing'ler: Etsy'ye dokunulmaz.
-      const okLocal = await confirm({ title: `${items.length} yerel listing silinsin mi?`, message: "Bunlar henüz Etsy'de yok; yalnızca yerel kopya silinir.", confirmLabel: "Sil", destructive: true });
+      const okLocal = await confirm({
+        title: t(`${items.length} yerel listing silinsin mi?`, `Delete ${items.length} local listings?`),
+        message: t("Bunlar henüz Etsy'de yok; yalnızca yerel kopya silinir.", "These are not on Etsy yet; only the local copy is deleted."),
+        confirmLabel: t("Sil", "Delete"),
+        destructive: true,
+      });
       if (!okLocal) return;
       for (const l of items) await api.listings.deleteListing(activeShop.id, l.listing_id).catch(() => undefined);
       setSelected(new Set());
@@ -211,13 +227,16 @@ export default function Home() {
       return;
     }
     const ok = await confirm({
-      title: `${items.length} listing kalıcı olarak silinsin mi?`,
+      title: t(`${items.length} listing kalıcı olarak silinsin mi?`, `Permanently delete ${items.length} listings?`),
       message: (
         <>
-          Listing&apos;ler <b>Etsy&apos;den silinir ve geri alınamaz</b>. {items.length <= 3 ? items.map((l) => `"${l.title}"`).join(", ") : `İlk üçü: ${items.slice(0, 3).map((l) => `"${l.title}"`).join(", ")}…`}
+          {t("Listing'ler", "The listings")} <b>{t("Etsy'den silinir ve geri alınamaz", "are deleted from Etsy and this cannot be undone")}</b>.{" "}
+          {items.length <= 3
+            ? items.map((l) => `"${l.title}"`).join(", ")
+            : `${t("İlk üçü", "First three")}: ${items.slice(0, 3).map((l) => `"${l.title}"`).join(", ")}…`}
         </>
       ),
-      confirmLabel: "Kalıcı olarak sil",
+      confirmLabel: t("Kalıcı olarak sil", "Delete permanently"),
       destructive: true,
     });
     if (!ok) return;
@@ -230,11 +249,14 @@ export default function Home() {
         deleted++;
       } catch (e) {
         if (isPermissionError(e)) setNeedsReconnect(true);
-        errors.push({ title: l.title, error: e instanceof Error ? e.message : "Hata" });
+        errors.push({ title: l.title, error: e instanceof Error ? e.message : t("Hata", "Error") });
       }
     }
     setSelected(new Set());
-    setStageMsg({ text: `${deleted} listing silindi${errors.length ? `, ${errors.length} silinemedi` : ""}.`, errors });
+    setStageMsg({
+      text: t(`${deleted} listing silindi${errors.length ? `, ${errors.length} silinemedi` : ""}.`, `${deleted} listings deleted${errors.length ? `, ${errors.length} could not be deleted` : ""}.`),
+      errors,
+    });
     setBusyAction(false);
     loadListings();
   }
@@ -246,7 +268,7 @@ export default function Home() {
       const res = await api.listings.newListing(activeShop.id, sourceId);
       if (res.warnings && res.warnings.length > 0) {
         await confirm({
-          title: "Kopya hazır",
+          title: t("Kopya hazır", "Copy ready"),
           message: (
             <ul className="list-disc space-y-1 pl-5">
               {res.warnings.map((w) => (
@@ -254,12 +276,12 @@ export default function Home() {
               ))}
             </ul>
           ),
-          confirmLabel: "Düzenle",
+          confirmLabel: t("Düzenle", "Edit"),
         });
       }
       router.push(`/listings/${res.listing_id}/edit`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Bilinmeyen hata");
+      setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error"));
       setBusyAction(false);
     }
   }
@@ -337,7 +359,7 @@ export default function Home() {
           warnings: res.warnings,
         };
       } catch (e) {
-        outcome = { id: item.listing_id, title: item.title, ok: false, error: e instanceof Error ? e.message : "Bilinmeyen hata" };
+        outcome = { id: item.listing_id, title: item.title, ok: false, error: e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error") };
       }
       results.push(outcome);
       setPublishingIds((prev) => {
@@ -345,7 +367,7 @@ export default function Home() {
         next.delete(item.listing_id);
         return next;
       });
-      if (!outcome.ok) setRowErrors((prev) => ({ ...prev, [item.listing_id]: outcome.error ?? "Yayınlanamadı" }));
+      if (!outcome.ok) setRowErrors((prev) => ({ ...prev, [item.listing_id]: outcome.error ?? t("Yayınlanamadı", "Could not publish") }));
       if (showProgress) setBulk({ total: items.length, results: [...results], running: true });
     }
     if (showProgress) setBulk({ total: items.length, results, running: false });
@@ -359,9 +381,9 @@ export default function Home() {
 
   async function publishOne(listing: Listing) {
     const ok = await confirm({
-      title: "Etsy'de yayınlansın mı?",
-      message: `"${listing.title}" için kaydedilmiş değişiklikler Etsy'deki canlı listing'e uygulanacak.`,
-      confirmLabel: "Etsy'de yayınla",
+      title: t("Etsy'de yayınlansın mı?", "Publish to Etsy?"),
+      message: t(`"${listing.title}" için kaydedilmiş değişiklikler Etsy'deki canlı listing'e uygulanacak.`, `The saved changes for "${listing.title}" will be applied to the live listing on Etsy.`),
+      confirmLabel: t("Etsy'de yayınla", "Publish to Etsy"),
     });
     if (ok && activeShop) startPublish(activeShop.id, listing.listing_id); // kart üzerinde doluluk çubuğu; sonuç bitince liste yenilenir
   }
@@ -370,14 +392,17 @@ export default function Home() {
     if (selectedDrafts.length === 0) return;
     const skipped = selected.size - selectedDrafts.length;
     const ok = await confirm({
-      title: `${selectedDrafts.length} listing Etsy'de yayınlansın mı?`,
+      title: t(`${selectedDrafts.length} listing Etsy'de yayınlansın mı?`, `Publish ${selectedDrafts.length} listings to Etsy?`),
       message: (
         <>
-          Seçili listing&apos;lerin kaydedilmiş değişiklikleri Etsy&apos;deki canlı listing&apos;lere sırayla uygulanacak.
-          {skipped > 0 && <> Yerel değişikliği olmayan {skipped} seçili listing atlanacak.</>}
+          {t(
+            "Seçili listing'lerin kaydedilmiş değişiklikleri Etsy'deki canlı listing'lere sırayla uygulanacak.",
+            "The saved changes of the selected listings will be applied to the live listings on Etsy one by one.",
+          )}
+          {skipped > 0 && <> {t(`Yerel değişikliği olmayan ${skipped} seçili listing atlanacak.`, `${skipped} selected listings without local changes will be skipped.`)}</>}
         </>
       ),
-      confirmLabel: "Etsy'de yayınla",
+      confirmLabel: t("Etsy'de yayınla", "Publish to Etsy"),
     });
     if (ok) await runPublish(selectedDrafts, true);
   }
@@ -386,61 +411,64 @@ export default function Home() {
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/listings">
       <div className="max-w-7xl mx-auto px-6 pb-8 pt-0">
         <div>
-          {!user && !bootError && <p className="text-sm text-neutral-400 dark:text-neutral-500">Yükleniyor…</p>}
+          {!user && !bootError && <p className="text-sm text-neutral-400 dark:text-neutral-500">{t("Yükleniyor…", "Loading…")}</p>}
         </div>
 
         {(bootError || error) && <p className="text-sm text-red-600 mb-4">{bootError ?? error}</p>}
 
         <div>
-          {user && shops === null && !bootError && <p className="text-sm text-neutral-400 dark:text-neutral-500">Mağazalar yükleniyor…</p>}
+          {user && shops === null && !bootError && <p className="text-sm text-neutral-400 dark:text-neutral-500">{t("Mağazalar yükleniyor…", "Loading shops…")}</p>}
         </div>
 
         {user && shops !== null && !activeShop && (
           <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-8 text-center">
-            <p className="text-neutral-600 dark:text-neutral-300 mb-4">Devam etmek için Etsy mağazanı bağlaman gerekiyor.</p>
+            <p className="text-neutral-600 dark:text-neutral-300 mb-4">{t("Devam etmek için Etsy mağazanı bağlaman gerekiyor.", "Connect your Etsy shop to continue.")}</p>
             <a
               href={api.shops.connectUrl()}
               className="inline-block text-sm font-medium px-4 py-2 rounded-lg bg-[#D97757] text-white hover:bg-[#C6613F] transition"
             >
-              Etsy&apos;ye Bağlan
+              {t("Etsy'ye Bağlan", "Connect Etsy")}
             </a>
           </div>
         )}
 
         {activeShop && listings === null && !error && (
-          <p className="text-sm text-neutral-400 dark:text-neutral-500">Listing&apos;ler yükleniyor…</p>
+          <p className="text-sm text-neutral-400 dark:text-neutral-500">{t("Listing'ler yükleniyor…", "Loading listings…")}</p>
         )}
 
         {activeShop && listings && listings.length === 0 && bootstrapSyncing && (
           <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-8 text-center">
-            <p className="text-neutral-600 dark:text-neutral-300">İlk senkronizasyon çalışıyor…</p>
+            <p className="text-neutral-600 dark:text-neutral-300">{t("İlk senkronizasyon çalışıyor…", "Running the first sync…")}</p>
             <p className="text-sm text-neutral-400 dark:text-neutral-500 mt-1">
-              Mağazandaki listing sayısına göre birkaç dakika sürebilir, bu sayfa otomatik güncellenecek.
+              {t(
+                "Mağazandaki listing sayısına göre birkaç dakika sürebilir, bu sayfa otomatik güncellenecek.",
+                "Depending on how many listings your shop has, this can take a few minutes. This page updates automatically.",
+              )}
             </p>
           </div>
         )}
 
         {activeShop && listings && listings.length === 0 && !bootstrapSyncing && (
-          <p className="text-sm text-neutral-400 dark:text-neutral-500">Aktif listing bulunamadı.</p>
+          <p className="text-sm text-neutral-400 dark:text-neutral-500">{t("Aktif listing bulunamadı.", "No active listings found.")}</p>
         )}
 
         {activeShop && listings && listings.length > 0 && (
           <>
             <div className="sticky top-[49px] z-[9] -mx-6 bg-neutral-50 px-6 pb-3 pt-3 dark:bg-neutral-950">
             <div className="mb-3 flex flex-wrap items-center gap-3">
-              <h1 className="mr-auto text-xl font-semibold text-neutral-900 dark:text-neutral-100">Listing&apos;ler</h1>
+              <h1 className="mr-auto text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t("Listing'ler", "Listings")}</h1>
               <button
                 onClick={() => newListing()}
                 disabled={busyAction}
                 className="rounded-full bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-700 disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
               >
-                + Yeni listing
+                {t("+ Yeni listing", "+ New listing")}
               </button>
               <div className="relative w-full sm:w-80">
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Başlık, etiket veya SKU ara"
+                  placeholder={t("Başlık, etiket veya SKU ara", "Search title, tag or SKU")}
                   className="w-full rounded-full border border-neutral-300 bg-white py-2 pl-4 pr-10 text-sm outline-none focus:border-[#D97757] dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
                 />
                 <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-neutral-400">⌕</span>
@@ -462,13 +490,13 @@ export default function Home() {
                     }
                     className="h-4 w-4 accent-[#D97757]"
                   />
-                  {selected.size > 0 ? `${selected.size} seçili` : "Tümünü seç"}
+                  {selected.size > 0 ? t(`${selected.size} seçili`, `${selected.size} selected`) : t("Tümünü seç", "Select all")}
                 </label>
                 {[
-                  { label: "Yenile", show: allRenewable, run: () => changeState(selectedListings, "active", true) },
-                  { label: "Pasife al", show: true, run: () => changeState(selectedListings, "inactive") },
-                  { label: "Aktif et", show: true, run: () => changeState(selectedListings, "active") },
-                  { label: "Sil", show: true, run: () => deleteListings(selectedListings), danger: true },
+                  { label: t("Yenile", "Renew"), show: allRenewable, run: () => changeState(selectedListings, "active", true) },
+                  { label: t("Pasife al", "Deactivate"), show: true, run: () => changeState(selectedListings, "inactive") },
+                  { label: t("Aktif et", "Activate"), show: true, run: () => changeState(selectedListings, "active") },
+                  { label: t("Sil", "Delete"), show: true, run: () => deleteListings(selectedListings), danger: true },
                 ]
                   .filter((b) => b.show)
                   .map((b) => (
@@ -490,28 +518,28 @@ export default function Home() {
                   disabled={selected.size === 0 || busyAction}
                   className="rounded-full border border-neutral-300 px-4 py-1.5 text-sm font-medium text-neutral-800 hover:bg-neutral-50 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800"
                 >
-                  Düzenleme seçenekleri ▾
+                  {t("Düzenleme seçenekleri", "Editing options")} ▾
                 </button>
                 <div className="ml-auto flex items-center gap-2">
                   <select
                     value={sort}
                     onChange={(e) => setSort(e.target.value)}
-                    aria-label="Sırala"
+                    aria-label={t("Sırala", "Sort")}
                     className="rounded-lg border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
                   >
-                    <option value="ending">Bitiş: en yeni önce</option>
-                    <option value="modified">Son düzenlenen</option>
-                    <option value="views">En çok görüntülenen</option>
-                    <option value="favorites">En çok favorilenen</option>
-                    <option value="price_asc">Fiyat: düşükten yükseğe</option>
-                    <option value="price_desc">Fiyat: yüksekten düşüğe</option>
-                    <option value="title">Başlık (A–Z)</option>
+                    <option value="ending">{t("Bitiş: en yeni önce", "Expiration: newest first")}</option>
+                    <option value="modified">{t("Son düzenlenen", "Recently edited")}</option>
+                    <option value="views">{t("En çok görüntülenen", "Most viewed")}</option>
+                    <option value="favorites">{t("En çok favorilenen", "Most favorited")}</option>
+                    <option value="price_asc">{t("Fiyat: düşükten yükseğe", "Price: low to high")}</option>
+                    <option value="price_desc">{t("Fiyat: yüksekten düşüğe", "Price: high to low")}</option>
+                    <option value="title">{t("Başlık (A–Z)", "Title (A–Z)")}</option>
                   </select>
                   {(["grid", "list"] as const).map((v) => (
                     <button
                       key={v}
                       onClick={() => setView(v)}
-                      aria-label={v === "grid" ? "Kart görünümü" : "Liste görünümü"}
+                      aria-label={v === "grid" ? t("Kart görünümü", "Grid view") : t("Liste görünümü", "List view")}
                       aria-pressed={view === v}
                       className={`rounded-full border px-3 py-1.5 text-sm ${
                         view === v
@@ -526,37 +554,46 @@ export default function Home() {
               </div>
               <div className="flex flex-wrap items-center gap-3 border-t border-neutral-100 pt-3 dark:border-neutral-800">
                 <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                  {visibleListings.length}/{listings.length} listing · {draftListings.length} yayınlanmamış
+                  {visibleListings.length}/{listings.length} {t("listing", "listings")} · {draftListings.length} {t("yayınlanmamış", "unpublished")}
                 </span>
                 <button
                   onClick={() => setSelected(new Set(draftListings.map((l) => l.listing_id)))}
                   disabled={draftListings.length === 0}
                   className="rounded-full border border-neutral-200 px-3 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-800"
                 >
-                  Yayınlanmamışları seç
+                  {t("Yayınlanmamışları seç", "Select unpublished")}
                 </button>
                 <button
                   onClick={async () => {
                     if (!activeShop) return;
                     const ok = await confirm({
-                      title: "Tam senkronizasyon başlatılsın mı?",
-                      message: "Normal senkronizasyon yalnızca Etsy'de değişen listing'leri çeker. Tam senkronizasyon hepsini baştan çeker: birkaç dakika sürer ve Etsy API kotanı harcar. Yalnızca veri tutarsız görünüyorsa kullan.",
-                      confirmLabel: "Tam senkronize et",
+                      title: t("Tam senkronizasyon başlatılsın mı?", "Start a full sync?"),
+                      message: t(
+                        "Normal senkronizasyon yalnızca Etsy'de değişen listing'leri çeker. Tam senkronizasyon hepsini baştan çeker: birkaç dakika sürer ve Etsy API kotanı harcar. Yalnızca veri tutarsız görünüyorsa kullan.",
+                        "A normal sync only fetches listings that changed on Etsy. A full sync fetches all of them again: it takes a few minutes and uses your Etsy API quota. Only use it if the data looks inconsistent.",
+                      ),
+                      confirmLabel: t("Tam senkronize et", "Run full sync"),
                     });
                     if (!ok) return;
-                    await api.listings.sync(activeShop.id, true).catch((e) => setError(e instanceof Error ? e.message : "Bilinmeyen hata"));
-                    setStageMsg({ text: "Tam senkronizasyon arka planda başladı; birkaç dakika sürebilir. Bitince listeyi yenile.", errors: [] });
+                    await api.listings.sync(activeShop.id, true).catch((e) => setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error")));
+                    setStageMsg({
+                      text: t(
+                        "Tam senkronizasyon arka planda başladı; birkaç dakika sürebilir. Bitince listeyi yenile.",
+                        "Full sync started in the background; it can take a few minutes. Refresh the list when it is done.",
+                      ),
+                      errors: [],
+                    });
                   }}
                   className="text-xs text-neutral-500 underline underline-offset-2 hover:text-neutral-800"
                 >
-                  Tam senkronizasyon
+                  {t("Tam senkronizasyon", "Full sync")}
                 </button>
                 <button
                   onClick={publishSelected}
                   disabled={selectedDrafts.length === 0 || bulk?.running}
                   className="ml-auto rounded-lg bg-[#D97757] px-3 py-1.5 text-sm font-medium text-white transition hover:bg-[#C6613F] disabled:opacity-50"
                 >
-                  Seçilenleri Etsy&apos;de yayınla ({selectedDrafts.length})
+                  {t("Seçilenleri Etsy'de yayınla", "Publish selected to Etsy")} ({selectedDrafts.length})
                 </button>
               </div>
             </div>
@@ -572,7 +609,7 @@ export default function Home() {
                 <div className="flex items-start justify-between gap-3">
                   <p className="text-neutral-800 dark:text-neutral-100">{stageMsg.text}</p>
                   <button onClick={() => setStageMsg(null)} className="text-xs text-neutral-500 hover:underline">
-                    Kapat
+                    {t("Kapat", "Close")}
                   </button>
                 </div>
                 {stageMsg.errors.length > 0 && (
@@ -582,7 +619,7 @@ export default function Home() {
                         ✗ {e.title.slice(0, 60)} — {e.error}
                       </li>
                     ))}
-                    {stageMsg.errors.length > 8 && <li>… ve {stageMsg.errors.length - 8} tane daha</li>}
+                    {stageMsg.errors.length > 8 && <li>{t(`… ve ${stageMsg.errors.length - 8} tane daha`, `… and ${stageMsg.errors.length - 8} more`)}</li>}
                   </ul>
                 )}
               </div>
@@ -593,12 +630,15 @@ export default function Home() {
                 <div className="mb-2 flex items-center justify-between">
                   <p className="font-semibold text-neutral-900 dark:text-neutral-100">
                     {bulk.running
-                      ? `Yayınlanıyor… ${bulk.results.length}/${bulk.total}`
-                      : `Tamamlandı: ${bulk.results.filter((r) => r.ok).length} başarılı, ${bulk.results.filter((r) => !r.ok).length} hatalı`}
+                      ? `${t("Yayınlanıyor…", "Publishing…")} ${bulk.results.length}/${bulk.total}`
+                      : t(
+                          `Tamamlandı: ${bulk.results.filter((r) => r.ok).length} başarılı, ${bulk.results.filter((r) => !r.ok).length} hatalı`,
+                          `Done: ${bulk.results.filter((r) => r.ok).length} succeeded, ${bulk.results.filter((r) => !r.ok).length} failed`,
+                        )}
                   </p>
                   {!bulk.running && (
                     <button onClick={() => setBulk(null)} className="text-xs text-neutral-500 hover:underline">
-                      Kapat
+                      {t("Kapat", "Close")}
                     </button>
                   )}
                 </div>
@@ -616,7 +656,7 @@ export default function Home() {
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
               <div className="min-w-0 flex-1">
                 {visibleListings.length === 0 && (
-                  <p className="text-sm text-neutral-400 dark:text-neutral-500">Bu filtrelerle eşleşen listing yok.</p>
+                  <p className="text-sm text-neutral-400 dark:text-neutral-500">{t("Bu filtrelerle eşleşen listing yok.", "No listings match these filters.")}</p>
                 )}
 
                 {view === "grid" ? (
@@ -653,7 +693,7 @@ export default function Home() {
                 )}
                 {hasMore && (
                   <div ref={sentinelRef} className="py-8 text-center text-xs text-neutral-400 dark:text-neutral-500">
-                    Daha fazla listing yükleniyor…
+                    {t("Daha fazla listing yükleniyor…", "Loading more listings…")}
                   </div>
                 )}
               </div>
@@ -691,7 +731,7 @@ export default function Home() {
           title={statsFor.title.slice(0, 80)}
           footer={
             <button onClick={() => setStatsFor(null)} className={btnGhost}>
-              Kapat
+              {t("Kapat", "Close")}
             </button>
           }
         >

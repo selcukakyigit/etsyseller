@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { dismissPublishJob, PublishJob } from "@/lib/publishJobs";
+import { useT } from "@/lib/i18n-client";
 
 /** Kart üzerinde arka planda süren yayının doluluk çubuğu; hata ve uyarıları da gösterir. Yüzde tahmindir (Etsy adım adım bildirmez). */
 export default function PublishBar({ id, job }: { id: number; job: PublishJob }) {
+  const { t } = useT();
   const [pct, setPct] = useState(0);
 
   useEffect(() => {
@@ -25,9 +27,9 @@ export default function PublishBar({ id, job }: { id: number; job: PublishJob })
         }`}
       >
         <div className="flex-1">
-          {isError ? job.error : <>✓ Yayınlandı. {job.warnings?.join(" ")}</>}
+          {isError ? job.error : <>✓ {t("Yayınlandı.", "Published.")} {job.warnings?.join(" ")}</>}
         </div>
-        <button type="button" onClick={() => dismissPublishJob(id)} aria-label="Kapat" className="font-semibold">
+        <button type="button" onClick={() => dismissPublishJob(id)} aria-label={t("Kapat", "Close")} className="font-semibold">
           ×
         </button>
       </div>
@@ -40,7 +42,7 @@ export default function PublishBar({ id, job }: { id: number; job: PublishJob })
       <div className="relative h-5 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
         <div className="h-full rounded-full bg-[#D97757]/70 transition-[width] duration-200 ease-out" style={{ width: `${shown}%` }} />
         <span className="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-neutral-900 dark:text-neutral-50">
-          {job.phase === "done" ? "Yayınlandı ✓" : `Etsy'de yayınlanıyor… %${shown}`}
+          {job.phase === "done" ? t("Yayınlandı ✓", "Published ✓") : `${t("Etsy'de yayınlanıyor…", "Publishing to Etsy…")} %${shown}`}
         </span>
       </div>
     </div>
