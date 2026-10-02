@@ -23,9 +23,11 @@ import PhysicalDetails from "@/components/listing-editor/PhysicalDetails";
 import PersonalizationEditor from "@/components/listing-editor/PersonalizationEditor";
 import StringListEditor from "@/components/listing-editor/StringListEditor";
 import TagsEditor from "@/components/listing-editor/TagsEditor";
+import { useT } from "@/lib/i18n-client";
 
 export default function ListingEditPage() {
   const { user, shops, activeShop, setActiveShopId, error: bootError } = useAuthAndShop();
+  const { t, locale } = useT();
   const router = useRouter();
   const params = useParams<{ listingId: string }>();
   const listingId = Number(params.listingId);
@@ -58,9 +60,9 @@ export default function ListingEditPage() {
   // Eski backend (taslak route'ları yok) "Not Found" döner; kullanıcıya ne yapacağını söyle.
   const friendly = (msg: string | null) =>
     msg === "Failed to fetch"
-      ? "Sunucuya ulaşılamıyor (yeniden başlıyor olabilir). Birkaç saniye sonra tekrar dene."
+      ? t("Sunucuya ulaşılamıyor (yeniden başlıyor olabilir). Birkaç saniye sonra tekrar dene.", "Can't reach the server (it may be restarting). Try again in a few seconds.")
       : msg === "Not Found"
-      ? "Yerel kayıt servisi bulunamadı — backend'i yeniden başlat (backend klasöründe: uvicorn app.main:app --reload --port 8000)."
+      ? t("Listing bulunamadı.", "Listing not found.")
       : msg;
 
   /** AI, formdaki güncel değerleri iyileştirir ve sonucu doğrudan forma yazar; Etsy'ye gitmez. */
@@ -79,7 +81,7 @@ export default function ListingEditPage() {
       });
       setAi({ suggestion: s, previous });
     } catch (e) {
-      setAiError(e instanceof Error ? e.message : "AI önerisi üretilemedi");
+      setAiError(e instanceof Error ? e.message : t("AI önerisi üretilemedi", "Could not generate an AI suggestion"));
     } finally {
       setAiBusy(false);
     }
@@ -95,13 +97,16 @@ export default function ListingEditPage() {
   async function handlePublish() {
     const activating = isNew && edit?.state === "active";
     const ok = await confirm({
-      title: isNew ? "Etsy'de listing oluşturulsun mu?" : "Etsy'de yayınlansın mı?",
+      title: isNew ? t("Etsy'de listing oluşturulsun mu?", "Create the listing on Etsy?") : t("Etsy'de yayınlansın mı?", "Publish to Etsy?"),
       message: isNew
         ? activating
-          ? "Listing Etsy'de oluşturulup aktif edilecek; Etsy listing ücreti (0,20 $) alır."
-          : "Listing Etsy'de taslak olarak oluşturulacak (ücretsiz). Aktif etmeyi sonra sen yaparsın."
-        : "Kaydettiğin tüm değişiklikler Etsy'deki canlı listing'e uygulanacak. Yayındaki listing hemen güncellenir.",
-      confirmLabel: isNew ? "Oluştur" : "Etsy'de yayınla",
+          ? t("Listing Etsy'de oluşturulup aktif edilecek; Etsy listing ücreti (0,20 $) alır.", "The listing will be created on Etsy and made active; Etsy charges the listing fee ($0.20).")
+          : t("Listing Etsy'de taslak olarak oluşturulacak (ücretsiz). Aktif etmeyi sonra sen yaparsın.", "The listing will be created on Etsy as a draft (free). You can activate it later.")
+        : t(
+            "Kaydettiğin tüm değişiklikler Etsy'deki canlı listing'e uygulanacak. Yayındaki listing hemen güncellenir.",
+            "All your saved changes will be applied to the live listing on Etsy. The live listing updates immediately.",
+          ),
+      confirmLabel: isNew ? t("Oluştur", "Create") : t("Etsy'de yayınla", "Publish to Etsy"),
     });
     if (!ok || !activeShop) return;
     if (wc.unsaved && !(await wc.saveLocal())) return;
@@ -111,9 +116,12 @@ export default function ListingEditPage() {
 
   async function forcePublish() {
     const ok = await confirm({
-      title: "Etsy'deki değişiklikler ezilsin mi?",
-      message: `Şu alanlarda Etsy'deki değerin yerine senin değerin yazılacak: ${conflict?.map((c) => c.label).join(", ")}. Bu geri alınamaz.`,
-      confirmLabel: "Benimkiyle ez",
+      title: t("Etsy'deki değişiklikler ezilsin mi?", "Overwrite the changes on Etsy?"),
+      message: t(
+        `Şu alanlarda Etsy'deki değerin yerine senin değerin yazılacak: ${conflict?.map((c) => c.label).join(", ")}. Bu geri alınamaz.`,
+        `Your values will replace Etsy's in these fields: ${conflict?.map((c) => c.label).join(", ")}. This cannot be undone.`,
+      ),
+      confirmLabel: t("Benimkiyle ez", "Overwrite with mine"),
       destructive: true,
     });
     if (!ok || !activeShop) return;
@@ -123,11 +131,14 @@ export default function ListingEditPage() {
 
   async function handleDiscard() {
     const ok = await confirm({
-      title: isNew ? "Yeni listing silinsin mi?" : "Değişiklikler atılsın mı?",
+      title: isNew ? t("Yeni listing silinsin mi?", "Delete the new listing?") : t("Değişiklikler atılsın mı?", "Discard changes?"),
       message: isNew
-        ? "Bu listing henüz Etsy'de yok; yerel kopya ve yüklenen fotoğraflar silinir."
-        : "Yerel kayıt ve taslaktaki tüm değişiklikler (yeni fotoğraflar dahil) atılır; listing Etsy'deki hâline döner.",
-      confirmLabel: isNew ? "Sil" : "Değişiklikleri at",
+        ? t("Bu listing henüz Etsy'de yok; yerel kopya ve yüklenen fotoğraflar silinir.", "This listing is not on Etsy yet; the local copy and uploaded photos are deleted.")
+        : t(
+            "Yerel kayıt ve taslaktaki tüm değişiklikler (yeni fotoğraflar dahil) atılır; listing Etsy'deki hâline döner.",
+            "All local and draft changes (including new photos) are discarded; the listing goes back to how it is on Etsy.",
+          ),
+      confirmLabel: isNew ? t("Sil", "Delete") : t("Değişiklikleri at", "Discard changes"),
       destructive: true,
     });
     if (!ok) return;
@@ -137,12 +148,12 @@ export default function ListingEditPage() {
   }
 
   const fmt = (iso: string | null) =>
-    iso ? new Date(iso + "Z").toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }) : "";
+    iso ? new Date(iso + "Z").toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }) : "";
   const statusLabel = wc.unsaved
-    ? "Kaydedilmemiş değişiklikler var" + (wc.draftCurrent ? ` · taslak ${fmt(wc.draftAt)}` : "")
+    ? t("Kaydedilmemiş değişiklikler var", "Unsaved changes") + (wc.draftCurrent ? ` · ${t("taslak", "draft")} ${fmt(wc.draftAt)}` : "")
     : wc.hasLocal
-      ? `Kaydedildi (yerel) · ${fmt(wc.localAt)} · Etsy'ye yayınlanmadı`
-      : "Etsy ile aynı — değişiklik yok";
+      ? t(`Kaydedildi (yerel) · ${fmt(wc.localAt)} · Etsy'ye yayınlanmadı`, `Saved (local) · ${fmt(wc.localAt)} · not published to Etsy`)
+      : t("Etsy ile aynı — değişiklik yok", "Same as Etsy — no changes");
 
   return (
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/listings">
@@ -151,14 +162,14 @@ export default function ListingEditPage() {
           onClick={() => router.push("/listings")}
           className="text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 transition mb-4"
         >
-          ← Listing&apos;lere dön
+          ← {t("Listing'lere dön", "Back to listings")}
         </button>
 
         {(bootError || wc.error) && (
           <p className="mb-4 text-sm text-red-600">
             {friendly(bootError ?? wc.error)}{" "}
             <button type="button" onClick={() => wc.reload()} className="font-medium underline">
-              Yeniden dene
+              {t("Yeniden dene", "Try again")}
             </button>
           </p>
         )}
@@ -166,43 +177,43 @@ export default function ListingEditPage() {
         {user && shops !== null && !activeShop && (
           <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-8 text-center">
             <p className="text-neutral-600 dark:text-neutral-300 mb-4">
-              Listing düzenlemek için önce Etsy mağazanı bağlaman gerekiyor.
+              {t("Listing düzenlemek için önce Etsy mağazanı bağlaman gerekiyor.", "Connect your Etsy shop to edit listings.")}
             </p>
             <a
               href={api.shops.connectUrl()}
               className="inline-block text-sm font-medium px-4 py-2 rounded-lg bg-[#D97757] text-white hover:bg-[#C6613F] transition"
             >
-              Etsy&apos;ye Bağlan
+              {t("Etsy'ye Bağlan", "Connect Etsy")}
             </a>
           </div>
         )}
 
         {activeShop && !edit && !wc.error && (
           <div className="min-h-[20px]">
-            <p className="text-sm text-neutral-400 dark:text-neutral-500">Yükleniyor…</p>
+            <p className="text-sm text-neutral-400 dark:text-neutral-500">{t("Yükleniyor…", "Loading…")}</p>
           </div>
         )}
 
         {edit && activeShop && (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{isNew ? "Yeni listing" : "Listing'i Düzenle"}</h1>
+              <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{isNew ? t("Yeni listing", "New listing") : t("Listing'i Düzenle", "Edit listing")}</h1>
               <button
                 onClick={handleAi}
                 disabled={aiBusy}
                 className="rounded-lg bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-neutral-700 disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
               >
-                {aiBusy ? "Üretiliyor…" : "✨ AI Önerisi Üret"}
+                {aiBusy ? t("Üretiliyor…", "Generating…") : t("✨ AI Önerisi Üret", "✨ Generate AI suggestion")}
               </button>
             </div>
 
             <ProgressBar
               busy={aiBusy}
               stages={[
-                [0, "Listing ve mevcut değerler analiz ediliyor…"],
-                [20, "Anahtar kelime havuzu ve rakip verileri değerlendiriliyor…"],
-                [50, "Başlık, etiketler ve açıklama yazılıyor…"],
-                [80, "Sonuçlar hazırlanıyor…"],
+                [0, t("Listing ve mevcut değerler analiz ediliyor…", "Analyzing the listing and current values…")],
+                [20, t("Anahtar kelime havuzu ve rakip verileri değerlendiriliyor…", "Reviewing the keyword pool and competitor data…")],
+                [50, t("Başlık, etiketler ve açıklama yazılıyor…", "Writing the title, tags and description…")],
+                [80, t("Sonuçlar hazırlanıyor…", "Preparing results…")],
               ]}
             />
             <ListingStatusBar
@@ -223,16 +234,21 @@ export default function ListingEditPage() {
               <div className="rounded-xl border border-[#D97757]/40 bg-[#D97757]/5 p-4 text-sm">
                 <div className="mb-1 flex items-center justify-between gap-3">
                   <p className="font-semibold text-neutral-900 dark:text-neutral-100">
-                    AI önerisi forma uygulandı (başlık, etiketler, açıklama{ai.suggestion.suggested_materials?.length ? ", malzemeler" : ""})
+                    {t("AI önerisi forma uygulandı (başlık, etiketler, açıklama", "AI suggestion applied to the form (title, tags, description")}
+                    {ai.suggestion.suggested_materials?.length ? t(", malzemeler", ", materials") : ""})
                   </p>
                   <button onClick={handleUndoAi} className="text-xs font-medium text-neutral-600 hover:underline dark:text-neutral-300">
-                    Geri al
+                    {t("Geri al", "Undo")}
                   </button>
                 </div>
                 {ai.suggestion.rationale && <p className="text-neutral-600 dark:text-neutral-300">{ai.suggestion.rationale}</p>}
                 {ai.suggestion.warnings && ai.suggestion.warnings.length > 0 && (
                   <div className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
-                    <b>Dikkat:</b> öneri, mağazanın diğer listing&apos;lerine ya da kalite kurallarına şu noktalarda hâlâ takılıyor; yayınlamadan önce düzenle:
+                    <b>{t("Dikkat:", "Note:")}</b>{" "}
+                    {t(
+                      "öneri, mağazanın diğer listing'lerine ya da kalite kurallarına şu noktalarda hâlâ takılıyor; yayınlamadan önce düzenle:",
+                      "the suggestion still conflicts with the shop's other listings or quality rules here; edit before publishing:",
+                    )}
                     <ul className="mt-1 list-disc pl-4">
                       {ai.suggestion.warnings.map((w, i) => (
                         <li key={i}>{w}</li>
@@ -240,17 +256,17 @@ export default function ListingEditPage() {
                     </ul>
                   </div>
                 )}
-                <p className="mt-1 text-xs text-neutral-400">Değişiklikler taslakta; beğenmezsen geri al ya da yayınlamadan düzenle.</p>
+                <p className="mt-1 text-xs text-neutral-400">{t("Değişiklikler taslakta; beğenmezsen geri al ya da yayınlamadan düzenle.", "Changes are in the draft; undo them or edit before publishing.")}</p>
               </div>
             )}
 
             <SectionCard
               id="sec-media"
               hideInnerTitle
-              title="Fotoğraf & Video"
+              title={t("Fotoğraf & Video", "Photos & Video")}
               accent="orange"
-              summary={`${edit.images.length} fotoğraf · ${edit.videos.length} video`}
-              warning={edit.images.length === 0 ? "Fotoğraf yok" : null}
+              summary={t(`${edit.images.length} fotoğraf · ${edit.videos.length} video`, `${edit.images.length} photos · ${edit.videos.length} videos`)}
+              warning={edit.images.length === 0 ? t("Fotoğraf yok", "No photos") : null}
               open={isOpen("sec-media")}
               onToggle={() => toggle("sec-media")}
             >
@@ -268,10 +284,10 @@ export default function ListingEditPage() {
 
             <SectionCard
               id="sec-details"
-              title="Ürün Detayları"
+              title={t("Ürün Detayları", "Item details")}
               accent="sky"
-              summary={`Başlık ${edit.title.length}/140 · Açıklama ${edit.description.length} karakter`}
-              warning={edit.title.trim() ? null : "Başlık boş"}
+              summary={t(`Başlık ${edit.title.length}/140 · Açıklama ${edit.description.length} karakter`, `Title ${edit.title.length}/140 · Description ${edit.description.length} characters`)}
+              warning={edit.title.trim() ? null : t("Başlık boş", "Title is empty")}
               open={isOpen("sec-details")}
               onToggle={() => toggle("sec-details")}
             >
@@ -281,7 +297,7 @@ export default function ListingEditPage() {
 
               <div>
                 <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">
-                  Başlık
+                  {t("Başlık", "Title")}
                 </label>
                 <input
                   value={edit.title}
@@ -293,7 +309,7 @@ export default function ListingEditPage() {
 
               <div>
                 <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">
-                  Açıklama
+                  {t("Açıklama", "Description")}
                 </label>
                 <textarea
                   value={edit.description}
@@ -308,9 +324,12 @@ export default function ListingEditPage() {
 
             <SectionCard
               id="sec-options"
-              title="Varyasyon, Fiyat & Kişiselleştirme"
+              title={t("Varyasyon, Fiyat & Kişiselleştirme", "Variations, Price & Personalization")}
               accent="violet"
-              summary={`${edit.inventory.products.length} varyant · ${edit.personalization?.questions.length ?? 0} özel alan`}
+              summary={t(
+                `${edit.inventory.products.length} varyant · ${edit.personalization?.questions.length ?? 0} özel alan`,
+                `${edit.inventory.products.length} variants · ${edit.personalization?.questions.length ?? 0} personalization fields`,
+              )}
               warning={null}
               open={isOpen("sec-options")}
               onToggle={() => toggle("sec-options")}
@@ -335,17 +354,20 @@ export default function ListingEditPage() {
 
             <SectionCard
               id="sec-attributes"
-              title="Etiketler & Özellikler"
+              title={t("Etiketler & Özellikler", "Tags & Attributes")}
               accent="emerald"
-              summary={`${edit.tags.length}/13 etiket · ${edit.materials.length} materyal · ${edit.properties.length} özellik`}
-              warning={edit.tags.length < 13 ? `${13 - edit.tags.length} etiket boş` : null}
+              summary={t(
+                `${edit.tags.length}/13 etiket · ${edit.materials.length} materyal · ${edit.properties.length} özellik`,
+                `${edit.tags.length}/13 tags · ${edit.materials.length} materials · ${edit.properties.length} attributes`,
+              )}
+              warning={edit.tags.length < 13 ? t(`${13 - edit.tags.length} etiket boş`, `${13 - edit.tags.length} tags empty`) : null}
               open={isOpen("sec-attributes")}
               onToggle={() => toggle("sec-attributes")}
             >
             <div className="space-y-5">
               <TagsEditor shopId={activeShop.id} listingId={listingId} tags={edit.tags} onChange={(tags) => wc.patch({ tags })} />
-              <StringListEditor label="Materyaller" values={edit.materials} onChange={(materials) => wc.patch({ materials })} />
-              <StringListEditor label="Stil" values={edit.style} maxItems={2} onChange={(style) => wc.patch({ style })} />
+              <StringListEditor label={t("Materyaller", "Materials")} values={edit.materials} onChange={(materials) => wc.patch({ materials })} />
+              <StringListEditor label={t("Stil", "Style")} values={edit.style} maxItems={2} onChange={(style) => wc.patch({ style })} />
             </div>
 
             <PropertyFields
@@ -358,9 +380,9 @@ export default function ListingEditPage() {
 
             <SectionCard
               id="sec-shipping"
-              title="Kargo, İşlem Süresi & İade"
+              title={t("Kargo, İşlem Süresi & İade", "Shipping, Processing & Returns")}
               accent="teal"
-              summary="Kargo profili, işlem süresi, iade politikası, ağırlık ve boyutlar"
+              summary={t("Kargo profili, işlem süresi, iade politikası, ağırlık ve boyutlar", "Shipping profile, processing time, return policy, weight and dimensions")}
               warning={null}
               open={isOpen("sec-shipping")}
               onToggle={() => toggle("sec-shipping")}
@@ -397,9 +419,11 @@ export default function ListingEditPage() {
             <SectionCard
               id="sec-made"
               hideInnerTitle
-              title="Nasıl Yapıldı"
+              title={t("Nasıl Yapıldı", "How it's made")}
               accent="amber"
-              summary={{ i_did: "Ben yaptım", collective: "Ortak üretim", someone_else: "Başka biri yaptı" }[edit.who_made ?? ""] ?? "—" + ` · ${edit.when_made ?? "—"}`}
+              summary={`${
+                { i_did: t("Ben yaptım", "I made it"), collective: t("Ortak üretim", "A collective"), someone_else: t("Başka biri yaptı", "Someone else") }[edit.who_made ?? ""] ?? "—"
+              } · ${edit.when_made ?? "—"}`}
               warning={null}
               open={isOpen("sec-made")}
               onToggle={() => toggle("sec-made")}
@@ -415,9 +439,11 @@ export default function ListingEditPage() {
             <SectionCard
               id="sec-settings"
               hideInnerTitle
-              title="Ayarlar"
+              title={t("Ayarlar", "Settings")}
               accent="slate"
-              summary={`Otomatik yenileme ${edit.should_auto_renew ? "açık" : "kapalı"}${edit.featured_rank && edit.featured_rank > 0 ? " · Öne çıkan" : ""}`}
+              summary={`${t("Otomatik yenileme", "Auto-renew")} ${edit.should_auto_renew ? t("açık", "on") : t("kapalı", "off")}${
+                edit.featured_rank && edit.featured_rank > 0 ? t(" · Öne çıkan", " · Featured") : ""
+              }`}
               warning={null}
               open={isOpen("sec-settings")}
               onToggle={() => toggle("sec-settings")}
@@ -434,36 +460,36 @@ export default function ListingEditPage() {
 
             {conflict && (
               <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-800 dark:bg-amber-950/40">
-                <p className="mb-1 font-semibold text-amber-900 dark:text-amber-200">Etsy&apos;de bu listing değişmiş</p>
+                <p className="mb-1 font-semibold text-amber-900 dark:text-amber-200">{t("Etsy'de bu listing değişmiş", "This listing changed on Etsy")}</p>
                 <p className="text-amber-900 dark:text-amber-200">
-                  Sen kaydettikten sonra şu alanlar Etsy&apos;de de farklı değiştirilmiş: <b>{conflict.map((c) => c.label).join(", ")}</b>.
-                  Hiçbir şey yazılmadı.
+                  {t("Sen kaydettikten sonra şu alanlar Etsy'de de farklı değiştirilmiş:", "After you saved, these fields were also changed differently on Etsy:")}{" "}
+                  <b>{conflict.map((c) => c.label).join(", ")}</b>. {t("Hiçbir şey yazılmadı.", "Nothing was written.")}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     onClick={handleDiscard}
                     className="rounded-full border border-amber-400 px-4 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 dark:text-amber-100 dark:hover:bg-amber-900/40"
                   >
-                    Etsy&apos;deki hâli al (değişikliklerimi at)
+                    {t("Etsy'deki hâli al (değişikliklerimi at)", "Use Etsy's version (discard my changes)")}
                   </button>
                   <button onClick={forcePublish} className="rounded-full bg-amber-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-amber-700">
-                    Benimkiyle ez
+                    {t("Benimkiyle ez", "Overwrite with mine")}
                   </button>
                   <button onClick={() => dismissPublishJob(listingId)} className="px-3 py-1.5 text-sm text-amber-900 hover:underline dark:text-amber-200">
-                    Kapat
+                    {t("Kapat", "Close")}
                   </button>
                 </div>
               </div>
             )}
             {publishError && (
               <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm dark:border-red-900 dark:bg-red-950/40">
-                <p className="mb-1 font-semibold text-red-700 dark:text-red-300">Yayın tamamlanamadı</p>
+                <p className="mb-1 font-semibold text-red-700 dark:text-red-300">{t("Yayın tamamlanamadı", "Publishing did not finish")}</p>
                 <p className="text-red-700 dark:text-red-300">{publishError}</p>
                 <p className="mt-2 text-xs text-neutral-500">
-                  Yerel kaydın korunuyor; sorunu düzeltip tekrar yayınlayınca kalan farklar tamamlanır.
+                  {t("Yerel kaydın korunuyor; sorunu düzeltip tekrar yayınlayınca kalan farklar tamamlanır.", "Your local save is kept; fix the problem and publish again to finish the remaining changes.")}
                 </p>
                 <button onClick={() => dismissPublishJob(listingId)} className="mt-2 text-xs text-neutral-500 hover:underline">
-                  Kapat
+                  {t("Kapat", "Close")}
                 </button>
               </div>
             )}
@@ -476,31 +502,31 @@ export default function ListingEditPage() {
                   disabled={wc.publishing}
                   className="rounded-lg px-3 py-2 text-sm font-medium text-neutral-700 hover:underline disabled:opacity-50 dark:text-neutral-200"
                 >
-                  {isNew ? "Listing'i sil" : "Değişiklikleri at"}
+                  {isNew ? t("Listing'i sil", "Delete listing") : t("Değişiklikleri at", "Discard changes")}
                 </button>
               )}
               <button
                 onClick={wc.saveDraft}
                 disabled={!wc.unsaved || wc.draftCurrent || wc.publishing || wc.saveState === "saving"}
-                title="Ara kayıt alır; liste sayfası değişmez, editörü tekrar açınca kaldığın yerden devam edersin"
+                title={t("Ara kayıt alır; liste sayfası değişmez, editörü tekrar açınca kaldığın yerden devam edersin", "Saves your progress; the list page does not change, and you continue where you left off next time")}
                 className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-800 transition hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800"
               >
-                {wc.draftCurrent ? "Taslak kaydedildi ✓" : "Taslak kaydet"}
+                {wc.draftCurrent ? t("Taslak kaydedildi ✓", "Draft saved ✓") : t("Taslak kaydet", "Save draft")}
               </button>
               <button
                 onClick={wc.saveLocal}
                 disabled={!wc.unsaved || wc.publishing || wc.saveState === "saving"}
-                title="Değişiklikleri yerel listing'e kaydeder; liste sayfası güncellenir, Etsy'ye gönderilmez"
+                title={t("Değişiklikleri yerel listing'e kaydeder; liste sayfası güncellenir, Etsy'ye gönderilmez", "Saves changes to the local listing; the list page updates, nothing is sent to Etsy")}
                 className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-800 transition hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800"
               >
-                {wc.saveState === "saving" ? "Kaydediliyor…" : "Kaydet"}
+                {wc.saveState === "saving" ? t("Kaydediliyor…", "Saving…") : t("Kaydet", "Save")}
               </button>
               <button
                 onClick={handlePublish}
                 disabled={(!wc.unsaved && !wc.hasLocal) || wc.publishing || wc.saveState === "saving"}
                 className="rounded-lg bg-[#D97757] px-4 py-2 text-sm font-medium text-white shadow transition hover:bg-[#C6613F] disabled:opacity-50"
               >
-                {wc.publishing ? "Yayınlanıyor…" : "Etsy'de yayınla"}
+                {wc.publishing ? t("Yayınlanıyor…", "Publishing…") : t("Etsy'de yayınla", "Publish to Etsy")}
               </button>
             </div>
           </div>

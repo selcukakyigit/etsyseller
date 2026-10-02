@@ -9,21 +9,23 @@ import RegenImage from "./RegenImage";
 import CameraCube, { CameraAngle, cameraAnglePrompt } from "./CameraCube";
 import DistancePicker, { Distance, distancePrompt } from "./DistancePicker";
 import VersionDots from "./VersionDots";
+import { tNow as t } from "@/lib/i18n";
 
 const MAX_IMAGES = 20;
 const MAX_VIDEOS = 2;
 
 // Etsy'nin önerdiği ürün fotoğrafı çeşitliliği (kapak/açı/detay/ölçek/yaşam tarzı/uzak-yakın çekim). "Oluştur"
 // modalinde bir adet ürün fotoğrafından, seçilen adette bu çeşitlilikte bir set otomatik üretilir.
-const SHOT_PRESETS: { label: string; prompt: string }[] = [
-  { label: "Ana fotoğraf (kapak)", prompt: "Ürünü düz, nötr/temiz bir arka planda, tam önden, merkezde, dengeli ve iyi aydınlatmayla, net odakla göster. Bu Etsy'de öne çıkan kapak fotoğrafı olacak." },
-  { label: "Farklı açı (3/4)", prompt: "Aynı ürünü 3/4 açıdan (hafif yandan) göster; ışık ve arka plan tutarlı kalsın." },
-  { label: "Yakın çekim / detay", prompt: "Ürünün dokusunu, malzemesini ve işçilik detayını çok yakından (makro çekim) göster." },
-  { label: "Ölçek referansı", prompt: "Ürünü gerçek boyutunu anlaşılır kılmak için bir elin tuttuğu ya da yanında günlük bir eşyanın bulunduğu şekilde göster." },
-  { label: "Yaşam tarzı (kullanımda)", prompt: "Ürünü gerçek kullanım ortamında, doğal bir yaşam tarzı sahnesinde, kullanılıyor/sergileniyor halde göster." },
-  { label: "Uzak çekim / geniş kadraj", prompt: "Ürünü bulunduğu ortamla/mekânla birlikte geniş kadrajda, uzaktan göster." },
-  { label: "Arka/üst görünüm", prompt: "Ürünün arka tarafını ya da üstten görünümünü göster." },
-  { label: "Alternatif sahne", prompt: "Ürünü farklı bir zemin/dekor sahnesinde, ama aynı ürünle göster." },
+// Komutlar görsel modeline gider ve arayüz dilinden bağımsız olarak İngilizcedir; etiketler iki dillidir.
+const SHOT_PRESETS: { label: [string, string]; prompt: string }[] = [
+  { label: ["Ana fotoğraf (kapak)", "Main photo (cover)"], prompt: "Show the product on a plain, neutral, clean background, straight from the front, centered, balanced and well lit, in sharp focus. This will be the featured cover photo on Etsy." },
+  { label: ["Farklı açı (3/4)", "Different angle (3/4)"], prompt: "Show the same product from a 3/4 angle (slightly from the side); keep the lighting and background consistent." },
+  { label: ["Yakın çekim / detay", "Close-up / detail"], prompt: "Show the product's texture, material and craftsmanship in a very close macro shot." },
+  { label: ["Ölçek referansı", "Scale reference"], prompt: "Show the product held in a hand or next to an everyday object so its real size is clear." },
+  { label: ["Yaşam tarzı (kullanımda)", "Lifestyle (in use)"], prompt: "Show the product in a real setting, in a natural lifestyle scene, being used or displayed." },
+  { label: ["Uzak çekim / geniş kadraj", "Wide shot"], prompt: "Show the product from a distance in a wide frame together with its surroundings." },
+  { label: ["Arka/üst görünüm", "Back / top view"], prompt: "Show the back of the product or a view from above." },
+  { label: ["Alternatif sahne", "Alternative scene"], prompt: "Show the same product on a different surface or decor scene." },
 ];
 
 const tile = "relative aspect-square overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800";
@@ -141,12 +143,12 @@ export default function MediaManager({
 
   async function fillMissingAlts() {
     setError(null);
-    setBusy(`Alt metinler yazılıyor (${missingAlt.length})…`);
+    setBusy(t(`Alt metinler yazılıyor (${missingAlt.length})…`, `Writing alt texts (${missingAlt.length})…`));
     try {
       const texts = await generateAlts(missingAlt.map((i) => i.draft_file_id as string));
       onImagesChange(ordered.map((img) => (img.draft_file_id && texts[img.draft_file_id] ? { ...img, alt_text: texts[img.draft_file_id] } : img)));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Alt metinler yazılamadı");
+      setError(e instanceof Error ? e.message : t("Alt metinler yazılamadı", "Could not write alt texts"));
     } finally {
       setBusy(null);
     }
@@ -167,7 +169,7 @@ export default function MediaManager({
       const texts = await generateAlts([img.draft_file_id]);
       setAltText(texts[img.draft_file_id] ?? "");
     } catch (e) {
-      setAltError(e instanceof Error ? e.message : "Alt metin yazılamadı");
+      setAltError(e instanceof Error ? e.message : t("Alt metin yazılamadı", "Could not write alt text"));
     } finally {
       setAltBusy(false);
     }
@@ -190,13 +192,13 @@ export default function MediaManager({
     let current = ordered;
     try {
       for (let i = 0; i < files.length; i++) {
-        setBusy(`Fotoğraf ekleniyor (${i + 1}/${files.length})…`);
+        setBusy(t(`Fotoğraf ekleniyor (${i + 1}/${files.length})…`, `Adding photo (${i + 1}/${files.length})…`));
         const up = await api.listings.uploadDraftFile(shopId, listingId, files[i], "image", files[i].name);
         current = [...current, imageEntry(up.file_id, null)];
         onImagesChange(withRanks(current));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Bilinmeyen hata");
+      setError(err instanceof Error ? err.message : t("Bilinmeyen hata", "Unknown error"));
     } finally {
       setBusy(null);
       if (photoInput.current) photoInput.current.value = "";
@@ -223,7 +225,7 @@ export default function MediaManager({
         },
       ]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Bilinmeyen hata");
+      setError(err instanceof Error ? err.message : t("Bilinmeyen hata", "Unknown error"));
     } finally {
       setBusy(null);
       if (videoInput.current) videoInput.current.value = "";
@@ -243,7 +245,7 @@ export default function MediaManager({
     const old = ordered[cropIdx];
     setCropIdx(null);
     setError(null);
-    setBusy("Kırpılan görsel taslağa ekleniyor…");
+    setBusy(t("Kırpılan görsel taslağa ekleniyor…", "Adding the cropped image to the draft…"));
     try {
       const up = await api.listings.uploadDraftFile(shopId, listingId, blob, "image", "kirpilmis.jpg");
       const entry = imageEntry(up.file_id, old.alt_text);
@@ -251,7 +253,7 @@ export default function MediaManager({
       onImagesChange(withRanks(next));
       onImageReplaced(old.listing_image_id, entry.listing_image_id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Bilinmeyen hata");
+      setError(err instanceof Error ? err.message : t("Bilinmeyen hata", "Unknown error"));
     } finally {
       setBusy(null);
     }
@@ -336,7 +338,7 @@ export default function MediaManager({
           const fileId = await regenerateOne(img, { prompt: preset.prompt });
           if (!fileId && !firstError) {
             const jobErr = getRegenJob(img.listing_image_id)?.error;
-            firstError = `Toplu üretimde bir fotoğraf başarısız oldu${jobErr ? `: ${jobErr}` : ""}.`;
+            firstError = `${t("Toplu üretimde bir fotoğraf başarısız oldu", "A photo failed during bulk generation")}${jobErr ? `: ${jobErr}` : ""}.`;
           }
         }
       }
@@ -383,12 +385,13 @@ export default function MediaManager({
           onImagesChange(withRanks([...orderedRef.current, imageEntry(up.file_id, null)]));
         }
       }
-      const note = genPrompt.trim() ? ` Ek not: ${genPrompt.trim()}` : "";
+      const note = genPrompt.trim() ? ` Extra note: ${genPrompt.trim()}` : "";
       const shots = Array.from({ length: qty }, (_, i) => {
         const preset = SHOT_PRESETS[i % SHOT_PRESETS.length];
         const cycle = Math.floor(i / SHOT_PRESETS.length);
-        const label = cycle > 0 ? `${preset.label} (${cycle + 1})` : preset.label;
-        const prompt = preset.prompt + note + (cycle > 0 ? " Önceki üretilenlerden belirgin şekilde farklı bir varyasyon olsun." : "");
+        const name = t(...preset.label);
+        const label = cycle > 0 ? `${name} (${cycle + 1})` : name;
+        const prompt = preset.prompt + note + (cycle > 0 ? " Make it a clearly different variation from the earlier ones." : "");
         return { label, prompt, status: "pending" as const };
       });
       setGenShots(shots);
@@ -399,13 +402,13 @@ export default function MediaManager({
           onImagesChange(withRanks([...orderedRef.current, imageEntry(up.file_id, null)]));
           setGenShots((prev) => prev.map((s, idx) => (idx === i ? { ...s, status: "done" } : s)));
         } catch (e) {
-          const msg = e instanceof Error ? e.message : "Üretilemedi";
+          const msg = e instanceof Error ? e.message : t("Üretilemedi", "Could not generate");
           setGenShots((prev) => prev.map((s, idx) => (idx === i ? { ...s, status: "error", error: msg } : s)));
           break; // ilk hatada dur (ör. kota dolu), kalan çekimleri boşuna deneme
         }
       }
     } catch (e) {
-      setGenError(e instanceof Error ? e.message : "Görsel üretilemedi");
+      setGenError(e instanceof Error ? e.message : t("Görsel üretilemedi", "Could not generate the image"));
     } finally {
       setGenBusy(false);
     }
@@ -421,40 +424,45 @@ export default function MediaManager({
 
   return (
     <section className="rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
-      <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Fotoğraf ve video</h2>
+      <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("Fotoğraf ve video", "Photos and video")}</h2>
       <p className="mb-4 text-xs text-neutral-400 dark:text-neutral-500">
-        En fazla {MAX_IMAGES} fotoğraf ve {MAX_VIDEOS} video. İlk fotoğraf öne çıkan olur ve küçük resim olarak kullanılır;
-        sıralamak için sürükle. Değişiklikler taslağa kaydedilir, Etsy&apos;ye &quot;Yayınla&quot; ile gider.
+        {t(
+          `En fazla ${MAX_IMAGES} fotoğraf ve ${MAX_VIDEOS} video. İlk fotoğraf öne çıkan olur ve küçük resim olarak kullanılır; sıralamak için sürükle. Değişiklikler taslağa kaydedilir, Etsy'ye "Yayınla" ile gider.`,
+          `Up to ${MAX_IMAGES} photos and ${MAX_VIDEOS} videos. The first photo is featured and used as the thumbnail; drag to reorder. Changes are saved to the draft and go to Etsy when you publish.`,
+        )}
       </p>
 
       {ordered.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-neutral-500">
           <span>
-            Alt metin: {ordered.filter((i) => !!i.alt_text).length}/{ordered.length} fotoğrafta var. Etsy, mevcut fotoğrafların alt metnini değiştirmeye izin vermez; yalnızca yeni yüklenen ya da kırpılan fotoğraflarda yazılabilir.
+            {t(
+              `Alt metin: ${ordered.filter((i) => !!i.alt_text).length}/${ordered.length} fotoğrafta var. Etsy, mevcut fotoğrafların alt metnini değiştirmeye izin vermez; yalnızca yeni yüklenen ya da kırpılan fotoğraflarda yazılabilir.`,
+              `Alt text: ${ordered.filter((i) => !!i.alt_text).length}/${ordered.length} photos have it. Etsy does not allow changing alt text on existing photos; it can only be set on newly uploaded or cropped photos.`,
+            )}
           </span>
           <div className="flex flex-wrap gap-2">
             {missingAlt.length > 0 && (
               <button type="button" onClick={() => void fillMissingAlts()} disabled={!!busy} className="rounded-full border border-emerald-600 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:text-emerald-400 dark:hover:bg-emerald-950">
-                ✨ Eksik alt metinleri yapay zekâyla yaz ({missingAlt.length})
+                ✨ {t("Eksik alt metinleri yapay zekâyla yaz", "Write missing alt texts with AI")} ({missingAlt.length})
               </button>
             )}
             {selected.size > 0 && (
               <button type="button" onClick={() => setSelected(new Set())} className="rounded-full border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800">
-                Seçimi temizle
+                {t("Seçimi temizle", "Clear selection")}
               </button>
             )}
             <button
               type="button"
               onClick={() => void (selected.size > 0 ? regenerateSelected() : regenerateAll())}
               disabled={anyRegenBusy}
-              title={selected.size > 0 ? "Yalnızca seçili fotoğrafları yapay zekâyla yeniden oluşturur" : "Tüm fotoğrafları, ürünü koruyarak yapay zekâyla tek tek yeniden oluşturur"}
+              title={selected.size > 0 ? t("Yalnızca seçili fotoğrafları yapay zekâyla yeniden oluşturur", "Regenerates only the selected photos with AI") : t("Tüm fotoğrafları, ürünü koruyarak yapay zekâyla tek tek yeniden oluşturur", "Regenerates every photo with AI one by one, keeping the product")}
               className="rounded-full border border-[#D97757] px-3 py-1.5 text-xs font-semibold text-[#D97757] hover:bg-orange-50 disabled:opacity-50 dark:hover:bg-orange-950"
             >
               {bulkRegen
-                ? "🪄 Yeniden oluşturuluyor…"
+                ? `🪄 ${t("Yeniden oluşturuluyor…", "Regenerating…")}`
                 : selected.size > 0
-                  ? `🪄 Seçilenleri yeniden oluştur (${selected.size})`
-                  : `🪄 Tüm fotoğrafları yeniden oluştur (${ordered.length})`}
+                  ? `🪄 ${t("Seçilenleri yeniden oluştur", "Regenerate selected")} (${selected.size})`
+                  : `🪄 ${t("Tüm fotoğrafları yeniden oluştur", "Regenerate all photos")} (${ordered.length})`}
             </button>
           </div>
         </div>
@@ -495,37 +503,37 @@ export default function MediaManager({
                 checked={selected.has(img.listing_image_id)}
                 onChange={() => toggleSelected(img.listing_image_id)}
                 onMouseDown={(e) => e.stopPropagation()}
-                aria-label="Fotoğrafı seç"
+                aria-label={t("Fotoğrafı seç", "Select photo")}
                 className="h-3.5 w-3.5"
               />
             </label>
             {i === 0 && (
               <span className="absolute right-1.5 top-1.5 rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-800">
-                Öne çıkan
+                {t("Öne çıkan", "Featured")}
               </span>
             )}
             {isDraft(img.listing_image_id) && (
               <span className="absolute left-7 top-1.5 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
-                Yeni
+                {t("Yeni", "New")}
               </span>
             )}
             <div className="absolute bottom-1.5 left-1.5 flex gap-1.5">
               <button
                 onClick={() => onImagesChange(withRanks(ordered.filter((x) => x.listing_image_id !== img.listing_image_id)))}
-                aria-label="Fotoğrafı sil"
-                title="Sil"
+                aria-label={t("Fotoğrafı sil", "Delete photo")}
+                title={t("Sil", "Delete")}
                 className={iconBtn}
               >
                 🗑
               </button>
-              <button onClick={() => setCropIdx(i)} aria-label="Fotoğrafı kırp" title="Kırp" className={iconBtn}>
+              <button onClick={() => setCropIdx(i)} aria-label={t("Fotoğrafı kırp", "Crop photo")} title={t("Kırp", "Crop")} className={iconBtn}>
                 ✂
               </button>
               <button
                 onClick={() => void regenerateOne(img)}
                 disabled={anyRegenBusy}
-                aria-label="Yapay zekâyla yeniden oluştur"
-                title="Sihirli değnek: yapay zekâyla yeniden oluştur"
+                aria-label={t("Yapay zekâyla yeniden oluştur", "Regenerate with AI")}
+                title={t("Sihirli değnek: yapay zekâyla yeniden oluştur", "Magic wand: regenerate with AI")}
                 className={`${iconBtn} disabled:cursor-not-allowed disabled:opacity-40`}
               >
                 🪄
@@ -534,7 +542,7 @@ export default function MediaManager({
             <button
               type="button"
               onClick={() => openAlt(i)}
-              title={img.alt_text ? `Alt metin: ${img.alt_text}` : "Alt metin ekle"}
+              title={img.alt_text ? `${t("Alt metin", "Alt text")}: ${img.alt_text}` : t("Alt metin ekle", "Add alt text")}
               className={`absolute bottom-1.5 right-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold shadow ${img.alt_text ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}
             >
               ALT{img.alt_text ? " ✓" : ""}
@@ -561,7 +569,7 @@ export default function MediaManager({
             </span>
             {isDraft(video.video_id) && (
               <span className="absolute left-1.5 top-1.5 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
-                Yeni
+                {t("Yeni", "New")}
               </span>
             )}
             <div className="absolute bottom-1.5 left-1.5">
@@ -570,8 +578,8 @@ export default function MediaManager({
                   e.stopPropagation();
                   onVideosChange(videos.filter((v) => v.video_id !== video.video_id));
                 }}
-                aria-label="Videoyu sil"
-                title="Sil"
+                aria-label={t("Videoyu sil", "Delete video")}
+                title={t("Sil", "Delete")}
                 className={iconBtn}
               >
                 🗑
@@ -583,8 +591,8 @@ export default function MediaManager({
         {videos.length < MAX_VIDEOS && (
           <label className={addTile}>
             <span className="text-2xl">🎬</span>
-            <span className="text-sm font-semibold">Video ekle</span>
-            <span className="text-xs text-neutral-400">{MAX_VIDEOS - videos.length} hakkın kaldı</span>
+            <span className="text-sm font-semibold">{t("Video ekle", "Add video")}</span>
+            <span className="text-xs text-neutral-400">{t(`${MAX_VIDEOS - videos.length} hakkın kaldı`, `${MAX_VIDEOS - videos.length} left`)}</span>
             <input ref={videoInput} type="file" accept="video/*" className="hidden" onChange={addVideo} disabled={!!busy} />
           </label>
         )}
@@ -592,8 +600,8 @@ export default function MediaManager({
         {ordered.length < MAX_IMAGES && (
           <label className={addTile}>
             <span className="text-2xl">🖼</span>
-            <span className="text-sm font-semibold">Fotoğraf ekle</span>
-            <span className="text-xs text-neutral-400">{MAX_IMAGES - ordered.length} hakkın kaldı</span>
+            <span className="text-sm font-semibold">{t("Fotoğraf ekle", "Add photo")}</span>
+            <span className="text-xs text-neutral-400">{t(`${MAX_IMAGES - ordered.length} hakkın kaldı`, `${MAX_IMAGES - ordered.length} left`)}</span>
             <input ref={photoInput} type="file" accept="image/*" multiple className="hidden" onChange={addPhotos} disabled={!!busy} />
           </label>
         )}
@@ -608,8 +616,8 @@ export default function MediaManager({
             className={addTile}
           >
             <span className="text-2xl">🎨</span>
-            <span className="text-sm font-semibold">Oluştur</span>
-            <span className="text-xs text-neutral-400">Sıfırdan görsel üret</span>
+            <span className="text-sm font-semibold">{t("Oluştur", "Generate")}</span>
+            <span className="text-xs text-neutral-400">{t("Sıfırdan görsel üret", "Create images from scratch")}</span>
           </button>
         )}
       </div>
@@ -621,33 +629,35 @@ export default function MediaManager({
         <div className="mt-6 border-t border-neutral-100 pt-5 dark:border-neutral-800">
           <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
             <div className="max-w-md">
-              <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Küçük resimler</p>
+              <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("Küçük resimler", "Thumbnails")}</p>
               <p className="text-xs text-neutral-400 dark:text-neutral-500">
-                Küçük resimler, öne çıkan fotoğrafının Etsy&apos;de görünen kırpılmış hâlidir. Konunun net ve ortada olması için
-                öne çıkan fotoğrafı kırp.
+                {t(
+                  "Küçük resimler, öne çıkan fotoğrafının Etsy'de görünen kırpılmış hâlidir. Konunun net ve ortada olması için öne çıkan fotoğrafı kırp.",
+                  "Thumbnails are the cropped versions of your featured photo shown on Etsy. Crop the featured photo so the subject is clear and centered.",
+                )}
               </p>
             </div>
             <button
               onClick={() => setCropIdx(0)}
               className="rounded-full border border-neutral-300 px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800"
             >
-              ⤢ Küçük resmi kırp
+              ⤢ {t("Küçük resmi kırp", "Crop thumbnail")}
             </button>
           </div>
           <div className="flex flex-wrap items-end gap-4">
             {[
-              { label: "Kare", cls: "aspect-square w-32" },
-              { label: "Dikey", cls: "aspect-[3/4] w-28" },
-              { label: "Yatay", cls: "aspect-[4/3] w-40" },
-            ].map((t) => (
-              <figure key={t.label}>
+              { label: t("Kare", "Square"), cls: "aspect-square w-32" },
+              { label: t("Dikey", "Portrait"), cls: "aspect-[3/4] w-28" },
+              { label: t("Yatay", "Landscape"), cls: "aspect-[4/3] w-40" },
+            ].map((shape) => (
+              <figure key={shape.label}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={primary.url_570xN}
                   alt=""
-                  className={`${t.cls} rounded-lg border border-neutral-200 object-cover dark:border-neutral-800`}
+                  className={`${shape.cls} rounded-lg border border-neutral-200 object-cover dark:border-neutral-800`}
                 />
-                <figcaption className="mt-1 text-center text-xs text-neutral-500">{t.label}</figcaption>
+                <figcaption className="mt-1 text-center text-xs text-neutral-500">{shape.label}</figcaption>
               </figure>
             ))}
           </div>
@@ -658,15 +668,15 @@ export default function MediaManager({
         <Modal
           z={120}
           widthClass="max-w-lg"
-          title="Fotoğraf alt metni"
+          title={t("Fotoğraf alt metni", "Photo alt text")}
           footer={
             <>
               <button type="button" onClick={() => setAltIdx(null)} className={btnGhost}>
-                {isDraft(ordered[altIdx].listing_image_id) ? "Vazgeç" : "Kapat"}
+                {isDraft(ordered[altIdx].listing_image_id) ? t("Vazgeç", "Cancel") : t("Kapat", "Close")}
               </button>
               {isDraft(ordered[altIdx].listing_image_id) && (
                 <button type="button" onClick={saveAlt} className={btnPrimary}>
-                  Kaydet
+                  {t("Kaydet", "Save")}
                 </button>
               )}
             </>
@@ -675,27 +685,30 @@ export default function MediaManager({
           <div className="flex gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={ordered[altIdx].url_170x135} alt="" className="h-24 w-24 flex-shrink-0 rounded-lg object-cover" />
-            <p className="text-xs text-neutral-500">Ekran okuyucular ve aramalar için fotoğrafta görünenin kısa tarifi. Önerilen en fazla 125 karakter, en çok 500.</p>
+            <p className="text-xs text-neutral-500">{t("Ekran okuyucular ve aramalar için fotoğrafta görünenin kısa tarifi. Önerilen en fazla 125 karakter, en çok 500.", "A short description of what is in the photo, for screen readers and search. Recommended up to 125 characters, maximum 500.")}</p>
           </div>
           <textarea
             value={altText}
             onChange={(e) => setAltText(e.target.value.slice(0, 500))}
             readOnly={!isDraft(ordered[altIdx].listing_image_id)}
             rows={3}
-            placeholder="Örn. Siyah metal dağ silüeti, açık gri duvarda"
+            placeholder={t("Örn. Siyah metal dağ silüeti, açık gri duvarda", "E.g. Black metal mountain silhouette on a light gray wall")}
             className="mt-3 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
           />
           <div className="mt-1 flex items-center justify-between text-xs">
-            <span className={altText.length > 125 ? "text-amber-600" : "text-neutral-400"}>{altText.length}/125 önerilen</span>
+            <span className={altText.length > 125 ? "text-amber-600" : "text-neutral-400"}>{altText.length}/125 {t("önerilen", "recommended")}</span>
             {isDraft(ordered[altIdx].listing_image_id) && ordered[altIdx].draft_file_id && (
               <button type="button" onClick={() => void aiForOpenAlt()} disabled={altBusy} className="font-semibold text-emerald-700 hover:underline disabled:opacity-50 dark:text-emerald-400">
-                {altBusy ? "Yazılıyor…" : "✨ Yapay zekâyla yaz"}
+                {altBusy ? t("Yazılıyor…", "Writing…") : `✨ ${t("Yapay zekâyla yaz", "Write with AI")}`}
               </button>
             )}
           </div>
           {!isDraft(ordered[altIdx].listing_image_id) && (
             <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
-              Bu fotoğraf Etsy&apos;de zaten yüklü ve Etsy API&apos;si mevcut fotoğrafın alt metnini değiştirmeye izin vermiyor. Alt metin yazmak için fotoğrafı kırparak (✂) yeni bir kopya olarak yeniden ekleyebilirsin.
+              {t(
+                "Bu fotoğraf Etsy'de zaten yüklü ve Etsy API'si mevcut fotoğrafın alt metnini değiştirmeye izin vermiyor. Alt metin yazmak için fotoğrafı kırparak (✂) yeni bir kopya olarak yeniden ekleyebilirsin.",
+                "This photo is already on Etsy, and Etsy's API does not allow changing the alt text of an existing photo. To add alt text, crop it (✂) to add it again as a new copy.",
+              )}
             </p>
           )}
           {altError && <p className="mt-2 text-xs text-red-600">{altError}</p>}
@@ -714,7 +727,7 @@ export default function MediaManager({
       )}
 
       {viewIdx !== null && ordered[viewIdx] && (
-        <Modal z={120} widthClass="max-w-2xl" title={`Fotoğraf ${viewIdx + 1}/${ordered.length}`} onClose={() => setViewIdx(null)}>
+        <Modal z={120} widthClass="max-w-2xl" title={`${t("Fotoğraf", "Photo")} ${viewIdx + 1}/${ordered.length}`} onClose={() => setViewIdx(null)}>
           <div className="relative">
             <RegenImage
               src={ordered[viewIdx].url_570xN}
@@ -739,7 +752,7 @@ export default function MediaManager({
               disabled={ordered.length < 2}
               className={`${btnGhost} disabled:opacity-40`}
             >
-              ‹ Önceki
+              ‹ {t("Önceki", "Previous")}
             </button>
             <button
               type="button"
@@ -747,10 +760,10 @@ export default function MediaManager({
               disabled={ordered.length < 2}
               className={`${btnGhost} disabled:opacity-40`}
             >
-              Sonraki ›
+              {t("Sonraki", "Next")} ›
             </button>
             <button type="button" onClick={() => setCropIdx(viewIdx)} className={btnGhost}>
-              ✂️ Kırp
+              ✂️ {t("Kırp", "Crop")}
             </button>
           </div>
           <div className="mt-4 border-t border-neutral-100 pt-4 dark:border-neutral-800 space-y-3">
@@ -768,14 +781,17 @@ export default function MediaManager({
               <details className="group rounded-lg border border-neutral-200 dark:border-neutral-800">
                 <summary className="flex cursor-pointer list-none items-center justify-between p-3 text-xs font-semibold text-neutral-700 dark:text-neutral-300">
                   <span>
-                    🎯 Ürün referansı (opsiyonel){viewSubjectId !== null && <span className="ml-2 font-normal text-[#D97757]">seçili</span>}
+                    🎯 {t("Ürün referansı (opsiyonel)", "Product reference (optional)")}
+                    {viewSubjectId !== null && <span className="ml-2 font-normal text-[#D97757]">{t("seçili", "selected")}</span>}
                   </span>
                   <span className="text-neutral-400 transition group-open:rotate-180">▾</span>
                 </summary>
                 <div className="border-t border-neutral-200 p-3 dark:border-neutral-800">
                   <p className="mb-2 text-xs text-neutral-400 dark:text-neutral-500">
-                    Sahnede birden fazla obje olduğunda ya da ürün net seçilemediğinde, hangisinin ürün olduğunu göstermek için
-                    temiz bir ürün fotoğrafı seç.
+                    {t(
+                      "Sahnede birden fazla obje olduğunda ya da ürün net seçilemediğinde, hangisinin ürün olduğunu göstermek için temiz bir ürün fotoğrafı seç.",
+                      "When the scene has several objects or the product is hard to pick out, choose a clean product photo to show which one is the product.",
+                    )}
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -787,7 +803,7 @@ export default function MediaManager({
                           : "border-neutral-300 text-neutral-500 hover:border-neutral-400 dark:border-neutral-700 dark:text-neutral-400"
                       }`}
                     >
-                      Yok
+                      {t("Yok", "None")}
                     </button>
                     {ordered
                       .filter((_, i) => i !== viewIdx)
@@ -799,7 +815,7 @@ export default function MediaManager({
                           className={`overflow-hidden rounded-lg border-2 ${
                             viewSubjectId === img.listing_image_id ? "border-[#D97757]" : "border-transparent"
                           }`}
-                          title="Ürün referansı olarak seç"
+                          title={t("Ürün referansı olarak seç", "Use as product reference")}
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={img.url_170x135} alt="" className="h-12 w-12 object-cover" />
@@ -810,16 +826,18 @@ export default function MediaManager({
               </details>
             )}
             <div>
-              <p className="mb-1 text-xs font-semibold text-neutral-700 dark:text-neutral-300">🪄 Yapay zekâyla düzenle</p>
+              <p className="mb-1 text-xs font-semibold text-neutral-700 dark:text-neutral-300">🪄 {t("Yapay zekâyla düzenle", "Edit with AI")}</p>
               <p className="mb-2 text-xs text-neutral-400 dark:text-neutral-500">
-                Ne değişsin? Ör. &quot;modelin elinde tutsun&quot;, &quot;oturma odasında göster&quot;, &quot;arka planı beyaz yap&quot;.
-                Boş bırakırsan yalnızca doğal/stüdyo kalitesine getirir; belirtmediğin kısımlar (ürünün kendisi) değişmez.
+                {t(
+                  'Ne değişsin? Ör. "modelin elinde tutsun", "oturma odasında göster", "arka planı beyaz yap". Boş bırakırsan yalnızca doğal/stüdyo kalitesine getirir; belirtmediğin kısımlar (ürünün kendisi) değişmez.',
+                  'What should change? E.g. "a model holding it", "show it in a living room", "make the background white". Leave empty to only bring it to natural/studio quality; anything you don\'t mention (the product itself) stays the same.',
+                )}
               </p>
               <textarea
                 value={viewPrompt}
                 onChange={(e) => setViewPrompt(e.target.value.slice(0, 2000))}
                 rows={2}
-                placeholder="Örn. Bu ürünü bir kişi elinde tutuyor gibi göster"
+                placeholder={t("Örn. Bu ürünü bir kişi elinde tutuyor gibi göster", "E.g. Show a person holding this product")}
                 className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
               />
             </div>
@@ -839,7 +857,7 @@ export default function MediaManager({
                 disabled={regenJobs.get(ordered[viewIdx].listing_image_id)?.phase === "running"}
                 className="rounded-full bg-[#D97757] px-4 py-2 text-sm font-semibold text-white hover:bg-[#d9550f] disabled:opacity-50"
               >
-                {regenJobs.get(ordered[viewIdx].listing_image_id)?.phase === "running" ? "Oluşturuluyor…" : "🪄 Yeniden oluştur"}
+                {regenJobs.get(ordered[viewIdx].listing_image_id)?.phase === "running" ? t("Oluşturuluyor…", "Generating…") : `🪄 ${t("Yeniden oluştur", "Regenerate")}`}
               </button>
               {regenJobs.get(ordered[viewIdx].listing_image_id)?.phase === "error" && (
                 <span className="text-xs text-red-600">{regenJobs.get(ordered[viewIdx].listing_image_id)?.error}</span>
@@ -850,14 +868,14 @@ export default function MediaManager({
       )}
 
       {genOpen && (
-        <Modal z={120} widthClass="max-w-lg" title="Fotoğraf seti oluştur" onClose={genBusy ? undefined : closeGen} footer={
+        <Modal z={120} widthClass="max-w-lg" title={t("Fotoğraf seti oluştur", "Generate a photo set")} onClose={genBusy ? undefined : closeGen} footer={
           <>
             <button type="button" onClick={closeGen} disabled={genBusy} className={`${btnGhost} disabled:opacity-40`}>
-              {genShots.length > 0 ? "Bitir" : "Vazgeç"}
+              {genShots.length > 0 ? t("Bitir", "Done") : t("Vazgeç", "Cancel")}
             </button>
             {genShots.length === 0 && (
               <button type="button" onClick={() => void generateShoot()} disabled={genBusy} className={btnPrimary}>
-                {genBusy ? "Oluşturuluyor…" : `${genQty} fotoğraf oluştur`}
+                {genBusy ? t("Oluşturuluyor…", "Generating…") : t(`${genQty} fotoğraf oluştur`, `Generate ${genQty} photos`)}
               </button>
             )}
           </>
@@ -865,13 +883,14 @@ export default function MediaManager({
           {genShots.length === 0 ? (
             <>
               <p className="mb-3 text-xs text-neutral-400 dark:text-neutral-500">
-                Bir ürün fotoğrafı ver — Etsy&apos;nin önerdiği çeşitlilikte (kapak, farklı açı, yakın çekim/detay,
-                ölçek referansı, yaşam tarzı, uzak/geniş kadraj…) bir fotoğraf seti otomatik üretilir, her biri
-                bitikçe listeye eklenir. Fotoğraf vermezsen yalnızca yazdığın tarife göre (hayal ederek) üretir.
+                {t(
+                  "Bir ürün fotoğrafı ver — Etsy'nin önerdiği çeşitlilikte (kapak, farklı açı, yakın çekim/detay, ölçek referansı, yaşam tarzı, uzak/geniş kadraj…) bir fotoğraf seti otomatik üretilir, her biri bitikçe listeye eklenir. Fotoğraf vermezsen yalnızca yazdığın tarife göre (hayal ederek) üretir.",
+                  "Give a product photo and a set in the variety Etsy recommends (cover, different angle, close-up, scale reference, lifestyle, wide shot…) is generated; each one is added to the list when it is done. Without a photo, images are imagined from your description only.",
+                )}
               </p>
 
               <label className="mb-1 block text-xs font-medium text-neutral-500 dark:text-neutral-400">
-                Ürün fotoğrafı (opsiyonel ama önerilir)
+                {t("Ürün fotoğrafı (opsiyonel ama önerilir)", "Product photo (optional but recommended)")}
               </label>
               <div
                 onClick={() => genFileInput.current?.click()}
@@ -891,12 +910,12 @@ export default function MediaManager({
                 )}
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-medium text-neutral-700 dark:text-neutral-300">
-                    {genRefFile ? genRefFile.name : "Tıkla, sürükle-bırak ya da yapıştır (Ctrl+V)"}
+                    {genRefFile ? genRefFile.name : t("Tıkla, sürükle-bırak ya da yapıştır (Ctrl+V)", "Click, drag and drop or paste (Ctrl+V)")}
                   </p>
                   {genRefFile && (
                     <label className="mt-1 flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400" onClick={(e) => e.stopPropagation()}>
                       <input type="checkbox" checked={genKeepRef} onChange={(e) => setGenKeepRef(e.target.checked)} />
-                      Bu gerçek fotoğrafı da listeye ekle
+                      {t("Bu gerçek fotoğrafı da listeye ekle", "Also add this real photo to the listing")}
                     </label>
                   )}
                 </div>
@@ -909,7 +928,7 @@ export default function MediaManager({
                 />
               </div>
 
-              <label className="mb-1 block text-xs font-medium text-neutral-500 dark:text-neutral-400">Kaç fotoğraf üretilsin?</label>
+              <label className="mb-1 block text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("Kaç fotoğraf üretilsin?", "How many photos?")}</label>
               <input
                 type="number"
                 min={1}
@@ -919,15 +938,18 @@ export default function MediaManager({
                 className="mb-3 w-24 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
               />
               <p className="mb-3 text-xs text-neutral-400 dark:text-neutral-500">
-                {MAX_IMAGES - ordered.length} fotoğraf hakkın kaldı. 8&apos;den fazlasında çekim türleri tekrar edip varyasyon üretilir.
+                {t(
+                  `${MAX_IMAGES - ordered.length} fotoğraf hakkın kaldı. 8'den fazlasında çekim türleri tekrar edip varyasyon üretilir.`,
+                  `${MAX_IMAGES - ordered.length} photos left. Above 8, shot types repeat as variations.`,
+                )}
               </p>
 
-              <label className="mb-1 block text-xs font-medium text-neutral-500 dark:text-neutral-400">Ek not (opsiyonel)</label>
+              <label className="mb-1 block text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("Ek not (opsiyonel)", "Extra note (optional)")}</label>
               <textarea
                 value={genPrompt}
                 onChange={(e) => setGenPrompt(e.target.value.slice(0, 2000))}
                 rows={2}
-                placeholder="Örn. Ahşap zemin, doğal ışık, minimal dekor"
+                placeholder={t("Örn. Ahşap zemin, doğal ışık, minimal dekor", "E.g. Wooden surface, natural light, minimal decor")}
                 className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
               />
               {genError && <p className="mt-2 text-xs text-red-600">{genError}</p>}
