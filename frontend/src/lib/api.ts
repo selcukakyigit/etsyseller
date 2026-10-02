@@ -1,6 +1,7 @@
 import { getAccessToken, supabase } from "@/lib/supabase";
 import { toast } from "@/lib/toast";
 import { tNow } from "@/lib/i18n";
+import { clearSessionCache } from "@/lib/sessionCache";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -1046,6 +1047,7 @@ export const api = {
     me: () => request<User>("/api/auth/me"),
     consent: (version: string) => request<User>("/api/auth/consent", { method: "POST", body: JSON.stringify({ version }) }),
     logout: async () => {
+      clearSessionCache();
       await supabase.auth.signOut();
     },
   },
