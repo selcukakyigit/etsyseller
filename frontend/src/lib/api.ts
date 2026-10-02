@@ -1371,7 +1371,7 @@ export const api = {
   assistant: {
     providers: (shopId: number) => request<AssistantProviders>(`/api/shops/${shopId}/assistant/providers`),
     progress: (shopId: number, requestId: string) => request<{ step: string }>(`/api/shops/${shopId}/assistant/progress/${requestId}`),
-    chat: (shopId: number, body: { message: string; session_id?: number | null; image_ids: string[]; provider?: string; today: string; request_id?: string }) =>
+    chat: (shopId: number, body: { message: string; session_id?: number | null; image_ids: string[]; provider?: string; today: string; request_id?: string; lang?: "tr" | "en" }) =>
       request<ChatReply>(`/api/shops/${shopId}/assistant/chat`, { method: "POST", body: JSON.stringify(body) }),
     sessions: (shopId: number) => request<ChatSessionInfo[]>(`/api/shops/${shopId}/assistant/sessions`),
     session: (shopId: number, id: number) => request<{ id: number; title: string; messages: ChatMessageOut[] }>(`/api/shops/${shopId}/assistant/sessions/${id}`),

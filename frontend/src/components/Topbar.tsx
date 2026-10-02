@@ -4,10 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { api, OrderInsights, Shop } from "@/lib/api";
 import ThemeToggle from "@/components/ThemeToggle";
+import LangSwitch from "@/components/LangSwitch";
+import { useT } from "@/lib/i18n-client";
 import { BellIcon, SyncIcon } from "@/components/icons";
 import { emitSyncDone } from "@/lib/syncEvents";
 
 export default function Topbar({ activeShop }: { activeShop: Shop | null }) {
+  const { t } = useT();
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -86,7 +89,7 @@ export default function Topbar({ activeShop }: { activeShop: Shop | null }) {
       // Listing senkronizasyonu arka planda çalışıyor (büyük mağazalarda dakikalar sürebilir) — ikon, gerçekten bitene kadar dönmeye devam etsin.
       await watchSync(activeShop.id, () => false);
     } catch (e) {
-      setSyncError(e instanceof Error ? e.message : "Senkronizasyon başarısız");
+      setSyncError(e instanceof Error ? e.message : t("Senkronizasyon başarısız", "Sync failed"));
       setSyncing(false);
       setProgress(null);
     }
@@ -112,7 +115,7 @@ export default function Topbar({ activeShop }: { activeShop: Shop | null }) {
       <button
         onClick={handleSync}
         disabled={!activeShop || syncing}
-        title="Etsy ile senkronize et"
+        title={t("Etsy ile senkronize et", "Sync with Etsy")}
         className="w-8 h-8 flex items-center justify-center rounded-lg text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition disabled:opacity-40"
       >
         {/* animate-spin (saat yönü) bu iki oklu ikonda tersine dönüyormuş gibi bir yanılsama yaratıyordu; okların
@@ -123,7 +126,7 @@ export default function Topbar({ activeShop }: { activeShop: Shop | null }) {
       <div className="relative" ref={notifRef}>
         <button
           onClick={() => setNotifOpen((v) => !v)}
-          title="Bildirimler"
+          title={t("Bildirimler", "Notifications")}
           className="relative w-8 h-8 flex items-center justify-center rounded-lg text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
         >
           <BellIcon />
@@ -137,15 +140,15 @@ export default function Topbar({ activeShop }: { activeShop: Shop | null }) {
             style={{ zIndex: 60 }}
             className="absolute right-0 mt-2 w-72 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-lg p-3 space-y-2"
           >
-            <p className="text-xs font-medium text-neutral-400">Bildirimler</p>
-            {notificationCount === 0 && <p className="text-sm text-neutral-500">Yeni bildirim yok.</p>}
+            <p className="text-xs font-medium text-neutral-400">{t("Bildirimler", "Notifications")}</p>
+            {notificationCount === 0 && <p className="text-sm text-neutral-500">{t("Yeni bildirim yok.", "No new notifications.")}</p>}
             {insights && insights.overdue > 0 && (
               <Link
                 href="/orders"
                 onClick={() => setNotifOpen(false)}
                 className="block text-sm text-neutral-700 dark:text-neutral-200 hover:underline"
               >
-                {insights.overdue} sipariş kargo süresi geçmiş
+                {t(`${insights.overdue} sipariş kargo süresi geçmiş`, `${insights.overdue} orders past their ship-by date`)}
               </Link>
             )}
             {insights && insights.needs_shipping_today > 0 && (
@@ -154,13 +157,14 @@ export default function Topbar({ activeShop }: { activeShop: Shop | null }) {
                 onClick={() => setNotifOpen(false)}
                 className="block text-sm text-neutral-700 dark:text-neutral-200 hover:underline"
               >
-                {insights.needs_shipping_today} sipariş bugün kargoya verilmeli
+                {t(`${insights.needs_shipping_today} sipariş bugün kargoya verilmeli`, `${insights.needs_shipping_today} orders must ship today`)}
               </Link>
             )}
           </div>
         )}
       </div>
 
+      <LangSwitch className="mx-1.5" />
       <ThemeToggle />
     </header>
   );

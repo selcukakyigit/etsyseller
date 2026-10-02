@@ -12,12 +12,13 @@ import { printCards } from "@/components/orders/giftCard";
 import { EMPTY_ORDER_FILTERS, OrderFilters, Tab, addressText, copyText, groupByShipBy } from "@/components/orders/orderUtils";
 import { onSyncDone } from "@/lib/syncEvents";
 import { useUrlTab } from "@/lib/useUrlTab";
+import { useT } from "@/lib/i18n-client";
 
-const TABS: [Tab, string][] = [
-  ["toship", "Gönderilecek"],
-  ["completed", "Tamamlandı"],
-  ["canceled", "İptal / iade"],
-  ["all", "Tümü"],
+const TABS: [Tab, string, string][] = [
+  ["toship", "Gönderilecek", "To ship"],
+  ["completed", "Tamamlandı", "Completed"],
+  ["canceled", "İptal / iade", "Canceled / refunded"],
+  ["all", "Tümü", "All"],
 ];
 const TAB_VALUES = TABS.map(([v]) => v) as readonly Tab[];
 
@@ -28,6 +29,7 @@ const localToday = () => {
 
 export default function OrdersPage() {
   const { user, shops, activeShop, setActiveShopId, error: bootError } = useAuthAndShop();
+  const { t, locale } = useT();
   const [data, setData] = useState<OrdersPageData | null>(null);
   const [loadedKey, setLoadedKey] = useState<string | null>(null); // hangi sorgunun sonucu ekranda
   const [syncInfo, setSyncInfo] = useState<OrdersSyncStatus | null>(null);
@@ -60,11 +62,11 @@ export default function OrdersPage() {
 
   // Arama kutusu: yazmayı bitirince (350 ms) sunucuya gider.
   useEffect(() => {
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       setQuery(queryInput);
       setPage(0);
     }, 350);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [queryInput]);
 
   const load = useCallback(() => {
@@ -92,9 +94,10 @@ export default function OrdersPage() {
         setLoadedKey(key);
       })
       .catch((e) => {
-        setError(e instanceof Error ? e.message : "Bilinmeyen hata");
+        setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error"));
         setLoadedKey(key);
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shopId, tab, query, filters, sort, page, perPage]);
 
   useEffect(() => {
@@ -115,7 +118,7 @@ export default function OrdersPage() {
             setSyncInfo(await api.orders.sync(shopId));
             load();
           } catch (e) {
-            setError(e instanceof Error ? e.message : "Bilinmeyen hata");
+            setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error"));
           } finally {
             setSyncing(false);
           }
@@ -163,7 +166,7 @@ export default function OrdersPage() {
   const total = data?.total ?? 0;
   const counts = data?.counts ?? { toship: 0, completed: 0, canceled: 0, all: 0 };
   const pages = Math.max(1, Math.ceil(total / perPage));
-  const groups = tab === "toship" && sort === "shipby" ? groupByShipBy(items) : [{ key: "all", label: "", orders: items }];
+  const groups = tab === "toship" && sort === "shipby" ? groupByShipBy(items, t) : [{ key: "all", label: "", orders: items }];
   const selectedOrders = [...selected.values()];
   const allVisibleSelected = items.length > 0 && items.every((o) => selected.has(o.receipt_id));
 
@@ -188,38 +191,38 @@ export default function OrdersPage() {
   async function copyAddresses() {
     setMenuOpen(false);
     const ok = await copyText(selectedOrders.map(addressText).join("\n\n"));
-    setNotice(ok ? `${selectedOrders.length} adres kopyalandı.` : "Panoya kopyalanamadı.");
+    setNotice(ok ? t(`${selectedOrders.length} adres kopyalandı.`, `${selectedOrders.length} addresses copied.`) : t("Panoya kopyalanamadı.", "Could not copy to clipboard."));
   }
 
   function printGiftCards() {
     setMenuOpen(false);
     const gifts = selectedOrders.filter((o) => o.is_gift);
     if (gifts.length === 0) {
-      setNotice("Seçili siparişlerde hediye olarak işaretlenmiş sipariş yok.");
+      setNotice(t("Seçili siparişlerde hediye olarak işaretlenmiş sipariş yok.", "None of the selected orders is marked as a gift."));
       return;
     }
     const withMsg = gifts.map(configForOrder).filter((c) => c.message.trim());
     if (withMsg.length === 0) {
-      setNotice("Seçili hediye siparişlerinde mesaj yok. Önce kartı açıp mesajı yaz.");
+      setNotice(t("Seçili hediye siparişlerinde mesaj yok. Önce kartı açıp mesajı yaz.", "The selected gift orders have no message. Open the card and write the message first."));
       return;
     }
     printCards(withMsg);
-    if (withMsg.length < gifts.length) setNotice(`${gifts.length - withMsg.length} siparişte mesaj olmadığı için atlandı.`);
+    if (withMsg.length < gifts.length) setNotice(t(`${gifts.length - withMsg.length} siparişte mesaj olmadığı için atlandı.`, `${gifts.length - withMsg.length} orders were skipped because they have no message.`));
   }
 
   return (
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/orders">
       <div className="mx-auto max-w-6xl px-6 pb-8 pt-0">
         <div>
-          {!user && !bootError && <p className="text-sm text-neutral-400">Yükleniyor…</p>}
+          {!user && !bootError && <p className="text-sm text-neutral-400">{t("Yükleniyor…", "Loading…")}</p>}
         </div>
         {(bootError || error) && <p className="mb-4 text-sm text-red-600">{bootError ?? error}</p>}
 
         {user && shops !== null && !activeShop && (
           <div className="rounded-xl border border-neutral-200 bg-white p-8 text-center dark:border-neutral-800 dark:bg-neutral-900">
-            <p className="mb-4 text-neutral-600 dark:text-neutral-300">Siparişleri görmek için önce Etsy mağazanı bağlaman gerekiyor.</p>
+            <p className="mb-4 text-neutral-600 dark:text-neutral-300">{t("Siparişleri görmek için önce Etsy mağazanı bağlaman gerekiyor.", "Connect your Etsy shop to see your orders.")}</p>
             <a href={api.shops.connectUrl()} className="inline-block rounded-lg bg-[#D97757] px-4 py-2 text-sm font-medium text-white hover:bg-[#C6613F]">
-              Etsy&apos;ye Bağlan
+              {t("Etsy'ye Bağlan", "Connect Etsy")}
             </a>
           </div>
         )}
@@ -228,23 +231,27 @@ export default function OrdersPage() {
           <>
             {syncInfo?.backfilling && (
               <p className="mb-4 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-200">
-                Geçmiş siparişler arka planda indiriliyor: <b>{syncInfo.local}</b> / {syncInfo.remote_total ?? "…"}. Bu sayfayı kullanmaya devam edebilirsin, bitince liste otomatik güncellenir.
+                {t("Geçmiş siparişler arka planda indiriliyor:", "Past orders are downloading in the background:")} <b>{syncInfo.local}</b> / {syncInfo.remote_total ?? "…"}.{" "}
+                {t("Bu sayfayı kullanmaya devam edebilirsin, bitince liste otomatik güncellenir.", "You can keep using this page; the list updates when it finishes.")}
               </p>
             )}
             {syncInfo && !syncInfo.backfilling && syncInfo.remote_total !== null && syncInfo.local < syncInfo.remote_total && (
               <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-                Etsy&apos;de {syncInfo.remote_total} sipariş var, yerelde {syncInfo.local} tanesi görünüyor. Kalanı için üstteki senkronize ikonuna bas.
+                {t(
+                  `Etsy'de ${syncInfo.remote_total} sipariş var, yerelde ${syncInfo.local} tanesi görünüyor. Kalanı için üstteki senkronize ikonuna bas.`,
+                  `Etsy has ${syncInfo.remote_total} orders and ${syncInfo.local} are shown here. Press the sync icon at the top to get the rest.`,
+                )}
               </p>
             )}
 
             <div ref={stickyRef} className="sticky top-[49px] z-[9] -mx-6 bg-neutral-50 px-6 pb-3 pt-3 dark:bg-neutral-950">
             <div className="mb-3 flex flex-wrap items-center gap-3">
-              <h1 className="mr-auto text-xl font-semibold text-neutral-900 dark:text-neutral-100">Siparişler</h1>
+              <h1 className="mr-auto text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t("Siparişler", "Orders")}</h1>
               <div className="relative w-full sm:w-80">
                 <input
                   value={queryInput}
                   onChange={(e) => setQueryInput(e.target.value)}
-                  placeholder="Alıcı, sipariş no, ürün, kişiselleştirme ya da SKU ara"
+                  placeholder={t("Alıcı, sipariş no, ürün, kişiselleştirme ya da SKU ara", "Search buyer, order number, item, personalization or SKU")}
                   className="w-full rounded-full border border-neutral-300 bg-white py-2 pl-4 pr-10 text-sm outline-none focus:border-[#D97757] dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
                 />
                 <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-neutral-400">⌕</span>
@@ -265,11 +272,11 @@ export default function OrdersPage() {
                   }
                   className="h-4 w-4 accent-[#D97757]"
                 />
-                {selected.size > 0 ? `${selected.size} seçili` : "Bu sayfayı seç"}
+                {selected.size > 0 ? t(`${selected.size} seçili`, `${selected.size} selected`) : t("Bu sayfayı seç", "Select this page")}
               </label>
               {selected.size > 0 && (
                 <button onClick={() => setSelected(new Map())} className="text-xs text-neutral-500 hover:underline">
-                  Seçimi temizle
+                  {t("Seçimi temizle", "Clear selection")}
                 </button>
               )}
               <div ref={menuRef} className="relative">
@@ -278,15 +285,15 @@ export default function OrdersPage() {
                   disabled={selected.size === 0}
                   className="rounded-full border border-neutral-300 px-4 py-1.5 text-sm font-medium text-neutral-800 hover:bg-neutral-50 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800"
                 >
-                  Diğer işlemler ▾
+                  {t("Diğer işlemler", "More actions")} ▾
                 </button>
                 {menuOpen && (
                   <div className="absolute left-0 top-full z-20 mt-1 w-64 overflow-hidden rounded-lg border border-neutral-200 bg-white py-1 text-sm shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
                     <button onClick={copyAddresses} className="block w-full px-3 py-2 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800">
-                      Seçili adresleri kopyala
+                      {t("Seçili adresleri kopyala", "Copy selected addresses")}
                     </button>
                     <button onClick={printGiftCards} className="block w-full px-3 py-2 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800">
-                      Hediye kartlarını yazdır ({selectedOrders.filter((o) => o.is_gift).length})
+                      {t("Hediye kartlarını yazdır", "Print gift cards")} ({selectedOrders.filter((o) => o.is_gift).length})
                     </button>
                   </div>
                 )}
@@ -298,13 +305,13 @@ export default function OrdersPage() {
                     setSort(e.target.value);
                     setPage(0);
                   }}
-                  aria-label="Sırala"
+                  aria-label={t("Sırala", "Sort")}
                   className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
                 >
-                  <option value="shipby">Sırala: gönderim tarihi</option>
-                  <option value="newest">Sırala: en yeni</option>
-                  <option value="oldest">Sırala: en eski</option>
-                  <option value="total">Sırala: tutar</option>
+                  <option value="shipby">{t("Sırala: gönderim tarihi", "Sort: ship-by date")}</option>
+                  <option value="newest">{t("Sırala: en yeni", "Sort: newest")}</option>
+                  <option value="oldest">{t("Sırala: en eski", "Sort: oldest")}</option>
+                  <option value="total">{t("Sırala: tutar", "Sort: total")}</option>
                 </select>
                 <select
                   value={perPage}
@@ -312,19 +319,19 @@ export default function OrdersPage() {
                     setPerPage(Number(e.target.value));
                     setPage(0);
                   }}
-                  aria-label="Sayfa başına"
+                  aria-label={t("Sayfa başına", "Per page")}
                   className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
                 >
                   {[25, 50, 100].map((n) => (
                     <option key={n} value={n}>
-                      Sayfada {n} sipariş
+                      {t(`Sayfada ${n} sipariş`, `${n} orders per page`)}
                     </option>
                   ))}
                 </select>
               </div>
             </div>
             <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 border-b border-neutral-200 dark:border-neutral-800">
-              {TABS.map(([key, label]) => (
+              {TABS.map(([key, tr, en]) => (
                 <button
                   key={key}
                   onClick={() => {
@@ -335,7 +342,7 @@ export default function OrdersPage() {
                     tab === key ? "border-neutral-900 font-semibold text-neutral-900 dark:border-neutral-100 dark:text-neutral-100" : "border-transparent text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
                   }`}
                 >
-                  {label} {counts[key].toLocaleString("tr-TR")}
+                  {t(tr, en)} {counts[key].toLocaleString(locale)}
                 </button>
               ))}
             </div>
@@ -345,22 +352,22 @@ export default function OrdersPage() {
               <p className="mb-3 flex items-center justify-between rounded-lg bg-neutral-100 px-4 py-2 text-sm text-neutral-800 dark:bg-neutral-800 dark:text-neutral-100">
                 {notice}
                 <button onClick={() => setNotice(null)} className="text-xs text-neutral-500 hover:underline">
-                  Kapat
+                  {t("Kapat", "Close")}
                 </button>
               </p>
             )}
 
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
               <div className={`min-w-0 flex-1 space-y-5 ${loading ? "opacity-60" : ""}`}>
-                {data === null && !error && <p className="text-sm text-neutral-400">Siparişler yükleniyor…</p>}
+                {data === null && !error && <p className="text-sm text-neutral-400">{t("Siparişler yükleniyor…", "Loading orders…")}</p>}
                 {data && (
                   <p className="text-xs text-neutral-500">
-                    {total.toLocaleString("tr-TR")} sipariş · sayfa {page + 1}/{pages}
+                    {total.toLocaleString(locale)} {t("sipariş", "orders")} · {t("sayfa", "page")} {page + 1}/{pages}
                   </p>
                 )}
                 {data && items.length === 0 && (
                   <p className="text-sm text-neutral-400">
-                    {syncing || syncInfo?.backfilling ? "Siparişler Etsy'den indiriliyor…" : "Bu filtrelerle eşleşen sipariş yok."}
+                    {syncing || syncInfo?.backfilling ? t("Siparişler Etsy'den indiriliyor…", "Downloading orders from Etsy…") : t("Bu filtrelerle eşleşen sipariş yok.", "No orders match these filters.")}
                   </p>
                 )}
                 {groups.map((g) => (
@@ -379,7 +386,7 @@ export default function OrdersPage() {
                           }
                           className="ml-1 text-xs text-neutral-600 underline underline-offset-2 dark:text-neutral-300"
                         >
-                          Tümünü seç
+                          {t("Tümünü seç", "Select all")}
                         </button>
                       </div>
                     )}

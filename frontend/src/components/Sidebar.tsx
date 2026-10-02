@@ -5,15 +5,16 @@ import { useRouter } from "next/navigation";
 import { api, Shop, User } from "@/lib/api";
 import Avatar from "@/components/Avatar";
 import Logo from "@/components/Logo";
+import { useT } from "@/lib/i18n-client";
 
 const NAV_ITEMS = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/listings", label: "Listing'ler" },
-  { href: "/orders", label: "Siparişler" },
-  { href: "/finance", label: "Finans" },
-  { href: "/reviews", label: "Yorumlar" },
-  { href: "/shipping", label: "Kargo ayarları" },
-  { href: "/settings", label: "Ayarlar" },
+  { href: "/dashboard", tr: "Dashboard", en: "Dashboard" },
+  { href: "/listings", tr: "Listing'ler", en: "Listings" },
+  { href: "/orders", tr: "Siparişler", en: "Orders" },
+  { href: "/finance", tr: "Finans", en: "Finance" },
+  { href: "/reviews", tr: "Yorumlar", en: "Reviews" },
+  { href: "/shipping", tr: "Kargo ayarları", en: "Shipping settings" },
+  { href: "/settings", tr: "Ayarlar", en: "Settings" },
 ];
 
 export default function Sidebar({
@@ -30,6 +31,7 @@ export default function Sidebar({
   current: string;
 }) {
   const router = useRouter();
+  const { t } = useT();
   const connectedShops = (shops ?? []).filter((s) => s.connected);
 
   async function handleLogout() {
@@ -54,7 +56,7 @@ export default function Sidebar({
                 : "text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
             }`}
           >
-            {item.label}
+            {t(item.tr, item.en)}
           </Link>
         ))}
       </nav>
@@ -67,7 +69,7 @@ export default function Sidebar({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={activeShop.icon_url} alt="" className="h-4 w-4 rounded-full object-cover" />
               )}
-              Aktif Mağaza
+              {t("Aktif Mağaza", "Active shop")}
             </label>
             <select
               value={activeShop?.id ?? ""}
@@ -88,7 +90,7 @@ export default function Sidebar({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={activeShop.icon_url} alt="" className="h-4 w-4 rounded-full object-cover flex-shrink-0" />
               ) : null}
-              {activeShop.shop_name} bağlı
+              {t(`${activeShop.shop_name} bağlı`, `${activeShop.shop_name} connected`)}
             </span>
           )
         )}
@@ -105,7 +107,7 @@ export default function Sidebar({
           disabled={!user}
           className="w-full text-sm font-medium px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition disabled:opacity-50"
         >
-          Çıkış yap
+          {t("Çıkış yap", "Log out")}
         </button>
       </div>
     </aside>

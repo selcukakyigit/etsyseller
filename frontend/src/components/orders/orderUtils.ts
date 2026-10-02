@@ -1,4 +1,5 @@
 import { Order } from "@/lib/api";
+import type { T } from "@/lib/i18n-client";
 
 export type Tab = "toship" | "completed" | "canceled" | "all";
 
@@ -43,21 +44,23 @@ export function shipBucket(o: Order, now = new Date()): ShipBucket {
   return "later";
 }
 
-export const fmtDate = (iso: string | null | undefined) =>
-  iso ? new Date(iso).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" }) : "";
+/** `t` verilirse tarih o dilin biçiminde yazılır (t("tr-TR", "en-US") yerel ayarı seçer). */
+export const fmtDate = (iso: string | null | undefined, t?: T) =>
+  iso ? new Date(iso).toLocaleDateString(t ? t("tr-TR", "en-US") : "tr-TR", { day: "numeric", month: "long", year: "numeric" }) : "";
 
-export function shipByLabel(o: Order): string {
+export function shipByLabel(o: Order, t: T): string {
+  const date = fmtDate(o.expected_ship_date, t);
   switch (shipBucket(o)) {
     case "overdue":
-      return `Gecikmiş · ${fmtDate(o.expected_ship_date)}`;
+      return `${t("Gecikmiş", "Overdue")} · ${date}`;
     case "today":
-      return "Bugün gönder";
+      return t("Bugün gönder", "Ship today");
     case "tomorrow":
-      return "Yarın gönder";
+      return t("Yarın gönder", "Ship tomorrow");
     case "none":
-      return "Tahmini tarih yok";
+      return t("Tahmini tarih yok", "No estimated date");
     default:
-      return `${fmtDate(o.expected_ship_date)} tarihine kadar gönder`;
+      return t(`${date} tarihine kadar gönder`, `Ship by ${date}`);
   }
 }
 
@@ -112,15 +115,14 @@ export function sortOrders(orders: Order[], sort: string): Order[] {
 export type Group = { key: string; label: string; orders: Order[] };
 
 /** "Yarın gönder / 23 Eylül'e kadar gönder" gibi gruplar (Etsy Shop Manager'daki başlıklar). */
-export function groupByShipBy(orders: Order[]): Group[] {
+export function groupByShipBy(orders: Order[], t: T): Group[] {
   const map = new Map<string, Group>();
   const order: string[] = [];
   for (const o of orders) {
     const b = shipBucket(o);
     const key = b === "later" || b === "week" ? `d:${o.expected_ship_date?.slice(0, 10)}` : b;
     if (!map.has(key)) {
-      const label =
-        b === "overdue" ? "Gecikmiş" : b === "today" ? "Bugün gönder" : b === "tomorrow" ? "Yarın gönder" : b === "none" ? "Tahmini tarih yok" : `${fmtDate(o.expected_ship_date)} tarihine kadar gönder`;
+      const label = b === "overdue" ? t("Gecikmiş", "Overdue") : shipByLabel(o, t);
       map.set(key, { key, label, orders: [] });
       order.push(key);
     }

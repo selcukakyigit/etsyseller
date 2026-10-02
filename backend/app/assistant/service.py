@@ -197,7 +197,7 @@ def _images_prompt(imgs: list[ChatImage]) -> str:
     return f"\nBu sohbette yüklenmiş resimler (yeni listing taslağına eklemek için create_listing_draft'ta image_ids olarak bu kimlikleri kullan):\n{lines}"
 
 
-def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message: str, image_ids: list[str], provider: str | None, today: dt.date, request_id: str | None = None) -> dict:
+def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message: str, image_ids: list[str], provider: str | None, today: dt.date, request_id: str | None = None, lang: str = "tr") -> dict:
     message = (message or "").strip()
     if not message and not image_ids:
         raise ValueError("Mesaj boş olamaz.")
@@ -235,14 +235,21 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
     session_images = db.scalars(select(ChatImage).where(ChatImage.session_id == session.id).order_by(ChatImage.created_at)).all()
     ctx = tools.Ctx(db=db, shop=shop, user_id=user_id, today=today)
     system = SYSTEM_PROMPT.format(shop=shop.shop_name, today=today.isoformat(), currency=_currency(db, shop), examples=_title_examples(db, shop), sections=_sections_summary(db, shop), images=_images_prompt(session_images))
-    set_progress(shop.id, request_id, "Düşünüyor")
+    if lang == "en":
+        system += (
+            "\n\nIMPORTANT: The user's interface language is English. Always reply in English, even though these "
+            "instructions and some tool results are in Turkish. Listing titles, tags and descriptions stay in the "
+            "language the shop uses on Etsy."
+        )
+    en = lang == "en"
+    set_progress(shop.id, request_id, "Thinking" if en else "Düşünüyor")
 
     def run_tool(name: str, args: dict) -> dict:
-        set_progress(shop.id, request_id, tools.TOOL_LABELS.get(name, "Çalışıyor"))
+        set_progress(shop.id, request_id, (tools.TOOL_LABELS_EN.get(name, "Working") if en else tools.TOOL_LABELS.get(name, "Çalışıyor")))
         try:
             return tools.execute(ctx, name, args)
         finally:
-            set_progress(shop.id, request_id, "Sonucu değerlendiriyor")
+            set_progress(shop.id, request_id, "Reviewing the result" if en else "Sonucu değerlendiriyor")
 
     try:
         reply = llm.run_agent(

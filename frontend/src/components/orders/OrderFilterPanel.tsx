@@ -1,8 +1,7 @@
 "use client";
 
 import { EMPTY_ORDER_FILTERS, OrderFilters } from "./orderUtils";
-
-const names = new Intl.DisplayNames(["tr"], { type: "region", fallback: "code" });
+import { useT } from "@/lib/i18n-client";
 
 function Radio({ checked, onChange, children, count }: { checked: boolean; onChange: () => void; children: React.ReactNode; count?: number }) {
   return (
@@ -37,18 +36,20 @@ export default function OrderFilterPanel({
   onChange: (f: OrderFilters) => void;
 }) {
   const set = (p: Partial<OrderFilters>) => onChange({ ...filters, ...p });
+  const { t, lang } = useT();
+  const names = new Intl.DisplayNames([lang], { type: "region", fallback: "code" });
   return (
     <aside className="w-full shrink-0 lg:w-60 lg:sticky lg:self-start lg:overflow-y-auto lg:top-[14rem] lg:max-h-[calc(100vh-15rem)]">
       <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-        <span className={heading}>Gönderim tarihi</span>
+        <span className={heading}>{t("Gönderim tarihi", "Ship-by date")}</span>
         {(
           [
-            ["all", "Hepsi"],
-            ["overdue", "Gecikmiş"],
-            ["today", "Bugün"],
-            ["tomorrow", "Yarın"],
-            ["week", "Bir hafta içinde"],
-            ["none", "Tahmini tarih yok"],
+            ["all", t("Hepsi", "All")],
+            ["overdue", t("Gecikmiş", "Overdue")],
+            ["today", t("Bugün", "Today")],
+            ["tomorrow", t("Yarın", "Tomorrow")],
+            ["week", t("Bir hafta içinde", "Within a week")],
+            ["none", t("Tahmini tarih yok", "No estimated date")],
           ] as [OrderFilters["shipBy"], string][]
         ).map(([v, l]) => (
           <Radio key={v} checked={filters.shipBy === v} onChange={() => set({ shipBy: v })}>
@@ -56,9 +57,9 @@ export default function OrderFilterPanel({
           </Radio>
         ))}
 
-        <span className={heading}>Hedef</span>
+        <span className={heading}>{t("Hedef", "Destination")}</span>
         <Radio checked={filters.destination === ""} onChange={() => set({ destination: "" })}>
-          Hepsi
+          {t("Hepsi", "All")}
         </Radio>
         {destinations.slice(0, 8).map(({ iso, count: n }) => (
           <Radio key={iso} checked={filters.destination === iso} onChange={() => set({ destination: iso })} count={n}>
@@ -66,10 +67,10 @@ export default function OrderFilterPanel({
           </Radio>
         ))}
 
-        <span className={heading}>Kanal</span>
+        <span className={heading}>{t("Kanal", "Channel")}</span>
         {(
           [
-            ["all", "Hepsi"],
+            ["all", t("Hepsi", "All")],
             ["etsy", "Etsy"],
             ["pattern", "Pattern"],
           ] as [OrderFilters["channel"], string][]
@@ -79,20 +80,20 @@ export default function OrderFilterPanel({
           </Radio>
         ))}
 
-        <span className={heading}>Sipariş detayları</span>
+        <span className={heading}>{t("Sipariş detayları", "Order details")}</span>
         <Check checked={filters.note} onChange={(note) => set({ note })}>
-          Alıcı notu var
+          {t("Alıcı notu var", "Has buyer note")}
         </Check>
         <Check checked={filters.gift} onChange={(gift) => set({ gift })}>
-          Hediye olarak işaretlenmiş
+          {t("Hediye olarak işaretlenmiş", "Marked as gift")}
         </Check>
         <Check checked={filters.personalized} onChange={(personalized) => set({ personalized })}>
-          Kişiselleştirilmiş
+          {t("Kişiselleştirilmiş", "Personalized")}
         </Check>
 
-        <span className={heading}>Kargo</span>
+        <span className={heading}>{t("Kargo", "Shipping")}</span>
         <Check checked={filters.upgrade} onChange={(upgrade) => set({ upgrade })}>
-          Kargo yükseltmesi istendi
+          {t("Kargo yükseltmesi istendi", "Shipping upgrade requested")}
         </Check>
 
         <button
@@ -100,7 +101,7 @@ export default function OrderFilterPanel({
           onClick={() => onChange(EMPTY_ORDER_FILTERS)}
           className="mt-5 rounded-full bg-neutral-100 px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-100"
         >
-          Filtreleri sıfırla
+          {t("Filtreleri sıfırla", "Reset filters")}
         </button>
       </div>
     </aside>

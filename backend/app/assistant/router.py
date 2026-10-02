@@ -23,6 +23,7 @@ class ChatIn(BaseModel):
     provider: str | None = None
     today: dt.date | None = None  # istemcinin yerel tarihi
     request_id: str | None = Field(default=None, max_length=64)  # ilerleme takibi için
+    lang: str = Field(default="tr", pattern="^(tr|en)$")  # arayüz dili; asistan bu dilde cevap verir
 
 
 @router.get("/providers")
@@ -33,7 +34,7 @@ def providers(shop: Shop = Depends(get_owned_shop)):
 @router.post("/chat", dependencies=[Depends(require_ai_enabled)])
 def chat(body: ChatIn, shop: Shop = Depends(get_owned_shop), user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     try:
-        return service.chat(db, shop, user.id, body.session_id, body.message, body.image_ids, body.provider, body.today or dt.date.today(), body.request_id)
+        return service.chat(db, shop, user.id, body.session_id, body.message, body.image_ids, body.provider, body.today or dt.date.today(), body.request_id, body.lang)
     except llm.AssistantError as exc:
         raise HTTPException(502, str(exc)) from exc
     except ValueError as exc:

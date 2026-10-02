@@ -24,6 +24,34 @@ import {
   removeCustomSize,
   saveConfig,
 } from "./giftCard";
+import { useT } from "@/lib/i18n-client";
+
+/** Şablon, yazı tipi ve boyut adlarının İngilizcesi (giftCard.ts'teki Türkçe adlar anahtar). */
+const EN_LABELS: Record<string, string> = {
+  Genel: "General",
+  "Özel günler": "Special occasions",
+  Klasik: "Classic",
+  Çiçek: "Floral",
+  "Kraft kağıt": "Kraft paper",
+  Gece: "Night",
+  Minimal: "Minimal",
+  "Noel / Yılbaşı": "Christmas / Holidays",
+  "Cadılar Bayramı": "Halloween",
+  "Sevgililer Günü": "Valentine's Day",
+  "Anneler Günü": "Mother's Day",
+  "Babalar Günü": "Father's Day",
+  Paskalya: "Easter",
+  "Şükran Günü": "Thanksgiving",
+  "Doğum günü": "Birthday",
+  "Yeni Yıl": "New Year",
+  "Düğün / Evlilik": "Wedding",
+  "Klasik (serif)": "Classic (serif)",
+  "El yazısı (script)": "Script",
+  "Sade (sans)": "Simple (sans)",
+  "Kalem (handwritten)": "Handwritten",
+  "4 × 6 inç (102 × 152 mm)": "4 × 6 in (102 × 152 mm)",
+  "5 × 7 inç (127 × 178 mm)": "5 × 7 in (127 × 178 mm)",
+};
 
 const ADD_CUSTOM = "__add_custom__";
 
@@ -66,6 +94,8 @@ function Seg<T extends string>({ value, options, onChange }: { value: T; options
 
 /** Hediye kartı: tasarım seç, metni düzenle, konumlandır, yazdır. Ayarlar sipariş başına tarayıcıda saklanır. */
 export default function GiftCardModal({ order, onClose }: { order: Order; onClose: () => void }) {
+  const { t: tx } = useT();
+  const L = (label: string) => tx(label, EN_LABELS[label] ?? label);
   const [cfg, setCfg] = useState<GiftCardConfig>(() => configForOrder(order));
   // Kullanıcının kaydettiği özel kart boyutları — bu siparişe değil, tarayıcıya kayıtlı; her hediye kartında yeniden kullanılır.
   const [customSizes, setCustomSizes] = useState<CustomSizeEntry[]>(() => loadCustomSizes());
@@ -118,14 +148,14 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
     <Modal
       z={95}
       widthClass="max-w-5xl"
-      title={`Hediye kartı · ${order.address.name || order.buyer_name}`}
+      title={`${tx("Hediye kartı", "Gift card")} · ${order.address.name || order.buyer_name}`}
       footer={
         <>
           <button onClick={onClose} className={btnGhost}>
-            Kapat
+            {tx("Kapat", "Close")}
           </button>
           <button onClick={() => printCards([cfg])} disabled={!cfg.message.trim()} className={btnPrimary}>
-            Yazdır
+            {tx("Yazdır", "Print")}
           </button>
         </>
       }
@@ -133,7 +163,7 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
       <div className="grid gap-6 md:grid-cols-[1fr_auto]">
         <div className="space-y-5">
           <div>
-            <label className={labelCls}>Tasarım</label>
+            <label className={labelCls}>{tx("Tasarım", "Design")}</label>
             <div className="flex items-center gap-3">
               <span
                 aria-hidden
@@ -142,10 +172,10 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
               />
               <select value={cfg.template} onChange={(e) => update({ template: e.target.value as TemplateId })} className={inputCls}>
                 {(["Genel", "Özel günler"] as const).map((group) => (
-                  <optgroup key={group} label={group}>
+                  <optgroup key={group} label={L(group)}>
                     {TEMPLATES.filter((t) => t.group === group).map((t) => (
                       <option key={t.id} value={t.id}>
-                        {t.label}
+                        {L(t.label)}
                       </option>
                     ))}
                   </optgroup>
@@ -155,23 +185,23 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
           </div>
 
           <div>
-            <label className={labelCls}>Mesaj</label>
+            <label className={labelCls}>{tx("Mesaj", "Message")}</label>
             <textarea
               value={cfg.message}
               onChange={(e) => update({ message: e.target.value })}
               rows={5}
-              placeholder="Hediye mesajını buraya yaz ya da düzenle…"
+              placeholder={tx("Hediye mesajını buraya yaz ya da düzenle…", "Write or edit the gift message here…")}
               className={inputCls}
             />
             <div className="mt-1.5 flex flex-wrap gap-2 text-xs">
               {order.gift_message && (
                 <button type="button" onClick={() => update({ message: order.gift_message ?? "" })} className="text-[#B4553A] hover:underline">
-                  Hediye mesajından doldur
+                  {tx("Hediye mesajından doldur", "Use the gift message")}
                 </button>
               )}
               {order.buyer_note && (
                 <button type="button" onClick={() => update({ message: order.buyer_note ?? "" })} className="text-[#B4553A] hover:underline">
-                  Alıcı notundan doldur
+                  {tx("Alıcı notundan doldur", "Use the buyer note")}
                 </button>
               )}
               {TEMPLATES.find((t) => t.id === cfg.template)?.sample && (
@@ -180,11 +210,11 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
                   onClick={() => update({ message: TEMPLATES.find((t) => t.id === cfg.template)?.sample ?? "" })}
                   className="text-[#B4553A] hover:underline"
                 >
-                  Tema için örnek mesaj ekle
+                  {tx("Tema için örnek mesaj ekle", "Add a sample message for this theme")}
                 </button>
               )}
               {!order.gift_message && (
-                <span className="text-neutral-500">Etsy bu siparişte hediye mesajı göndermedi; mesajı elle yazabilirsin.</span>
+                <span className="text-neutral-500">{tx("Etsy bu siparişte hediye mesajı göndermedi; mesajı elle yazabilirsin.", "Etsy did not send a gift message for this order; you can write one yourself.")}</span>
               )}
             </div>
           </div>
@@ -192,13 +222,13 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1 flex items-center gap-2 text-xs font-semibold text-neutral-700 dark:text-neutral-200">
-                <input type="checkbox" checked={cfg.showRecipient} onChange={(e) => update({ showRecipient: e.target.checked })} /> Kime
+                <input type="checkbox" checked={cfg.showRecipient} onChange={(e) => update({ showRecipient: e.target.checked })} /> {tx("Kime", "To")}
               </label>
               <input value={cfg.recipient} onChange={(e) => update({ recipient: e.target.value })} className={inputCls} disabled={!cfg.showRecipient} />
             </div>
             <div>
               <label className="mb-1 flex items-center gap-2 text-xs font-semibold text-neutral-700 dark:text-neutral-200">
-                <input type="checkbox" checked={cfg.showSender} onChange={(e) => update({ showSender: e.target.checked })} /> Kimden
+                <input type="checkbox" checked={cfg.showSender} onChange={(e) => update({ showSender: e.target.checked })} /> {tx("Kimden", "From")}
               </label>
               <input value={cfg.sender} onChange={(e) => update({ sender: e.target.value })} className={inputCls} disabled={!cfg.showSender} />
             </div>
@@ -206,46 +236,46 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className={labelCls}>Yazı tipi</label>
+              <label className={labelCls}>{tx("Yazı tipi", "Font")}</label>
               <select value={cfg.font} onChange={(e) => update({ font: e.target.value as FontId })} className={inputCls}>
                 {(Object.keys(FONTS) as FontId[]).map((f) => (
                   <option key={f} value={f}>
-                    {FONTS[f].label}
+                    {L(FONTS[f].label)}
                   </option>
                 ))}
               </select>
             </div>
             <div>
-              <label className={labelCls}>Yazı rengi</label>
+              <label className={labelCls}>{tx("Yazı rengi", "Text color")}</label>
               <div className="flex items-center gap-2">
                 <input type="color" value={cfg.color ?? "#333333"} onChange={(e) => update({ color: e.target.value })} className="h-9 w-12 cursor-pointer rounded border border-neutral-300" />
                 <button type="button" onClick={() => update({ color: null })} className="text-xs text-neutral-600 hover:underline dark:text-neutral-300">
-                  Tasarımın rengi
+                  {tx("Tasarımın rengi", "Design color")}
                 </button>
               </div>
             </div>
           </div>
 
           <div>
-            <label className={labelCls}>Yazı boyutu: {cfg.fontSize} pt</label>
+            <label className={labelCls}>{tx("Yazı boyutu", "Font size")}: {cfg.fontSize} pt</label>
             <input type="range" min={10} max={48} value={cfg.fontSize} onChange={(e) => update({ fontSize: Number(e.target.value) })} className="w-full accent-[#D97757]" />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className={labelCls}>Yatay hizalama</label>
-              <Seg<Align> value={cfg.align} options={[["left", "Sol"], ["center", "Orta"], ["right", "Sağ"]]} onChange={(align) => update({ align })} />
+              <label className={labelCls}>{tx("Yatay hizalama", "Horizontal alignment")}</label>
+              <Seg<Align> value={cfg.align} options={[["left", tx("Sol", "Left")], ["center", tx("Orta", "Center")], ["right", tx("Sağ", "Right")]]} onChange={(align) => update({ align })} />
             </div>
             <div>
-              <label className={labelCls}>Dikey konum</label>
-              <Seg<VAlign> value={cfg.vAlign} options={[["top", "Üst"], ["middle", "Orta"], ["bottom", "Alt"]]} onChange={(vAlign) => update({ vAlign })} />
+              <label className={labelCls}>{tx("Dikey konum", "Vertical position")}</label>
+              <Seg<VAlign> value={cfg.vAlign} options={[["top", tx("Üst", "Top")], ["middle", tx("Orta", "Middle")], ["bottom", tx("Alt", "Bottom")]]} onChange={(vAlign) => update({ vAlign })} />
             </div>
           </div>
           <div>
             <div className="flex items-center justify-between">
-              <label className={labelCls}>İnce dikey kaydırma: {cfg.offsetY}%</label>
+              <label className={labelCls}>{tx("İnce dikey kaydırma", "Fine vertical offset")}: {cfg.offsetY}%</label>
               <button type="button" onClick={() => update({ align: "center", vAlign: "middle", offsetY: 0 })} className="text-xs text-[#B4553A] hover:underline">
-                Ortala
+                {tx("Ortala", "Center")}
               </button>
             </div>
             <input type="range" min={-30} max={30} value={cfg.offsetY} onChange={(e) => update({ offsetY: Number(e.target.value) })} className="w-full accent-[#D97757]" />
@@ -253,7 +283,7 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className={labelCls}>Kart boyutu</label>
+              <label className={labelCls}>{tx("Kart boyutu", "Card size")}</label>
               {addingSize ? (
                 <div className="space-y-2 rounded-lg border border-neutral-300 p-2.5 dark:border-neutral-700">
                   <div className="flex items-center gap-1.5">
@@ -261,7 +291,7 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
                       value={newW}
                       onChange={(e) => setNewW(e.target.value)}
                       inputMode="decimal"
-                      placeholder="Genişlik"
+                      placeholder={tx("Genişlik", "Width")}
                       className={`${inputCls} px-2 py-1.5`}
                     />
                     <span className="text-xs text-neutral-500">×</span>
@@ -269,7 +299,7 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
                       value={newH}
                       onChange={(e) => setNewH(e.target.value)}
                       inputMode="decimal"
-                      placeholder="Yükseklik"
+                      placeholder={tx("Yükseklik", "Height")}
                       className={`${inputCls} px-2 py-1.5`}
                     />
                     <span className="text-xs text-neutral-500">mm</span>
@@ -277,15 +307,15 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
                   <input
                     value={newLabel}
                     onChange={(e) => setNewLabel(e.target.value)}
-                    placeholder="İsim (opsiyonel, ör. Matbaacımın boyutu)"
+                    placeholder={tx("İsim (opsiyonel, ör. Matbaacımın boyutu)", "Name (optional, e.g. My printer's size)")}
                     className={`${inputCls} px-2 py-1.5`}
                   />
                   <div className="flex justify-end gap-2">
                     <button type="button" onClick={() => setAddingSize(false)} className="text-xs text-neutral-500 hover:underline">
-                      Vazgeç
+                      {tx("Vazgeç", "Cancel")}
                     </button>
                     <button type="button" onClick={saveNewSize} className="rounded-lg bg-[#D97757] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#C6613F]">
-                      Kaydet
+                      {tx("Kaydet", "Save")}
                     </button>
                   </div>
                 </div>
@@ -294,11 +324,11 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
                   <select value={cfg.size} onChange={(e) => handleSizeChange(e.target.value)} className={inputCls}>
                     {(Object.keys(SIZES) as CardSize[]).map((s) => (
                       <option key={s} value={s}>
-                        {SIZES[s].label}
+                        {L(SIZES[s].label)}
                       </option>
                     ))}
                     {customSizes.length > 0 && (
-                      <optgroup label="Kayıtlı özel boyutlar">
+                      <optgroup label={tx("Kayıtlı özel boyutlar", "Saved custom sizes")}>
                         {customSizes.map((s) => (
                           <option key={s.id} value={s.id}>
                             {s.label}
@@ -306,21 +336,21 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
                         ))}
                       </optgroup>
                     )}
-                    <option value={ADD_CUSTOM}>+ Özel boyut ekle…</option>
+                    <option value={ADD_CUSTOM}>{tx("+ Özel boyut ekle…", "+ Add custom size…")}</option>
                   </select>
                   {isCustomSelected && (
-                    <button type="button" onClick={deleteCurrentCustomSize} title="Bu özel boyutu sil" className="shrink-0 text-xs text-red-600 hover:underline">
-                      Sil
+                    <button type="button" onClick={deleteCurrentCustomSize} title={tx("Bu özel boyutu sil", "Delete this custom size")} className="shrink-0 text-xs text-red-600 hover:underline">
+                      {tx("Sil", "Delete")}
                     </button>
                   )}
                 </div>
               )}
             </div>
             <div>
-              <label className={labelCls}>Yön</label>
+              <label className={labelCls}>{tx("Yön", "Orientation")}</label>
               <Seg<"portrait" | "landscape">
                 value={cfg.landscape ? "landscape" : "portrait"}
-                options={[["portrait", "Dikey"], ["landscape", "Yatay"]]}
+                options={[["portrait", tx("Dikey", "Portrait")], ["landscape", tx("Yatay", "Landscape")]]}
                 onChange={(v) => update({ landscape: v === "landscape" })}
               />
             </div>
@@ -328,11 +358,11 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
         </div>
 
         <div>
-          <p className="mb-2 text-center text-xs font-semibold text-neutral-500">Ön izleme (yazdırılacak görünüm)</p>
+          <p className="mb-2 text-center text-xs font-semibold text-neutral-500">{tx("Ön izleme (yazdırılacak görünüm)", "Preview (as printed)")}</p>
           <div className="rounded-xl bg-neutral-200 p-3 dark:bg-neutral-800">
             <div style={{ width: pxW * scale, height: pxH * scale }} className="mx-auto overflow-hidden shadow-lg">
               <iframe
-                title="Hediye kartı önizleme"
+                title={tx("Hediye kartı önizleme", "Gift card preview")}
                 srcDoc={doc}
                 scrolling="no"
                 style={{ width: pxW, height: pxH, border: 0, overflow: "hidden", transform: `scale(${scale})`, transformOrigin: "top left", background: "#fff" }}
@@ -340,7 +370,10 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
             </div>
           </div>
           <p className="mt-2 max-w-[380px] text-center text-[11px] text-neutral-500">
-            Yazdırma penceresinde &quot;Kenar boşluğu: yok&quot; ve &quot;Arka plan grafikleri&quot; seçeneklerini aç.
+            {tx(
+              'Yazdırma penceresinde "Kenar boşluğu: yok" ve "Arka plan grafikleri" seçeneklerini aç.',
+              'In the print dialog, set "Margins: none" and turn on "Background graphics".',
+            )}
           </p>
         </div>
       </div>

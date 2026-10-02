@@ -1270,6 +1270,42 @@ TOOL_LABELS = {
     "mark_order_shipped": "Siparişi kargoya verildi işaretliyor",
 }
 
+# Arayüz İngilizce olduğunda gösterilen ilerleme metinleri (TOOL_LABELS ile aynı anahtarlar).
+TOOL_LABELS_EN = {
+    "finance_summary": "Checking finance data",
+    "monthly_pnl": "Building the monthly profit and loss table",
+    "top_products": "Comparing top products",
+    "compare_periods": "Comparing with the same period last year",
+    "listing_performance": "Checking listing performance",
+    "stale_listings": "Scanning listings that have not been updated",
+    "save_ad_report": "Calculating ad data",
+    "ad_reports": "Loading ad reports",
+    "ads_summary": "Reviewing ad spend",
+    "list_orders": "Loading orders",
+    "search_listings": "Searching listings",
+    "get_listing": "Reading the listing",
+    "shop_defaults": "Checking shop defaults",
+    "find_category": "Looking up the category",
+    "similar_listings": "Reviewing similar listings",
+    "create_listing_draft": "Creating the draft",
+    "update_listing": "Updating the draft",
+    "shop_options": "Checking shop options",
+    "workspace_status": "Checking draft and sync status",
+    "orders_overview": "Counting orders",
+    "order_detail": "Opening the order",
+    "orders_missing_costs": "Finding orders with missing costs",
+    "keyword_pool": "Checking the keyword pool",
+    "shipping_invoices": "Checking shipping invoices",
+    "bulk_update_listings": "Preparing bulk drafts",
+    "regenerate_listing_image": "Regenerating the photo",
+    "generate_missing_alt_texts": "Writing alt texts",
+    "listing_health_status": "Checking listing health",
+    "keep_watching_listing": "Keeping the listing under watch",
+    "publish_listing_draft": "Publishing to Etsy",
+    "deactivate_listing": "Deactivating the listing",
+    "mark_order_shipped": "Marking the order as shipped",
+}
+
 EXECUTORS = {
     "finance_summary": finance_summary, "monthly_pnl": monthly_pnl, "top_products": top_products, "listing_performance": listing_performance, "stale_listings": stale_listings, "save_ad_report": save_ad_report, "ad_reports": ad_reports, "compare_periods": compare_periods, "ads_summary": ads_summary, "list_orders": list_orders,
     "search_listings": search_listings, "get_listing": get_listing, "shop_defaults": shop_defaults, "find_category": find_category, "similar_listings": similar_listings,
