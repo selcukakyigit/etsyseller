@@ -6,6 +6,7 @@ import { api, DashboardData, ShopProfile, ShopReview } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import AppShell from "@/components/AppShell";
 import ChatPanel from "@/components/assistant/ChatPanel";
+import AttentionTile from "@/components/dashboard/AttentionTile";
 import { T, useT } from "@/lib/i18n-client";
 import { useCached } from "@/lib/pageCache";
 import { PageSpinner } from "@/components/ui/Spinner";
@@ -138,6 +139,8 @@ export default function DashboardPage() {
                 <div className="mt-1 text-2xl font-semibold">{data ? data.to_ship : "—"}</div>
                 {data && data.overdue > 0 ? <div className="text-xs font-medium text-red-600">{t(`${data.overdue} tanesi gecikmiş`, `${data.overdue} overdue`)}</div> : <div className="text-xs text-neutral-500">{t("gecikmiş yok", "none overdue")}</div>}
               </Link>
+
+              <AttentionTile shopId={shopId} className={tile} />
 
               <Link href="/finance" className={`${tile} block hover:border-[#D97757]`}>
                 <div className="text-xs font-medium text-neutral-500">{t("Bu ay", "This month")} ({data?.month.label ?? "…"})</div>

@@ -4,7 +4,7 @@ import logging
 
 from app.core.db import SessionLocal
 from app.etsy import rate_limit
-from app.insights import rank
+from app.insights import diagnosis, rank
 from app.shops.models import Shop
 
 logger = logging.getLogger(__name__)
@@ -26,6 +26,7 @@ def track_all_shops() -> None:
                 n = rank.run_shop(db, shop)
                 if n:
                     logger.info("Sıra takibi: mağaza %s, %s arama ölçüldü", shop.id, n)
+                diagnosis.attention(db, shop)  # Dashboard'daki "dikkat isteyen listing'ler" kartı ilk açılışta beklemesin
             except Exception:  # noqa: BLE001 — bir mağazanın hatası diğerlerini durdurmasın
                 db.rollback()
                 logger.exception("Sıra takibi başarısız (mağaza %s)", shop.id)

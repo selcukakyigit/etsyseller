@@ -258,6 +258,20 @@ export interface RankKeyword {
   change_30d: number | null;
   history: { day: string; position: number | null }[];
 }
+export interface AttentionItem {
+  listing_id: number;
+  title: string;
+  lost_units: number;
+  headline: string;
+  action: { key: string; text: string };
+  season: ListingDiagnosis["season"];
+}
+export interface ShopAttention {
+  items: AttentionItem[];
+  declining_ids: number[];
+  declining_count: number;
+}
+
 export type EtsyDataSource = "marketplace_insights" | "search_terms" | "ads";
 export interface EtsyDataRow {
   keyword: string;
@@ -1138,6 +1152,7 @@ export interface DashboardData {
 export const api = {
   insights: {
     diagnosis: (shopId: number, listingId: number) => request<ListingDiagnosis>(`/api/shops/${shopId}/insights/listings/${listingId}/diagnosis`),
+    attention: (shopId: number) => request<ShopAttention>(`/api/shops/${shopId}/insights/attention`),
     ranks: (shopId: number, listingId: number) => request<ListingRanks>(`/api/shops/${shopId}/insights/listings/${listingId}/ranks`),
     addKeyword: (shopId: number, listingId: number, keyword: string) =>
       request<ListingRanks>(`/api/shops/${shopId}/insights/listings/${listingId}/keywords`, { method: "POST", body: JSON.stringify({ keyword }) }),

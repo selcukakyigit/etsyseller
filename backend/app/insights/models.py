@@ -67,3 +67,16 @@ class EtsyKeywordData(Base):
     period_end: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     captured_on: Mapped[dt.date] = mapped_column(Date, default=dt.date.today)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+
+class DemandTrend(Base):
+    """Bir aramanın Google'daki ilgisinin geçen yıla göre değişimi (son 13 hafta / geçen yılın aynı 13 haftası).
+    Google Trends'ten haftada bir, yalnızca sıra takibindeki aramalar için çekilir (bkz. app/insights/demand.py)."""
+
+    __tablename__ = "demand_trends"
+
+    keyword: Mapped[str] = mapped_column(String(100), primary_key=True)
+    recent: Mapped[float | None] = mapped_column(Float, nullable=True)
+    previous: Mapped[float | None] = mapped_column(Float, nullable=True)
+    yoy_pct: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fetched_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)

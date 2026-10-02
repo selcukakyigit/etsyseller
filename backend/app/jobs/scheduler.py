@@ -8,6 +8,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from app.jobs.daily_stats import capture_daily_stats
+from app.jobs.demand_trends import refresh_demand
 from app.jobs.finance_sync import sync_all_shops as sync_finance
 from app.jobs.listing_health import evaluate_all_shops
 from app.jobs.listing_refresh import refresh_all_shops
@@ -76,6 +77,12 @@ def start_scheduler() -> None:
         track_all_shops,
         trigger=CronTrigger(hour=5, minute=30),
         id="rank_tracking",
+        replace_existing=True,
+    )
+    _scheduler.add_job(
+        refresh_demand,
+        trigger=CronTrigger(day_of_week="mon", hour=6, minute=30),
+        id="demand_trends",
         replace_existing=True,
     )
     _scheduler.start()

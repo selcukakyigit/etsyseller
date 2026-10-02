@@ -16,6 +16,7 @@ export type Filters = {
   partner: string;
   video: "all" | "with" | "without";
   tag: string;
+  trend: "all" | "declining";
 };
 
 export const EMPTY_FILTERS: Filters = {
@@ -27,6 +28,7 @@ export const EMPTY_FILTERS: Filters = {
   partner: "",
   video: "all",
   tag: "",
+  trend: "all",
 };
 
 export type Reference = {
@@ -44,8 +46,10 @@ const STATUSES: [string, string, string][] = [
   ["inactive", "Pasif", "Inactive"],
 ];
 
-export function applyFilters(listings: Listing[], f: Filters): Listing[] {
+/** `declining`: satışı düşen listing'lerin kimlikleri (bkz. api.insights.attention); yoksa "Düşüşte" filtresi boş sonuç verir. */
+export function applyFilters(listings: Listing[], f: Filters, declining?: Set<number>): Listing[] {
   return listings.filter((l) => {
+    if (f.trend === "declining" && !declining?.has(l.listing_id)) return false;
     if (!l.is_new && f.status !== "all" && (l.state ?? "active") !== f.status) return false;
     if (f.local === "unpublished" && !l.has_local) return false;
     if (f.local === "draft" && !l.has_draft) return false;
@@ -103,6 +107,7 @@ export default function ListingFilters({
   reference,
   shopId,
   onSectionsChanged,
+  decliningCount,
 }: {
   listings: Listing[];
   filters: Filters;
@@ -111,6 +116,8 @@ export default function ListingFilters({
   shopId: number;
   /** Bölümler modalinde ekle/yeniden adlandır/sil sonrası çağrılır — filtre listesi Etsy'den tazelenir. */
   onSectionsChanged: () => void;
+  /** Satışı düşen listing sayısı (teşhis hesaplanınca); yoksa "Düşüşte" seçeneği sayısız görünür. */
+  decliningCount?: number;
 }) {
   const set = (patch: Partial<Filters>) => onChange({ ...filters, ...patch });
   const { t } = useT();
@@ -155,6 +162,14 @@ export default function ListingFilters({
             </Radio>
           ))}
         </div>
+
+        <span className={label}>{t("Satış eğilimi", "Sales trend")}</span>
+        <Radio checked={filters.trend === "all"} onChange={() => set({ trend: "all" })}>
+          {t("Hepsi", "All")}
+        </Radio>
+        <Radio checked={filters.trend === "declining"} onChange={() => set({ trend: "declining" })} count={decliningCount}>
+          {t("Düşüşte (son 12 ay)", "Declining (last 12 months)")}
+        </Radio>
 
         <span className={label}>{t("Yerel değişiklikler", "Local changes")}</span>
         <Radio checked={filters.local === "all"} onChange={() => set({ local: "all" })}>

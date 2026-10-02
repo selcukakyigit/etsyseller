@@ -8,6 +8,7 @@ kanıtını ve (varsa) bir sebep oyunu verir; en güçlü oy teşhisin sebebi ol
 Hiçbir sinyal Etsy'ye istek atmaz; yalnızca yerel veri (sipariş geçmişi, günlük görüntülenme kayıtları, sürüm geçmişi,
 yorumlar, sağlık değerlendirmesi) kullanılır."""
 import datetime as dt
+import html
 import json
 from dataclasses import dataclass, field
 from typing import Callable
@@ -15,7 +16,8 @@ from typing import Callable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.i18n import tr
+from app.core.fingerprint import ResultCache
+from app.core.i18n import get_lang, tr
 from app.insights import sales, seasonality
 from app.listings import health as listing_health
 from app.listings import performance
@@ -355,7 +357,36 @@ def etsy_data_signal(c: Ctx) -> tuple[list[Evidence], list[Vote]]:
     return out, votes
 
 
-SIGNALS: list[Signal] = [shop_signal, content_signal, price_signal, review_signal, funnel_signal, rank_signal, etsy_data_signal]
+def demand_signal(c: Ctx) -> tuple[list[Evidence], list[Vote]]:
+    """Google'daki talep geçen yıla göre: talep de düştüyse sebep talep, aynı kaldıysa sorun listing'de."""
+    from app.insights import demand
+    from app.insights.models import TrackedKeyword
+
+    keywords = [k for (k,) in c.db.execute(select(TrackedKeyword.keyword).where(
+        TrackedKeyword.shop_id == c.shop.id, TrackedKeyword.listing_id == c.listing_id, TrackedKeyword.active.is_(True)
+    ))]
+    rows = [r for r in demand.for_keywords(c.db, keywords).values() if r.yoy_pct is not None]
+    if not rows:
+        return [], []
+    parts = ", ".join(f"\"{r.keyword}\" %{r.yoy_pct:+d}" for r in rows)
+    parts_en = ", ".join(f"\"{r.keyword}\" {r.yoy_pct:+d}%" for r in rows)
+    avg = sum(r.yoy_pct for r in rows) / len(rows)
+    if avg <= -25:
+        ev = Evidence("demand", "bad", tr(
+            f"Google'da bu aramalara ilgi geçen yıla göre düşmüş ({parts}); düşüşün bir kısmı talepten.",
+            f"Google interest in these searches is down from last year ({parts_en}); part of the drop is demand.",
+        ))
+        return [ev], ([Vote("demand", 1.5)] if c.status == "declining" else [])
+    if avg >= -10:
+        tone = "bad" if c.status == "declining" else "info"
+        return [Evidence("demand", tone, tr(
+            f"Google'da bu aramalara ilgi geçen yılla aynı ya da daha yüksek ({parts}); talep yerinde, sorun listing'de.",
+            f"Google interest in these searches is flat or up from last year ({parts_en}); demand is there, the problem is the listing.",
+        ))], []
+    return [Evidence("demand", "info", tr(f"Google'da ilgi geçen yıla göre biraz düşük ({parts}).", f"Google interest is somewhat lower than last year ({parts_en})."))], []
+
+
+SIGNALS: list[Signal] = [shop_signal, content_signal, price_signal, review_signal, funnel_signal, rank_signal, etsy_data_signal, demand_signal]
 
 
 # ------------------------------------------------------------------ sonuç
@@ -471,3 +502,37 @@ def prompt_brief(d: dict) -> str:
     }.get(d["action"]["key"], "")
     lines = [f"- {e['text']}" for e in d["evidence"][:6]]
     return "Bu listing'in satış teşhisi:\n" + "\n".join(lines) + f"\n{focus}"
+
+
+# ------------------------------------------------------------------ mağaza geneli: dikkat isteyen listing'ler
+
+_attention_cache = ResultCache(max_items=50)
+
+
+def attention(db: Session, shop: Shop, today: dt.date | None = None, limit: int = 5) -> dict:
+    """Düşüşteki aktif listing'ler (en çok satış kaybedenden başlayarak) ve ilk `limit` tanesinin tam teşhisi.
+    Dashboard kartı ve "Düşüşte" filtresi için. Sipariş verisi ve gün değişmedikçe önbellekten döner."""
+    today = today or dt.date.today()
+    key = (shop.id, today.isoformat(), performance._orders_version(db, shop), get_lang())
+    cached = _attention_cache.get(key)
+    if cached is not None:
+        return cached
+    _attention_cache.drop_shop(shop.id)
+    idx = sales.index(db, shop)
+    declining: list[tuple[int, int, str]] = []
+    for lid, title, raw_json in db.execute(select(ListingCache.listing_id, ListingCache.title, ListingCache.raw_json).where(ListingCache.shop_id == shop.id)):
+        raw = json.loads(raw_json)
+        if raw.get("state") != "active":
+            continue
+        status, m = _status(raw, idx.get(lid, []), today)
+        if status == "declining":
+            declining.append((lid, m["prev12"] - m["last12"], html.unescape(title or "")))
+    declining.sort(key=lambda x: -x[1])
+    items = []
+    for lid, lost, title in declining[:limit]:
+        d = diagnose(db, shop, lid, today)
+        if d:
+            items.append({"listing_id": lid, "title": title, "lost_units": lost, "headline": d["headline"], "action": d["action"], "season": d["season"]})
+    result = {"items": items, "declining_ids": [lid for lid, _, _ in declining], "declining_count": len(declining)}
+    _attention_cache.set(key, result)
+    return result

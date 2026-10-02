@@ -14,6 +14,12 @@ from app.shops.models import Shop
 router = APIRouter(prefix="/api/shops/{shop_id}/insights", tags=["insights"])
 
 
+@router.get("/attention")
+def attention(shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    """Düşüşteki listing'ler: en çok satış kaybeden 5'inin teşhisi ve "Düşüşte" filtresi için tüm kimlikler."""
+    return diagnosis.attention(db, shop)
+
+
 @router.get("/listings/{listing_id}/diagnosis")
 def listing_diagnosis(listing_id: int, today: dt.date | None = None, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
     """Bir listing'in satış teşhisi: durum, sebep, kanıtlar, önerilen hamle, mevsim ve aylık satış serisi."""

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, BulkChanges, Listing } from "@/lib/api";
+import { api, BulkChanges, Listing, ShopAttention } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import { useIncrementalList } from "@/lib/useIncrementalList";
 import AppShell from "@/components/AppShell";
@@ -304,10 +304,28 @@ export default function Home() {
     else if (action === "delete") void deleteListings([listing]);
   }
 
+  // Satışı düşen listing'ler ("Düşüşte" filtresi): teşhis sunucuda gün boyu önbellekte; filtre seçilince yüklenir.
+  const [attention, setAttention] = useCached<ShopAttention>(activeShop ? `attention:${activeShop.id}` : null);
+  const wantsTrend = filters.trend === "declining";
+  useEffect(() => {
+    if (!activeShop || !wantsTrend) return;
+    let cancelled = false;
+    api.insights
+      .attention(activeShop.id)
+      .then((r) => {
+        if (!cancelled) setAttention(r);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [activeShop, wantsTrend, setAttention]);
+  const decliningIds = useMemo(() => new Set(attention?.declining_ids ?? []), [attention]);
+
   const draftListings = (listings ?? []).filter((l) => l.has_local);
   const visibleListings = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const searched = applyFilters(listings ?? [], filters).filter(
+    const searched = applyFilters(listings ?? [], filters, decliningIds).filter(
       (l) =>
         !q ||
         l.title.toLowerCase().includes(q) ||
@@ -324,7 +342,7 @@ export default function Home() {
       title: (a, b) => a.title.localeCompare(b.title),
     };
     return [...searched].sort(cmp[sort] ?? cmp.ending);
-  }, [listings, filters, query, sort]);
+  }, [listings, filters, query, sort, decliningIds]);
   // Yüzlerce kartı bir anda çizmek sayfayı kasıyor: 12 ile başla (xl ekranda 3 sıra), kaydırdıkça 12 daha ekle.
   const { shown, hasMore, sentinelRef } = useIncrementalList(
     visibleListings,
@@ -711,6 +729,7 @@ export default function Home() {
                 reference={reference}
                 shopId={activeShop.id}
                 onSectionsChanged={loadReference}
+                decliningCount={attention?.declining_count}
               />
             </div>
           </>
