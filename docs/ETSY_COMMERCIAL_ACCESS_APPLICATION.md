@@ -23,6 +23,8 @@ Operator: CATCHOPS YAZILIM SAN. VE TİC. LTD. ŞTİ. (Türkiye). Contact: suppor
   plus the seller's own cost inputs.
 - **Reviews and shop profile:** a read-only overview.
 - **SEO help (optional):** AI suggestions for titles and tags. The seller can turn AI off for their workspace.
+- **Languages:** the whole app is available in English and Turkish (English by default outside Turkey; a switch
+  in the top bar changes it).
 
 ## OAuth scopes and why each is needed
 
@@ -41,7 +43,8 @@ We do **not** request access to `buyer_email`. Buyer e-mail addresses are not st
 ## Compliance with the API Terms of Use
 
 - **Caching and freshness:** data is kept only to provide the service to the connected seller. Background refresh:
-  orders every 2 hours (incremental, `min_last_modified`); listings, reviews and the shop profile every 4 hours.
+  orders every 2 hours (incremental, `min_last_modified`); listings, reviews, the shop profile and payment-account
+  ledger entries every 4 hours (all incremental).
   A listing that is older than this is also refreshed when the seller opens it. Displayed data is therefore well
   inside the freshness window. Historical receipts and ledger entries are kept while the shop is connected,
   because the profit reports need them.

@@ -43,7 +43,7 @@ def start_scheduler() -> None:
     )
     _scheduler.add_job(
         sync_finance,
-        trigger=IntervalTrigger(hours=6),
+        trigger=IntervalTrigger(hours=4),
         id="finance_sync",
         replace_existing=True,
     )
@@ -92,7 +92,7 @@ def start_scheduler() -> None:
 
     logger.info(
         "Scheduler started: daily_stats 03:00, listing_health 03:15 UTC; order_sync every 2h, "
-        "listing_refresh/shop_profile/reviews every 4h, finance_sync every 6h (all also run once shortly after start)."
+        "listing_refresh/shop_profile/reviews every 4h, finance_sync every 4h (all also run once shortly after start)."
     )
 
 
