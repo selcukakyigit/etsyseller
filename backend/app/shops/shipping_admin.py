@@ -9,7 +9,7 @@ import logging
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.shops import reference_cache
@@ -98,8 +98,25 @@ def _done(db: Session, shop: Shop) -> None:
     reference_cache.invalidate(db, shop)  # kargo/iade/işlem listeleri bir sonraki okumada Etsy'den tazelensin
 
 
+_COUNT_KEYS = {"shipping_profile_id", "return_policy_id", "readiness_state_id", "shop_section_id"}
+
+
 def listing_counts(db: Session, shop: Shop, key: str) -> dict[int, int]:
-    """Yerel önbellekteki listing'lerden, verilen alanı (ör. shipping_profile_id) kullanan listing sayıları."""
+    """Yerel önbellekteki listing'lerden, verilen alanı (ör. shipping_profile_id) kullanan listing sayıları.
+
+    Postgres'te sayım veritabanında yapılır: yüzlerce listing'in ham JSON'unu (MB'larca) uygulamaya taşıyıp çözmek
+    her istekte yaklaşık bir saniye sürüyordu ve kargo/listing sayfaları bunu art arda 3-4 kez istiyor."""
+    if key not in _COUNT_KEYS:
+        raise ValueError(key)
+    if db.get_bind().dialect.name == "postgresql":
+        rows = db.execute(
+            text(
+                "SELECT raw_json::jsonb ->> :k AS v, count(*) FROM listing_cache "
+                "WHERE shop_id = :s AND (raw_json::jsonb ->> :k) IS NOT NULL GROUP BY 1"
+            ),
+            {"k": key, "s": shop.id},
+        ).all()
+        return {int(v): n for v, n in rows if v and v.isdigit() and int(v)}
     counts: dict[int, int] = {}
     for raw in db.scalars(select(ListingCache.raw_json).where(ListingCache.shop_id == shop.id)):
         value = json.loads(raw).get(key)

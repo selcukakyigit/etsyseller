@@ -91,11 +91,7 @@ def shipping_profiles(shop: Shop = Depends(get_owned_shop), db: Session = Depend
         client = EtsyClient(db, shop)
         profiles = reference_cache.get_or_fetch(db, shop, "shipping_profiles", lambda: etsy_shipping.list_shipping_profiles(client))
         # Her profili kullanan listing sayısı yerel önbellekten (senkronize edilen listing'ler kadar).
-        counts: dict[int, int] = {}
-        for raw in db.scalars(select(ListingCache.raw_json).where(ListingCache.shop_id == shop.id)):
-            pid = json.loads(raw).get("shipping_profile_id")
-            if pid:
-                counts[pid] = counts.get(pid, 0) + 1
+        counts = admin.listing_counts(db, shop, "shipping_profile_id")
         return [{**p, "active_listings_count": counts.get(p["shipping_profile_id"], 0)} for p in profiles]
     except EtsyAuthError as exc:
         raise HTTPException(401, str(exc)) from exc
