@@ -724,8 +724,11 @@ def update_listing(ctx: Ctx, a: dict) -> dict:
     elif a.get("price_change_percent") is not None:
         ch["price"] = bulk.PriceOp(mode="percent", value=float(a["price_change_percent"]))
     ch.update(_ref_changes(a))
-    if not ch:
+    variations = a.get("set_variations")
+    if not ch and variations is None:
         return {"error": "Değişiklik belirtilmedi."}
+    if variations is not None:
+        return _update_variations(ctx, lid, work, ch, a, variations)
     changes = bulk.BulkChanges(**ch)
     if lid < 0:
         err = bulk.apply_changes(work, changes)
@@ -745,6 +748,44 @@ def update_listing(ctx: Ctx, a: dict) -> dict:
     return {"ok": True, "degisti": result["changed"], "duzenleyici_baglantisi": f"/listings/{lid}/edit", "yeni_baslik": after["title"],
             "not": "Değişiklik yalnızca yerel taslak olarak kaydedildi; Etsy'ye gitmedi. Kullanıcı düzenleyicide 'Etsy'de yayınla' ile gönderir."}
 
+
+
+def _update_variations(ctx: Ctx, lid: int, work: dict, ch: dict, a: dict, variations: list[dict]) -> dict:
+    """Aynı listing'in (yerel taslak ya da Etsy'deki listing) varyasyonlarını baştan kurar; YENİ taslak açmaz.
+    Fiyat verilmediyse mevcut en düşük fiyat, stok ve işlem profili mevcut listing'den korunur."""
+    live = None
+    if lid > 0:
+        row = ctx.db.scalars(select(ListingCache).where(ListingCache.shop_id == ctx.shop.id, ListingCache.listing_id == lid)).one_or_none()
+        if row is None:
+            return {"error": "Listing yerelde yok (senkronize et)."}
+        live = bulk.snapshot_cached(row)
+    if ch:
+        err = bulk.apply_changes(work, bulk.BulkChanges(**ch))
+        if err:
+            return {"error": err}
+    offers = [o for p in work["inventory"]["products"] for o in p["offerings"]]
+    first = offers[0] if offers else {}
+    price = float(a["set_price"]) if a.get("set_price") is not None else min((o["price"]["amount"] / o["price"]["divisor"] for o in offers), default=0.0)
+    quantity = max(1, int(a.get("quantity") or first.get("quantity") or 1))
+    wanted = [v for v in variations if len(v.get("values") or []) > 1]
+    err = _build_inventory(work, price, quantity, wanted)
+    if err:
+        return {"error": err}
+    inv = work["inventory"]
+    inv["quantity_on_property"], inv["sku_on_property"], inv["readiness_state_on_property"] = [], [], []
+    if first.get("readiness_state_id"):  # Etsy fiziksel ürünlerde her teklifte işlem profili ister
+        for p in inv["products"]:
+            for o in p["offerings"]:
+                o["readiness_state_id"] = first["readiness_state_id"]
+    # Eski varyasyon-fotoğraf bağları yeni seçeneklere uymaz: yeni taslakta boşalt, Etsy'deki listing'de dokunma.
+    work["variation_links"] = None if lid > 0 else {"property_id": None, "images": {}}
+    drafts.save_local(ctx.db, ctx.shop, lid, work, live)
+    ctx.cards.append({
+        "type": "listing_update", "listing_id": lid, "title": work["title"], "edit_url": f"/listings/{lid}/edit",
+        "changes": ["variations", *ch.keys()], "tags": work["tags"],
+    })
+    return {"ok": True, "listing_id": lid, "varyasyon_kombinasyonu": len(inv["products"]), "fiyat": price, "adet": quantity,
+            "not": "Aynı listing'in yerel taslağı güncellendi (yeni taslak açılmadı); Etsy'ye gitmedi."}
 
 
 # ------------------------------------------------------------------ mağaza seçenekleri, toplu taslak, durum, sipariş, anahtar kelime
@@ -1218,13 +1259,16 @@ TOOLS: list[dict] = [
         "shop_section_id": {"type": "integer"}, "shipping_profile_id": {"type": "integer"}, "return_policy_id": {"type": "integer"}, "readiness_state_id": {"type": "integer"},
         "production_partner_ids": {"type": "array", "items": {"type": "integer"}}, "should_auto_renew": {"type": "boolean"},
     })},
-    {"name": "update_listing", "description": "Var olan bir listing'in başlık, açıklama, etiket, fiyat, bölüm, kargo profili, iade politikası, hazırlık süresi, üretim ortağı veya otomatik yenilemeyi YEREL TASLAK olarak değiştirir (Etsy'ye göndermez). Önce get_listing ile mevcut hâline bak.", "input_schema": _obj({
+    {"name": "update_listing", "description": "Var olan bir listing'in ya da daha önce oluşturduğun taslağın (negatif listing_id) başlık, açıklama, etiket, fiyat, VARYASYONLAR (boyut/renk vb.), bölüm, kargo profili, iade politikası, hazırlık süresi, üretim ortağı veya otomatik yenilemesini YEREL TASLAK olarak değiştirir (Etsy'ye göndermez). Kullanıcı sohbette konuşulan listing'e/taslağa bir şey eklemek ya da değiştirmek isterse HER ZAMAN bunu kullan; create_listing_draft ile yeni taslak AÇMA. Önce get_listing ile mevcut hâline bak.", "input_schema": _obj({
         "listing_id": {"type": "integer"}, "new_title": {"type": "string"}, "new_description": {"type": "string"},
         "set_tags": {"type": "array", "items": {"type": "string"}, "description": "Etiketlerin tamamını bununla değiştirir (en fazla 13)"},
         "add_tags": {"type": "array", "items": {"type": "string"}}, "remove_tags": {"type": "array", "items": {"type": "string"}},
         "set_price": {"type": "number"}, "price_change_percent": {"type": "number", "description": "Örn. 10 = %10 zam, -5 = %5 indirim"},
         "shop_section_id": {"type": "integer"}, "shipping_profile_id": {"type": "integer"}, "return_policy_id": {"type": "integer"}, "readiness_state_id": {"type": "integer"},
         "production_partner_ids": {"type": "array", "items": {"type": "integer"}}, "should_auto_renew": {"type": "boolean"},
+        "set_variations": {"type": "array", "description": "Varyasyonları bununla BAŞTAN kurar (mevcutlar silinir). En fazla 3 varyasyon; fiyat yalnızca birine göre değişebilir. Örn. [{name: 'Size', values: [{value: 'L - 120x50', price: 150}, {value: 'M - 50x50', price: 90}]}, {name: 'Color', values: [{value: 'Black'}, {value: 'Gold'}]}]",
+                           "items": _obj({"name": {"type": "string"}, "values": {"type": "array", "items": _obj({"value": {"type": "string"}, "price": {"type": "number"}}, ["value"])}}, ["name", "values"])},
+        "quantity": {"type": "integer", "description": "set_variations ile birlikte: her kombinasyonun stoğu (verilmezse mevcut stok korunur)"},
     }, ["listing_id"])},
     {"name": "regenerate_listing_image", "description": "Bir listing fotoğrafını AI ile yeniden oluşturur (yalnızca taslağa yazar, Etsy'ye göndermez). Kamera açısı ve/veya mesafe/kadraj ve/veya serbest sahne talimatı verilebilir, hepsi birlikte uygulanır. subject_image_id: sahnede birden fazla obje olduğunda 'ürün bu' diye işaret eden, aynı listing'in başka bir fotoğrafı.", "input_schema": _obj({
         "listing_id": {"type": "integer"}, "image_id": {"type": "integer", "description": "Değiştirilecek fotoğrafın listing_image_id'si (get_listing/workspace_status'tan)"},

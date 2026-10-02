@@ -2,6 +2,7 @@
 import datetime as dt
 import html
 import json
+import re
 import threading
 import time
 import uuid
@@ -10,6 +11,7 @@ from pathlib import Path
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.i18n import tr
 from app.assistant import llm, tools
 from app.assistant.models import ChatImage, ChatMessage, ChatSession
 from app.core.config import settings
@@ -76,6 +78,7 @@ ARAÇ SEÇİMİ
 - TOPLU DEĞİŞİKLİK: bulk_update_listings yalnızca YEREL TASLAK üretir. Kapsam belirsizse (hangi listing'ler, ne kadar değişecek) önce tek soruyla netleştir; 20'den fazla listing etkilenecekse ne yapacağını ve kaç listing olduğunu söyleyip kullanıcının onayını al, sonra çağır. Sonucu (kaç taslağa alındı, kaç atlandı ve nedeni) açıkça yaz ve yayının Listing'ler sayfasından ("Yayınlanmamışları seç" → "Seçilenleri Etsy'de yayınla") kullanıcı tarafından yapılacağını söyle.
 - Listing metinlerini (başlık, etiket, açıklama) mağazanın mevcut listing'lerinin dilinde ve üslubunda yaz; kullanıcı aksini istemedikçe aşağıdaki örnek başlıkların dilini kullan. Kullanıcıyla sohbeti Türkçe sürdür.
 - Cevaba bağlantı ya da URL yazma; taslak/listing kartı ekranda düğmeyle zaten gösterilir.
+- Sohbette oluşturduğun ya da konuştuğun bir listing'e/taslağa ekleme veya değişiklik istenirse (boyut, renk, fiyat, başlık…) AYNI listing_id ile update_listing kullan. Yeni taslak açmak yalnızca kullanıcı açıkça yeni bir ürün istediğinde.
 - Yapamadığın bir şey olursa dürüstçe söyle.
 Mağazanın mevcut listing başlıklarından örnekler (dil ve üslup için):
 {examples}
@@ -197,6 +200,16 @@ def _images_prompt(imgs: list[ChatImage]) -> str:
     return f"\nBu sohbette yüklenmiş resimler (yeni listing taslağına eklemek için create_listing_draft'ta image_ids olarak bu kimlikleri kullan):\n{lines}"
 
 
+# Model bazen talimata rağmen "[düzenleyici](https://www.etsy.com/listings/-1/edit)" gibi uydurma bağlantılar yazıyor; kartın
+# düğmesi zaten doğru sayfaya götürüyor. Listing düzenleme bağlantıları metinden çıkarılır, bağlantı metni kalır.
+_EDIT_LINK = re.compile(r"\[([^\]]+)\]\((?:https?://[^)\s]*)?/listings/-?\d+/edit\)")
+_BARE_EDIT_URL = re.compile(r"https?://\S*/listings/-?\d+/edit\S*")
+
+
+def _strip_app_links(text: str) -> str:
+    return _BARE_EDIT_URL.sub("", _EDIT_LINK.sub(r"\1", text)).strip()
+
+
 def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message: str, image_ids: list[str], provider: str | None, today: dt.date, request_id: str | None = None, lang: str = "tr") -> dict:
     message = (message or "").strip()
     if not message and not image_ids:
@@ -262,7 +275,8 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
         db.commit()
         clear_progress(shop.id, request_id)
         raise
-    assistant = ChatMessage(session_id=session.id, role="assistant", content=reply or "Bir cevap üretemedim, tekrar dener misin?", cards_json=json.dumps(ctx.cards, ensure_ascii=False, default=str))
+    reply = _strip_app_links(reply or "")
+    assistant = ChatMessage(session_id=session.id, role="assistant", content=reply or tr("Bir cevap üretemedim, tekrar dener misin?", "I couldn't produce an answer, could you try again?"), cards_json=json.dumps(ctx.cards, ensure_ascii=False, default=str))
     db.add(assistant)
     clear_progress(shop.id, request_id)
     session.updated_at = dt.datetime.utcnow()
