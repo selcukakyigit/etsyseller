@@ -15,7 +15,7 @@ export const outlineBtn =
 /** Yazma isteği Etsy yetkisi yüzünden reddedildiyse (shops_w yok) true. */
 export function isPermissionError(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : "";
-  if (msg.startsWith("Demo shop")) return false; // demo mağaza Etsy'ye hiç yazmaz; yeniden bağlanmak çözüm değil
+  if (/^Demo (shop|mağaza)/.test(msg)) return false; // demo mağaza Etsy'ye hiç yazmaz; yeniden bağlanmak çözüm değil
   if (e instanceof ApiError && e.status === 403) return true;
   return /scope|permission|forbidden|shops_w|yetki/i.test(msg);
 }

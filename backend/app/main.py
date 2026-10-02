@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.errors import register_error_handlers
+from app.core.i18n import set_lang, tr, translate_detail
 from app.etsy.client import DemoShopError, EtsyApiError, EtsyAuthError
 
 # Uygulama logları (Etsy'ye giden yazma istekleri, yayın adımları) uvicorn çıktısıyla aynı yere düşsün.
@@ -71,6 +72,7 @@ SECURITY_HEADERS = {
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
+    set_lang(request.headers.get("x-lang"))  # arayüz dili; hata ve bildirim metinleri buna göre seçilir (core/i18n.py)
     response = await call_next(request)
     for key, value in SECURITY_HEADERS.items():
         response.headers.setdefault(key, value)
@@ -90,12 +92,13 @@ app.mount("/static/avatars", StaticFiles(directory=str(AVATAR_DIR)), name="avata
 
 @app.exception_handler(EtsyAuthError)
 async def etsy_auth_error_handler(_: Request, exc: EtsyAuthError):
-    return JSONResponse(status_code=401, content={"detail": str(exc), "code": 401})
+    return JSONResponse(status_code=401, content={"detail": translate_detail(str(exc)), "code": 401})
 
 
 @app.exception_handler(DemoShopError)
 async def demo_shop_error_handler(_: Request, exc: DemoShopError):
-    return JSONResponse(status_code=403, content={"detail": exc.message, "code": 403})
+    detail = tr("Demo mağaza: değişiklikler Etsy'ye gönderilmez.", "Demo shop: changes are not sent to Etsy.")
+    return JSONResponse(status_code=403, content={"detail": detail, "code": 403})
 
 
 @app.exception_handler(EtsyApiError)
@@ -104,7 +107,7 @@ async def etsy_api_error_handler(_: Request, exc: EtsyApiError):
     # the frontend sees a real reason instead of a generic 500 — this is a
     # catch-all safety net; routes with a narrower try/except still win.
     status_code = exc.status_code if 400 <= exc.status_code < 500 else 502
-    return JSONResponse(status_code=status_code, content={"detail": f"Etsy API: {exc.message}", "code": status_code})
+    return JSONResponse(status_code=status_code, content={"detail": translate_detail(f"Etsy API: {exc.message}"), "code": status_code})
 
 
 @app.get("/healthz", include_in_schema=False)

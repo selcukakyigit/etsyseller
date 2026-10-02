@@ -9,12 +9,13 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.config import settings
+from app.core.i18n import translate_detail
 
 log = logging.getLogger("app.errors")
 
 
 def _body(status: int, detail, **extra) -> dict:
-    return {"detail": detail, "code": status, **extra}
+    return {"detail": translate_detail(detail), "code": status, **extra}
 
 
 def register_error_handlers(app: FastAPI) -> None:

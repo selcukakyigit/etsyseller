@@ -15,6 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal
+from app.core.i18n import tr
 from app.etsy.client import EtsyClient
 from app.finance.models import FinPayment, LedgerEntry, ListingCost, OrderCost, VariantCost
 from app.listings.models import ListingCache
@@ -27,14 +28,19 @@ _state: dict[int, dict] = {}
 ORDER_FIXED_ID = -1  # listing_costs içinde "sipariş başına sabit gider" için ayrılmış sahte listing_id
 WINDOW = 30 * 86400
 
+# Etiketler (Türkçe, İngilizce); hangisinin gösterileceği isteğin arayüz diline göre seçilir (core/i18n.py).
 FEE_LABELS = {
-    "transaction": "İşlem ücreti",
-    "processing_fee": "Ödeme işleme ücreti",
-    "regulatory_fee": "Düzenleyici işletme ücreti",
-    "offsite_ads": "Offsite Ads ücreti",
-    "other_fee": "Diğer sipariş ücretleri",
+    "transaction": ("İşlem ücreti", "Transaction fee"),
+    "processing_fee": ("Ödeme işleme ücreti", "Processing fee"),
+    "regulatory_fee": ("Düzenleyici işletme ücreti", "Regulatory operating fee"),
+    "offsite_ads": ("Offsite Ads ücreti", "Offsite Ads fee"),
+    "other_fee": ("Diğer sipariş ücretleri", "Other order fees"),
 }
-OVERHEAD_LABELS = {"ads": "Etsy Ads / reklam", "listing_fees": "Listeleme ve yenileme", "other": "Diğer (abonelik, KDV, kredi)"}
+OVERHEAD_LABELS = {
+    "ads": ("Etsy Ads / reklam", "Etsy Ads"),
+    "listing_fees": ("Listeleme ve yenileme", "Listing and renewal fees"),
+    "other": ("Diğer (abonelik, KDV, kredi)", "Other (subscription, VAT, credits)"),
+}
 
 
 def variant_key(t: dict) -> str:
@@ -141,9 +147,17 @@ def sync_status(db: Session, shop: Shop) -> dict:
         "entries": n,
         "last_entry": dt.datetime.utcfromtimestamp(last).isoformat() if last else None,
         "progress": st.get("progress", 0.0),
-        "phase": st.get("phase", ""),
+        "phase": tr(st.get("phase", ""), _PHASE_EN.get(st.get("phase", ""), st.get("phase", ""))),
         "error": st.get("error"),
     }
+
+
+# Arka plan iş parçacığı isteğin dilini bilmez; aşama Türkçe saklanır, durum sorgusunda çevrilir.
+_PHASE_EN = {
+    "Başlıyor": "Starting",
+    "Etsy hesap hareketleri indiriliyor": "Downloading Etsy account activity",
+    "Ödemeler siparişlerle eşleniyor": "Matching payments to orders",
+}
 
 
 def start_sync(shop: Shop, full: bool = False) -> bool:
@@ -631,8 +645,8 @@ def report(db: Session, shop: Shop, start: dt.date, end: dt.date, country: str =
             "canceled": t.get("canceled", 0),
             "refunded_orders": t.get("refunded_orders", 0),
             "problem_pct": ((t.get("canceled", 0) + t.get("refunded_orders", 0)) / t["all_orders"] * 100) if t.get("all_orders") else 0.0,
-            "fee_types": {FEE_LABELS[k]: v for k, v in t["fee_types"].items()},
-            "overhead_types": {OVERHEAD_LABELS[k]: v for k, v in ovt.items()},
+            "fee_types": {tr(*FEE_LABELS[k]): v for k, v in t["fee_types"].items()},
+            "overhead_types": {tr(*OVERHEAD_LABELS[k]): v for k, v in ovt.items()},
         }
 
     cur_keys, prev_keys = month_keys(start, end), month_keys(start, end, -offsets[0])
@@ -878,26 +892,26 @@ def orders_costs(db: Session, shop: Shop, start: dt.date, end: dt.date, q: str =
 
 
 LEDGER_LABELS = {
-    "transaction": "İşlem ücreti",
-    "processing_fee": "Ödeme işleme ücreti",
-    "regulatory_fee": "Düzenleyici işletme ücreti",
-    "tax": "Alıcıdan alınan vergi (Etsy tarafından ödenir)",
-    "refund": "İade düzeltmesi",
-    "offsite_ads": "Offsite Ads ücreti",
-    "ads": "Reklam",
-    "listing_fees": "Listeleme / yenileme",
+    "transaction": ("İşlem ücreti", "Transaction fee"),
+    "processing_fee": ("Ödeme işleme ücreti", "Processing fee"),
+    "regulatory_fee": ("Düzenleyici işletme ücreti", "Regulatory operating fee"),
+    "tax": ("Alıcıdan alınan vergi (Etsy tarafından ödenir)", "Tax collected from buyer (paid by Etsy)"),
+    "refund": ("İade düzeltmesi", "Refund adjustment"),
+    "offsite_ads": ("Offsite Ads ücreti", "Offsite Ads fee"),
+    "ads": ("Reklam", "Ads"),
+    "listing_fees": ("Listeleme / yenileme", "Listing / renewal"),
 }
 
 TYPE_LABELS = {
-    "vat_on_processing_fees": "Ödeme işleme ücreti KDV'si",
-    "shipping_transaction": "Kargo işlem ücreti",
-    "transaction_quantity": "İşlem ücreti (ek adet)",
-    "gift_wrap_fees": "Hediye paketi ücreti",
-    "buyer_fee": "Alıcı ücreti",
-    "regulatory_operating_fee_refund": "Düzenleyici ücret iadesi",
-    "transaction_refund": "İşlem ücreti iadesi",
-    "offsite_ads_fee_refund": "Offsite Ads ücreti iadesi",
-    "refund_reversal_sales_tax": "Vergi iadesi düzeltmesi",
+    "vat_on_processing_fees": ("Ödeme işleme ücreti KDV'si", "VAT on processing fees"),
+    "shipping_transaction": ("Kargo işlem ücreti", "Shipping transaction fee"),
+    "transaction_quantity": ("İşlem ücreti (ek adet)", "Transaction fee (extra quantity)"),
+    "gift_wrap_fees": ("Hediye paketi ücreti", "Gift wrap fee"),
+    "buyer_fee": ("Alıcı ücreti", "Buyer fee"),
+    "regulatory_operating_fee_refund": ("Düzenleyici ücret iadesi", "Regulatory fee refund"),
+    "transaction_refund": ("İşlem ücreti iadesi", "Transaction fee refund"),
+    "offsite_ads_fee_refund": ("Offsite Ads ücreti iadesi", "Offsite Ads fee refund"),
+    "refund_reversal_sales_tax": ("Vergi iadesi düzeltmesi", "Sales tax refund reversal"),
 }
 
 
@@ -924,7 +938,8 @@ def order_detail(db: Session, shop: Shop, receipt_id: int) -> dict | None:
         if cat == "gross":
             continue
         fees.append({
-            "label": TYPE_LABELS.get(e.ledger_type.lower()) or LEDGER_LABELS.get(cat, e.ledger_type),
+            "label": tr(*TYPE_LABELS[e.ledger_type.lower()]) if e.ledger_type.lower() in TYPE_LABELS
+            else tr(*LEDGER_LABELS[cat]) if cat in LEDGER_LABELS else e.ledger_type,
             "type": e.ledger_type,
             "amount": e.amount / 100 * kl,
             "original": e.amount / 100,

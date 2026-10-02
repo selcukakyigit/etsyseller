@@ -663,7 +663,9 @@ function detailText(detail: unknown): string | undefined {
 
 async function authHeader(): Promise<Record<string, string>> {
   const token = await getAccessToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  // Arayüz dili: sunucu hata ve bildirim metinlerini bu dilde döner (backend/app/core/i18n.py).
+  const lang = { "X-Lang": tNow("tr", "en") };
+  return token ? { Authorization: `Bearer ${token}`, ...lang } : lang;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

@@ -11,6 +11,8 @@ from collections import Counter
 from dataclasses import dataclass, field
 
 from sqlalchemy import func, select
+
+from app.core.i18n import tr
 from sqlalchemy.orm import Session
 
 from app.ai import quality
@@ -80,15 +82,15 @@ def finance_summary(ctx: Ctx, a: dict) -> dict:
     rng = f"{start} – {end}" + (f" · {country}" if country else "")
     ctx.cards.append({
         "type": "finance",
-        "title": f"Finans özeti ({rng})",
+        "title": tr(f"Finans özeti ({rng})", f"Finance summary ({rng})"),
         "currency": cur,
         "kpis": [
-            {"label": "Satış (vergi hariç)", "value": _r(k["sales"]), "prev": _r(p["sales"])},
-            {"label": "Sipariş", "value": k["orders"], "prev": p["orders"], "count": True},
-            {"label": "Etsy ücretleri", "value": _r(k["fees"]), "prev": _r(p["fees"]), "invert": True},
-            {"label": "Reklam / diğer giderler", "value": _r(k["overhead"]), "prev": _r(p["overhead"]), "invert": True},
-            {"label": "Ürün + kargo maliyeti", "value": _r(k["cogs"]), "prev": _r(p["cogs"]), "invert": True},
-            {"label": "Net kâr", "value": _r(k["profit"]), "prev": _r(p["profit"]), "highlight": True},
+            {"label": tr("Satış (vergi hariç)", "Sales (excl. tax)"), "value": _r(k["sales"]), "prev": _r(p["sales"])},
+            {"label": tr("Sipariş", "Orders"), "value": k["orders"], "prev": p["orders"], "count": True},
+            {"label": tr("Etsy ücretleri", "Etsy fees"), "value": _r(k["fees"]), "prev": _r(p["fees"]), "invert": True},
+            {"label": tr("Reklam / diğer giderler", "Ads / other costs"), "value": _r(k["overhead"]), "prev": _r(p["overhead"]), "invert": True},
+            {"label": tr("Ürün + kargo maliyeti", "Item + shipping cost"), "value": _r(k["cogs"]), "prev": _r(p["cogs"]), "invert": True},
+            {"label": tr("Net kâr", "Net profit"), "value": _r(k["profit"]), "prev": _r(p["profit"]), "highlight": True},
         ],
         "countries": [{"iso": c["iso"], "sales": _r(c["sales"]), "orders": c["orders"]} for c in r["countries"][:5]],
     })
@@ -120,7 +122,7 @@ def monthly_pnl(ctx: Ctx, a: dict) -> dict:
     ]
     k = r["kpi"]
     ctx.cards.append({
-        "type": "pnl", "title": f"{year} aylık kâr-zarar", "currency": cur,
+        "type": "pnl", "title": tr(f"{year} aylık kâr-zarar", f"{year} monthly profit and loss"), "currency": cur,
         "rows": [{"month": x["ay"], "sales": x["satis"], "fees": x["etsy_ucretleri"], "overhead": x["reklam_diger"], "cogs": x["urun_maliyeti"], "profit": x["net_kar"], "orders": x["siparis"]} for x in rows],
         "totals": {"sales": _r(k["sales"]), "fees": _r(k["fees"]), "overhead": _r(k["overhead"]), "cogs": _r(k["cogs"]), "profit": _r(k["profit"]), "orders": k["orders"]},
     })
@@ -150,7 +152,7 @@ def top_products(ctx: Ctx, a: dict) -> dict:
         return {"adet": q["units"] if q else 0, "satis": _r(q["sales"]) if q else 0.0}
 
     ctx.cards.append({
-        "type": "products", "title": f"En iyi ürünler ({start} – {end}) · karşılaştırma: {ps} – {pe}", "currency": r["currency"],
+        "type": "products", "title": tr(f"En iyi ürünler ({start} – {end}) · karşılaştırma: {ps} – {pe}", f"Top products ({start} – {end}) · compared with {ps} – {pe}"), "currency": r["currency"],
         "rows": [{"title": p["title"], "listing_id": p["listing_id"], "units": p["units"], "sales": _r(p["sales"]), "profit": _r(p["profit"]), "margin": _r(p["margin"], 0), "image": p["image"],
                   "prev_units": prev_of(p)["adet"], "prev_sales": prev_of(p)["satis"]} for p in prods],
     })
@@ -190,7 +192,7 @@ def compare_periods(ctx: Ctx, a: dict) -> dict:
     def pct(now: float, before: float) -> float | None:
         return _r((now - before) / before * 100, 1) if before else None
 
-    ctx.cards.append({"type": "movers", "title": f"Değişim: {start} – {end} ↔ {ps} – {pe}", "currency": cur["currency"], "rows": drops + gains})
+    ctx.cards.append({"type": "movers", "title": tr(f"Değişim: {start} – {end} ↔ {ps} – {pe}", f"Change: {start} – {end} ↔ {ps} – {pe}"), "currency": cur["currency"], "rows": drops + gains})
     out = {
         "donem": f"{start} – {end}", "karsilastirilan_ayni_donem": f"{ps} – {pe}", "para_birimi": cur["currency"],
         "satis": {"simdi": _r(k["sales"]), "onceki": _r(p["sales"]), "fark": _r(total_change), "yuzde": pct(k["sales"], p["sales"])},
@@ -250,7 +252,7 @@ def stale_listings(ctx: Ctx, a: dict) -> dict:
     rows = [x for x in performance.stale_listings(ctx.db, ctx.shop, ctx.today) if x["state"] == "active" and x["days_since_update"] >= min_days]
     rows.sort(key=lambda x: (-x["days_since_update"], -x["units_previous"]))
     rows = rows[:limit]
-    ctx.cards.append({"type": "stale", "title": f"{min_days}+ gündür güncellenmeyen aktif listing'ler", "rows": [
+    ctx.cards.append({"type": "stale", "title": tr(f"{min_days}+ gündür güncellenmeyen aktif listing'ler", f"Active listings not updated for {min_days}+ days"), "rows": [
         {"listing_id": x["listing_id"], "title": x["title"], "days": x["days_since_update"], "exact": x["exact"], "units_recent": x["units_recent"], "units_previous": x["units_previous"], "views": x["views"]} for x in rows]})
     tracking = max((x["freshness"].get("tracking_days", 0) for x in rows), default=0)
     return {
@@ -307,7 +309,7 @@ def save_ad_report(ctx: Ctx, a: dict) -> dict:
     if prev is not None and prev.id != rep_row.id:
         pm = _ad_metrics(prev.spend, prev.views, prev.clicks, prev.orders, prev.revenue)
         out["onceki_rapor"] = {"tarih": prev.created_at.date().isoformat(), "donem": [str(prev.period_start), str(prev.period_end)], "harcama": prev.spend, "siparis": prev.orders, "gelir": prev.revenue, "metrikler": pm}
-    ctx.cards.append({"type": "ad_report", "title": rep_row.listing_title or "Reklam raporu", "spend": spend, "views": views, "clicks": clicks, "orders": orders, "revenue": revenue,
+    ctx.cards.append({"type": "ad_report", "title": rep_row.listing_title or tr("Reklam raporu", "Ad report"), "spend": spend, "views": views, "clicks": clicks, "orders": orders, "revenue": revenue,
                       "metrics": m, "close": [k["keyword"] for k in close][:12], "good": [k["keyword"] for k in good][:12]})
     return out
 
@@ -345,7 +347,12 @@ def list_orders(ctx: Ctx, a: dict) -> dict:
             "gonderim_tarihi": o.expected_ship_date.date().isoformat() if o.expected_ship_date else None,
             "tutar": _r(o.grandtotal_amount / (o.grandtotal_divisor or 100)), "urunler": items,
         })
-    label = {"to_ship": "Gönderilecek siparişler", "overdue": "Gecikmiş siparişler", "search": "Arama sonucu", "recent": "Son siparişler"}.get(kind, "Siparişler")
+    label = {
+        "to_ship": tr("Gönderilecek siparişler", "Orders to ship"),
+        "overdue": tr("Gecikmiş siparişler", "Overdue orders"),
+        "search": tr("Arama sonucu", "Search results"),
+        "recent": tr("Son siparişler", "Recent orders"),
+    }.get(kind, tr("Siparişler", "Orders"))
     ctx.cards.append({
         "type": "orders", "title": label,
         "rows": [{"receipt_id": x["siparis_no"], "buyer": x["alici"], "country": x["ulke"], "date": x["tarih"], "ship_by": x["gonderim_tarihi"], "total": x["tutar"], "items": x["urunler"]} for x in out],
@@ -794,11 +801,11 @@ def workspace_status(ctx: Ctx, a: dict) -> dict:
     osync = orders_service.sync_status(ctx.db, ctx.shop)
     fsync = fin.sync_status(ctx.db, ctx.shop)
     ctx.cards.append({
-        "type": "status", "title": "Çalışma durumu",
+        "type": "status", "title": tr("Çalışma durumu", "Workspace status"),
         "rows": [
-            {"label": "Yayınlanmamış yeni listing", "value": len(new_rows)},
-            {"label": "Yayınlanmamış düzenleme", "value": len(edited)},
-            {"label": "Yerelde listing", "value": total},
+            {"label": tr("Yayınlanmamış yeni listing", "Unpublished new listings"), "value": len(new_rows)},
+            {"label": tr("Yayınlanmamış düzenleme", "Unpublished edits"), "value": len(edited)},
+            {"label": tr("Yerelde listing", "Local listings"), "value": total},
         ],
     })
     return {
@@ -842,8 +849,8 @@ def bulk_update_listings(ctx: Ctx, a: dict) -> dict:
     same = [r for r in results if r["ok"] and not r["changed"]]
     bad = [r for r in results if not r["ok"]]
     ctx.cards.append({
-        "type": "status", "title": "Toplu taslak",
-        "rows": [{"label": "Taslağa alınan", "value": len(ok)}, {"label": "Zaten aynı", "value": len(same)}, {"label": "Atlanan", "value": len(bad)}],
+        "type": "status", "title": tr("Toplu taslak", "Bulk draft"),
+        "rows": [{"label": tr("Taslağa alınan", "Drafted"), "value": len(ok)}, {"label": tr("Zaten aynı", "Already the same"), "value": len(same)}, {"label": tr("Atlanan", "Skipped"), "value": len(bad)}],
     })
     return {
         "taslaga_alinan": len(ok), "zaten_ayni": len(same), "atlanan": [{"listing_id": r["id"], "neden": r["error"]} for r in bad][:10],
@@ -872,9 +879,9 @@ def orders_overview(ctx: Ctx, a: dict) -> dict:
             "ulkelere_gore": {c or "?": n for c, n in rows},
         },
     }
-    ctx.cards.append({"type": "status", "title": "Sipariş özeti", "rows": [
-        {"label": "Gönderilecek", "value": out["gonderilecek"]}, {"label": "Gecikmiş", "value": out["gecikmis"]},
-        {"label": "Tamamlandı", "value": out["tamamlandi"]}, {"label": "İptal / iade", "value": out["iptal_iade"]}]})
+    ctx.cards.append({"type": "status", "title": tr("Sipariş özeti", "Order summary"), "rows": [
+        {"label": tr("Gönderilecek", "To ship"), "value": out["gonderilecek"]}, {"label": tr("Gecikmiş", "Overdue"), "value": out["gecikmis"]},
+        {"label": tr("Tamamlandı", "Completed"), "value": out["tamamlandi"]}, {"label": tr("İptal / iade", "Canceled / refunded"), "value": out["iptal_iade"]}]})
     return out
 
 
@@ -928,8 +935,9 @@ def shipping_invoices(ctx: Ctx, a: dict) -> dict:
         "siparis_no": x["receipt_id"], "alici": x["buyer"], "takip_no": x["tracking_no"], "firma": x["vendor"], "tutar": x["total"], "agirlik_kg": x["weight_kg"],
         "son_fatura_tarihi": x["last_invoice_date"], "kalemler": [f"{l['kind']}: {l['description']} {l['amount']}" for l in x["lines"]][:6], "uyarilar": x["warnings"],
     }
-    ctx.cards.append({"type": "status", "title": "Kargo faturaları", "rows": [
-        {"label": "Gönderi", "value": len(items)}, {"label": "Siparişe bağlanmamış", "value": len(unmatched)}, {"label": "Uyarılı", "value": len(warned)}]})
+    ctx.cards.append({"type": "status", "title": tr("Kargo faturaları", "Shipping invoices"), "rows": [
+        {"label": tr("Gönderi", "Shipments"), "value": len(items)}, {"label": tr("Siparişe bağlanmamış", "Not linked to an order"), "value": len(unmatched)},
+        {"label": tr("Uyarılı", "With warnings"), "value": len(warned)}]})
     return {
         "gonderi_sayisi": len(items), "toplam_tutar": data["total_amount"], "siparise_baglanmamis": len(unmatched), "uyarili": len(warned),
         "gonderiler": [brief(x) for x in items[:limit]], "baglanmamislar": [brief(x) for x in unmatched[:limit]], "uyarililar": [brief(x) for x in warned[:limit]],
