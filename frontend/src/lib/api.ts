@@ -1010,6 +1010,7 @@ export type ChatCard =
   | { type: "listing_draft"; listing_id: number; title: string; edit_url: string; price: [number, number]; quantity: number; tags: string[]; combos: number; image: string | null; images: number; problems: string[]; price_assumed?: boolean; quantity_assumed?: boolean }
   | { type: "status"; title: string; rows: { label: string; value: number }[] }
   | { type: "listing_update"; listing_id: number; title: string; edit_url: string; changes: string[]; tags: string[] }
+  | { type: "invoice_review"; source: string; currency: string; candidates: InvoiceCandidate[] }
   | { type: "performance"; title: string; listing_id: number; period: { start: string; end: string }; previous_period: { start: string; end: string }; sales: { units: number; revenue: number; prev_units: number; prev_revenue: number }; views_now: ListingPerformance["views_now"]; conversion_percent: number | null; freshness: ListingPerformance["freshness"]; lifetime: { views: number; favorites: number }; price: number | null }
   | { type: "stale"; title: string; rows: { listing_id: number; title: string; days: number; exact: boolean; units_recent: number; units_previous: number; views: number }[] }
   | { type: "ad_report"; title: string; spend: number; views: number; clicks: number; orders: number; revenue: number; metrics: { ctr_yuzde: number | null; tiklama_basina_maliyet: number | null; roas: number | null; tiklama_siparis_donusumu_yuzde: number | null }; close: string[]; good: string[] };
@@ -1019,7 +1020,8 @@ export interface ChatMessageOut {
   role: "user" | "assistant";
   content: string;
   created_at: string;
-  images: { id: string; url: string }[];
+  /** Eklenen resimler ve belgeler (fatura PDF'i vb.); `content_type` resim değilse dosya simgesiyle gösterilir. */
+  images: { id: string; url: string; filename?: string | null; content_type?: string | null }[];
   cards: ChatCard[];
 }
 export interface ChatReply {
@@ -1408,7 +1410,7 @@ export const api = {
     uploadImage: (shopId: number, file: File) => {
       const fd = new FormData();
       fd.append("file", file);
-      return requestForm<{ id: string; filename: string; url: string }>(`/api/shops/${shopId}/assistant/images`, fd);
+      return requestForm<{ id: string; filename: string; url: string; content_type: string }>(`/api/shops/${shopId}/assistant/images`, fd);
     },
     dashboard: (shopId: number, today: string) => request<DashboardData>(`/api/shops/${shopId}/assistant/dashboard?today=${today}`),
   },

@@ -22,8 +22,18 @@ from app.listings.models import ListingCache
 from app.orders.models import OrderCache
 from app.shops.models import Shop
 
-ALLOWED_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif"}
-MAX_IMAGE_BYTES = 5 * 1024 * 1024  # Claude (Anthropic) görsel sınırı 5 MB
+IMAGE_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif"}
+# Resim dışı ekler (kargo/gümrük faturası): yapay zekâya resim olarak gitmez, read_shipping_invoice aracıyla okunur.
+DOC_TYPES = {
+    ".pdf": "application/pdf",
+    ".csv": "text/csv",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".xls": "application/vnd.ms-excel",
+    ".html": "text/html",
+    ".htm": "text/html",
+}
+# Dosyanın kendisi bu boyuta kadar saklanır; yapay zekâya giden resim kopyası 5 MB sınırına göre küçültülür (ai/images.py).
+MAX_UPLOAD_BYTES = 15 * 1024 * 1024
 MAX_IMAGES_PER_MESSAGE = 6
 HISTORY_LIMIT = 20
 
@@ -80,6 +90,7 @@ ARAÇ SEÇİMİ
 - Listing metinlerini (başlık, etiket, açıklama) mağazanın mevcut listing'lerinin dilinde ve üslubunda yaz; kullanıcı aksini istemedikçe aşağıdaki örnek başlıkların dilini kullan. Kullanıcıyla sohbeti Türkçe sürdür.
 - Cevaba bağlantı ya da URL yazma; taslak/listing kartı ekranda düğmeyle zaten gösterilir.
 - Sohbette oluşturduğun ya da konuştuğun bir listing'e/taslağa ekleme veya değişiklik istenirse (boyut, renk, fiyat, başlık…) AYNI listing_id ile update_listing kullan. Yeni taslak açmak yalnızca kullanıcı açıkça yeni bir ürün istediğinde.
+- KARGO/GÜMRÜK FATURASI: Kullanıcı fatura dosyası (PDF, fatura fotoğrafı, Excel/CSV, HTML) eklerse ya da fatura metnini yapıştırırsa read_shipping_invoice'ı çağır. Bu araç KAYDETMEZ; ekranda eşleşme kartı çıkar ve kullanıcı her satırı kontrol edip "Onayla" ile kaydeder. Sen asla "kaydettim" deme. Kullanıcı bir satırın başka siparişe ait olduğunu söylerse kartta o satırın sipariş seçimini değiştirip onaylamasını söyle.
 - Yapamadığın bir şey olursa dürüstçe söyle.
 Mağazanın mevcut listing başlıklarından örnekler (dil ve üslup için):
 {examples}
@@ -116,15 +127,21 @@ def clear_progress(shop_id: int, request_id: str | None) -> None:
 # ------------------------------------------------------------------ resimler
 
 def save_image(db: Session, shop: Shop, session_id: int | None, filename: str, content_type: str, content: bytes) -> dict:
-    if content_type not in ALLOWED_TYPES:
-        raise ValueError("Yalnızca JPEG, PNG, WEBP veya GIF resim yüklenebilir.")
-    if len(content) > MAX_IMAGE_BYTES:
-        raise ValueError("Resim 5 MB'dan büyük olamaz.")
+    """Sohbete eklenen resim ya da belge (fatura PDF'i, Excel/CSV, HTML). Tablo adı tarihsel olarak "chat_images"."""
+    suffix = Path(filename or "").suffix.lower()
+    if content_type in IMAGE_TYPES:
+        ext = IMAGE_TYPES[content_type]
+    elif suffix in DOC_TYPES:  # tarayıcılar CSV/Excel için farklı türler gönderebiliyor; uzantı esas alınır
+        ext, content_type = suffix, DOC_TYPES[suffix]
+    else:
+        raise ValueError(tr("Yalnızca resim (JPEG, PNG, WEBP, GIF), PDF, Excel/CSV ya da HTML dosyası eklenebilir.", "Only images (JPEG, PNG, WEBP, GIF), PDF, Excel/CSV or HTML files can be attached."))
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise ValueError(tr("Dosya 15 MB'dan büyük olamaz.", "The file cannot be larger than 15 MB."))
     image_id = str(uuid.uuid4())
-    path = blobstore.put(f"chat/{shop.id}/{image_id}{ALLOWED_TYPES[content_type]}", content, content_type)
-    db.add(ChatImage(id=image_id, shop_id=shop.id, session_id=session_id, filename=(filename or "resim")[:255], content_type=content_type, path=path))
+    path = blobstore.put(f"chat/{shop.id}/{image_id}{ext}", content, content_type)
+    db.add(ChatImage(id=image_id, shop_id=shop.id, session_id=session_id, filename=(filename or "dosya")[:255], content_type=content_type, path=path))
     db.commit()
-    return {"id": image_id, "filename": filename, "url": f"/api/shops/{shop.id}/assistant/images/{image_id}"}
+    return {"id": image_id, "filename": filename, "content_type": content_type, "url": f"/api/shops/{shop.id}/assistant/images/{image_id}"}
 
 
 def get_image(db: Session, shop: Shop, image_id: str) -> ChatImage | None:
@@ -146,11 +163,16 @@ def _own_session(db: Session, shop: Shop, user_id: int, session_id: int) -> Chat
     return s if s is not None and s.shop_id == shop.id and s.user_id == user_id else None
 
 
-def _msg_out(m: ChatMessage, shop_id: int) -> dict:
+def _msg_out(m: ChatMessage, shop_id: int, files: dict[str, ChatImage] | None = None) -> dict:
     ids = json.loads(m.image_ids_json or "[]")
+
+    def att(i: str) -> dict:
+        f = (files or {}).get(i)
+        return {"id": i, "url": f"/api/shops/{shop_id}/assistant/images/{i}", "filename": f.filename if f else None, "content_type": f.content_type if f else None}
+
     return {
         "id": m.id, "role": m.role, "content": m.content, "created_at": m.created_at.isoformat(),
-        "images": [{"id": i, "url": f"/api/shops/{shop_id}/assistant/images/{i}"} for i in ids],
+        "images": [att(i) for i in ids],
         "cards": json.loads(m.cards_json or "[]"),
     }
 
@@ -160,7 +182,8 @@ def get_session(db: Session, shop: Shop, user_id: int, session_id: int) -> dict 
     if s is None:
         return None
     msgs = db.scalars(select(ChatMessage).where(ChatMessage.session_id == s.id).order_by(ChatMessage.id)).all()
-    return {"id": s.id, "title": s.title, "messages": [_msg_out(m, shop.id) for m in msgs]}
+    files = {f.id: f for f in db.scalars(select(ChatImage).where(ChatImage.session_id == s.id))}
+    return {"id": s.id, "title": s.title, "messages": [_msg_out(m, shop.id, files) for m in msgs]}
 
 
 def delete_session(db: Session, shop: Shop, user_id: int, session_id: int) -> bool:
@@ -192,10 +215,16 @@ def delete_sessions(db: Session, shop: Shop, user_id: int, ids: list[int] | None
 # ------------------------------------------------------------------ sohbet
 
 def _images_prompt(imgs: list[ChatImage]) -> str:
-    if not imgs:
-        return ""
-    lines = "\n".join(f'  - id="{i.id}" dosya="{i.filename}"' for i in imgs)
-    return f"\nBu sohbette yüklenmiş resimler (yeni listing taslağına eklemek için create_listing_draft'ta image_ids olarak bu kimlikleri kullan):\n{lines}"
+    pics = [i for i in imgs if i.content_type in IMAGE_TYPES]
+    docs = [i for i in imgs if i.content_type not in IMAGE_TYPES]
+    out = ""
+    if pics:
+        lines = "\n".join(f'  - id="{i.id}" dosya="{i.filename}"' for i in pics)
+        out += f"\nBu sohbette yüklenmiş resimler (yeni listing taslağına eklemek için create_listing_draft'ta image_ids olarak bu kimlikleri kullan; resim bir fatura ise read_shipping_invoice'a file_id olarak ver):\n{lines}"
+    if docs:
+        lines = "\n".join(f'  - id="{i.id}" dosya="{i.filename}"' for i in docs)
+        out += f"\nBu sohbette yüklenmiş belgeler (içeriklerini göremezsin; kargo/gümrük faturasıysa read_shipping_invoice'a file_id olarak ver):\n{lines}"
+    return out
 
 
 # Model bazen talimata rağmen "[düzenleyici](https://www.etsy.com/listings/-1/edit)" gibi uydurma bağlantılar yazıyor; kartın
@@ -236,7 +265,7 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
         text = m.content
         n_img = len(json.loads(m.image_ids_json or "[]"))
         if m.role == "user" and n_img:
-            text += f"\n[Bu mesaja {n_img} resim eklenmişti]"
+            text += f"\n[Bu mesaja {n_img} dosya/resim eklenmişti]"
         history.append({"role": m.role, "content": text})
 
     user_msg = ChatMessage(session_id=session.id, role="user", content=message, image_ids_json=json.dumps([i.id for i in current]))
@@ -244,7 +273,7 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
     db.commit()
 
     session_images = db.scalars(select(ChatImage).where(ChatImage.session_id == session.id).order_by(ChatImage.created_at)).all()
-    ctx = tools.Ctx(db=db, shop=shop, user_id=user_id, today=today)
+    ctx = tools.Ctx(db=db, shop=shop, user_id=user_id, today=today, message=message)
     system = SYSTEM_PROMPT.format(shop=shop.shop_name, today=today.isoformat(), currency=_currency(db, shop), examples=_title_examples(db, shop), sections=_sections_summary(db, shop), images=_images_prompt(session_images))
     if lang == "en":
         system += (
@@ -264,8 +293,8 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
 
     try:
         reply = llm.run_agent(
-            provider, system, history, message or "(resim gönderildi)",
-            [{"path": i.path, "content_type": i.content_type} for i in current],
+            provider, system, history, _with_attachments(message, current),
+            [{"path": i.path, "content_type": i.content_type} for i in current if i.content_type in IMAGE_TYPES],
             tools.TOOLS, run_tool,
         )
     except llm.AssistantError:
@@ -281,7 +310,17 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
     if len(session.title) < 14 and len(message) >= 14:  # ilk mesaj "selam" gibi kısaysa başlığı anlamlı mesajdan al
         session.title = message[:60]
     db.commit()
-    return {"session_id": session.id, "title": session.title, "user": _msg_out(user_msg, shop.id), "assistant": _msg_out(assistant, shop.id)}
+    files = {i.id: i for i in current}
+    return {"session_id": session.id, "title": session.title, "user": _msg_out(user_msg, shop.id, files), "assistant": _msg_out(assistant, shop.id)}
+
+
+def _with_attachments(message: str, current: list[ChatImage]) -> str:
+    """Bu mesajın belgeleri (resim dışı) modele görünmez; adlarını ve kimliklerini mesaja not olarak ekler."""
+    docs = [i for i in current if i.content_type not in IMAGE_TYPES]
+    text = message or ("(dosya gönderildi)" if docs else "(resim gönderildi)")
+    if docs:
+        text += "\n\n[Eklenen belgeler: " + ", ".join(f'id="{d.id}" dosya="{d.filename}"' for d in docs) + "]"
+    return text
 
 
 def _title_examples(db: Session, shop: Shop) -> str:

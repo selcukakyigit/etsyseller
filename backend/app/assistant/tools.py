@@ -58,6 +58,7 @@ class Ctx:
     shop: Shop
     user_id: int
     today: dt.date
+    message: str = ""  # kullanıcının bu mesajı (yapıştırılan fatura metni gibi, modele yeniden yazdırmadan okumak için)
     cards: list[dict] = field(default_factory=list)
 
 
@@ -748,6 +749,48 @@ def delete_description_templates(ctx: Ctx, a: dict) -> dict:
     return {"ok": True, "silinen": templates.delete_many(ctx.db, ctx.shop, ids)}
 
 
+def read_shipping_invoice(ctx: Ctx, a: dict) -> dict:
+    """Sohbete eklenen fatura dosyasını (PDF, resim, Excel/CSV, HTML) ya da mesaja yapıştırılan fatura metnini okur ve
+    siparişlerle eşleştirir. KAYDETMEZ: kullanıcı sohbetteki kartta eşleşmeleri kontrol edip onaylayınca kaydedilir."""
+    from app.assistant.models import ChatImage
+    from app.core import blobstore
+    from app.finance import invoices
+    from app.finance import service as fin_service
+
+    report_ccy = fin_service._fx_tables(ctx.db, ctx.shop)["R"]
+    try:
+        if a.get("file_id"):
+            f = ctx.db.get(ChatImage, str(a["file_id"]))
+            if f is None or f.shop_id != ctx.shop.id:
+                return {"error": "Dosya bulunamadı."}
+            source = f.filename
+            cands = invoices.parse_file(ctx.db, ctx.shop, blobstore.read(f.path), f.filename, f.content_type, report_ccy)
+        else:
+            text = ctx.message if a.get("from_message", True) else str(a.get("text") or "")
+            source = "yapıştırılan metin"
+            cands = invoices.parse_text(ctx.db, ctx.shop, text, report_ccy)
+    except invoices.InvoiceError as exc:
+        return {"error": str(exc)}
+    except FileNotFoundError:
+        return {"error": "Dosya depoda bulunamadı; tekrar yükle."}
+    ctx.cards.append({"type": "invoice_review", "source": source, "currency": report_ccy, "candidates": cands})
+    rows = []
+    for n, c in enumerate(cands, start=1):
+        best = c["matches"][0] if c["matches"] else None
+        rows.append({
+            "satir": n, "takip_no": c["tracking_no"], "alici": c["recipient"], "ulke": c["recipient_country"], "tur": c["kind"],
+            "tutar": f"{c['original_amount']} {c['original_currency']}", "rapor_tutari": c["amount"],
+            "zaten_kayitli": c["already_saved"],
+            "en_iyi_eslesme": {"siparis": best["receipt_id"], "alici": best["buyer"], "guven": best["score"], "neden": best["reason"]} if best else None,
+        })
+    return {
+        "kaynak": source, "satir_sayisi": len(cands), "satirlar": rows[:40],
+        "eslesmeyen": sum(1 for c in cands if not c["matches"]), "zaten_kayitli": sum(1 for c in cands if c["already_saved"]),
+        "not": "HİÇBİR ŞEY KAYDEDİLMEDİ. Ekrandaki fatura kartında kullanıcı her satırın siparişini kontrol edip 'Onayla' ile kaydeder. "
+               "Kısa özet ver: kaç satır, kaçı yüksek güvenle eşleşti, hangileri belirsiz/eşleşmedi, hangileri zaten kayıtlı. Kayıt yaptığını SÖYLEME.",
+    }
+
+
 def creation_cleanup(ctx: Ctx, lid: int) -> None:
     """Başarısız taslak oluşturmada boş kalan yerel kaydı siler."""
     drafts.discard_local(ctx.db, ctx.shop, lid)
@@ -1351,6 +1394,9 @@ TOOLS: list[dict] = [
     {"name": "keep_watching_listing", "description": "Bir listing için 'durdurmayı değerlendir' önerisini reddedip izlemeye devam eder (sayaç sıfırlanır). Etsy'ye hiçbir şey göndermez.", "input_schema": _obj({"listing_id": {"type": "integer"}}, ["listing_id"])},
     {"name": "publish_listing_draft", "description": "ONAY GEREKİR. Bir listing'in taslağını/yerel değişikliklerini GERÇEKTEN Etsy'ye yayınlar (canlıya yansır). confirm=true verilmeden yalnızca ne yayınlanacağını özetler.", "input_schema": _obj({"listing_id": {"type": "integer"}, "confirm": {"type": "boolean"}, "force": {"type": "boolean", "description": "Etsy'de sonradan değişen alanları da ezer (çakışma varsa)"}}, ["listing_id"])},
     {"name": "deactivate_listing", "description": "ONAY GEREKİR. Listing'i Etsy'de INACTIVE yapar (satışa kapanır). confirm=true verilmeden yalnızca ne olacağını özetler.", "input_schema": _obj({"listing_id": {"type": "integer"}, "confirm": {"type": "boolean"}}, ["listing_id"])},
+    {"name": "read_shipping_invoice", "description": "Kargo/gümrük faturasını okur ve her gönderi satırını siparişlerle eşleştirir; KAYDETMEZ, kullanıcıya onay kartı gösterir. Kullanıcı sohbete fatura PDF'i/fotoğrafı/Excel/CSV/HTML eklediyse file_id ver; fatura metnini mesaja yapıştırdıysa file_id verme (mesajın kendisi okunur). Ürün fotoğrafını fatura sanma.", "input_schema": _obj({
+        "file_id": {"type": "string", "description": "Sohbete eklenen dosyanın/resmin id'si"},
+    })},
     {"name": "list_description_templates", "description": "Kullanıcının kaydettiği hazır açıklama metinlerini (şablonları) metinleriyle listeler; hangisinin varsayılan olduğunu gösterir.", "input_schema": _obj({})},
     {"name": "save_description_template", "description": "Hazır açıklama metni (şablon) oluşturur ya da template_id verilirse düzenler; is_default=true ile varsayılan yapar (diğerlerinin varsayılanlığı kalkar). Metinde {product} satırı ürüne özel yazının yeridir; {title}, {shop_name}, {materials}, {sizes}, {colors}, {variations} yer tutucuları listing bilgisiyle dolar. Kullanıcı ne istediğini net söylediyse sormadan yap, sonra ne kaydettiğini özetle.", "input_schema": _obj({
         "template_id": {"type": "integer", "description": "Düzenlenecek şablon; boşsa yeni şablon"}, "name": {"type": "string"}, "body": {"type": "string"}, "is_default": {"type": "boolean"},
@@ -1393,6 +1439,7 @@ TOOL_LABELS = {
     "publish_listing_draft": "Etsy'ye yayınlıyor",
     "deactivate_listing": "Listing'i pasife alıyor",
     "mark_order_shipped": "Siparişi kargoya verildi işaretliyor",
+    "read_shipping_invoice": "Faturayı okuyup siparişlerle eşleştiriyor",
     "list_description_templates": "Hazır açıklama metinlerine bakıyor",
     "save_description_template": "Açıklama şablonunu kaydediyor",
     "delete_description_templates": "Açıklama şablonlarını siliyor",
@@ -1432,6 +1479,7 @@ TOOL_LABELS_EN = {
     "publish_listing_draft": "Publishing to Etsy",
     "deactivate_listing": "Deactivating the listing",
     "mark_order_shipped": "Marking the order as shipped",
+    "read_shipping_invoice": "Reading the invoice and matching orders",
     "list_description_templates": "Checking description templates",
     "save_description_template": "Saving the description template",
     "delete_description_templates": "Deleting description templates",
@@ -1446,6 +1494,7 @@ EXECUTORS = {
     "regenerate_listing_image": regenerate_listing_image, "generate_missing_alt_texts": generate_missing_alt_texts,
     "listing_health_status": listing_health_status, "keep_watching_listing": keep_watching_listing,
     "publish_listing_draft": publish_listing_draft, "deactivate_listing": deactivate_listing, "mark_order_shipped": mark_order_shipped,
+    "read_shipping_invoice": read_shipping_invoice,
     "list_description_templates": list_description_templates, "save_description_template": save_description_template,
     "delete_description_templates": delete_description_templates,
 }

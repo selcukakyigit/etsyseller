@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ChatCard } from "@/lib/api";
 import ListingPreviewModal from "@/components/listings/ListingPreviewModal";
+import InvoiceReviewCard from "./InvoiceReviewCard";
 import { useT } from "@/lib/i18n-client";
 
 const box = "mt-2 overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900";
@@ -304,6 +305,10 @@ export default function Card({ card, shopId }: { card: ChatCard; shopId: number 
         </div>
       </div>
     );
+  }
+
+  if (card.type === "invoice_review") {
+    return <InvoiceReviewCard shopId={shopId} source={card.source} currency={card.currency} candidates={card.candidates} />;
   }
 
   if (card.type === "listing_draft") {

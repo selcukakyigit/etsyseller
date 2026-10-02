@@ -1,4 +1,5 @@
 import datetime as dt
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
@@ -87,7 +88,7 @@ async def upload_image(
     shop: Shop = Depends(get_owned_shop),
     db: Session = Depends(get_db),
 ):
-    content = await file.read(service.MAX_IMAGE_BYTES + 1)
+    content = await file.read(service.MAX_UPLOAD_BYTES + 1)
     try:
         return service.save_image(db, shop, session_id, file.filename or "resim", file.content_type or "", content)
     except ValueError as exc:
@@ -103,7 +104,11 @@ def image(image_id: str, shop: Shop = Depends(get_owned_shop), db: Session = Dep
         content = blobstore.read(img.path)
     except FileNotFoundError:
         raise HTTPException(404, "Resim bulunamadı")
-    return Response(content, media_type=img.content_type, headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=3600"})
+    headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=3600"}
+    if img.content_type not in service.IMAGE_TYPES:
+        # Belgeler (PDF, HTML, Excel) tarayıcıda açılmaz, indirilir: yüklenen bir HTML'in API alanında çalışmasını önler.
+        headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(img.filename)}"
+    return Response(content, media_type=img.content_type, headers=headers)
 
 
 @router.get("/dashboard")

@@ -79,6 +79,9 @@ def extract_pdf_or_image(content: bytes, content_type: str) -> dict:
     except VisionError as exc:
         raise InvoiceError(str(exc)) from exc
 
+    from app.ai.images import for_llm
+
+    content, content_type = for_llm(content, content_type)  # büyük fotoğraf/tarama 5 MB sınırına sığsın
     b64 = base64.b64encode(content).decode()
     try:
         if provider == "anthropic":
@@ -500,7 +503,19 @@ def parse_file(db: Session, shop: Shop, content: bytes, filename: str, content_t
         raw = extract_pdf_or_image(content, content_type)
     else:
         raise InvoiceError(f"Desteklenmeyen dosya türü: {filename}")
+    return _candidates(db, shop, raw, filename, report_ccy)
 
+
+def parse_text(db: Session, shop: Shop, text: str, report_ccy: str, source: str = "yapıştırılan metin") -> list[dict]:
+    """Kopyalanıp yapıştırılan fatura metni — PDF'in metin katmanıyla aynı yoldan okunur. KAYDETMEZ."""
+    text = (text or "").strip()
+    if len(text) < 20:
+        raise InvoiceError("Fatura metni çok kısa.")
+    return _candidates(db, shop, _extract_from_text(text[:MAX_TEXT_CHARS]), source, report_ccy)
+
+
+def _candidates(db: Session, shop: Shop, raw: dict, filename: str, report_ccy: str) -> list[dict]:
+    """Çıkarılan fatura verisinden her gönderi satırı için bir aday (sipariş eşleşmeleriyle birlikte)."""
     index = _order_index(db, shop)
     saved_fp = set(db.scalars(select(ShippingInvoice.fingerprint).where(ShippingInvoice.shop_id == shop.id)))
     invoice_date = raw.get("invoice_date") or dt.date.today().isoformat()

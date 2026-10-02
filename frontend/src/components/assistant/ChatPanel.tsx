@@ -5,6 +5,7 @@ import { api, API_URL, AssistantProviders, ChatMessageOut, ChatSessionInfo } fro
 import Card from "./Cards";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { useT } from "@/lib/i18n-client";
+import { Spinner } from "@/components/ui/Spinner";
 
 const SUGGESTIONS: [string, string][] = [
   ["Bu ayın kâr-zarar durumu nedir?", "What is this month's profit and loss?"],
@@ -50,7 +51,23 @@ function Thinking({ step }: { step: string }) {
   );
 }
 
-type Pending = { id: string; url: string; name: string };
+type Pending = { id: string; url: string; name: string; isImage: boolean };
+
+// Sohbete eklenebilen belgeler (kargo/gümrük faturası); resimler ayrıca kabul edilir. Sunucu sınırı 15 MB.
+const DOC_EXT = [".pdf", ".csv", ".xlsx", ".xls", ".html", ".htm"];
+const MAX_FILE_MB = 15;
+const isDoc = (f: File) => DOC_EXT.some((ext) => f.name.toLowerCase().endsWith(ext));
+
+/** Resim olmayan ekin (PDF, Excel…) küçük kutusu. */
+function FileChip({ name, size = "h-14 w-14" }: { name: string; size?: string }) {
+  const ext = name.split(".").pop()?.toUpperCase().slice(0, 4) ?? "";
+  return (
+    <div title={name} className={`flex ${size} flex-col items-center justify-center gap-0.5 rounded-lg border border-neutral-200 bg-neutral-50 px-1 text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300`}>
+      <span className="text-lg leading-none">📄</span>
+      <span className="text-[10px] font-semibold">{ext}</span>
+    </div>
+  );
+}
 
 export default function ChatPanel({ shopId, onSent }: { shopId: number; onSent?: () => void }) {
   const { t, lang } = useT();
@@ -114,16 +131,23 @@ export default function ChatPanel({ shopId, onSent }: { shopId: number; onSent?:
   }, [messages, busy]);
 
   async function addFiles(files: File[]) {
-    const images = files.filter((f) => f.type.startsWith("image/")).slice(0, 6 - pending.length);
+    const accepted = files.filter((f) => f.type.startsWith("image/") || isDoc(f));
+    if (accepted.length < files.length) {
+      setError(t("Yalnızca resim, PDF, Excel/CSV ya da HTML dosyası eklenebilir.", "Only images, PDF, Excel/CSV or HTML files can be attached."));
+    }
+    const tooBig = accepted.filter((f) => f.size > MAX_FILE_MB * 1024 * 1024);
+    if (tooBig.length) setError(t(`Dosya ${MAX_FILE_MB} MB'dan büyük olamaz: ${tooBig[0].name}`, `The file cannot be larger than ${MAX_FILE_MB} MB: ${tooBig[0].name}`));
+    const images = accepted.filter((f) => f.size <= MAX_FILE_MB * 1024 * 1024).slice(0, 6 - pending.length);
     if (images.length === 0) return;
-    setError(null);
+    if (!tooBig.length && accepted.length === files.length) setError(null);
     setUploading((n) => n + images.length);
     for (const f of images) {
       try {
         const up = await api.assistant.uploadImage(shopId, f);
-        setPending((p) => [...p, { id: up.id, url: URL.createObjectURL(f), name: f.name }]);
+        const isImage = up.content_type.startsWith("image/");
+        setPending((p) => [...p, { id: up.id, url: isImage ? URL.createObjectURL(f) : "", name: f.name, isImage }]);
       } catch (e) {
-        setError(e instanceof Error ? e.message : t("Resim yüklenemedi", "Image upload failed"));
+        setError(e instanceof Error && e.message ? e.message : t("Dosya yüklenemedi", "File upload failed"));
       } finally {
         setUploading((n) => n - 1);
       }
@@ -156,7 +180,7 @@ export default function ChatPanel({ shopId, onSent }: { shopId: number; onSent?:
     // Kullanıcı mesajı hemen görünsün (sunucudan cevap gelince gerçek kayıtla değişir).
     const temp: ChatMessageOut = {
       id: --tempSeq.current, role: "user", content: message, created_at: "",
-      images: imgs.map((i) => ({ id: i.id, url: i.url })), cards: [],
+      images: imgs.map((i) => ({ id: i.id, url: i.url, filename: i.name, content_type: i.isImage ? "image/*" : "application/octet-stream" })), cards: [],
     };
     setMessages((m) => [...m, temp]);
     setInput("");
@@ -299,8 +323,8 @@ export default function ChatPanel({ shopId, onSent }: { shopId: number; onSent?:
             <div className="mb-1 text-lg font-semibold">{t("Mağazanı buradan yönet", "Manage your shop from here")}</div>
             <p className="mb-4 text-sm text-neutral-500">
               {t(
-                "Sor, listing oluştur, kâr-zarar durumuna bak. Resimleri sürükleyip bırakabilir ya da yapıştırabilirsin. Değişiklikler önce yerel taslak olur, Etsy'ye gitmez.",
-                "Ask questions, create listings, check profit and loss. You can drag and drop or paste images. Changes are saved as local drafts first and are not sent to Etsy.",
+                "Sor, listing oluştur, kâr-zarar durumuna bak. Resimleri ve kargo faturalarını (PDF, Excel, fotoğraf) sürükleyip bırakabilir ya da yapıştırabilirsin. Değişiklikler önce yerel taslak olur, Etsy'ye gitmez.",
+                "Ask questions, create listings, check profit and loss. You can drag and drop or paste images and shipping invoices (PDF, Excel, photo). Changes are saved as local drafts first and are not sent to Etsy.",
               )}
             </p>
             <div className="flex flex-wrap justify-center gap-2">
@@ -317,10 +341,14 @@ export default function ChatPanel({ shopId, onSent }: { shopId: number; onSent?:
             <div className={`max-w-[92%] ${m.role === "user" ? "" : "w-full"}`}>
               {m.images.length > 0 && (
                 <div className={`mb-1 flex flex-wrap gap-1.5 ${m.role === "user" ? "justify-end" : ""}`}>
-                  {m.images.map((i) => (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img key={i.id} src={img(i.url)} alt="" className="h-20 w-20 rounded-lg object-cover" />
-                  ))}
+                  {m.images.map((i) =>
+                    i.content_type && !i.content_type.startsWith("image/") ? (
+                      <FileChip key={i.id} name={i.filename ?? "dosya"} size="h-20 w-20" />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img key={i.id} src={img(i.url)} alt="" className="h-20 w-20 rounded-lg object-cover" />
+                    ),
+                  )}
                 </div>
               )}
               {m.content && (
@@ -349,19 +377,27 @@ export default function ChatPanel({ shopId, onSent }: { shopId: number; onSent?:
           <div className="mb-2 flex flex-wrap gap-2">
             {pending.map((p) => (
               <div key={p.id} className="relative">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={p.url} alt={p.name} className="h-14 w-14 rounded-lg object-cover" />
+                {p.isImage ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={p.url} alt={p.name} className="h-14 w-14 rounded-lg object-cover" />
+                ) : (
+                  <FileChip name={p.name} />
+                )}
                 <button type="button" onClick={() => setPending((x) => x.filter((i) => i.id !== p.id))} className="absolute -right-1.5 -top-1.5 h-5 w-5 rounded-full bg-neutral-800 text-[10px] text-white" aria-label={t("Kaldır", "Remove")}>
                   ✕
                 </button>
               </div>
             ))}
-            {uploading > 0 && <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-neutral-100 text-[10px] text-neutral-500 dark:bg-neutral-800">{t("yükleniyor", "uploading")}</div>}
+            {uploading > 0 && (
+              <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-neutral-100 dark:bg-neutral-800">
+                <Spinner size={18} />
+              </div>
+            )}
           </div>
         )}
         <div className="flex items-end gap-2">
-          <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={(e) => e.target.files && void addFiles(Array.from(e.target.files))} />
-          <button type="button" onClick={() => fileInput.current?.click()} title={t("Resim ekle", "Add image")} className="rounded-xl border border-neutral-200 px-3 py-2 text-lg leading-none hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">
+          <input ref={fileInput} type="file" accept={`image/*,${DOC_EXT.join(",")}`} multiple hidden onChange={(e) => e.target.files && void addFiles(Array.from(e.target.files))} />
+          <button type="button" onClick={() => fileInput.current?.click()} title={t("Resim ya da fatura ekle (en fazla 15 MB)", "Add an image or invoice (up to 15 MB)")} className="rounded-xl border border-neutral-200 px-3 py-2 text-lg leading-none hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">
             📎
           </button>
           <textarea

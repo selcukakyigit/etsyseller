@@ -4,6 +4,7 @@ import json
 import re
 
 from app.ai.client import get_anthropic_client, get_openai_client
+from app.ai.images import for_llm
 from app.core import blobstore
 from app.core.config import settings
 
@@ -44,7 +45,8 @@ def generate_alt_texts(items: list[dict], title: str) -> list[str]:
     )
     blobs = []
     for i in items:
-        blobs.append((i["content_type"], base64.b64encode(blobstore.read(i["path"])).decode()))
+        data, ctype = for_llm(blobstore.read(i["path"]), i["content_type"])
+        blobs.append((ctype, base64.b64encode(data).decode()))
     provider = _provider()
     try:
         if provider == "anthropic":

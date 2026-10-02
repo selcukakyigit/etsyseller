@@ -22,6 +22,7 @@ def tr(tr_text: str, en_text: str) -> str:
 
 # Sabit hata/uyarı metinleri: Türkçe → İngilizce.
 EN_MESSAGES: dict[str, str] = {
+    "Fatura metni çok kısa.": "The invoice text is too short.",
     "Şablon bulunamadı": "Template not found",
     "Şablon adı boş olamaz": "The template name cannot be empty",
     "Şablon metni boş olamaz": "The template text cannot be empty",

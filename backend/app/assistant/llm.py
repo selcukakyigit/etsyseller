@@ -31,10 +31,13 @@ def available_providers() -> list[dict]:
     ]
 
 
-def _b64(path: str) -> str:
+def _image(i: dict) -> tuple[str, str]:
+    """(media type, base64) — büyük resimler sağlayıcı sınırına göre küçültülür (bkz. ai/images.py)."""
+    from app.ai.images import for_llm
     from app.core import blobstore
 
-    return base64.b64encode(blobstore.read(path)).decode()
+    data, ctype = for_llm(blobstore.read(i["path"]), i["content_type"])
+    return ctype, base64.b64encode(data).decode()
 
 
 def run_agent(
@@ -77,7 +80,7 @@ def _run_openai(system, history, user_text, images, tools, execute) -> str:
     content: list[dict] | str = user_text
     if images:
         content = [{"type": "text", "text": user_text}] + [
-            {"type": "image_url", "image_url": {"url": f"data:{i['content_type']};base64,{_b64(i['path'])}"}} for i in images
+            {"type": "image_url", "image_url": {"url": "data:{};base64,{}".format(*_image(i))}} for i in images
         ]
     messages = [{"role": "system", "content": system}, *history, {"role": "user", "content": content}]
     oa_tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in tools]
@@ -105,7 +108,7 @@ def _run_openai(system, history, user_text, images, tools, execute) -> str:
 def _run_anthropic(system, history, user_text, images, tools, execute) -> str:
     client = get_anthropic_client()
     blocks: list[dict] = [
-        {"type": "image", "source": {"type": "base64", "media_type": i["content_type"], "data": _b64(i["path"])}} for i in images
+        {"type": "image", "source": dict(zip(("type", "media_type", "data"), ("base64", *_image(i))))} for i in images
     ]
     blocks.append({"type": "text", "text": user_text})
     messages = [*history, {"role": "user", "content": blocks}]
