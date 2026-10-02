@@ -10,6 +10,7 @@ import CameraCube, { CameraAngle, cameraAnglePrompt } from "./CameraCube";
 import DistancePicker, { Distance, distancePrompt } from "./DistancePicker";
 import VersionDots from "./VersionDots";
 import { tNow as t } from "@/lib/i18n";
+import { Spinner } from "@/components/ui/Spinner";
 
 const MAX_IMAGES = 20;
 const MAX_VIDEOS = 2;
@@ -87,13 +88,20 @@ export default function MediaManager({
   const [genOpen, setGenOpen] = useState(false); // "Oluştur" — sıfırdan (ya da bir referanstan) yeni görsel seti
   const [genPrompt, setGenPrompt] = useState("");
   const [genRefFile, setGenRefFile] = useState<File | null>(null);
-  const [genKeepRef, setGenKeepRef] = useState(true);
+  const [genKeepRef, setGenKeepRef] = useState(false); // referans yalnızca yapay zekâya verilir; listeye eklemek isteğe bağlı
   const [genQty, setGenQty] = useState(5);
   const [genBusy, setGenBusy] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
   const [genShots, setGenShots] = useState<
-    { label: string; prompt: string; status: "pending" | "running" | "done" | "error"; error?: string }[]
+    { label: string; prompt: string; status: "pending" | "running" | "done" | "error"; error?: string; startedAt?: number }[]
   >([]);
+  const [genNow, setGenNow] = useState(0);
+  // Üretim sürerken ilerleme çubuğu akıcı ilerlesin diye saati yarım saniyede bir günceller.
+  useEffect(() => {
+    if (!genBusy) return;
+    const timer = setInterval(() => setGenNow(Date.now()), 500);
+    return () => clearInterval(timer);
+  }, [genBusy]);
 
   const ordered = [...images].sort((a, b) => a.rank - b.rank);
   const primary = ordered[0];
@@ -396,7 +404,9 @@ export default function MediaManager({
       });
       setGenShots(shots);
       for (let i = 0; i < shots.length; i++) {
-        setGenShots((prev) => prev.map((s, idx) => (idx === i ? { ...s, status: "running" } : s)));
+        const startedAt = clockNow();
+        setGenNow(startedAt);
+        setGenShots((prev) => prev.map((s, idx) => (idx === i ? { ...s, status: "running", startedAt } : s)));
         try {
           const up = await api.listings.generateImage(shopId, listingId, shots[i].prompt, referenceFileId);
           onImagesChange(withRanks([...orderedRef.current, imageEntry(up.file_id, null)]));
@@ -418,6 +428,7 @@ export default function MediaManager({
     setGenOpen(false);
     setGenPrompt("");
     setGenRefFile(null);
+    setGenKeepRef(false);
     setGenShots([]);
     setGenError(null);
   }
@@ -955,23 +966,62 @@ export default function MediaManager({
               {genError && <p className="mt-2 text-xs text-red-600">{genError}</p>}
             </>
           ) : (
+            <>
+            <GenProgress shots={genShots} now={genNow} busy={genBusy} />
             <ul className="space-y-1.5 text-sm">
               {genShots.map((shot, i) => (
                 <li key={i} className="flex items-center gap-2">
                   <span>
                     {shot.status === "pending" && "⏳"}
-                    {shot.status === "running" && "🔄"}
+                    {shot.status === "running" && <Spinner size={14} />}
                     {shot.status === "done" && "✅"}
                     {shot.status === "error" && "❌"}
                   </span>
                   <span className={shot.status === "pending" ? "text-neutral-400" : ""}>{shot.label}</span>
-                  {shot.status === "error" && <span className="text-xs text-red-600">— {shot.error}</span>}
+                  {shot.status === "error" && <span className="text-xs text-red-600 dark:text-red-400">— {shot.error}</span>}
                 </li>
               ))}
             </ul>
+            </>
           )}
         </Modal>
       )}
     </section>
+  );
+}
+
+/** Olay işleyicilerinden çağrılan saat (bileşen gövdesinde değil). */
+function clockNow() {
+  return Date.now();
+}
+
+/** Fotoğraf seti üretiminin toplam ilerlemesi. Biten her fotoğraf tam pay sayılır; üretilmekte olanın payı, bir
+ * fotoğrafın ortalama ~30 sn sürdüğü varsayımıyla zamanla dolar (%90'da bekler, bitince tamamlanır). */
+function GenProgress({ shots, now, busy }: { shots: { status: string; startedAt?: number }[]; now: number; busy: boolean }) {
+  const total = shots.length;
+  const done = shots.filter((s) => s.status === "done").length;
+  const running = shots.find((s) => s.status === "running");
+  const partial = running?.startedAt ? 0.9 * (1 - Math.exp(-Math.max(0, now - running.startedAt) / 30000)) : 0;
+  const pct = total ? Math.min(100, ((done + partial) / total) * 100) : 0;
+  const failed = shots.some((s) => s.status === "error");
+  return (
+    <div className="mb-4">
+      <div className="mb-1 flex justify-between text-xs text-neutral-500 dark:text-neutral-400">
+        <span>
+          {busy
+            ? t(`Üretiliyor… ${done} / ${total} hazır`, `Generating… ${done} / ${total} ready`)
+            : failed
+              ? t(`${done} / ${total} üretildi, kalanlar durduruldu`, `${done} / ${total} generated, the rest stopped`)
+              : t(`${done} / ${total} fotoğraf hazır, listeye eklendi`, `${done} / ${total} photos ready and added to the listing`)}
+        </span>
+        <span>{Math.round(busy ? pct : (done / Math.max(1, total)) * 100)}%</span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
+        <div
+          className={`h-full rounded-full transition-[width] duration-500 ease-out ${failed && !busy ? "bg-red-500" : "bg-[#D97757]"}`}
+          style={{ width: `${busy ? pct : (done / Math.max(1, total)) * 100}%` }}
+        />
+      </div>
+    </div>
   );
 }
