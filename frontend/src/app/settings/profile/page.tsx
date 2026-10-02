@@ -5,10 +5,12 @@ import { api } from "@/lib/api";
 import Avatar from "@/components/Avatar";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import SettingsSubpage from "@/components/SettingsSubpage";
+import { useT } from "@/lib/i18n-client";
 
 export default function ProfileSettingsPage() {
   const { user, shops, activeShop, setActiveShopId, error: bootError, refreshUser } = useAuthAndShop();
 
+  const { t } = useT();
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -29,7 +31,7 @@ export default function ProfileSettingsPage() {
       refreshUser();
       setSaved(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Bilinmeyen hata");
+      setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error"));
     } finally {
       setSaving(false);
     }
@@ -45,7 +47,7 @@ export default function ProfileSettingsPage() {
       await api.account.uploadAvatar(file);
       refreshUser();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Bilinmeyen hata");
+      setError(err instanceof Error ? err.message : t("Bilinmeyen hata", "Unknown error"));
     } finally {
       setAvatarUploading(false);
     }
@@ -57,12 +59,12 @@ export default function ProfileSettingsPage() {
       shops={shops}
       activeShop={activeShop}
       onSwitchShop={setActiveShopId}
-      title="Hesap Bilgileri"
+      title={t("Hesap Bilgileri", "Account details")}
     >
       {(bootError || error) && <p className="text-sm text-red-600">{bootError ?? error}</p>}
 
       <div className="min-h-[20px]">
-        {!user && !bootError && <p className="text-sm text-neutral-400 dark:text-neutral-500">Yükleniyor…</p>}
+        {!user && !bootError && <p className="text-sm text-neutral-400 dark:text-neutral-500">{t("Yükleniyor…", "Loading…")}</p>}
       </div>
 
       {user && (
@@ -75,7 +77,7 @@ export default function ProfileSettingsPage() {
                 disabled={avatarUploading}
                 className="text-sm font-medium px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition disabled:opacity-50"
               >
-                {avatarUploading ? "Yükleniyor…" : "Fotoğraf Yükle"}
+                {avatarUploading ? t("Yükleniyor…", "Uploading…") : t("Fotoğraf Yükle", "Upload photo")}
               </button>
               <input
                 ref={fileInputRef}
@@ -84,12 +86,12 @@ export default function ProfileSettingsPage() {
                 className="hidden"
                 onChange={handleAvatarSelected}
               />
-              <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">PNG, JPG, WEBP veya GIF — maksimum 5MB</p>
+              <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">{t("PNG, JPG, WEBP veya GIF — maksimum 5MB", "PNG, JPG, WEBP or GIF — up to 5 MB")}</p>
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">İsim</label>
+            <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("İsim", "Name")}</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -98,7 +100,7 @@ export default function ProfileSettingsPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">E-posta</label>
+            <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("E-posta", "Email")}</label>
             <input
               value={user.email}
               disabled
@@ -112,9 +114,9 @@ export default function ProfileSettingsPage() {
               disabled={saving}
               className="text-sm font-medium px-3 py-1.5 rounded-lg bg-neutral-900 text-white hover:bg-neutral-700 transition disabled:opacity-50"
             >
-              {saving ? "Kaydediliyor…" : "Profili Kaydet"}
+              {saving ? t("Kaydediliyor…", "Saving…") : t("Profili Kaydet", "Save profile")}
             </button>
-            {saved && <span className="text-xs text-green-600">Kaydedildi ✓</span>}
+            {saved && <span className="text-xs text-green-600">{t("Kaydedildi ✓", "Saved ✓")}</span>}
           </div>
         </section>
       )}

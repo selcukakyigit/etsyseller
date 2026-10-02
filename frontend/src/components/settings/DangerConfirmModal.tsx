@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Modal, btnGhost } from "@/components/listing-editor/Modal";
+import { useT } from "@/lib/i18n-client";
 
 /**
  * Geri alınamaz işlemler için ortak onay penceresi: ne olacağını listeler, hesabın e-postasını yazdırır ve "Onaylıyorum" işaretini ister.
@@ -23,6 +24,7 @@ export default function DangerConfirmModal({
   onConfirm: (email: string) => Promise<void>;
   onClose: () => void;
 }) {
+  const { t } = useT();
   const [email, setEmail] = useState("");
   const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -34,7 +36,7 @@ export default function DangerConfirmModal({
     try {
       await onConfirm(email);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "İşlem başarısız");
+      setError(e instanceof Error ? e.message : t("İşlem başarısız", "Action failed"));
       setBusy(false);
     }
   }
@@ -48,7 +50,7 @@ export default function DangerConfirmModal({
       footer={
         <>
           <button type="button" onClick={onClose} disabled={busy} className={`${btnGhost} disabled:opacity-40`}>
-            Vazgeç
+            {t("Vazgeç", "Cancel")}
           </button>
           <button
             type="button"
@@ -56,7 +58,7 @@ export default function DangerConfirmModal({
             disabled={busy || !agreed || email.length === 0}
             className="rounded-full bg-red-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-40"
           >
-            {busy ? "İşleniyor…" : actionLabel}
+            {busy ? t("İşleniyor…", "Working…") : actionLabel}
           </button>
         </>
       }
@@ -67,9 +69,9 @@ export default function DangerConfirmModal({
           <li key={e}>{e}</li>
         ))}
       </ul>
-      <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700 dark:bg-red-950/40 dark:text-red-300">Bu işlem geri alınamaz.</p>
+      <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700 dark:bg-red-950/40 dark:text-red-300">{t("Bu işlem geri alınamaz.", "This cannot be undone.")}</p>
 
-      <label className="mb-1 block text-xs font-medium text-neutral-500 dark:text-neutral-400">Onaylamak için hesabının e-posta adresini yaz</label>
+      <label className="mb-1 block text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("Onaylamak için hesabının e-posta adresini yaz", "Type your account email to confirm")}</label>
       <input
         type="email"
         value={email}
@@ -79,7 +81,7 @@ export default function DangerConfirmModal({
       />
       <label className="flex cursor-pointer items-start gap-2 text-sm text-neutral-700 dark:text-neutral-300">
         <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-0.5 accent-red-600" />
-        Onaylıyorum
+        {t("Onaylıyorum", "I confirm")}
       </label>
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
     </Modal>
