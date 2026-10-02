@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { tNow as t } from "@/lib/i18n";
 
 export default function StringListEditor({
   label,
@@ -58,14 +59,14 @@ export default function StringListEditor({
               }
             }}
             className="flex-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm outline-none focus:border-[#D97757]"
-            placeholder="Ekle ve Enter'a bas…"
+            placeholder={t("Ekle ve Enter'a bas…", "Type and press Enter…")}
           />
           <button
             type="button"
             onClick={add}
             className="text-xs font-medium px-3 py-1.5 rounded-lg border border-neutral-200 text-neutral-600 hover:bg-neutral-100 transition"
           >
-            Ekle
+            {t("Ekle", "Add")}
           </button>
         </div>
       )}

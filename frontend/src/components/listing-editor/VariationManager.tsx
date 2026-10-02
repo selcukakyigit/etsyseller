@@ -15,6 +15,7 @@ import {
   settingsProblem,
   thumbUrl,
 } from "./variationTypes";
+import { tNow as t } from "@/lib/i18n";
 
 type EditorState = { index: number | null; draft: VarProperty };
 
@@ -42,9 +43,9 @@ function DependencyRow({
   const known = options.some((o) => o.join() === selected.join());
   return (
     <div className="flex flex-wrap items-center gap-4">
-      <Switch label={`${title} değişir`} checked={on} onChange={(v) => onChange(v ? defaultOn : [])} />
+      <Switch label={t(`${title} değişir`, `${title} vary`)} checked={on} onChange={(v) => onChange(v ? defaultOn : [])} />
       <span className="text-sm text-neutral-800 dark:text-neutral-200">
-        <b>{title}</b> her biri için değişir
+        <b>{title}</b> {t("her biri için değişir", "vary for each")}
       </span>
       {on && (
         <select
@@ -149,18 +150,18 @@ export default function VariationManager({
   return (
     <>
       <Modal
-        title="Varyasyonları yönet"
+        title={t("Varyasyonları yönet", "Manage variations")}
         footer={
           <>
             <button onClick={onCancel} className={btnGhost}>
-              Vazgeç
+              {t("Vazgeç", "Cancel")}
             </button>
             <button
               onClick={() => onApply(props, effective)}
               disabled={!dirty || !valid}
               className={btnPrimary}
             >
-              Uygula
+              {t("Uygula", "Apply")}
             </button>
           </>
         }
@@ -173,7 +174,7 @@ export default function VariationManager({
             >
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-neutral-900 dark:text-neutral-100">{p.property_name}</p>
-                <p className="mb-2 text-xs text-neutral-500">{p.values.length} seçenek</p>
+                <p className="mb-2 text-xs text-neutral-500">{t(`${p.values.length} seçenek`, `${p.values.length} options`)}</p>
                 <div className="flex gap-1.5 overflow-hidden">
                   {p.values.map((v) => (
                     <span
@@ -194,21 +195,21 @@ export default function VariationManager({
               </div>
               <button
                 onClick={() => setEditor({ index: i, draft: p })}
-                aria-label={`${p.property_name} düzenle`}
+                aria-label={t(`${p.property_name} düzenle`, `Edit ${p.property_name}`)}
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-800"
               >
                 ✎
               </button>
               <button
                 onClick={() => changeProps(props.filter((_, j) => j !== i))}
-                aria-label={`${p.property_name} sil`}
+                aria-label={t(`${p.property_name} sil`, `Delete ${p.property_name}`)}
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-800"
               >
                 🗑
               </button>
             </div>
           ))}
-          {props.length === 0 && <p className="text-sm text-neutral-400">Henüz varyasyon yok.</p>}
+          {props.length === 0 && <p className="text-sm text-neutral-400">{t("Henüz varyasyon yok.", "No variations yet.")}</p>}
         </div>
 
         <button
@@ -216,18 +217,21 @@ export default function VariationManager({
           disabled={props.length >= MAX_PROPERTIES}
           className="mt-4 rounded-full border border-neutral-300 px-5 py-2.5 text-sm font-semibold text-neutral-900 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-100"
         >
-          + Varyasyon ekle
+          {t("+ Varyasyon ekle", "+ Add variation")}
         </button>
 
         <p className={`mt-3 text-xs ${total > limit ? "text-red-600" : "text-neutral-400"}`}>
-          {total} kombinasyon (bu yapıda en fazla {limit}). Uygula tabloları günceller; Etsy&apos;ye &quot;Fiyat/Stok Kaydet&quot; ile gider.
+          {t(
+            `${total} kombinasyon (bu yapıda en fazla ${limit}). Uygula tabloları günceller; değişiklik Etsy'ye yayınlayınca gider.`,
+            `${total} combinations (up to ${limit} with this setup). Apply updates the tables; changes go to Etsy when you publish.`,
+          )}
         </p>
         {problem && <p className="mt-2 text-xs text-red-600">{problem}</p>}
 
         {props.length > 0 && (
           <div className="mt-6 space-y-5 border-t border-neutral-100 pt-6 dark:border-neutral-800">
             <DependencyRow
-              title="Fiyatlar"
+              title={t("Fiyatlar", "Prices")}
               selected={effective.price}
               options={depOptions}
               labelOf={labelOf}
@@ -235,7 +239,7 @@ export default function VariationManager({
               onChange={(v) => setSettings((s) => ({ ...s, price: v }))}
             />
             <DependencyRow
-              title="İşlem profilleri"
+              title={t("İşlem profilleri", "Processing profiles")}
               selected={effective.readiness}
               options={depOptions}
               labelOf={labelOf}
@@ -243,7 +247,7 @@ export default function VariationManager({
               onChange={(v) => setSettings((s) => ({ ...s, readiness: v }))}
             />
             <DependencyRow
-              title="Stok"
+              title={t("Stok", "Quantities")}
               selected={effective.quantity}
               options={depOptions}
               labelOf={labelOf}

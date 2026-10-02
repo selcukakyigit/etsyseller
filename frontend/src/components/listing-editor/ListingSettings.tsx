@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, ProductionPartner, ShopSection } from "@/lib/api";
+import { tNow as t } from "@/lib/i18n";
 
 export default function ListingSettings({
   shopId,
@@ -31,7 +32,7 @@ export default function ListingSettings({
   const [creatingSection, setCreatingSection] = useState(false);
 
   useEffect(() => {
-    api.shops.sections(shopId).then(setSections).catch((e) => setError(e instanceof Error ? e.message : "Bilinmeyen hata"));
+    api.shops.sections(shopId).then(setSections).catch((e) => setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error")));
     api.shops
       .productionPartners(shopId)
       .then(setPartners)
@@ -50,7 +51,7 @@ export default function ListingSettings({
       setAddingSection(false);
       setNewSectionTitle("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Bölüm oluşturulamadı");
+      setError(e instanceof Error ? e.message : t("Bölüm oluşturulamadı", "Could not create the section"));
     } finally {
       setCreatingSection(false);
     }
@@ -65,11 +66,11 @@ export default function ListingSettings({
 
   return (
     <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 space-y-4">
-      <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Ayarlar</h2>
+      <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("Ayarlar", "Settings")}</h2>
 
       <div>
         <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">
-          Mağaza bölümü
+          {t("Mağaza bölümü", "Shop section")}
         </label>
         <select
           value={shopSectionId ?? ""}
@@ -82,13 +83,13 @@ export default function ListingSettings({
           }}
           className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
         >
-          <option value="">Yok</option>
+          <option value="">{t("Yok", "None")}</option>
           {sections?.map((s) => (
             <option key={s.shop_section_id} value={s.shop_section_id}>
               {s.title}
             </option>
           ))}
-          <option value="__new__">+ Yeni bölüm ekle…</option>
+          <option value="__new__">{t("+ Yeni bölüm ekle…", "+ Add new section…")}</option>
         </select>
         {addingSection && (
           <div className="mt-2 flex gap-1.5">
@@ -106,7 +107,7 @@ export default function ListingSettings({
                   setNewSectionTitle("");
                 }
               }}
-              placeholder="Bölüm başlığı (en fazla 24 karakter)"
+              placeholder={t("Bölüm başlığı (en fazla 24 karakter)", "Section title (up to 24 characters)")}
               className="flex-1 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-1.5 text-sm outline-none focus:border-[#D97757]"
             />
             <button
@@ -115,7 +116,7 @@ export default function ListingSettings({
               disabled={creatingSection || !newSectionTitle.trim()}
               className="rounded-lg bg-[#D97757] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
             >
-              {creatingSection ? "Ekleniyor…" : "Ekle"}
+              {creatingSection ? t("Ekleniyor…", "Adding…") : t("Ekle", "Add")}
             </button>
             <button
               type="button"
@@ -125,7 +126,7 @@ export default function ListingSettings({
               }}
               className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 dark:border-neutral-800 dark:text-neutral-300"
             >
-              Vazgeç
+              {t("Vazgeç", "Cancel")}
             </button>
           </div>
         )}
@@ -133,9 +134,9 @@ export default function ListingSettings({
 
       <label className="flex items-center justify-between gap-3 text-sm text-neutral-700 dark:text-neutral-300">
         <span>
-          Bu listing&apos;i öne çıkar
+          {t("Bu listing'i öne çıkar", "Feature this listing")}
           <span className="block text-xs text-neutral-400 dark:text-neutral-500">
-            Mağaza ana sayfasında en solda görünür
+            {t("Mağaza ana sayfasında en solda görünür", "Shows first on your shop home page")}
           </span>
         </span>
         <input
@@ -148,9 +149,9 @@ export default function ListingSettings({
 
       <label className="flex items-center justify-between gap-3 text-sm text-neutral-700 dark:text-neutral-300">
         <span>
-          Otomatik yenile
+          {t("Otomatik yenile", "Auto-renew")}
           <span className="block text-xs text-neutral-400 dark:text-neutral-500">
-            Süresi dolunca 4 ay için otomatik yenilenir
+            {t("Süresi dolunca 4 ay için otomatik yenilenir", "Renews automatically for 4 months when it expires")}
           </span>
         </span>
         <input
@@ -164,7 +165,7 @@ export default function ListingSettings({
       {partners && partners.length > 0 && (
         <div>
           <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1.5">
-            Üretim ortakları
+            {t("Üretim ortakları", "Production partners")}
           </label>
           <div className="space-y-1.5">
             {partners.map((p) => (

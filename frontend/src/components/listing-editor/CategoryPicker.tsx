@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api, TaxonomyNode } from "@/lib/api";
+import { tNow as t } from "@/lib/i18n";
 
 type FlatNode = { id: number; name: string; parent: string; path: string };
 
@@ -32,7 +33,7 @@ export default function CategoryPicker({
     api.taxonomy
       .nodes()
       .then((tree) => setNodes(flatten(tree)))
-      .catch((e) => setError(e instanceof Error ? e.message : "Bilinmeyen hata"));
+      .catch((e) => setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error")));
   }, []);
 
   useEffect(() => {
@@ -76,7 +77,7 @@ export default function CategoryPicker({
 
   return (
     <div>
-      <label className="block text-xs font-medium text-neutral-500 mb-1">Kategori</label>
+      <label className="block text-xs font-medium text-neutral-500 mb-1">{t("Kategori", "Category")}</label>
       <div className="relative">
         <input
           value={open ? query : selected?.path ?? ""}
@@ -89,7 +90,7 @@ export default function CategoryPicker({
             setQuery("");
           }}
           onBlur={() => setTimeout(() => setOpen(false), 150)}
-          placeholder="Kategori ara (en az 2 karakter)…"
+          placeholder={t("Kategori ara (en az 2 karakter)…", "Search categories (at least 2 characters)…")}
           className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
         />
         {open && filtered.length > 0 && (
@@ -114,7 +115,7 @@ export default function CategoryPicker({
       </div>
       {top.length > 0 && (
         <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-500">
-          Sık kullandığın kategoriler:
+          {t("Sık kullandığın kategoriler:", "Your frequent categories:")}
           {top.map((n) => (
             <button
               key={n.id}

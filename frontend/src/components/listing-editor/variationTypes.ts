@@ -1,3 +1,5 @@
+import { tNow as t } from "@/lib/i18n";
+
 export type VarValue = {
   name: string;
   value_id: number | null;
@@ -44,10 +46,13 @@ export function settingsProblem(propertyCount: number, s: VarSettings): string |
     s.readiness.length,
   ];
   if (lengths.some((n) => n > 1 && n < propertyCount)) {
-    return "Bir alan yalnızca tek varyasyona ya da tüm varyasyonlara bağlı olabilir.";
+    return t("Bir alan yalnızca tek varyasyona ya da tüm varyasyonlara bağlı olabilir.", "A field can depend on only one variation or on all of them.");
   }
   if (lengths.includes(propertyCount) && lengths.some((n) => n !== 0 && n !== propertyCount)) {
-    return "Etsy: bir alan tüm varyasyonlara bağlıysa fiyat, stok, SKU ve işlem profili ya kapalı ya da tüm varyasyonlara bağlı olmalı.";
+    return t(
+      "Etsy: bir alan tüm varyasyonlara bağlıysa fiyat, stok, SKU ve işlem profili ya kapalı ya da tüm varyasyonlara bağlı olmalı.",
+      "Etsy: if a field depends on all variations, price, quantity, SKU and processing profile must each be off or depend on all variations.",
+    );
   }
   return null;
 }

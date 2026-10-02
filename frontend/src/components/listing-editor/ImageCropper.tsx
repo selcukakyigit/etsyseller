@@ -2,15 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Modal, btnGhost, btnPrimary } from "./Modal";
+import { tNow as t } from "@/lib/i18n";
 
 const BOX_MAX = 420; // kırpma alanının en büyük kenarı (px)
 const OUT_MAX = 2000; // çıktı görselin en uzun kenarı (px)
 
-const RATIOS: { key: string; label: string; value: number | null }[] = [
-  { key: "1:1", label: "Kare", value: 1 },
-  { key: "4:3", label: "Yatay 4:3", value: 4 / 3 },
-  { key: "3:4", label: "Dikey 3:4", value: 3 / 4 },
-  { key: "orig", label: "Orijinal oran", value: null },
+const RATIOS: { key: string; label: [string, string]; value: number | null }[] = [
+  { key: "1:1", label: ["Kare", "Square"], value: 1 },
+  { key: "4:3", label: ["Yatay 4:3", "Landscape 4:3"], value: 4 / 3 },
+  { key: "3:4", label: ["Dikey 3:4", "Portrait 3:4"], value: 3 / 4 },
+  { key: "orig", label: ["Orijinal oran", "Original ratio"], value: null },
 ];
 
 /**
@@ -39,17 +40,17 @@ export default function ImageCropper({
     let cancelled = false;
     fetch(src, { credentials: "include" })
       .then((r) => {
-        if (!r.ok) throw new Error(`Görsel alınamadı (${r.status})`);
+        if (!r.ok) throw new Error(`${t("Görsel alınamadı", "Could not load the image")} (${r.status})`);
         return r.blob();
       })
       .then((blob) => {
         objectUrl = URL.createObjectURL(blob);
         const image = new Image();
         image.onload = () => !cancelled && setImg(image);
-        image.onerror = () => !cancelled && setError("Görsel açılamadı.");
+        image.onerror = () => !cancelled && setError(t("Görsel açılamadı.", "Could not open the image."));
         image.src = objectUrl;
       })
-      .catch((e) => !cancelled && setError(e instanceof Error ? e.message : "Görsel alınamadı."));
+      .catch((e) => !cancelled && setError(e instanceof Error ? e.message : t("Görsel alınamadı.", "Could not load the image.")));
     return () => {
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
@@ -97,7 +98,7 @@ export default function ImageCropper({
       (blob) => {
         setBusy(false);
         if (blob) onApply(blob);
-        else setError("Görsel oluşturulamadı.");
+        else setError(t("Görsel oluşturulamadı.", "Could not create the image."));
       },
       "image/jpeg",
       0.92
@@ -108,24 +109,27 @@ export default function ImageCropper({
     <Modal
       z={130}
       widthClass="max-w-[41rem]"
-      title="Küçük resmi kırp"
+      title={t("Küçük resmi kırp", "Crop thumbnail")}
       footer={
         <>
           <button onClick={onCancel} className={btnGhost}>
-            Vazgeç
+            {t("Vazgeç", "Cancel")}
           </button>
           <button onClick={apply} disabled={!img || busy} className={btnPrimary}>
-            {busy ? "Hazırlanıyor…" : "Uygula"}
+            {busy ? t("Hazırlanıyor…", "Preparing…") : t("Uygula", "Apply")}
           </button>
         </>
       }
     >
       <p className="mb-4 text-sm text-neutral-600 dark:text-neutral-300">
-        Konuyu net ve ortada tutacak şekilde konumlandır. Kırpılan görsel taslağa yeni fotoğraf olarak eklenir.
+        {t(
+          "Konuyu net ve ortada tutacak şekilde konumlandır. Kırpılan görsel taslağa yeni fotoğraf olarak eklenir.",
+          "Position it so the subject is clear and centered. The cropped image is added to the draft as a new photo.",
+        )}
       </p>
 
       {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
-      {!img && !error && <p className="text-sm text-neutral-400">Görsel yükleniyor…</p>}
+      {!img && !error && <p className="text-sm text-neutral-400">{t("Görsel yükleniyor…", "Loading image…")}</p>}
 
       {img && (
         <div className="flex min-w-0 flex-col gap-5 lg:flex-row">
@@ -144,7 +148,7 @@ export default function ImageCropper({
                       : "bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
                   }`}
                 >
-                  {r.label}
+                  {t(...r.label)}
                 </button>
               ))}
             </div>
@@ -181,7 +185,7 @@ export default function ImageCropper({
                 step={0.01}
                 value={zoom}
                 onChange={(e) => setZoom(Number(e.target.value))}
-                aria-label="Yakınlaştır"
+                aria-label={t("Yakınlaştır", "Zoom")}
                 className="flex-1 accent-neutral-900 dark:accent-neutral-100"
               />
               <span className="text-xs text-neutral-500">+</span>
@@ -191,19 +195,19 @@ export default function ImageCropper({
           <div
             className="w-full shrink-0 self-start rounded-xl bg-neutral-50 p-3 dark:bg-neutral-800/50 lg:w-36"
           >
-            <p className="mb-2 text-xs font-semibold text-neutral-600 dark:text-neutral-300">Alıcılar bunu görecek</p>
+            <p className="mb-2 text-xs font-semibold text-neutral-600 dark:text-neutral-300">{t("Alıcılar bunu görecek", "Buyers will see this")}</p>
             <div className="flex flex-col items-center gap-2">
               {[
-                { label: "Kare", w: 84, h: 84 },
-                { label: "Dikey", w: 72, h: 96 },
-                { label: "Yatay", w: 112, h: 84 },
-              ].map((t) => (
-                <figure key={t.label}>
+                { label: t("Kare", "Square"), w: 84, h: 84 },
+                { label: t("Dikey", "Portrait"), w: 72, h: 96 },
+                { label: t("Yatay", "Landscape"), w: 112, h: 84 },
+              ].map((shape) => (
+                <figure key={shape.label}>
                   <div
                     className="rounded-md border border-neutral-200 bg-cover bg-center dark:border-neutral-700"
-                    style={{ width: t.w, height: t.h, backgroundImage: previewUrl ? `url(${previewUrl})` : undefined }}
+                    style={{ width: shape.w, height: shape.h, backgroundImage: previewUrl ? `url(${previewUrl})` : undefined }}
                   />
-                  <figcaption className="mt-1 text-center text-[11px] text-neutral-500">{t.label}</figcaption>
+                  <figcaption className="mt-1 text-center text-[11px] text-neutral-500">{shape.label}</figcaption>
                 </figure>
               ))}
             </div>

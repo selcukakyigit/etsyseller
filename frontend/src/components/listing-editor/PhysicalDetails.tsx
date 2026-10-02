@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { tNow as t } from "@/lib/i18n";
 
 const WEIGHT_UNITS = ["oz", "lb", "g", "kg"];
 const DIMENSION_UNITS = ["in", "ft", "mm", "cm", "m", "yd", "inches"];
@@ -69,7 +70,7 @@ export default function PhysicalDetails({
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div>
-          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Ağırlık</label>
+          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("Ağırlık", "Weight")}</label>
           <input
             value={itemWeight ?? ""}
             onChange={(e) => onChange({ item_weight: numberOrNull(e.target.value) })}
@@ -77,7 +78,7 @@ export default function PhysicalDetails({
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Birim</label>
+          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("Birim", "Unit")}</label>
           <select
             value={itemWeightUnit ?? ""}
             onChange={(e) => onChange({ item_weight_unit: e.target.value || null })}
@@ -93,7 +94,7 @@ export default function PhysicalDetails({
         </div>
         <div className="col-span-2 sm:col-span-1">
           <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">
-            Boyut birimi
+            {t("Boyut birimi", "Dimension unit")}
           </label>
           <select
             value={itemDimensionsUnit ?? ""}
@@ -112,7 +113,7 @@ export default function PhysicalDetails({
 
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Uzunluk</label>
+          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("Uzunluk", "Length")}</label>
           <input
             value={itemLength ?? ""}
             onChange={(e) => onChange({ item_length: numberOrNull(e.target.value) })}
@@ -120,7 +121,7 @@ export default function PhysicalDetails({
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Genişlik</label>
+          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("Genişlik", "Width")}</label>
           <input
             value={itemWidth ?? ""}
             onChange={(e) => onChange({ item_width: numberOrNull(e.target.value) })}
@@ -128,7 +129,7 @@ export default function PhysicalDetails({
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Yükseklik</label>
+          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("Yükseklik", "Height")}</label>
           <input
             value={itemHeight ?? ""}
             onChange={(e) => onChange({ item_height: numberOrNull(e.target.value) })}
@@ -138,7 +139,7 @@ export default function PhysicalDetails({
       </div>
 
       <label className="flex items-center justify-between gap-3 text-sm text-neutral-700 dark:text-neutral-300">
-        <span>Vergilendirilebilir</span>
+        <span>{t("Vergilendirilebilir", "Taxable")}</span>
         <input
           type="checkbox"
           checked={isTaxable}
@@ -153,18 +154,18 @@ export default function PhysicalDetails({
           onClick={() => setGpsrOpen((v) => !v)}
           className="text-xs font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 transition"
         >
-          {gpsrOpen ? "▾" : "▸"} GPSR / AB Ticari Garanti Bilgileri (AB&apos;de satış yapan tacirler için)
+          {gpsrOpen ? "▾" : "▸"} {t("GPSR / AB Ticari Garanti Bilgileri (AB'de satış yapan tacirler için)", "GPSR / EU commercial guarantee info (for traders selling in the EU)")}
         </button>
 
         {gpsrOpen && (
           <div className="mt-3 space-y-3">
             <p className="text-xs text-neutral-400 dark:text-neutral-500">
-              Bu dört alandan biri doldurulursa hepsi zorunlu olur (Etsy tarafında).
+              {t("Bu dört alandan biri doldurulursa hepsi zorunlu olur (Etsy tarafında).", "If one of these four fields is filled in, all of them become required (on Etsy).")}
             </p>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">
-                  Marka
+                  {t("Marka", "Brand")}
                 </label>
                 <input
                   value={ecgtGaranBrand ?? ""}
@@ -187,7 +188,7 @@ export default function PhysicalDetails({
             </div>
             <div>
               <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">
-                Garanti süresi (yıl, 3-99)
+                {t("Garanti süresi (yıl, 3-99)", "Guarantee period (years, 3-99)")}
               </label>
               <input
                 value={ecgtGaranYears ?? ""}
@@ -197,7 +198,7 @@ export default function PhysicalDetails({
             </div>
             <div>
               <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">
-                Garanti detayları
+                {t("Garanti detayları", "Guarantee details")}
               </label>
               <textarea
                 value={ecgtGaranGuaranteeDetails ?? ""}
@@ -209,7 +210,7 @@ export default function PhysicalDetails({
             </div>
             <div>
               <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">
-                Satış sonrası hizmet bilgisi
+                {t("Satış sonrası hizmet bilgisi", "After-sales service info")}
               </label>
               <textarea
                 value={ecgtAfterSalesServiceInfo ?? ""}
@@ -221,7 +222,7 @@ export default function PhysicalDetails({
             </div>
             <div>
               <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">
-                Ek garanti/başka bilgi
+                {t("Ek garanti/başka bilgi", "Other guarantee info")}
               </label>
               <textarea
                 value={ecgtOtherCommercialGuaranteeDetails ?? ""}

@@ -9,10 +9,9 @@ import { useT } from "@/lib/i18n-client";
 const box = "mt-2 overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900";
 const head = "border-b border-neutral-100 bg-neutral-50 px-4 py-2 text-sm font-semibold text-neutral-800 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100";
 
-let numberLocale = "tr-TR";
-
-function fmt(cur: string, n: number, digits = 0) {
-  return new Intl.NumberFormat(numberLocale, { style: "currency", currency: cur, maximumFractionDigits: digits }).format(n);
+function currencyFormatter(locale: string) {
+  return (cur: string, n: number, digits = 0) =>
+    new Intl.NumberFormat(locale, { style: "currency", currency: cur, maximumFractionDigits: digits }).format(n);
 }
 
 function Delta({ cur, prev, invert }: { cur: number; prev: number; invert?: boolean }) {
@@ -30,7 +29,7 @@ function Delta({ cur, prev, invert }: { cur: number; prev: number; invert?: bool
 export default function Card({ card, shopId }: { card: ChatCard; shopId: number }) {
   const [preview, setPreview] = useState(false);
   const { t, lang, locale } = useT();
-  numberLocale = locale;
+  const fmt = currencyFormatter(locale);
   const names = new Intl.DisplayNames([lang], { type: "region", fallback: "code" });
   if (card.type === "finance") {
     return (

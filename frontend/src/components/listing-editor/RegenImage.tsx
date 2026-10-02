@@ -2,6 +2,7 @@
 
 import { dismissRegenJob, RegenJob } from "@/lib/regenJobs";
 import { useRegenProgress } from "@/lib/useRegenProgress";
+import { tNow as t } from "@/lib/i18n";
 
 /**
  * Sihirli değnekle yeniden oluşturulurken görseli bulanıktan berraklığa geçirir, üstünde dönen bir
@@ -57,7 +58,7 @@ export default function RegenImage({
       )}
       {job?.phase === "error" && (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1 rounded-[inherit] bg-red-950/85 p-2 text-center">
-          <span className="text-[11px] font-medium text-red-200">{job.error ?? "Yeniden oluşturulamadı"}</span>
+          <span className="text-[11px] font-medium text-red-200">{job.error ?? t("Yeniden oluşturulamadı", "Could not regenerate")}</span>
           <button
             type="button"
             onClick={() => dismissRegenJob(jobKey)}

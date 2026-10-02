@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, ImageVersion, ListingImage } from "@/lib/api";
+import { tNow as t } from "@/lib/i18n";
 
 /** Fotoğrafın sürüm geçmişi — orijinal Etsy fotoğrafı + üretilen her AI sürümü, eskiden yeniye küçük
  * noktalar olarak sağ altta. Turuncu = şu an gösterilen sürüm. Hiçbir sürüm silinmediği için (bkz.
@@ -48,12 +49,12 @@ export default function VersionDots({
         <button
           key={v.file_id ?? `orig-${v.listing_image_id}`}
           type="button"
-          title={v.created_at ? new Date(v.created_at).toLocaleString("tr-TR") : "Orijinal"}
+          title={v.created_at ? new Date(v.created_at).toLocaleString(t("tr-TR", "en-US")) : t("Orijinal", "Original")}
           onClick={() => !isCurrent(v) && onSelect(v)}
           className={`pointer-events-auto h-2.5 w-2.5 rounded-full transition ${
             isCurrent(v) ? "bg-[#D97757]" : "bg-white/50 hover:bg-white/80"
           }`}
-          aria-label={i === 0 ? "Orijinal fotoğraf" : `Sürüm ${i + 1}`}
+          aria-label={i === 0 ? t("Orijinal fotoğraf", "Original photo") : `${t("Sürüm", "Version")} ${i + 1}`}
         />
       ))}
     </div>

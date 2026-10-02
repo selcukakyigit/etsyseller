@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, ListingProperty, TaxonomyProperty } from "@/lib/api";
+import { tNow as t } from "@/lib/i18n";
 
 // Etsy çok değerli özelliklerde en fazla 5 seçime izin verir (Craft, Room, Materials...).
 const MAX_MULTI = 5;
@@ -82,7 +83,7 @@ function PropertyRow({
         </p>
         {multi && (
           <p className="text-xs text-neutral-400">
-            {limitReached ? `En fazla ${max} seçim` : `${max - selectedIds.length} tane daha seçebilirsin`}
+            {limitReached ? t(`En fazla ${max} seçim`, `Up to ${max} choices`) : t(`${max - selectedIds.length} tane daha seçebilirsin`, `You can pick ${max - selectedIds.length} more`)}
           </p>
         )}
       </div>
@@ -96,7 +97,7 @@ function PropertyRow({
               commitDimension(e.target.value, scaleId);
             }}
             inputMode="decimal"
-            placeholder="Değer"
+            placeholder={t("Değer", "Value")}
             className="flex-1 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-800 focus:border-neutral-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
           />
           <select
@@ -108,7 +109,7 @@ function PropertyRow({
             }}
             className="flex-1 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-800 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
           >
-            <option value="">Birim seç</option>
+            <option value="">{t("Birim seç", "Choose unit")}</option>
             {def.scales?.map((sc) => (
               <option key={sc.scale_id} value={sc.scale_id}>
                 {sc.display_name}
@@ -144,7 +145,7 @@ function PropertyRow({
               setOpen(true);
             }}
             onFocus={() => setOpen(true)}
-            placeholder={!multi && selected[0] ? selected[0].name : "Ara veya seç…"}
+            placeholder={!multi && selected[0] ? selected[0].name : t("Ara veya seç…", "Search or choose…")}
             className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 pr-8 text-sm text-neutral-800 placeholder:text-neutral-500 focus:border-neutral-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
           />
           <button
@@ -152,14 +153,14 @@ function PropertyRow({
             tabIndex={-1}
             onClick={() => setOpen((o) => !o)}
             className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-neutral-500"
-            aria-label="Aç/kapat"
+            aria-label={t("Aç/kapat", "Toggle")}
           >
             ▾
           </button>
 
           {open && (
             <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-800 dark:bg-neutral-900">
-              {filtered.length === 0 && <p className="px-3 py-2 text-sm text-neutral-400">Sonuç yok</p>}
+              {filtered.length === 0 && <p className="px-3 py-2 text-sm text-neutral-400">{t("Sonuç yok", "No results")}</p>}
               {filtered.map((v) => {
                 const checked = selectedIds.includes(v.value_id);
                 const disabled = multi && !checked && limitReached;
@@ -200,7 +201,7 @@ function PropertyRow({
                 type="button"
                 onClick={() => commit(selectedIds.filter((id) => id !== v.value_id))}
                 className="text-neutral-500 hover:text-neutral-900"
-                aria-label={`${v.name} kaldır`}
+                aria-label={t(`${v.name} kaldır`, `Remove ${v.name}`)}
               >
                 ✕
               </button>
@@ -232,23 +233,24 @@ export default function PropertyFields({
       .then((props) =>
         setDefs(props.filter((p) => p.supports_attributes && (p.possible_values.length > 0 || (p.scales?.length ?? 0) > 0)))
       )
-      .catch((e) => setError(e instanceof Error ? e.message : "Bilinmeyen hata"));
+      .catch((e) => setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error")));
   }, [taxonomyId]);
 
   const has = (id: number) => properties.some((p) => p.property_id === id);
 
   return (
     <section className="rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
-      <h2 className="mb-1 text-sm font-semibold text-neutral-900 dark:text-neutral-100">Özellikler</h2>
+      <h2 className="mb-1 text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("Özellikler", "Attributes")}</h2>
       <p className="mb-4 text-xs text-neutral-400">
-        Kategoriye özel alanlar — alıcıların filtreleyerek bulmasını sağlar. Seçimlerin taslağa otomatik kaydedilir;
-        Etsy&apos;ye &quot;Yayınla&quot; ile gider. Varyasyon oluşturan özellikler (renk/beden gibi) Fiyat &amp; Stok bölümünde
-        yönetilir.
+        {t(
+          'Kategoriye özel alanlar — alıcıların filtreleyerek bulmasını sağlar. Seçimlerin taslağa otomatik kaydedilir; Etsy\'ye "Yayınla" ile gider. Varyasyon oluşturan özellikler (renk/beden gibi) Fiyat & Stok bölümünde yönetilir.',
+          "Category-specific fields that help buyers find the item with filters. Your choices save to the draft automatically and go to Etsy when you publish. Attributes that create variations (like color or size) are managed under Price & Inventory.",
+        )}
       </p>
 
-      {!taxonomyId && <p className="text-sm text-neutral-400">Önce bir kategori seç.</p>}
-      {taxonomyId && defs === null && !error && <p className="text-sm text-neutral-400">Yükleniyor…</p>}
-      {taxonomyId && defs && defs.length === 0 && <p className="text-sm text-neutral-400">Bu kategori için ek özellik yok.</p>}
+      {!taxonomyId && <p className="text-sm text-neutral-400">{t("Önce bir kategori seç.", "Choose a category first.")}</p>}
+      {taxonomyId && defs === null && !error && <p className="text-sm text-neutral-400">{t("Yükleniyor…", "Loading…")}</p>}
+      {taxonomyId && defs && defs.length === 0 && <p className="text-sm text-neutral-400">{t("Bu kategori için ek özellik yok.", "No extra attributes for this category.")}</p>}
 
       <div className="space-y-2">
         {defs
@@ -268,7 +270,7 @@ export default function PropertyFields({
           onClick={() => setShowAll((v) => !v)}
           className="mt-3 w-full rounded-lg border border-neutral-200 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 dark:border-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-800"
         >
-          {showAll ? "Boş alanları gizle" : "Tüm özellikleri göster"}
+          {showAll ? t("Boş alanları gizle", "Hide empty fields") : t("Tüm özellikleri göster", "Show all attributes")}
         </button>
       )}
 

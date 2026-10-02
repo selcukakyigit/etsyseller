@@ -1,13 +1,15 @@
 "use client";
 
-export const EDIT_SECTIONS: [string, string][] = [
-  ["sec-media", "Fotoğraf & Video"],
-  ["sec-details", "Ürün Detayları"],
-  ["sec-options", "Varyasyon & Fiyat"],
-  ["sec-attributes", "Etiket & Özellikler"],
-  ["sec-shipping", "Kargo & İade"],
-  ["sec-made", "Nasıl Yapıldı"],
-  ["sec-settings", "Ayarlar"],
+import { tNow as t } from "@/lib/i18n";
+
+export const EDIT_SECTIONS: [string, string, string][] = [
+  ["sec-media", "Fotoğraf & Video", "Photos & Video"],
+  ["sec-details", "Ürün Detayları", "Item details"],
+  ["sec-options", "Varyasyon & Fiyat", "Variations & Price"],
+  ["sec-attributes", "Etiket & Özellikler", "Tags & Attributes"],
+  ["sec-shipping", "Kargo & İade", "Shipping & Returns"],
+  ["sec-made", "Nasıl Yapıldı", "How it's made"],
+  ["sec-settings", "Ayarlar", "Settings"],
 ];
 
 /** Uzun düzenleme formunda bölümler arası hızlı geçiş (Etsy editöründeki üst sekmelerin karşılığı). */
@@ -23,19 +25,19 @@ export default function SectionNav({
 }) {
   return (
     <nav
-      aria-label="Bölümler"
+      aria-label={t("Bölümler", "Sections")}
       // top-[49px]: AppShell'in Topbar'ı (bkz. Topbar.tsx) kendisi de sticky top-0 ve 49px yükseklikte —
       // bu da top-0 olsaydı ikisi aynı noktaya yapışıp üst üste binerdi (Topbar görünmez olurdu).
       className="sticky top-[49px] z-20 -mx-2 flex flex-wrap items-center gap-1.5 rounded-xl bg-neutral-50/90 px-2 py-2 backdrop-blur dark:bg-neutral-950/90"
     >
-      {EDIT_SECTIONS.map(([id, label]) => (
+      {EDIT_SECTIONS.map(([id, tr, en]) => (
         <button
           key={id}
           type="button"
           onClick={() => onNavigate(id)}
           className="shrink-0 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 transition hover:border-neutral-400 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200"
         >
-          {label}
+          {t(tr, en)}
         </button>
       ))}
       <button
@@ -43,7 +45,7 @@ export default function SectionNav({
         onClick={onToggleAll}
         className="ml-auto shrink-0 px-2 py-1.5 text-xs font-medium text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
       >
-        {allOpen ? "Tümünü daralt" : "Tümünü aç"}
+        {allOpen ? t("Tümünü daralt", "Collapse all") : t("Tümünü aç", "Expand all")}
       </button>
     </nav>
   );

@@ -2,6 +2,7 @@
 
 import { ListingImage } from "@/lib/api";
 import { Modal, btnGhost } from "./Modal";
+import { tNow as t } from "@/lib/i18n";
 
 export default function PhotoPicker({
   subtitle,
@@ -19,18 +20,18 @@ export default function PhotoPicker({
   return (
     <Modal
       z={70}
-      title="Bu seçeneğe fotoğraf bağla"
+      title={t("Bu seçeneğe fotoğraf bağla", "Link a photo to this option")}
       footer={
         <button onClick={onCancel} className={btnGhost}>
-          Vazgeç
+          {t("Vazgeç", "Cancel")}
         </button>
       }
     >
       <p className="mb-3 text-sm text-neutral-500">{subtitle}</p>
       <p className="mb-4 text-sm text-neutral-700 dark:text-neutral-300">
-        Alıcılar bu seçeneği görüntülerken göstermek istediğin fotoğrafı seç.
+        {t("Alıcılar bu seçeneği görüntülerken göstermek istediğin fotoğrafı seç.", "Choose the photo buyers see when they view this option.")}
       </p>
-      {images.length === 0 && <p className="text-sm text-neutral-400">Listing&apos;de henüz fotoğraf yok.</p>}
+      {images.length === 0 && <p className="text-sm text-neutral-400">{t("Listing'de henüz fotoğraf yok.", "The listing has no photos yet.")}</p>}
       <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
         {images.map((img) => (
           <button
@@ -51,7 +52,7 @@ export default function PhotoPicker({
         onClick={() => onPick(null)}
         className="mt-4 rounded-full bg-neutral-100 px-4 py-2 text-sm font-semibold dark:bg-neutral-800"
       >
-        Hiçbiri
+        {t("Hiçbiri", "None")}
       </button>
     </Modal>
   );
