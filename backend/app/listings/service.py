@@ -39,6 +39,8 @@ from app.listings.schemas import (
     SuggestionOut,
 )
 from app.listings import sync_status
+from app.core.fingerprint import ResultCache, fingerprints
+from app.core.i18n import get_lang, tr
 from app.shops.models import Shop
 
 logger = logging.getLogger(__name__)
@@ -348,7 +350,27 @@ def _summary(raw: dict, inventory: dict, over: dict) -> dict:
     }
 
 
+# Liste kartlarının hesaplanmış hâli: yüzlerce ilanın ham JSON'unu her açılışta çözmek (~1 sn) yerine, kaynak tablolar
+# değişmedikçe bellekten döner. Geçerliliği tabloların parmak iziyle anlaşılır (bkz. core/fingerprint.py).
+_LIST_SOURCES = ("listing_cache", "listing_versions", "listing_drafts", "listing_locals")
+_list_cache = ResultCache(max_items=20)
+
+
 def list_listings(db: Session, shop: Shop) -> list[ListingOut]:
+    fp = fingerprints(db, _LIST_SOURCES, shop.id)
+    key = (shop.id, get_lang(), fp)
+    if fp is not None:
+        cached = _list_cache.get(key)
+        if cached is not None:
+            return list(cached)
+    out = _build_listings(db, shop)
+    if fp is not None:
+        _list_cache.drop_shop(shop.id)  # aynı mağazanın eski sürümleri bellekte birikmesin
+        _list_cache.set(key, out)
+    return list(out)
+
+
+def _build_listings(db: Session, shop: Shop) -> list[ListingOut]:
     # Görseller toplu indirilmez; ilk açılışta tek tek önbelleğe alınır (bkz. _store_extras notu).
     # Liste kartları özellikler, varyasyon görselleri ve kişiselleştirme JSON'unu kullanmaz; yüzlerce ilan için bunları
     # her istekte belleğe almak (Render'ın 512 MB sınırında) gereksiz yük bindiriyor. Gerekirse tek ilan açılınca okunur.
@@ -416,7 +438,7 @@ def list_listings(db: Session, shop: Shop) -> list[ListingOut]:
         out.append(
             ListingOut(
                 listing_id=local.listing_id,
-                title=work.get("title") or "(Başlıksız yeni listing)",
+                title=work.get("title") or tr("(Başlıksız yeni listing)", "(Untitled new listing)"),
                 tags=work.get("tags") or [],
                 description=work.get("description") or "",
                 url=None,

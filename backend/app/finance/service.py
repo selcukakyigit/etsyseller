@@ -16,7 +16,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal
-from app.core.i18n import tr
+from app.core.fingerprint import ResultCache, fingerprints
+from app.core.i18n import get_lang, tr
+import copy
 from app.etsy.client import EtsyClient
 from app.finance.models import FinPayment, LedgerEntry, ListingCost, OrderCost, VariantCost
 from app.listings.models import ListingCache
@@ -488,7 +490,27 @@ def _overhead(db: Session, shop: Shop, med: dict[str, float], overall_fx: float)
     return out
 
 
+# Hesaplanmış rapor sonuçları (dashboard ve Finans sayfası aynı dönemi tekrar tekrar ister). Geçerlilik: siparişler/ödemeler/
+# ledger sürümü + maliyet, fatura ve listing tablolarının parmak izi + arayüz dili (etiketler dile göre).
+_REPORT_SOURCES = ("listing_costs", "variant_costs", "order_costs", "shipping_invoices", "listing_cache")
+_report_cache = ResultCache(max_items=60)
+
+
 def report(db: Session, shop: Shop, start: dt.date, end: dt.date, country: str = "", collect: list | None = None, compare: list[int] | None = None) -> dict:
+    if collect is not None:  # Excel dışa aktarma sipariş satırlarını da ister; önbelleğe alınmaz
+        return _report(db, shop, start, end, country, collect, compare)
+    fp = fingerprints(db, _REPORT_SOURCES, shop.id)
+    if fp is None:
+        return _report(db, shop, start, end, country, None, compare)
+    key = (shop.id, start, end, country, tuple(compare or ()), get_lang(), _finance_version(db, shop), fp)
+    cached = _report_cache.get(key)
+    if cached is None:
+        cached = _report(db, shop, start, end, country, None, compare)
+        _report_cache.set(key, cached)
+    return copy.deepcopy(cached)  # çağıran sonucu değiştirse bile önbellek bozulmasın
+
+
+def _report(db: Session, shop: Shop, start: dt.date, end: dt.date, country: str = "", collect: list | None = None, compare: list[int] | None = None) -> dict:
     """`compare`: karşılaştırılacak yıl farkları (1 = geçen yıl); ilki ana karşılaştırmadır (KPI/ülke), en fazla 4 tane.
     `collect` verilirse seçili dönemdeki her siparişin satırı (Excel dışa aktarma için) oraya eklenir."""
     orders, med, cov = _order_finance(db, shop)
