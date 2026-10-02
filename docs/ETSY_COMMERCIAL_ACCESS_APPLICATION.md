@@ -72,4 +72,5 @@ These are estimates. They have not yet been measured with many shops.
 
 ## Test access for the review
 
-- Demo account: [e-mail] / [password] (or a short screen recording: [link])
+- Screen recording of the app connected to our own shop (buyer details blurred): [link]
+- A test account can be provided on request.
