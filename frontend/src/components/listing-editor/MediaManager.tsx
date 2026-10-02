@@ -89,7 +89,7 @@ export default function MediaManager({
   const [genPrompt, setGenPrompt] = useState("");
   const [genRefFile, setGenRefFile] = useState<File | null>(null);
   const [genKeepRef, setGenKeepRef] = useState(false); // referans yalnızca yapay zekâya verilir; listeye eklemek isteğe bağlı
-  const [genQty, setGenQty] = useState(5);
+  const [genQty, setGenQty] = useState(1);
   const [genBusy, setGenBusy] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
   const [genShots, setGenShots] = useState<
@@ -621,7 +621,7 @@ export default function MediaManager({
           <button
             type="button"
             onClick={() => {
-              setGenQty(Math.min(5, MAX_IMAGES - ordered.length));
+              setGenQty(Math.min(1, MAX_IMAGES - ordered.length));
               setGenOpen(true);
             }}
             className={addTile}

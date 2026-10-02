@@ -1,12 +1,13 @@
 import datetime as dt
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.assistant import llm, service
 from app.auth.models import User
+from app.core import blobstore
 from app.core.config import settings
 from app.core.db import get_db
 from app.core.deps import get_current_user
@@ -98,7 +99,11 @@ def image(image_id: str, shop: Shop = Depends(get_owned_shop), db: Session = Dep
     img = service.get_image(db, shop, image_id)
     if img is None:
         raise HTTPException(404, "Resim bulunamadı")
-    return FileResponse(img.path, media_type=img.content_type, headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=3600"})
+    try:
+        content = blobstore.read(img.path)
+    except FileNotFoundError:
+        raise HTTPException(404, "Resim bulunamadı")
+    return Response(content, media_type=img.content_type, headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=3600"})
 
 
 @router.get("/dashboard")

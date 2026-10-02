@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy import func, select
 
+from app.core import blobstore
 from app.core.i18n import tr
 from sqlalchemy.orm import Session
 
@@ -667,8 +668,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         img = ctx.db.get(ChatImage, str(image_id))
         if img is None or img.shop_id != ctx.shop.id:
             continue
-        with open(img.path, "rb") as f:
-            saved = drafts.save_file(ctx.db, ctx.shop, lid, "image", img.filename, img.content_type, f.read())
+        saved = drafts.save_file(ctx.db, ctx.shop, lid, "image", img.filename, img.content_type, blobstore.read(img.path))
         url = creation._file_url(ctx.shop, lid, saved["file_id"])
         attached += 1
         work["images"].append({

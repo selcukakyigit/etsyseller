@@ -32,8 +32,9 @@ def available_providers() -> list[dict]:
 
 
 def _b64(path: str) -> str:
-    with open(path, "rb") as f:
-        return base64.b64encode(f.read()).decode()
+    from app.core import blobstore
+
+    return base64.b64encode(blobstore.read(path)).decode()
 
 
 def run_agent(

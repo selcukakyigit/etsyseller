@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.etsy.client import EtsyClient
 from app.listings import drafts, service
+from app.core import blobstore
 from app.listings.models import DraftFile, ListingCache, ListingDraft, ListingLocal
 from app.shops.models import Shop
 
@@ -237,7 +238,9 @@ def delete_listing(db: Session, shop: Shop, listing_id: int) -> None:
         drafts.discard_local(db, shop, listing_id)
         return
     EtsyClient(db, shop).request("DELETE", f"/listings/{listing_id}")
+    paths = list(db.scalars(select(DraftFile.path).where(DraftFile.shop_id == shop.id).where(DraftFile.listing_id == listing_id)))
     for model in (ListingLocal, ListingDraft, DraftFile, ListingCache):
         for r in db.scalars(select(model).where(model.shop_id == shop.id).where(model.listing_id == listing_id)).all():
             db.delete(r)
     db.commit()
+    blobstore.remove(paths)

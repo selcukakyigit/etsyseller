@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.account.service import AVATAR_DIR
 from app.auth.models import User, Workspace, WorkspaceMember
 from app.auth.workspaces import workspace_ids
+from app.core import blobstore
 from app.core.config import settings
 from app.core.db import Base
 from app.shops.models import Shop
@@ -35,7 +36,13 @@ def verify(user: User, typed_email: str) -> None:
 
 def _wipe_shops(db: Session, shop_ids: list[int]) -> None:
     """Verilen mağazaların tüm yerel verisini (tablolar + diskteki dosyalar + bellek önbellekleri) siler."""
+    files: list[str] = []
     if shop_ids:
+        # Kalıcı depodaki dosyalar (taslak fotoğrafları, asistan resimleri): satırlar silinmeden önce yolları alınır.
+        for name in ("listing_draft_files", "chat_images"):
+            t = Base.metadata.tables.get(name)
+            if t is not None:
+                files += list(db.scalars(select(t.c.path).where(t.c.shop_id.in_(shop_ids))))
         # Bağımlılık sırasının tersi: önce alt tablolar. Sohbet mesajları shop_id taşımaz, oturumları üzerinden silinir.
         for table in reversed(Base.metadata.sorted_tables):
             if table.name in SKIP_TABLES:
@@ -50,6 +57,7 @@ def _wipe_shops(db: Session, shop_ids: list[int]) -> None:
 
     from app.finance import service as finance_service  # bellekteki rapor önbelleği aynı id'yi yeniden kullanan yeni mağazaya sızmasın
 
+    blobstore.remove(files)
     for sid in shop_ids:
         finance_service._finance_cache.pop(sid, None)
         for folder in SHOP_UPLOAD_FOLDERS:

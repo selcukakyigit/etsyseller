@@ -4,6 +4,7 @@ import json
 import re
 
 from app.ai.client import get_anthropic_client, get_openai_client
+from app.core import blobstore
 from app.core.config import settings
 
 ALT_MAX = 125  # ekran okuyucular için önerilen uzunluk; Etsy sınırı 500
@@ -43,8 +44,7 @@ def generate_alt_texts(items: list[dict], title: str) -> list[str]:
     )
     blobs = []
     for i in items:
-        with open(i["path"], "rb") as f:
-            blobs.append((i["content_type"], base64.b64encode(f.read()).decode()))
+        blobs.append((i["content_type"], base64.b64encode(blobstore.read(i["path"])).decode()))
     provider = _provider()
     try:
         if provider == "anthropic":

@@ -25,6 +25,7 @@ from app.etsy import videos as etsy_videos
 from app.etsy.client import write_count,  EtsyClient
 from app.listings import service
 from app.listings import image_cache
+from app.core import blobstore
 from app.listings.models import DraftFile, ListingDraft, ListingLocal, ListingVersion
 from app.listings.schemas import (
     ImageOrderIn,
@@ -37,7 +38,6 @@ from app.shops.models import Shop
 
 _log = logging.getLogger("app.publish")
 
-DRAFT_DIR = Path(__file__).resolve().parents[2] / "uploads" / "drafts"
 
 CORE_FIELDS = [
     "title", "description", "tags", "materials", "style", "taxonomy_id", "who_made", "when_made", "is_supply",
@@ -125,11 +125,11 @@ def _prune_files(db: Session, shop: Shop, listing_id: int) -> None:
     files = db.scalars(
         select(DraftFile).where(DraftFile.shop_id == shop.id).where(DraftFile.listing_id == listing_id)
     ).all()
-    for f in files:
-        if f.id not in keep:
-            Path(f.path).unlink(missing_ok=True)
-            db.delete(f)
+    gone = [f for f in files if f.id not in keep]
+    for f in gone:
+        db.delete(f)
     db.commit()
+    blobstore.remove([f.path for f in gone])
 
 
 def discard_draft(db: Session, shop: Shop, listing_id: int) -> None:
@@ -154,15 +154,12 @@ def save_file(
     origin_key: str | None = None,
 ) -> dict:
     file_id = str(uuid.uuid4())
-    folder = DRAFT_DIR / str(shop.id) / str(listing_id)
-    folder.mkdir(parents=True, exist_ok=True)
     suffix = Path(filename).suffix[:10]
-    path = folder / f"{file_id}{suffix}"
-    path.write_bytes(content)
+    path = blobstore.put(f"drafts/{shop.id}/{listing_id}/{file_id}{suffix}", content, content_type)
     db.add(
         DraftFile(
             id=file_id, shop_id=shop.id, listing_id=listing_id, kind=kind,
-            filename=filename[:255], content_type=content_type or "application/octet-stream", path=str(path),
+            filename=filename[:255], content_type=content_type or "application/octet-stream", path=path,
             origin_key=origin_key or file_id,
         )
     )
@@ -193,7 +190,7 @@ def _source_image_bytes(db: Session, shop: Shop, listing_id: int, image_id: int,
     f = get_file(db, shop, listing_id, draft_file_id or "")
     if f is None:
         raise ValueError("Taslak görsel dosyası bulunamadı; sayfayı yenile.")
-    return Path(f.path).read_bytes(), f.content_type
+    return blobstore.read(f.path), f.content_type
 
 
 def _resolve_origin_key(db: Session, shop: Shop, listing_id: int, image_id: int, draft_file_id: str | None) -> str:
@@ -220,7 +217,7 @@ def _origin_image_bytes(db: Session, shop: Shop, listing_id: int, origin_key: st
     f = get_file(db, shop, listing_id, origin_key)
     if f is None:
         raise ValueError("Zincirin kök dosyası bulunamadı; sayfayı yenile.")
-    return Path(f.path).read_bytes(), f.content_type
+    return blobstore.read(f.path), f.content_type
 
 
 def list_versions(db: Session, shop: Shop, listing_id: int, image_id: int, draft_file_id: str | None) -> list[dict]:
@@ -285,7 +282,7 @@ def regenerate_image(
     if reference_draft_file_id:
         ref = get_file(db, shop, listing_id, reference_draft_file_id)
         if ref is not None:
-            reference = (Path(ref.path).read_bytes(), ref.content_type)
+            reference = (blobstore.read(ref.path), ref.content_type)
     subject_reference = None
     if subject_image_id is not None:
         subject_reference = _source_image_bytes(db, shop, listing_id, subject_image_id, subject_draft_file_id)
@@ -307,7 +304,7 @@ def generate_image_from_prompt(
     if reference_draft_file_id:
         ref = get_file(db, shop, listing_id, reference_draft_file_id)
         if ref is not None:
-            reference = (Path(ref.path).read_bytes(), ref.content_type)
+            reference = (blobstore.read(ref.path), ref.content_type)
     new_bytes, mime = image_gen.generate_from_text(prompt, reference)
     filename = f"ai-generated{image_gen.guess_extension(mime)}"
     return save_file(db, shop, listing_id, "image", filename, mime, new_bytes)
@@ -547,7 +544,7 @@ def publish_local(db: Session, shop: Shop, user_id: int, listing_id: int, force:
                 if f is None:
                     raise ValueError("Taslak görsel dosyası bulunamadı; görseli yeniden ekle.")
                 up = etsy_images.upload_image(
-                    client, listing_id, Path(f.path).read_bytes(), f.filename, None, entry.get("alt_text")
+                    client, listing_id, blobstore.read(f.path), f.filename, None, entry.get("alt_text")
                 )
                 id_map[entry["listing_image_id"]] = up["listing_image_id"]
         state["id_map"] = id_map
@@ -611,7 +608,7 @@ def publish_local(db: Session, shop: Shop, user_id: int, listing_id: int, force:
                 f = get_file(db, shop, listing_id, v.get("draft_file_id", ""))
                 if f is None:
                     raise ValueError("Taslak video dosyası bulunamadı; videoyu yeniden ekle.")
-                etsy_videos.upload_video(client, listing_id, Path(f.path).read_bytes(), f.filename)
+                etsy_videos.upload_video(client, listing_id, blobstore.read(f.path), f.filename)
 
     def personalization():
         if verdict["personalization"] == "skip":

@@ -11,6 +11,7 @@ from pathlib import Path
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core import blobstore
 from app.core.i18n import tr
 from app.assistant import llm, tools
 from app.assistant.models import ChatImage, ChatMessage, ChatSession
@@ -20,7 +21,6 @@ from app.listings.models import ListingCache
 from app.orders.models import OrderCache
 from app.shops.models import Shop
 
-UPLOAD_DIR = Path(__file__).resolve().parent.parent.parent / "uploads" / "chat"
 ALLOWED_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif"}
 MAX_IMAGE_BYTES = 5 * 1024 * 1024  # Claude (Anthropic) görsel sınırı 5 MB
 MAX_IMAGES_PER_MESSAGE = 6
@@ -120,11 +120,8 @@ def save_image(db: Session, shop: Shop, session_id: int | None, filename: str, c
     if len(content) > MAX_IMAGE_BYTES:
         raise ValueError("Resim 5 MB'dan büyük olamaz.")
     image_id = str(uuid.uuid4())
-    folder = UPLOAD_DIR / str(shop.id)
-    folder.mkdir(parents=True, exist_ok=True)
-    path = folder / f"{image_id}{ALLOWED_TYPES[content_type]}"
-    path.write_bytes(content)
-    db.add(ChatImage(id=image_id, shop_id=shop.id, session_id=session_id, filename=(filename or "resim")[:255], content_type=content_type, path=str(path)))
+    path = blobstore.put(f"chat/{shop.id}/{image_id}{ALLOWED_TYPES[content_type]}", content, content_type)
+    db.add(ChatImage(id=image_id, shop_id=shop.id, session_id=session_id, filename=(filename or "resim")[:255], content_type=content_type, path=path))
     db.commit()
     return {"id": image_id, "filename": filename, "url": f"/api/shops/{shop.id}/assistant/images/{image_id}"}
 

@@ -3,10 +3,11 @@ from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from app.core.uploads import MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, read_limited
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.auth.models import User
+from app.core import blobstore
 from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.etsy.client import EtsyAuthError
@@ -351,7 +352,12 @@ def get_draft_file(
     f = drafts.get_file(db, shop, listing_id, file_id)
     if f is None:
         raise HTTPException(404, "Dosya bulunamadı")
-    return FileResponse(f.path, media_type=f.content_type, filename=f.filename)
+    try:
+        content = blobstore.read(f.path)
+    except FileNotFoundError:
+        raise HTTPException(404, "Dosya bulunamadı")
+    # Dosya kimliği değişmez (yeni sürüm yeni kimlik alır): tarayıcı uzun süre önbellekte tutabilir.
+    return Response(content, media_type=f.content_type, headers={"Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff"})
 
 
 @router.get("/{listing_id}/local")
