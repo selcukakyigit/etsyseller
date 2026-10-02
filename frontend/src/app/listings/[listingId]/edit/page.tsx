@@ -75,7 +75,7 @@ export default function ListingEditPage() {
     setAiError(null);
     try {
       const previous = { title: edit.title, tags: edit.tags, description: edit.description, materials: edit.materials };
-      const s = await api.listings.suggest(activeShop.id, listingId, previous);
+      const s = await api.listings.suggest(activeShop.id, listingId, { ...previous, inventory: edit.inventory });
       wc.patch({
         title: s.suggested_title,
         tags: s.suggested_tags,

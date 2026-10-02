@@ -18,6 +18,8 @@ etiketlerinden gelsin (ör. mevcut başlıkta "metal garage sign" varsa onu koru
 renk seçeneği varsa (verilen "variations") başlığa tek bir renk de yazma. Listing'de olmayan ölçü, renk ya da malzeme ASLA \
 uydurma (başlıkta da açıklamada da). "Mevcut listing verisi"ndeki başlık daha önceki bir yapay zekâ önerisi olabilir; \
 içindeki ölçü/renk bilgisine güvenme, "variations"a bak
+- Açıklamada seçenekleri (renk, boyut) sayıyorsan "variations"taki seçeneklerin TAMAMINI yaz; eksik ya da fazla olmasın. \
+Listing'e yeni bir seçenek eklendiyse (ör. yeni renk) açıklamadaki listeye de ekle
 - Başlıkta OLMAYACAKLAR: hediye/alıcı ifadeleri ("gift for dad", "for her"), öznel sözcükler ("beautiful", "perfect", \
 "best"), kargo/indirim bilgisi, aynı kelimenin tekrarı, virgülle sıralanmış kelime listesi
 - Başlıktan çıkardığın hediye/alıcı/kullanım yeri/vesile ifadelerini SİLME: etiketlere ve açıklamaya taşı (Etsy bunları \

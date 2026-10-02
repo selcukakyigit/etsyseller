@@ -164,6 +164,17 @@ def fact_problems(title: str, description: str, source_text: str, variations: di
             f"Listing'de olmayan renk yazılmış ({', '.join(colors)}); yalnızca listing'deki renkleri kullan.",
             f"Colors that are not in the listing were written ({', '.join(colors)}); use only the listing's colors.",
         ))
+    d = description.lower()
+    for name, vals in variations.items():
+        if len(vals) < 2 or not any(k in name.lower() for k in ("color", "colour", "renk")):
+            continue
+        listed = [v for v in vals if re.search(rf"\b{re.escape(v.lower())}\b", d)]
+        missing = [v for v in vals if v not in listed]
+        if len(listed) >= 2 and missing:
+            out.append(tr(
+                f"Açıklamadaki renk listesi eksik ({', '.join(missing)} yok); varyasyonlardaki tüm renkleri yaz: {', '.join(vals)}.",
+                f"The color list in the description is incomplete ({', '.join(missing)} missing); list every color offered: {', '.join(vals)}.",
+            ))
     t = title.lower()
     for name, vals in variations.items():
         if len(vals) < 2:

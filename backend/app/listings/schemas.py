@@ -27,6 +27,8 @@ class SuggestIn(BaseModel):
     tags: list[str] | None = None
     description: str | None = None
     materials: list[str] | None = None
+    # Formdaki varyasyonlar (kaydedilmemiş olabilir): yapay zekâ güncel renk/boyut seçeneklerini bilsin
+    inventory: dict | None = None
 
 
 class ListingOut(BaseModel):

@@ -475,8 +475,10 @@ def create_suggestion(
     fact_source = {k: listing.get(k) for k in ("title", "description", "materials")}
     # Formdaki (taslaktaki) güncel değerler verildiyse AI onları iyileştirir.
     if overrides is not None:
-        for key, value in overrides.model_dump(exclude_none=True).items():
+        for key, value in overrides.model_dump(exclude_none=True, exclude={"inventory"}).items():
             listing[key] = value
+        if overrides.inventory:
+            inventory = overrides.inventory
 
     keyword_pool = keyword_service.build_keyword_pool(db, shop, listing)
 

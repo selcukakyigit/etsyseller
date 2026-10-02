@@ -107,6 +107,8 @@ export type SuggestInput = {
   tags?: string[];
   description?: string;
   materials?: string[];
+  /** Formdaki (henüz kaydedilmemiş olabilir) varyasyonlar: öneri güncel renk/boyut seçeneklerini bilsin */
+  inventory?: unknown;
 };
 
 export type StatSnapshot = {
