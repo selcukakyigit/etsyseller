@@ -50,10 +50,11 @@ export default function Sidebar({
   const router = useRouter();
   const { t } = useT();
   const connectedShops = (shops ?? []).filter((s) => s.connected);
-  // Menüdeki bir sayfadayken menü hep açık (bulunulan sayfa görünsün); diğer sayfalarda son açık/kapalı hâli hatırlanır.
-  const [shopMenu, setShopMenu] = useStoredState<"open" | "closed">("sidebar.shopMenu", "closed", ["open", "closed"]);
+  // Başlığa tıklamak her zaman açar/kapatır ve seçim hatırlanır. Hiç seçim yapılmadıysa ("auto") menüdeki bir
+  // sayfadayken açık gelir ki bulunulan sayfa görünsün.
+  const [shopMenu, setShopMenu] = useStoredState<"auto" | "open" | "closed">("sidebar.shopMenu", "auto", ["auto", "open", "closed"]);
   const inShopMenu = SHOP_ITEMS.some((i) => i.href === current);
-  const shopOpen = inShopMenu || shopMenu === "open";
+  const shopOpen = shopMenu === "open" || (shopMenu === "auto" && inShopMenu);
 
   async function handleLogout() {
     await api.auth.logout();
@@ -78,13 +79,13 @@ export default function Sidebar({
         <button
           type="button"
           aria-expanded={shopOpen}
-          onClick={() => setShopMenu(shopOpen && !inShopMenu ? "closed" : "open")}
+          onClick={() => setShopMenu(shopOpen ? "closed" : "open")}
           className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition hover:bg-neutral-100 dark:hover:bg-neutral-800 ${
             inShopMenu ? "text-neutral-900 dark:text-neutral-100" : "text-neutral-600 dark:text-neutral-300"
           }`}
         >
           {t("Mağaza", "Shop")}
-          <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden className={`h-4 w-4 text-neutral-400 transition-transform dark:text-neutral-500 ${shopOpen ? "rotate-180" : ""}`}>
+          <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden className={`h-5 w-5 text-[#D97757] transition-transform ${shopOpen ? "rotate-180" : ""}`}>
             <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
           </svg>
         </button>
