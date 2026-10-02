@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api, ListingEdit, Personalization, PublishResult, VariationImage, WorkingCopy } from "./api";
+import { tNow } from "./i18n";
 
 export type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -197,7 +198,7 @@ export function useListingWorkingCopy(shopId: number | undefined, listingId: num
       if (result.ok) await load();
       return result;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Yayınlanamadı");
+      setError(e instanceof Error ? e.message : tNow("Yayınlanamadı", "Could not publish"));
       return null;
     } finally {
       setPublishing(false);

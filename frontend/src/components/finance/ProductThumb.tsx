@@ -1,5 +1,7 @@
 "use client";
 
+import { tNow } from "@/lib/i18n";
+
 /** Ürün küçük resmi; resim yoksa (listing yerel önbellekte değilse) ürün ikonu gösterir. */
 export default function ProductThumb({ src, size = 36 }: { src?: string; size?: number }) {
   if (src) {
@@ -9,7 +11,7 @@ export default function ProductThumb({ src, size = 36 }: { src?: string; size?: 
   return (
     <div
       style={{ width: size, height: size }}
-      title="Bu ürünün görseli yerelde yok (listing kapalı, tükenmiş ya da silinmiş olabilir)"
+      title={tNow("Bu ürünün görseli yerelde yok (listing kapalı, tükenmiş ya da silinmiş olabilir)", "No local image for this item (the listing may be inactive, sold out or deleted)")}
       className="flex flex-shrink-0 items-center justify-center rounded bg-neutral-100 text-neutral-400 dark:bg-neutral-800 dark:text-neutral-500"
     >
       <svg width={size * 0.55} height={size * 0.55} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

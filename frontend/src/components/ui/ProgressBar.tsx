@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { tNow } from "@/lib/i18n";
 
 /**
  * Süresi önceden bilinmeyen tek istekler (AI üretimi gibi) için tahmini ilerleme çubuğu.
@@ -55,7 +56,7 @@ export default function ProgressBar({
           %{shown}
         </span>
       </div>
-      <p className="text-xs text-neutral-500 dark:text-neutral-400">{pct >= 100 ? "Tamamlandı" : stage}</p>
+      <p className="text-xs text-neutral-500 dark:text-neutral-400">{pct >= 100 ? tNow("Tamamlandı", "Done") : stage}</p>
     </div>
   );
 }

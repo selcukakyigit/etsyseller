@@ -7,6 +7,7 @@ import { api, FinOrderCost, FinOrdersPage, FinProduct, FinVariant } from "@/lib/
 import OrderCostBreakdown from "./OrderCostBreakdown";
 import OrderDetailModal from "./OrderDetailModal";
 import ProductThumb from "./ProductThumb";
+import { tNow as t } from "@/lib/i18n";
 
 const card = "rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900";
 const inputBase = "w-20 rounded border px-2 py-1 text-right text-sm focus:border-[#D97757] focus:outline-none";
@@ -20,7 +21,7 @@ const initial = (v: number | null | undefined) => (v === null || v === undefined
 function currencySymbol(code: string): string {
   try {
     return (0)
-      .toLocaleString("tr-TR", { style: "currency", currency: code, minimumFractionDigits: 0, maximumFractionDigits: 0 })
+      .toLocaleString(t("tr-TR", "en-US"), { style: "currency", currency: code, minimumFractionDigits: 0, maximumFractionDigits: 0 })
       .replace(/[\d\s]/g, "");
   } catch {
     return code;
@@ -72,8 +73,8 @@ type SaveState = "idle" | "saving" | "saved" | "error";
 
 function errorText(e: unknown): string {
   const m = e instanceof Error ? e.message : String(e);
-  if (/422|validation|less than or equal|greater than/i.test(m)) return "Geçersiz değer";
-  return "Kaydedilemedi";
+  if (/422|validation|less than or equal|greater than/i.test(m)) return t("Geçersiz değer", "Invalid value");
+  return t("Kaydedilemedi", "Could not save");
 }
 
 /** Kaydı arka planda yapar; kutular hiç kilitlenmez, Tab ile bir sonrakine geçilebilir. */
@@ -99,10 +100,10 @@ function useAutoSave(save: () => Promise<unknown>, onSaved: () => void) {
 }
 
 function StateMark({ state, message, filled }: { state: SaveState; message?: string; filled?: boolean }) {
-  if (state === "saving") return <span className="whitespace-nowrap text-[11px] text-neutral-400">Kaydediliyor…</span>;
-  if (state === "saved") return <span className="whitespace-nowrap text-[11px] font-medium text-emerald-600">✓ Kaydedildi</span>;
-  if (state === "error") return <span className="whitespace-nowrap text-[11px] font-medium text-red-600">{message || "Kaydedilemedi"}</span>;
-  if (filled) return <span className="whitespace-nowrap text-[11px] text-emerald-700/70 dark:text-emerald-400/70">Kayıtlı</span>;
+  if (state === "saving") return <span className="whitespace-nowrap text-[11px] text-neutral-400">{t("Kaydediliyor…", "Saving…")}</span>;
+  if (state === "saved") return <span className="whitespace-nowrap text-[11px] font-medium text-emerald-600">✓ {t("Kaydedildi", "Saved")}</span>;
+  if (state === "error") return <span className="whitespace-nowrap text-[11px] font-medium text-red-600">{message || t("Kaydedilemedi", "Could not save")}</span>;
+  if (filled) return <span className="whitespace-nowrap text-[11px] text-emerald-700/70 dark:text-emerald-400/70">{t("Kayıtlı", "Saved")}</span>;
   return <span className="text-[11px] text-neutral-300 dark:text-neutral-700">—</span>;
 }
 
@@ -130,29 +131,29 @@ function InvoiceInfo({ invoice, manual, orders }: { invoice: { amount: number; c
   const row = "flex items-center justify-between gap-3 border-b border-neutral-100 py-1.5 text-sm last:border-0 dark:border-neutral-800";
   return (
     <span className="group relative block leading-none">
-      <button type="button" onClick={() => setOpen(true)} className="cursor-pointer" aria-label="Kargo faturası detayı">
+      <button type="button" onClick={() => setOpen(true)} className="cursor-pointer" aria-label={t("Kargo faturası detayı", "Shipping invoice details")}>
         <InfoDot filled={missing > 0} />
       </button>
       {open &&
         createPortal(
-        <Modal title={`Kargo faturaları · ${withInv.length}/${orders.length} sipariş faturalı`} widthClass="max-w-lg" onClose={() => setOpen(false)} z={120}>
+        <Modal title={t(`Kargo faturaları · ${withInv.length}/${orders.length} sipariş faturalı`, `Shipping invoices · ${withInv.length}/${orders.length} orders invoiced`)} widthClass="max-w-lg" onClose={() => setOpen(false)} z={120}>
           <div className="text-left" onClick={(e) => e.stopPropagation()}>
             {without.length > 0 && (
               <>
-                <p className="mb-1 text-xs font-semibold text-amber-600 dark:text-amber-400">Faturasız ({without.length}) — kargosu şu an 0 görünüyor</p>
+                <p className="mb-1 text-xs font-semibold text-amber-600 dark:text-amber-400">{t(`Faturasız (${without.length}) — kargosu şu an 0 görünüyor`, `No invoice (${without.length}) — shipping shows as 0 for now`)}</p>
                 <div className="mb-4">
                   {without.map((o) => (
                     <div key={o.receipt_id} className={row}>
                       <span>
                         {o.buyer || "—"} <span className="text-xs text-neutral-400">· {o.date}</span>
                       </span>
-                      <span className="text-xs text-neutral-500">{o.tracking || "takip no yok"}</span>
+                      <span className="text-xs text-neutral-500">{o.tracking || t("takip no yok", "no tracking no.")}</span>
                     </div>
                   ))}
                 </div>
               </>
             )}
-            <p className="mb-1 text-xs font-semibold text-sky-700 dark:text-sky-400">Faturalı ({withInv.length})</p>
+            <p className="mb-1 text-xs font-semibold text-sky-700 dark:text-sky-400">{t("Faturalı", "Invoiced")} ({withInv.length})</p>
             <div>
               {withInv.map((o) => (
                 <div key={o.receipt_id} className={row}>
@@ -165,17 +166,19 @@ function InvoiceInfo({ invoice, manual, orders }: { invoice: { amount: number; c
                 </div>
               ))}
             </div>
-            <p className="mt-3 text-xs text-neutral-400">Eksik faturaları &quot;Kargo faturaları&quot; sekmesinden yükleyin; takip no ile otomatik eşleşir.</p>
+            <p className="mt-3 text-xs text-neutral-400">{t('Eksik faturaları "Kargo faturaları" sekmesinden yükleyin; takip no ile otomatik eşleşir.', 'Upload missing invoices on the "Shipping invoices" tab; they match automatically by tracking number.')}</p>
           </div>
         </Modal>,
         document.body
       )}
       <span className="pointer-events-none absolute right-full top-1/2 z-30 mr-1 hidden -translate-y-1/2 whitespace-nowrap rounded-md bg-neutral-900 px-2 py-1.5 text-left text-[11px] leading-snug text-white shadow-lg group-hover:block dark:bg-neutral-700">
         <span className="block">
-          {invoice.count} siparişte fatura: <b>{invoice.amount.toFixed(2)}</b>
+          {t(`${invoice.count} siparişte fatura:`, `Invoices on ${invoice.count} orders:`)} <b>{invoice.amount.toFixed(2)}</b>
         </span>
-        <span className="block text-neutral-300">{manual ? "Faturalı siparişlerde fatura, faturasızlarda elle girilen değer kullanılır" : "Faturalı siparişlerde fatura tutarı kullanılıyor"}</span>
-        {missing > 0 && <span className="block text-amber-300">{missing} adet faturasız</span>}
+        <span className="block text-neutral-300">{manual
+            ? t("Faturalı siparişlerde fatura, faturasızlarda elle girilen değer kullanılır", "Invoiced orders use the invoice; others use the value you entered")
+            : t("Faturalı siparişlerde fatura tutarı kullanılıyor", "Invoiced orders use the invoice amount")}</span>
+        {missing > 0 && <span className="block text-amber-300">{t(`${missing} adet faturasız`, `${missing} units without invoice`)}</span>}
       </span>
     </span>
   );
@@ -227,8 +230,8 @@ function CostInputs({
       </td>
       <td className="py-2 pr-2 text-right">
         {noShip ? (
-          <span className="text-xs text-neutral-400" title="Dijital ürün: kargo maliyeti yok">
-            dijital
+          <span className="text-xs text-neutral-400" title={t("Dijital ürün: kargo maliyeti yok", "Digital item: no shipping cost")}>
+            {t("dijital", "digital")}
           </span>
         ) : (
           <UnitInput
@@ -267,8 +270,13 @@ function FixedCostCard({ shopId, initial, currency, onSaved }: { shopId: number;
   return (
     <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-950">
       <div className="min-w-[14rem] flex-1">
-        <div className="text-sm font-medium">Sipariş başına sabit gider</div>
-        <div className="text-xs text-neutral-500">Ambalaj, koli, etiket gibi her siparişe giden gider. Ürün maliyetine ayrıca yazmanıza gerek kalmaz. Tümü dijital olan siparişlere uygulanmaz.</div>
+        <div className="text-sm font-medium">{t("Sipariş başına sabit gider", "Fixed cost per order")}</div>
+        <div className="text-xs text-neutral-500">
+          {t(
+            "Ambalaj, koli, etiket gibi her siparişe giden gider. Ürün maliyetine ayrıca yazmanıza gerek kalmaz. Tümü dijital olan siparişlere uygulanmaz.",
+            "A cost that goes into every order, like packaging, boxes and labels. You don't need to add it to product costs. Not applied to all-digital orders.",
+          )}
+        </div>
       </div>
       <div className="flex items-center gap-2">
         <input
@@ -280,7 +288,7 @@ function FixedCostCard({ shopId, initial, currency, onSaved }: { shopId: number;
           placeholder="0"
           className={val !== "" ? filledCls : inputCls}
         />
-        <span className="text-xs text-neutral-500">{currency} / sipariş</span>
+        <span className="text-xs text-neutral-500">{currency} / {t("sipariş", "order")}</span>
         <span className="w-28">
           <StateMark state={state} message={message} filled={val !== ""} />
         </span>
@@ -324,13 +332,13 @@ export function ProductCosts({
     <section className={card}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-base font-semibold">Ürün kârlılığı</h2>
+          <h2 className="text-base font-semibold">{t("Ürün kârlılığı", "Product profitability")}</h2>
         </div>
-        <input value={search} onChange={(e) => { setSearch(e.target.value); setLimit(50); }} placeholder="Ürün ya da müşteri ara" className="w-48 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+        <input value={search} onChange={(e) => { setSearch(e.target.value); setLimit(50); }} placeholder={t("Ürün ya da müşteri ara", "Search item or customer")} className="w-48 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
         <select value={sort} onChange={(e) => { setSort(e.target.value as typeof sort); onSortChange?.(e.target.value); }} className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
-          <option value="sales">Satışa göre</option>
-          <option value="profit">Kâra göre</option>
-          <option value="margin">Marja göre</option>
+          <option value="sales">{t("Satışa göre", "By sales")}</option>
+          <option value="profit">{t("Kâra göre", "By profit")}</option>
+          <option value="margin">{t("Marja göre", "By margin")}</option>
         </select>
       </div>
       <FixedCostCard shopId={shopId} initial={fixedCost} currency={currency} onSaved={onSaved} />
@@ -338,17 +346,17 @@ export function ProductCosts({
         <table className="w-full min-w-[980px] text-sm">
           <thead>
             <tr className="border-b border-neutral-100 text-left text-xs text-neutral-500 dark:border-neutral-800">
-              <th className="py-2 pr-3 font-medium">Ürün</th>
-              <th className="py-2 pr-3 text-right font-medium">Adet</th>
-              <th className="py-2 pr-3 text-right font-medium">Satış</th>
-              <th className="py-2 pr-3 text-right font-medium">Etsy ücreti</th>
-              <th className="py-2 pr-2 text-right font-medium">Maliyet</th>
-              <th className="py-2 pr-2 text-right font-medium">Kargo</th>
-              <th className="py-2 pr-2 text-right font-medium">Fiyat %</th>
+              <th className="py-2 pr-3 font-medium">{t("Ürün", "Item")}</th>
+              <th className="py-2 pr-3 text-right font-medium">{t("Adet", "Units")}</th>
+              <th className="py-2 pr-3 text-right font-medium">{t("Satış", "Sales")}</th>
+              <th className="py-2 pr-3 text-right font-medium">{t("Etsy ücreti", "Etsy fees")}</th>
+              <th className="py-2 pr-2 text-right font-medium">{t("Maliyet", "Cost")}</th>
+              <th className="py-2 pr-2 text-right font-medium">{t("Kargo", "Shipping")}</th>
+              <th className="py-2 pr-2 text-right font-medium">{t("Fiyat %", "Price %")}</th>
               <th className="py-2 pr-2 text-right font-medium">Kg</th>
-              <th className="py-2 pr-2 text-left font-medium">Kayıt</th>
-              <th className="py-2 pr-3 text-right font-medium">Kalan</th>
-              <th className="py-2 text-right font-medium">Marj</th>
+              <th className="py-2 pr-2 text-left font-medium">{t("Kayıt", "Status")}</th>
+              <th className="py-2 pr-3 text-right font-medium">{t("Kalan", "Profit")}</th>
+              <th className="py-2 text-right font-medium">{t("Marj", "Margin")}</th>
             </tr>
           </thead>
           <tbody>
@@ -362,10 +370,13 @@ export function ProductCosts({
                       <span className="max-w-xs">
                         <span className="line-clamp-2 text-[13px]">{p.title || `Listing ${p.listing_id}`}</span>
                         <span className="text-[11px] text-neutral-400">
-                          {p.variants.length} seçenek
-                          {p.is_digital && <span className="ml-1 rounded bg-sky-100 px-1 text-sky-700 dark:bg-sky-950 dark:text-sky-300">Dijital</span>}
+                          {p.variants.length} {t("seçenek", "variants")}
+                          {p.is_digital && <span className="ml-1 rounded bg-sky-100 px-1 text-sky-700 dark:bg-sky-950 dark:text-sky-300">{t("Dijital", "Digital")}</span>}
                           {p.variants.some((v) => v.unit_cost !== null) && (
-                            <span className="text-emerald-700 dark:text-emerald-400"> · {p.variants.filter((v) => v.unit_cost !== null).length} seçenekte maliyet var</span>
+                            <span className="text-emerald-700 dark:text-emerald-400">
+                              {" · "}
+                              {t(`${p.variants.filter((v) => v.unit_cost !== null).length} seçenekte maliyet var`, `${p.variants.filter((v) => v.unit_cost !== null).length} variants have costs`)}
+                            </span>
                           )}
                         </span>
                       </span>
@@ -394,11 +405,11 @@ export function ProductCosts({
       {sorted.length > rows.length && (
         <div className="mt-3 text-center">
           <button type="button" onClick={() => setLimit((l) => l + 50)} className="rounded-lg border border-neutral-300 px-4 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">
-            Daha fazla göster ({sorted.length - rows.length} ürün daha)
+            {t(`Daha fazla göster (${sorted.length - rows.length} ürün daha)`, `Show more (${sorted.length - rows.length} more items)`)}
           </button>
         </div>
       )}
-      {sorted.length === 0 && <p className="py-4 text-sm text-neutral-400">Ürün bulunamadı.</p>}
+      {sorted.length === 0 && <p className="py-4 text-sm text-neutral-400">{t("Ürün bulunamadı.", "No items found.")}</p>}
     </section>
   );
 }
@@ -410,7 +421,7 @@ function VariantRow({ v, listingId, shopId, money2, onSaved, currency }: { v: Fi
   return (
     <tr className="border-b border-sky-100 bg-sky-50/70 text-[13px] dark:border-sky-950 dark:bg-sky-950/20">
       <td className="py-1.5 pl-14 pr-3 text-neutral-600 dark:text-neutral-300">
-        {v.key || "Seçeneksiz"}
+        {v.key || t("Seçeneksiz", "No variation")}
       </td>
       <td className="py-1.5 pr-3 text-right">{v.units}</td>
       <td className="py-1.5 pr-3 text-right">{money2.format(v.sales)}</td>
@@ -454,12 +465,12 @@ export function OrderCosts({
   const [breakdownId, setBreakdownId] = useState<number | null>(null);
 
   useEffect(() => {
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       setQ(qInput);
       setPage(0);
       onQuery?.(qInput);
     }, 350);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [qInput, onQuery]);
 
   useEffect(() => {
@@ -485,26 +496,32 @@ export function OrderCosts({
     <section className={card}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-base font-semibold">Sipariş maliyetleri</h2>
+          <h2 className="text-base font-semibold">{t("Sipariş maliyetleri", "Order costs")}</h2>
           <p className="max-w-2xl text-xs text-neutral-500">
-            Otomatik maliyet, ürün/seçenek maliyetlerinden hesaplanır. Bir siparişin gerçek toplam maliyetini (ürün + kargo) sağdaki kutuya yazarsanız o sipariş için otomatik hesabın yerine geçer; kutuyu boşaltırsanız
-            otomatiğe döner. Kutular yazdıkça kaydolur.
+            {t(
+              "Otomatik maliyet, ürün/seçenek maliyetlerinden hesaplanır. Bir siparişin gerçek toplam maliyetini (ürün + kargo) sağdaki kutuya yazarsanız o sipariş için otomatik hesabın yerine geçer; kutuyu boşaltırsanız otomatiğe döner. Kutular yazdıkça kaydolur.",
+              "The automatic cost is calculated from item/variant costs. If you enter an order's real total cost (item + shipping) in the box on the right, it replaces the automatic value for that order; clear the box to go back to automatic. Boxes save as you type.",
+            )}
           </p>
         </div>
-        <input value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder="Müşteri, ürün veya sipariş no ara" className="w-64 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+        <input value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder={t("Müşteri, ürün veya sipariş no ara", "Search customer, item or order number")} className="w-64 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
       </div>
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
       <div className="overflow-x-auto">
         <table className="w-full min-w-[900px] text-sm">
           <thead>
             <tr className="border-b border-neutral-100 text-left text-xs text-neutral-500 dark:border-neutral-800">
-              <th className="py-2 pr-3 font-medium">Tarih</th>
-              <th className="py-2 pr-3 font-medium">Müşteri / ürün</th>
-              <th className="py-2 pr-3 text-right font-medium">Sipariş tutarı</th>
-              <th className="py-2 pr-3 text-right font-medium">Otomatik maliyet</th>
-              <th className="py-2 pr-2 text-right font-medium" title="Boşsa otomatik maliyet kullanılır">Gerçek maliyet (isteğe bağlı)</th>
-              <th className="py-2 pr-3 text-right font-medium" title="Kazanç (Etsy ücretleri ve vergi düşülmüş) − iade − maliyet">Kâr</th>
-              <th className="py-2 pr-2 text-left font-medium">Kayıt</th>
+              <th className="py-2 pr-3 font-medium">{t("Tarih", "Date")}</th>
+              <th className="py-2 pr-3 font-medium">{t("Müşteri / ürün", "Customer / item")}</th>
+              <th className="py-2 pr-3 text-right font-medium">{t("Sipariş tutarı", "Order total")}</th>
+              <th className="py-2 pr-3 text-right font-medium">{t("Otomatik maliyet", "Automatic cost")}</th>
+              <th className="py-2 pr-2 text-right font-medium" title={t("Boşsa otomatik maliyet kullanılır", "If empty, the automatic cost is used")}>
+                {t("Gerçek maliyet (isteğe bağlı)", "Real cost (optional)")}
+              </th>
+              <th className="py-2 pr-3 text-right font-medium" title={t("Kazanç (Etsy ücretleri ve vergi düşülmüş) − iade − maliyet", "Earnings (after Etsy fees and tax) − refunds − cost")}>
+                {t("Kâr", "Profit")}
+              </th>
+              <th className="py-2 pr-2 text-left font-medium">{t("Kayıt", "Status")}</th>
             </tr>
           </thead>
           <tbody>
@@ -514,17 +531,17 @@ export function OrderCosts({
           </tbody>
         </table>
       </div>
-      {data && data.orders.length === 0 && <p className="py-4 text-sm text-neutral-400">Bu dönemde sipariş bulunamadı.</p>}
+      {data && data.orders.length === 0 && <p className="py-4 text-sm text-neutral-400">{t("Bu dönemde sipariş bulunamadı.", "No orders found in this period.")}</p>}
       {data && pages > 1 && (
         <div className="mt-3 flex items-center justify-end gap-3 text-sm text-neutral-500">
           <button type="button" disabled={page === 0} onClick={() => setPage((p) => p - 1)} className="rounded border border-neutral-300 px-3 py-1 disabled:opacity-40 dark:border-neutral-700">
-            ‹ Önceki
+            ‹ {t("Önceki", "Previous")}
           </button>
           <span>
-            {page + 1} / {pages} · {data.total} sipariş
+            {page + 1} / {pages} · {data.total} {t("sipariş", "orders")}
           </span>
           <button type="button" disabled={page >= pages - 1} onClick={() => setPage((p) => p + 1)} className="rounded border border-neutral-300 px-3 py-1 disabled:opacity-40 dark:border-neutral-700">
-            Sonraki ›
+            {t("Sonraki", "Next")} ›
           </button>
         </div>
       )}
@@ -538,16 +555,16 @@ export function OrderCosts({
 function ProfitCell({ o, val, money2 }: { o: FinOrderCost; val: string; money2: Intl.NumberFormat }) {
   const typed = val.trim() !== "" && !Number.isNaN(num(val));
   const cost = typed ? num(val) : o.auto_defined ? o.auto_cost : null;
-  if (cost === null) return <span className="text-xs text-neutral-400">maliyet girilince</span>;
+  if (cost === null) return <span className="text-xs text-neutral-400">{t("maliyet girilince", "once cost is entered")}</span>;
   const profit = o.earned - o.refunds - cost;
   const margin = o.sales > 0 ? (profit / o.sales) * 100 : 0;
   const cls = profit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
   return (
-    <div title={o.fees_known ? undefined : "Etsy ücret kaydı henüz yok; ücretler hesaba katılmadı"}>
+    <div title={o.fees_known ? undefined : t("Etsy ücret kaydı henüz yok; ücretler hesaba katılmadı", "No Etsy fee records yet; fees are not included")}>
       <div className={`font-semibold ${cls}`}>
         {money2.format(profit)} <span className="text-xs font-medium">%{margin.toFixed(0)}</span>
       </div>
-      {!o.fees_known && <div className="text-[11px] text-amber-600">ücretler bekleniyor</div>}
+      {!o.fees_known && <div className="text-[11px] text-amber-600">{t("ücretler bekleniyor", "fees pending")}</div>}
     </div>
   );
 }
@@ -571,8 +588,8 @@ function OrderRow({ o, shopId, money2, onSaved, onOpen, onBreakdown, currency }:
           <button
             type="button"
             onClick={onOpen}
-            title="Sipariş detayı ve kazanç"
-            aria-label="Sipariş detayı"
+            title={t("Sipariş detayı ve kazanç", "Order details and earnings")}
+            aria-label={t("Sipariş detayı", "Order details")}
             className="rounded p-1 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -591,24 +608,24 @@ function OrderRow({ o, shopId, money2, onSaved, onOpen, onBreakdown, currency }:
       <td className="py-2 pr-3 text-right">
         {money2.format(o.total)}
         {o.original_currency !== currency && (
-          <div className="text-[11px] text-neutral-400" title="Sipariş bu para biriminde verildi; rapor para birimine çevrildi">
+          <div className="text-[11px] text-neutral-400" title={t("Sipariş bu para biriminde verildi; rapor para birimine çevrildi", "The order was placed in this currency; converted to the report currency")}>
             {o.original_total.toFixed(2)} {o.original_currency}
           </div>
         )}
       </td>
       <td className="py-2 pr-3 text-right">
         {undefinedItems && o.override === null ? (
-          <span className="text-xs text-amber-600">maliyet yok</span>
+          <span className="text-xs text-amber-600">{t("maliyet yok", "no cost")}</span>
         ) : (
           <>
             <span className="inline-flex items-center justify-end gap-1.5">
               {money2.format(o.auto_cost)}
-              <button type="button" onClick={() => onBreakdown(o.receipt_id)} className="cursor-pointer" aria-label="Maliyet dökümü" title="Maliyet dökümü">
+              <button type="button" onClick={() => onBreakdown(o.receipt_id)} className="cursor-pointer" aria-label={t("Maliyet dökümü", "Cost breakdown")} title={t("Maliyet dökümü", "Cost breakdown")}>
                 <InfoDot filled={o.invoice_ship === null} />
               </button>
             </span>
-            {o.fixed_cost > 0 && <div className="text-[11px] text-neutral-400">içinde sabit gider {money2.format(o.fixed_cost)}</div>}
-            {o.invoice_ship !== null && <div className="text-[11px] text-sky-600 dark:text-sky-400">kargo faturadan {money2.format(o.invoice_ship)}</div>}
+            {o.fixed_cost > 0 && <div className="text-[11px] text-neutral-400">{t("içinde sabit gider", "incl. fixed cost")} {money2.format(o.fixed_cost)}</div>}
+            {o.invoice_ship !== null && <div className="text-[11px] text-sky-600 dark:text-sky-400">{t("kargo faturadan", "shipping from invoice")} {money2.format(o.invoice_ship)}</div>}
           </>
         )}
       </td>
@@ -619,8 +636,8 @@ function OrderRow({ o, shopId, money2, onSaved, onOpen, onBreakdown, currency }:
           onBlur={commit}
           onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
           inputMode="decimal"
-          placeholder={o.auto_cost > 0 ? `otomatik ${o.auto_cost.toFixed(0)}` : "maliyet gir"}
-          title="Boş bırakırsanız soldaki otomatik maliyet kullanılır. Bir tutar yazarsanız bu siparişte o tutar geçerli olur."
+          placeholder={o.auto_cost > 0 ? `${t("otomatik", "auto")} ${o.auto_cost.toFixed(0)}` : t("maliyet gir", "enter cost")}
+          title={t("Boş bırakırsanız soldaki otomatik maliyet kullanılır. Bir tutar yazarsanız bu siparişte o tutar geçerli olur.", "Leave empty to use the automatic cost on the left. If you enter an amount, it applies to this order.")}
           className={`${val !== "" ? filledCls : inputCls} w-28`}
         />
       </td>

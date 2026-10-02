@@ -1,5 +1,6 @@
 import { getAccessToken, supabase } from "@/lib/supabase";
 import { toast } from "@/lib/toast";
+import { tNow } from "@/lib/i18n";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -639,13 +640,17 @@ export class NetworkError extends ApiError {
   }
 }
 
-const NETWORK_MESSAGE = "Sunucuya ulaşılamadı. İnternet bağlantını kontrol et ya da birkaç saniye sonra tekrar dene.";
+const networkMessage = () =>
+  tNow(
+    "Sunucuya ulaşılamadı. İnternet bağlantını kontrol et ya da birkaç saniye sonra tekrar dene.",
+    "Could not reach the server. Check your internet connection or try again in a few seconds.",
+  );
 
 async function send(input: string, init: RequestInit): Promise<Response> {
   try {
     return await fetch(input, init);
   } catch {
-    toast.error(NETWORK_MESSAGE);
+    toast.error(networkMessage());
     throw new NetworkError();
   }
 }
@@ -668,7 +673,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, detailText(body.detail) ?? `İstek başarısız: ${res.status}`);
+    throw new ApiError(res.status, detailText(body.detail) ?? `${tNow("İstek başarısız", "Request failed")}: ${res.status}`);
   }
   if (res.status === 204) return undefined as T;
   return res.json();
@@ -680,7 +685,7 @@ async function requestForm<T>(path: string, formData: FormData): Promise<T> {
   const res = await send(`${API_URL}${path}`, { method: "POST", headers: await authHeader(), body: formData });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, body.detail ?? `İstek başarısız: ${res.status}`);
+    throw new ApiError(res.status, body.detail ?? `${tNow("İstek başarısız", "Request failed")}: ${res.status}`);
   }
   return res.json();
 }
@@ -1060,7 +1065,7 @@ export const api = {
     /** Şifre Supabase'de tutulur: mevcut şifreyle yeniden giriş doğrulanır, sonra yenisi ayarlanır. */
     changePassword: async (email: string, currentPassword: string, newPassword: string) => {
       const check = await supabase.auth.signInWithPassword({ email, password: currentPassword });
-      if (check.error) throw new Error("Mevcut şifre yanlış");
+      if (check.error) throw new Error(tNow("Mevcut şifre yanlış", "Current password is incorrect"));
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw new Error(error.message);
     },
@@ -1400,7 +1405,7 @@ export const api = {
       const res = await send(`${API_URL}/api/shops/${shopId}/finance/export.xlsx?${params}`, {
         headers: await authHeader(),
       });
-      if (!res.ok) throw new Error("Excel oluşturulamadı");
+      if (!res.ok) throw new Error(tNow("Excel oluşturulamadı", "Could not create the Excel file"));
       return res.blob();
     },
     syncStatus: (shopId: number) => request<FinSyncStatus>(`/api/shops/${shopId}/finance/sync-status`),

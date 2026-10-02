@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { api } from "@/lib/api";
+import { tNow } from "@/lib/i18n";
 
 /**
  * Arka planda süren "Etsy'de yayınla" işleri. Modül düzeyinde durduğu için kullanıcı editörden liste sayfasına
@@ -62,11 +63,14 @@ export function startPublish(shopId: number, listingId: number, force = false) {
           phase: "error",
           startedAt,
           conflicts: r.conflicts,
-          error: `Etsy'de sonradan değişmiş alanlar var (${r.conflicts.map((c) => c.label).join(", ")}); hiçbir şey yazılmadı. Düzenleyiciden açıp çöz.`,
+          error: tNow(
+            `Etsy'de sonradan değişmiş alanlar var (${r.conflicts.map((c) => c.label).join(", ")}); hiçbir şey yazılmadı. Düzenleyiciden açıp çöz.`,
+            `Some fields changed on Etsy in the meantime (${r.conflicts.map((c) => c.label).join(", ")}); nothing was written. Open the editor to resolve it.`,
+          ),
         });
       } else if (!r.ok) {
         const failed = r.steps.filter((st) => !st.ok).map((st) => `${st.name}${st.error ? `: ${st.error}` : ""}`);
-        setJob(listingId, { phase: "error", startedAt, error: [r.error ?? "Yayın tamamlanamadı", ...failed].join(" — ") });
+        setJob(listingId, { phase: "error", startedAt, error: [r.error ?? tNow("Yayın tamamlanamadı", "Publishing did not finish"), ...failed].join(" — ") });
       } else {
         ok = true;
         const warnings = r.warnings ?? [];
@@ -74,7 +78,7 @@ export function startPublish(shopId: number, listingId: number, force = false) {
         if (warnings.length === 0) setTimeout(() => dismissPublishJob(listingId), 1500);
       }
     } catch (e) {
-      setJob(listingId, { phase: "error", startedAt, error: e instanceof Error ? e.message : "Yayınlanamadı" });
+      setJob(listingId, { phase: "error", startedAt, error: e instanceof Error ? e.message : tNow("Yayınlanamadı", "Could not publish") });
     }
     finished.forEach((cb) => cb(listingId, ok));
   })();

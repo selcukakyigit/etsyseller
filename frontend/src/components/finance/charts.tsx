@@ -1,13 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { tNow } from "@/lib/i18n";
 
 const W = 720;
 const H = 230;
 const PAD = { l: 8, r: 8, t: 12, b: 26 };
 
-const MONTHS = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
-export const monthLabel = (ym: string) => `${MONTHS[Number(ym.slice(5, 7)) - 1]}${ym.slice(2, 4) !== "" ? " " + ym.slice(2, 4) : ""}`;
+const MONTHS_TR = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
+const MONTHS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export const monthLabel = (ym: string) => {
+  const months = tNow("tr", "en") === "tr" ? MONTHS_TR : MONTHS_EN;
+  return `${months[Number(ym.slice(5, 7)) - 1]}${ym.slice(2, 4) !== "" ? " " + ym.slice(2, 4) : ""}`;
+};
 
 function niceMax(v: number) {
   if (v <= 0) return 1;

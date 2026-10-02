@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { tNow } from "@/lib/i18n";
 
 type Point = { date: string; value: number };
 type EventMark = { date: string };
@@ -12,7 +13,7 @@ const PAD_TOP = 16;
 const PAD_BOTTOM = 20;
 
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("tr-TR", { day: "2-digit", month: "short" });
+  return new Date(iso).toLocaleDateString(tNow("tr-TR", "en-US"), { day: "2-digit", month: "short" });
 }
 
 function formatValue(n: number) {
@@ -67,7 +68,7 @@ export default function TrendChart({
   if (points.length === 0) {
     return (
       <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-4 text-sm text-neutral-400 dark:text-neutral-500">
-        {label}: henüz veri yok (ilk günlük ölçüm bekleniyor)
+        {label}: {tNow("henüz veri yok (ilk günlük ölçüm bekleniyor)", "no data yet (waiting for the first daily snapshot)")}
       </div>
     );
   }

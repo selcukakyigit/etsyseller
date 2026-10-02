@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { api, FinProduct, InvoiceCandidate, InvoiceShipment } from "@/lib/api";
 import { useRegenProgress } from "@/lib/useRegenProgress";
+import { tNow as t } from "@/lib/i18n";
 
 const card = "rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900";
 const input = "rounded-lg border border-neutral-300 bg-white px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900";
@@ -14,15 +15,15 @@ const daysAgo = (n: number) => {
   return iso(d);
 };
 /** Menüdeki hazır aralık -> [başlangıç, bitiş] (boş = sınırsız). "custom" için tarihler kullanıcıdan gelir. */
-const RANGES: { id: string; label: string; get?: () => [string, string] }[] = [
-  { id: "all", label: "Tüm tarihler", get: () => ["", ""] },
-  { id: "7", label: "Son 7 gün", get: () => [daysAgo(7), ""] },
-  { id: "30", label: "Son 30 gün", get: () => [daysAgo(30), ""] },
-  { id: "90", label: "Son 90 gün", get: () => [daysAgo(90), ""] },
-  { id: "month", label: "Bu ay", get: () => [iso(new Date(new Date().getFullYear(), new Date().getMonth(), 1)), ""] },
-  { id: "lastmonth", label: "Geçen ay", get: () => { const n = new Date(); return [iso(new Date(n.getFullYear(), n.getMonth() - 1, 1)), iso(new Date(n.getFullYear(), n.getMonth(), 0))]; } },
-  { id: "year", label: "Bu yıl", get: () => [iso(new Date(new Date().getFullYear(), 0, 1)), ""] },
-  { id: "custom", label: "Özel aralık…" },
+const RANGES: { id: string; label: [string, string]; get?: () => [string, string] }[] = [
+  { id: "all", label: ["Tüm tarihler", "All dates"], get: () => ["", ""] },
+  { id: "7", label: ["Son 7 gün", "Last 7 days"], get: () => [daysAgo(7), ""] },
+  { id: "30", label: ["Son 30 gün", "Last 30 days"], get: () => [daysAgo(30), ""] },
+  { id: "90", label: ["Son 90 gün", "Last 90 days"], get: () => [daysAgo(90), ""] },
+  { id: "month", label: ["Bu ay", "This month"], get: () => [iso(new Date(new Date().getFullYear(), new Date().getMonth(), 1)), ""] },
+  { id: "lastmonth", label: ["Geçen ay", "Last month"], get: () => { const n = new Date(); return [iso(new Date(n.getFullYear(), n.getMonth() - 1, 1)), iso(new Date(n.getFullYear(), n.getMonth(), 0))]; } },
+  { id: "year", label: ["Bu yıl", "This year"], get: () => [iso(new Date(new Date().getFullYear(), 0, 1)), ""] },
+  { id: "custom", label: ["Özel aralık…", "Custom range…"] },
 ];
 
 type Review = { id: number; candidate: InvoiceCandidate; receiptId: number | null };
@@ -37,7 +38,7 @@ function ProgressBar({ p }: { p: Progress }) {
       <div className="relative h-5 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
         <div className="h-full rounded-full bg-[#D97757]/70 transition-[width] duration-200 ease-out" style={{ width: `${pct}%` }} />
         <span className="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-neutral-900 dark:text-neutral-50">
-          {p.name} okunuyor… %{pct} ({p.done}/{p.total})
+          {p.name} {t("okunuyor…", "reading…")} %{pct} ({p.done}/{p.total})
         </span>
       </div>
     </div>
@@ -92,8 +93,8 @@ export default function ShippingInvoices({
   }, [shopId, q, kind, invStart, invEnd, sort, page]);
   // Arama yazılırken her tuşta istek atmamak için kısa bir gecikme.
   useEffect(() => {
-    const t = setTimeout(loadSaved, 250);
-    return () => clearTimeout(t);
+    const timer = setTimeout(loadSaved, 250);
+    return () => clearTimeout(timer);
   }, [loadSaved]);
   // Süzgeç değişince ilk sayfaya dön.
   const onFilter = (set: (v: string) => void) => (v: string) => {
@@ -115,7 +116,11 @@ export default function ShippingInvoices({
     });
   async function removeSelected() {
     const lineCount = selectedShipments.reduce((n, g) => n + g.lines.length, 0);
-    if (!window.confirm(`${selectedShipments.length} gönderi (${lineCount} fatura kalemi) silinsin mi? Bu siparişlerin kargo maliyeti tekrar 0'a döner. Bu işlem geri alınamaz.`)) return;
+    const msg = t(
+      `${selectedShipments.length} gönderi (${lineCount} fatura kalemi) silinsin mi? Bu siparişlerin kargo maliyeti tekrar 0'a döner. Bu işlem geri alınamaz.`,
+      `Delete ${selectedShipments.length} shipments (${lineCount} invoice lines)? Shipping cost for these orders goes back to 0. This cannot be undone.`,
+    );
+    if (!window.confirm(msg)) return;
     await api.finance.invoices.removeMany(shopId, selectedShipments.flatMap((g) => g.lines.map((l) => l.id)));
     setSelected(new Set());
     loadSaved();
@@ -136,7 +141,7 @@ export default function ShippingInvoices({
           added.push({ id: id++, candidate: c, receiptId: c.already_saved ? null : (c.matches[0]?.receipt_id ?? null) });
         }
       } catch (e) {
-        setError(`${list[i].name}: ${e instanceof Error ? e.message : "okunamadı"}`);
+        setError(`${list[i].name}: ${e instanceof Error ? e.message : t("okunamadı", "could not be read")}`);
       }
     }
     setNextId(id);
@@ -151,7 +156,7 @@ export default function ShippingInvoices({
       setReviews((list) => list.filter((x) => x.id !== r.id));
       return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Kaydedilemedi");
+      setError(e instanceof Error ? e.message : t("Kaydedilemedi", "Could not save"));
       return false;
     }
   }
@@ -186,11 +191,12 @@ export default function ShippingInvoices({
   return (
     <div className="space-y-4">
       <section className={card}>
-        <h2 className="text-base font-semibold">Kargo faturası yükle</h2>
+        <h2 className="text-base font-semibold">{t("Kargo faturası yükle", "Upload shipping invoices")}</h2>
         <p className="mb-3 text-xs text-neutral-500">
-          PDF, JPG/PNG, Excel (xlsx/xls), CSV ya da HTML. Faturadaki her gönderi, takip numarası / alıcı adına göre bir siparişle eşleşir ve
-          tutarı o siparişin ürünlerine yazılır. Aynı gönderi için gümrük + nakliye gibi birden fazla fatura yüklenebilir, hepsi toplanır.
-          Dosyalar saklanmaz, yalnızca çıkarılan tutarlar kaydedilir.
+          {t(
+            "PDF, JPG/PNG, Excel (xlsx/xls), CSV ya da HTML. Faturadaki her gönderi, takip numarası / alıcı adına göre bir siparişle eşleşir ve tutarı o siparişin ürünlerine yazılır. Aynı gönderi için gümrük + nakliye gibi birden fazla fatura yüklenebilir, hepsi toplanır. Dosyalar saklanmaz, yalnızca çıkarılan tutarlar kaydedilir.",
+            "PDF, JPG/PNG, Excel (xlsx/xls), CSV or HTML. Each shipment on the invoice is matched to an order by tracking number / recipient name, and the amount is added to that order's items. You can upload several invoices for one shipment (e.g. customs + freight); they are added up. Files are not stored, only the extracted amounts.",
+          )}
         </p>
         <label
           onDragOver={(e) => e.preventDefault()}
@@ -201,7 +207,7 @@ export default function ShippingInvoices({
           className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-neutral-300 p-8 text-center text-sm text-neutral-500 hover:border-neutral-400 dark:border-neutral-700"
         >
           <span className="text-2xl">🧾</span>
-          <span className="font-medium text-neutral-700 dark:text-neutral-200">Faturaları buraya bırak ya da tıkla</span>
+          <span className="font-medium text-neutral-700 dark:text-neutral-200">{t("Faturaları buraya bırak ya da tıkla", "Drop invoices here or click")}</span>
           <input
             type="file"
             multiple
@@ -221,10 +227,10 @@ export default function ShippingInvoices({
       {reviews.length > 0 && (
         <section className={card}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-base font-semibold">Onay bekleyenler ({reviews.length})</h2>
+            <h2 className="text-base font-semibold">{t("Onay bekleyenler", "Waiting for confirmation")} ({reviews.length})</h2>
             {sure.length > 0 && (
               <button type="button" disabled={saving} onClick={() => void confirmSure()} className="rounded-full bg-[#D97757] px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-40">
-                Kesin eşleşenleri onayla ({sure.length})
+                {t("Kesin eşleşenleri onayla", "Confirm sure matches")} ({sure.length})
               </button>
             )}
           </div>
@@ -236,10 +242,10 @@ export default function ShippingInvoices({
                 <div key={r.id} className={`rounded-lg border p-3 text-sm ${c.already_saved ? "border-amber-300 dark:border-amber-800" : "border-neutral-200 dark:border-neutral-800"}`}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
-                      <span className="font-semibold">{c.recipient || "Alıcı yok"}</span>
+                      <span className="font-semibold">{c.recipient || t("Alıcı yok", "No recipient")}</span>
                       {c.recipient_country && <span className="text-neutral-500"> · {c.recipient_country}</span>}
                       <div className="text-xs text-neutral-500">
-                        {c.vendor} · takip {c.tracking_no || "—"} · {c.ship_date ?? c.invoice_date}
+                        {c.vendor} · {t("takip", "tracking")} {c.tracking_no || "—"} · {c.ship_date ?? c.invoice_date}
                         {c.weight_kg ? ` · ${c.weight_kg} kg` : ""} · {c.description || c.kind}
                       </div>
                     </div>
@@ -251,43 +257,47 @@ export default function ShippingInvoices({
                     </div>
                   </div>
 
-                  {c.already_saved && <div className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">Bu gönderi zaten kayıtlı — tekrar eklenmez.</div>}
+                  {c.already_saved && <div className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">{t("Bu gönderi zaten kayıtlı — tekrar eklenmez.", "This shipment is already saved — it will not be added again.")}</div>}
                   {c.check_note && <div className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">⚠ {c.check_note}</div>}
 
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <select value={c.kind} onChange={(e) => patch(r.id, { candidate: { ...c, kind: e.target.value as InvoiceCandidate["kind"] } })} className={input}>
-                      <option value="nakliye">Nakliye</option>
-                      <option value="gümrük">Gümrük</option>
-                      <option value="ek hizmet">Ek hizmet</option>
-                      <option value="diğer">Diğer</option>
+                      <option value="nakliye">{t("Nakliye", "Freight")}</option>
+                      <option value="gümrük">{t("Gümrük", "Customs")}</option>
+                      <option value="ek hizmet">{t("Ek hizmet", "Extra service")}</option>
+                      <option value="diğer">{t("Diğer", "Other")}</option>
                     </select>
                     {c.matches.length > 0 ? (
                       <select value={r.receiptId ?? ""} onChange={(e) => patch(r.id, { receiptId: e.target.value ? Number(e.target.value) : null })} className={`${input} max-w-sm`}>
-                        <option value="">Sipariş seç…</option>
+                        <option value="">{t("Sipariş seç…", "Choose order…")}</option>
                         {c.matches.map((m) => (
                           <option key={m.receipt_id} value={m.receipt_id}>
-                            %{Math.round(m.score * 100)} ({m.reason}) · {m.buyer} · {m.date} · {m.country}{m.canceled ? " · İPTAL" : ""}
+                            %{Math.round(m.score * 100)} ({m.reason}) · {m.buyer} · {m.date} · {m.country}{m.canceled ? t(" · İPTAL", " · CANCELED") : ""}
                           </option>
                         ))}
                       </select>
                     ) : (
                       <input
                         type="number"
-                        placeholder="Sipariş no (eşleşme yok)"
+                        placeholder={t("Sipariş no (eşleşme yok)", "Order no. (no match)")}
                         onChange={(e) => patch(r.id, { receiptId: e.target.value ? Number(e.target.value) : null })}
                         className={`${input} w-48`}
                       />
                     )}
                     <button type="button" disabled={r.receiptId === null || c.already_saved || saving} onClick={() => void confirm(r)} className="rounded-full bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-40 dark:bg-neutral-100 dark:text-neutral-900">
-                      Onayla
+                      {t("Onayla", "Confirm")}
                     </button>
                     <button type="button" onClick={() => setReviews((l) => l.filter((x) => x.id !== r.id))} className="text-sm text-neutral-500 hover:underline">
-                      Atla
+                      {t("Atla", "Skip")}
                     </button>
                   </div>
                   {match?.canceled && (
                     <div className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">
-                      ⚠ Bu sipariş iptal edilmiş: Finans iptal edilen siparişleri saymadığı için bu kargo maliyeti hiçbir raporda görünmez.
+                      ⚠{" "}
+                      {t(
+                        "Bu sipariş iptal edilmiş: Finans iptal edilen siparişleri saymadığı için bu kargo maliyeti hiçbir raporda görünmez.",
+                        "This order was canceled: finance ignores canceled orders, so this shipping cost will not appear in any report.",
+                      )}
                     </div>
                   )}
                   {match && (
@@ -309,19 +319,19 @@ export default function ShippingInvoices({
 
       <section className={card}>
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-base font-semibold">Kayıtlı gönderiler ({total})</h2>
+          <h2 className="text-base font-semibold">{t("Kayıtlı gönderiler", "Saved shipments")} ({total})</h2>
           <span className="text-sm text-neutral-500">
-            Toplam: <b className="text-neutral-900 dark:text-neutral-100">{money2.format(totalAmount)}</b>
+            {t("Toplam", "Total")}: <b className="text-neutral-900 dark:text-neutral-100">{money2.format(totalAmount)}</b>
           </span>
         </div>
         <div className="mb-3 flex flex-wrap items-end gap-2 text-xs text-neutral-500">
-          <input value={q} onChange={(e) => onFilter(setQ)(e.target.value)} placeholder="Müşteri, takip no, ürün ara" className={`${input} w-56`} />
+          <input value={q} onChange={(e) => onFilter(setQ)(e.target.value)} placeholder={t("Müşteri, takip no, ürün ara", "Search customer, tracking no., item")} className={`${input} w-56`} />
           <select value={kind} onChange={(e) => onFilter(setKind)(e.target.value)} className={input}>
-            <option value="">Tüm türler</option>
-            <option value="nakliye">Nakliye</option>
-            <option value="gümrük">Gümrük</option>
-            <option value="ek hizmet">Ek hizmet</option>
-            <option value="diğer">Diğer</option>
+            <option value="">{t("Tüm türler", "All types")}</option>
+            <option value="nakliye">{t("Nakliye", "Freight")}</option>
+            <option value="gümrük">{t("Gümrük", "Customs")}</option>
+            <option value="ek hizmet">{t("Ek hizmet", "Extra service")}</option>
+            <option value="diğer">{t("Diğer", "Other")}</option>
           </select>
           <select
             value={range}
@@ -337,26 +347,26 @@ export default function ShippingInvoices({
               setPage(0);
             }}
             className={input}
-            title="Fatura tarihi aralığı"
+            title={t("Fatura tarihi aralığı", "Invoice date range")}
           >
             {RANGES.map((r) => (
               <option key={r.id} value={r.id}>
-                {r.id === "all" ? "Fatura tarihi: tümü" : r.label}
+                {r.id === "all" ? t("Fatura tarihi: tümü", "Invoice date: all") : t(...r.label)}
               </option>
             ))}
           </select>
           {range === "custom" && (
             <span className="flex items-center gap-1">
-              <input type="date" value={invStart} onChange={(e) => onFilter(setInvStart)(e.target.value)} className={input} aria-label="Başlangıç" />
+              <input type="date" value={invStart} onChange={(e) => onFilter(setInvStart)(e.target.value)} className={input} aria-label={t("Başlangıç", "Start")} />
               <span>–</span>
-              <input type="date" value={invEnd} onChange={(e) => onFilter(setInvEnd)(e.target.value)} className={input} aria-label="Bitiş" />
+              <input type="date" value={invEnd} onChange={(e) => onFilter(setInvEnd)(e.target.value)} className={input} aria-label={t("Bitiş", "End")} />
             </span>
           )}
           <select value={sort} onChange={(e) => onFilter(setSort)(e.target.value)} className={input}>
-            <option value="inv_date">Fatura tarihine göre</option>
-            <option value="order_date">Sipariş tarihine göre</option>
-            <option value="buyer">Müşteri adına göre</option>
-            <option value="amount">Tutara göre</option>
+            <option value="inv_date">{t("Fatura tarihine göre", "By invoice date")}</option>
+            <option value="order_date">{t("Sipariş tarihine göre", "By order date")}</option>
+            <option value="buyer">{t("Müşteri adına göre", "By customer name")}</option>
+            <option value="amount">{t("Tutara göre", "By amount")}</option>
           </select>
           {hasFilter && (
             <button
@@ -371,23 +381,23 @@ export default function ShippingInvoices({
               }}
               className="pb-1 text-neutral-500 underline"
             >
-              Süzgeçleri temizle
+              {t("Süzgeçleri temizle", "Clear filters")}
             </button>
           )}
         </div>
         {selectedShipments.length > 0 && (
           <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg bg-neutral-100 px-3 py-2 text-sm dark:bg-neutral-800">
-            <span className="font-medium">{selectedShipments.length} gönderi seçili</span>
+            <span className="font-medium">{t(`${selectedShipments.length} gönderi seçili`, `${selectedShipments.length} shipments selected`)}</span>
             <button type="button" onClick={() => void removeSelected()} className="rounded-full bg-red-600 px-4 py-1 text-xs font-semibold text-white hover:bg-red-700">
-              Seçilenleri sil
+              {t("Seçilenleri sil", "Delete selected")}
             </button>
             <button type="button" onClick={() => setSelected(new Set())} className="text-xs text-neutral-500 underline">
-              Seçimi temizle
+              {t("Seçimi temizle", "Clear selection")}
             </button>
           </div>
         )}
         {saved.length === 0 ? (
-          <p className="text-sm text-neutral-400">{hasFilter ? "Bu süzgeçlere uyan fatura yok." : "Henüz onaylanmış fatura yok."}</p>
+          <p className="text-sm text-neutral-400">{hasFilter ? t("Bu süzgeçlere uyan fatura yok.", "No invoices match these filters.") : t("Henüz onaylanmış fatura yok.", "No confirmed invoices yet.")}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[820px] text-sm">
@@ -398,18 +408,18 @@ export default function ShippingInvoices({
                       type="checkbox"
                       checked={allOnPage}
                       onChange={(e) => setSelected(e.target.checked ? new Set(saved.map(shipKey)) : new Set())}
-                      aria-label="Sayfadakilerin hepsini seç"
+                      aria-label={t("Sayfadakilerin hepsini seç", "Select all on this page")}
                       className="h-4 w-4 accent-[#D97757]"
                     />
                   </th>
                   <th className="w-5 py-2" />
-                  <th className="py-2 pr-3 font-medium">Müşteri</th>
-                  <th className="py-2 pr-3 font-medium">Takip no</th>
-                  <th className="py-2 pr-3 font-medium">Ürün</th>
-                  <th className="py-2 pr-3 font-medium">Sipariş tarihi</th>
-                  <th className="py-2 pr-3 font-medium">Son fatura</th>
-                  <th className="py-2 pr-3 text-right font-medium">Kalem</th>
-                  <th className="py-2 pr-3 text-right font-medium">Toplam</th>
+                  <th className="py-2 pr-3 font-medium">{t("Müşteri", "Customer")}</th>
+                  <th className="py-2 pr-3 font-medium">{t("Takip no", "Tracking no.")}</th>
+                  <th className="py-2 pr-3 font-medium">{t("Ürün", "Item")}</th>
+                  <th className="py-2 pr-3 font-medium">{t("Sipariş tarihi", "Order date")}</th>
+                  <th className="py-2 pr-3 font-medium">{t("Son fatura", "Latest invoice")}</th>
+                  <th className="py-2 pr-3 text-right font-medium">{t("Kalem", "Lines")}</th>
+                  <th className="py-2 pr-3 text-right font-medium">{t("Toplam", "Total")}</th>
                   <th className="py-2 text-right font-medium">Kg</th>
                 </tr>
               </thead>
@@ -421,14 +431,14 @@ export default function ShippingInvoices({
                     <Fragment key={key}>
                       <tr onClick={() => setExpanded((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; })} className="cursor-pointer border-b border-neutral-100 hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-800/40">
                         <td className="py-2 pr-1" onClick={(e) => e.stopPropagation()}>
-                          <input type="checkbox" checked={selected.has(key)} onChange={() => toggleSel(key)} aria-label="Gönderiyi seç" className="h-4 w-4 accent-[#D97757]" />
+                          <input type="checkbox" checked={selected.has(key)} onChange={() => toggleSel(key)} aria-label={t("Gönderiyi seç", "Select shipment")} className="h-4 w-4 accent-[#D97757]" />
                         </td>
                         <td className="py-2 text-xs text-neutral-400">{open ? "▼" : "▶"}</td>
                         <td className="py-2 pr-3 font-medium">{g.buyer || "—"}</td>
                         <td className="py-2 pr-3 text-xs text-neutral-500">{g.tracking_no || "—"}</td>
                         <td className="py-2 pr-3">
                           <div className="line-clamp-1 max-w-xs">{g.products[0]?.title || titleOf(g.products[0]?.listing_id ?? 0)}</div>
-                          {g.products.length > 1 && <div className="text-[11px] text-neutral-400">+{g.products.length - 1} ürün daha</div>}
+                          {g.products.length > 1 && <div className="text-[11px] text-neutral-400">{t(`+${g.products.length - 1} ürün daha`, `+${g.products.length - 1} more items`)}</div>}
                         </td>
                         <td className="py-2 pr-3">{g.order_date ?? "—"}</td>
                         <td className="py-2 pr-3">{g.last_invoice_date}</td>
@@ -445,7 +455,7 @@ export default function ShippingInvoices({
                           <td colSpan={8} className="py-2 pr-3">
                             {g.warnings.length > 0 && (
                               <div className="mb-2 rounded-md bg-amber-50 px-3 py-1.5 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-                                ⚠ {g.warnings.join(" · ")} — faturaları kontrol edin.
+                                ⚠ {g.warnings.join(" · ")} — {t("faturaları kontrol edin.", "check the invoices.")}
                               </div>
                             )}
                             {g.lines.map((l) => (
@@ -461,7 +471,7 @@ export default function ShippingInvoices({
                                     <span className="ml-1 text-[11px] text-neutral-400">{l.original_currency} {l.original_amount.toFixed(2)}</span>
                                   </span>
                                   <button type="button" onClick={(ev) => { ev.stopPropagation(); void remove(l.id); }} className="text-xs text-red-600 hover:underline">
-                                    Sil
+                                    {t("Sil", "Delete")}
                                   </button>
                                 </div>
                               </div>
@@ -479,13 +489,13 @@ export default function ShippingInvoices({
         {total > PER_PAGE && (
           <div className="mt-3 flex items-center justify-center gap-3 text-sm">
             <button type="button" disabled={page === 0} onClick={() => setPage((p) => p - 1)} className="rounded-lg border border-neutral-300 px-3 py-1 disabled:opacity-40 dark:border-neutral-700">
-              ‹ Önceki
+              ‹ {t("Önceki", "Previous")}
             </button>
             <span className="text-neutral-500">
-              Sayfa {page + 1} / {pages}
+              {t("Sayfa", "Page")} {page + 1} / {pages}
             </span>
             <button type="button" disabled={page + 1 >= pages} onClick={() => setPage((p) => p + 1)} className="rounded-lg border border-neutral-300 px-3 py-1 disabled:opacity-40 dark:border-neutral-700">
-              Sonraki ›
+              {t("Sonraki", "Next")} ›
             </button>
           </div>
         )}

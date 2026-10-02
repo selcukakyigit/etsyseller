@@ -2,6 +2,7 @@
 
 import { ReactNode, useCallback, useRef, useState } from "react";
 import { Modal, btnGhost, btnPrimary } from "@/components/listing-editor/Modal";
+import { tNow } from "@/lib/i18n";
 
 export type ConfirmOptions = {
   title: string;
@@ -16,8 +17,8 @@ export type ConfirmOptions = {
 export function ConfirmDialog({
   title,
   message,
-  confirmLabel = "Onayla",
-  cancelLabel = "Vazgeç",
+  confirmLabel = tNow("Onayla", "Confirm"),
+  cancelLabel = tNow("Vazgeç", "Cancel"),
   destructive,
   onConfirm,
   onCancel,
