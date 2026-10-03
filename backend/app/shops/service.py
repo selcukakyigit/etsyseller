@@ -68,6 +68,7 @@ def complete_connect(db: Session, code: str, state: str) -> Shop:
             shop.icon_url = shop_data["icon_url_fullxfull"]
 
     expires_at = dt.datetime.utcnow() + dt.timedelta(seconds=token_set.expires_in)
+    shop.access_revoked_at = None  # yeniden bağlandı: erişim geri geldi
     if shop.oauth_token is None:
         db.add(
             OAuthToken(

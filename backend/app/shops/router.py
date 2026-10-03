@@ -32,7 +32,7 @@ router = APIRouter(prefix="/api/shops", tags=["shops"])
 def list_shops(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     shops = db.query(Shop).filter(Shop.workspace_id.in_(workspace_ids(db, user))).all()
     return [
-        ShopOut(id=s.id, etsy_shop_id=s.etsy_shop_id, shop_name=s.shop_name, connected=s.oauth_token is not None or s.is_demo, is_demo=s.is_demo, currency=s.currency, icon_url=s.icon_url, rank_country=s.rank_country)
+        ShopOut(id=s.id, etsy_shop_id=s.etsy_shop_id, shop_name=s.shop_name, connected=(s.oauth_token is not None and s.access_revoked_at is None) or s.is_demo, is_demo=s.is_demo, currency=s.currency, icon_url=s.icon_url, rank_country=s.rank_country)
         for s in shops
     ]
 

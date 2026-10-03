@@ -33,6 +33,7 @@ EN_MESSAGES: dict[str, str] = {
     "En fazla 50 şablon kaydedilebilir": "You can save up to 50 templates",
     "Geçersiz tarih": "Invalid date",
     "Bu mağaza Etsy'ye bağlı değil.": "This shop is not connected to Etsy.",
+    "Bu mağazanın Etsy erişimi kaldırılmış; devam etmek için mağazayı yeniden bağla.": "This shop's Etsy access was removed; reconnect the shop to continue.",
     "Hiçbir değişiklik seçilmedi.": "No change was selected.",
     "Görsel listesi Etsy'dekiyle uyuşmuyor; sayfayı yenileyip tekrar dene.": "The image list does not match Etsy; refresh the page and try again.",
     "Aynı hedef birden fazla kez eklenmiş.": "The same destination was added more than once.",

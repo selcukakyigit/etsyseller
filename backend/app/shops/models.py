@@ -28,6 +28,9 @@ class Shop(Base):
     listings_synced_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     # Etsy incelemesi için kopya mağaza (bkz. scripts/create_demo_account.py): token'ı yoktur, Etsy'ye hiç istek atılmaz.
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa_false())
+    # Satıcı uygulamayı Etsy'den kaldırınca (belirteç yenileme invalid_grant) işaretlenir; Etsy'ye istek atılmaz. Yeniden
+    # bağlanınca temizlenir; REVOKED_GRACE içinde bağlanmazsa Etsy'den gelen veri silinir (jobs/retention.py).
+    access_revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     # Sıra takibinin hangi ülkedeki alıcıya göre ölçüleceği (ISO alpha-2). Boşsa otomatik: son 12 ayda en çok satılan ülke
     # (bkz. insights/rank.py buyer_country).
     rank_country: Mapped[str | None] = mapped_column(String(2), nullable=True)

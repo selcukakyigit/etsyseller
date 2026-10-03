@@ -60,6 +60,20 @@ class EtsyAuthError(Exception):
     """No usable OAuth token for this shop (not connected, or refresh failed)."""
 
 
+REVOKED_MESSAGE = "Bu mağazanın Etsy erişimi kaldırılmış; devam etmek için mağazayı yeniden bağla."
+
+
+def _is_revoked(resp: httpx.Response) -> bool:
+    """Yenileme belirteci artık geçersiz mi (satıcı uygulamayı kaldırdı ya da belirteç iptal edildi)? Yalnızca
+    invalid_grant sayılır: uygulama anahtarı hatası (invalid_client) gibi bizden kaynaklı hatalar mağazayı işaretlemez."""
+    if resp.status_code not in (400, 401):
+        return False
+    try:
+        return resp.json().get("error") == "invalid_grant"
+    except ValueError:
+        return False
+
+
 class EtsyApiError(Exception):
     """Etsy returned an HTTP error for an otherwise-authenticated request
     (bad input, pending app approval, rate limit, etc). Carries Etsy's own
@@ -96,6 +110,8 @@ class EtsyClient:
         token = self.shop.oauth_token
         if token is None:
             raise EtsyAuthError("Bu mağaza Etsy'ye bağlı değil.")
+        if self.shop.access_revoked_at is not None:
+            raise EtsyAuthError(REVOKED_MESSAGE)
 
         if token.expires_at <= dt.datetime.utcnow() + dt.timedelta(minutes=2):
             with _lock_for_shop(self.shop.id):
@@ -103,7 +119,16 @@ class EtsyClient:
                 # DB'den taze oku, hâlâ süresi dolmak üzereyse biz yenileriz.
                 self.db.refresh(token)
                 if token.expires_at <= dt.datetime.utcnow() + dt.timedelta(minutes=2):
-                    token_set = etsy_oauth.refresh_token_set(token.refresh_token)
+                    try:
+                        token_set = etsy_oauth.refresh_token_set(token.refresh_token)
+                    except httpx.HTTPStatusError as exc:
+                        if _is_revoked(exc.response):
+                            # Satıcı uygulamayı Etsy'den kaldırmış: bir daha denenmez, veri saklama süresi başlar.
+                            self.shop.access_revoked_at = dt.datetime.utcnow()
+                            self.db.commit()
+                            _log.warning("Mağaza %s: Etsy erişimi kaldırılmış (invalid_grant)", self.shop.id)
+                            raise EtsyAuthError(REVOKED_MESSAGE) from exc
+                        raise
                     token.access_token = token_set.access_token
                     token.refresh_token = token_set.refresh_token
                     token.expires_at = dt.datetime.utcnow() + dt.timedelta(seconds=token_set.expires_in)

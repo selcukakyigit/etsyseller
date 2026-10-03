@@ -1,7 +1,7 @@
 """Etsy bağlantısını kesme: erişim belirteçleri ve Etsy'den gelen önbellek verisi silinir.
 
 Silinen: belirteçler, ilan/sipariş/yorum önbellekleri, finans defteri ve ödemeler, istatistik anlık görüntüleri, ilan sağlığı,
-kargo referans önbelleği ve diskteki ilan görselleri.
+kargo referans önbelleği, sipariş bildirimleri ve diskteki ilan görselleri.
 Kalan: mağaza kaydı (yeniden bağlanınca aynı mağaza gelir), kullanıcının kendi girdiği maliyetler, taslaklar ve sürüm geçmişi.
 Etsy'nin belirteç iptal uç noktası yoktur; uygulama erişimini Etsy hesabındaki "Apps and services"ten de kaldırabilirsiniz."""
 import shutil
@@ -18,7 +18,7 @@ UPLOADS = Path(__file__).resolve().parents[2] / "uploads"
 # Etsy'den gelen (yeniden çekilebilen) veriyi tutan tablolar; hepsinde shop_id vardır.
 ETSY_DERIVED_TABLES = (
     "listing_cache", "order_cache", "review_cache", "ledger_entries", "fin_payments",
-    "listing_stat_snapshots", "listing_health", "shipping_reference_cache", "rank_snapshots",
+    "listing_stat_snapshots", "listing_health", "shipping_reference_cache", "rank_snapshots", "notifications",
 )
 
 
