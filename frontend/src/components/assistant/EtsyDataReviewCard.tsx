@@ -6,6 +6,8 @@ import { Spinner } from "@/components/ui/Spinner";
 import { useT } from "@/lib/i18n-client";
 
 /** Asistanın okuduğu Etsy arama verisi: kendiliğinden kaydedilmez; kullanıcı satırları seçip kaydeder. */
+const CONV_TR = { very_low: "çok düşük", low: "düşük", medium: "orta", high: "yüksek", very_high: "çok yüksek" } as const;
+
 export default function EtsyDataReviewCard({ shopId, listingId, data }: { shopId: number; listingId: number | null; data: EtsyDataParsed }) {
   const { t, locale } = useT();
   const [selected, setSelected] = useState<boolean[]>(() => data.rows.map(() => true));
@@ -57,7 +59,10 @@ export default function EtsyDataReviewCard({ shopId, listingId, data }: { shopId
                 <td className="py-1 font-medium text-neutral-900 dark:text-neutral-100">{r.keyword}</td>
                 <td className="py-1">
                   {data.source === "marketplace_insights"
-                    ? t(`${num(r.searches)} arama/ay`, `${num(r.searches)} searches/mo`) + (r.competition ? ` · ${r.competition}` : "")
+                    ? t(`${num(r.searches)} arama`, `${num(r.searches)} searches`) +
+                      (r.trend_pct != null ? ` (${r.trend_pct > 0 ? "+" : ""}${r.trend_pct}%)` : "") +
+                      (r.listings_count != null ? t(` · ${num(r.listings_count)} sonuç`, ` · ${num(r.listings_count)} results`) : "") +
+                      (r.conversion ? t(` · dönüşüm: ${CONV_TR[r.conversion]}`, ` · conversion: ${r.conversion.replace("_", " ")}`) : r.competition ? ` · ${r.competition}` : "")
                     : t(`${num(r.views)} görüntülenme · ${num(r.clicks)} tıklama · ${num(r.orders)} sipariş`, `${num(r.views)} views · ${num(r.clicks)} clicks · ${num(r.orders)} orders`)}
                 </td>
               </tr>

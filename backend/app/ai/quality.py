@@ -18,7 +18,7 @@ MAX_SHARED_TAGS = 5  # başka tek bir listing'le en fazla bu kadar aynı etiket
 MAX_TITLE_SIMILARITY = 0.6  # başlık kelime kümesi benzerliği (Jaccard)
 MAX_INTRO_SIMILARITY = 0.6  # açıklamanın ilk ~60 kelimesinin benzerliği
 
-_WORD = re.compile(r"[a-z0-9çğıöşü]+", re.I)
+_WORD = re.compile(r"[^\W_]+")  # her dildeki harf ve rakamlar (ä, ß, é, ç, ğ…)
 _STOP = {"the", "and", "for", "with", "your", "our", "you", "from", "this", "that", "a", "an", "of", "in", "to", "or", "by", "on", "at", "is", "it"}
 RISKY_CLAIMS = re.compile(
     r"\b(hardware|mounting|included|provided|warranty|lifetime|waterproof|rust[- ]?proof|weather[- ]?proof|certified|fireproof|hypoallergenic)\b", re.I
@@ -72,8 +72,10 @@ _SUBJECTIVE = re.compile(r"\b(beautiful|perfect|best|amazing|stunning|cute|lovel
 _PROMO = re.compile(r"(free shipping|fast shipping|on sale|\bsale\b|discount|%\s*off|\boff\b\s*\d)", re.I)
 
 
-def title_problems(title: str) -> list[str]:
-    """Başlığın Etsy'nin güncel başlık rehberine uyumu."""
+def title_problems(title: str, sizes_vary: bool = True) -> list[str]:
+    """Başlığın Etsy'nin güncel başlık rehberine uyumu. `sizes_vary`: listing'de birden çok ölçü seçeneği var (ya da
+    bilinmiyor); öyleyse başlıktaki ölçü sorundur. Tek, sabit ölçülü üründe (11 oz kupa, 8x10 baskı) ölçü aranan bir
+    özelliktir ve başlıkta kalabilir."""
     out: list[str] = []
     words = [w for w in re.split(r"[\s,|/–—-]+", title.strip()) if w]
     if len(title) > 140:
@@ -100,10 +102,10 @@ def title_problems(title: str) -> list[str]:
             f"Başlıkta öznel sözcük var ({', '.join(subjective)}); başlıkta yalnızca nesnel tanımlar olsun.",
             f"The title has subjective words ({', '.join(subjective)}); keep the title to objective details.",
         ))
-    if _SIZE.search(title):
+    if sizes_vary and _SIZE.search(title):
         out.append(tr(
-            "Başlıkta ölçü var; başlığa ölçü yazılmaz, ölçüler varyasyonlarda ve açıklamada.",
-            "The title contains a size; sizes do not go in the title, they belong in the variations and description.",
+            "Başlıkta ölçü var ama listing'de birden çok ölçü seçeneği var; başlığa tek bir ölçü yazılmaz, ölçüler varyasyonlarda ve açıklamada.",
+            "The title contains a size although the listing offers several sizes; do not put a single size in the title, sizes belong in the variations and description.",
         ))
     if _PROMO.search(title):
         out.append(tr("Başlıkta kargo/indirim bilgisi var; bu bilgi başlıkta olmamalı.", "The title mentions shipping or a discount; that does not belong in the title."))
@@ -126,6 +128,17 @@ COLORS = (
     "black", "white", "gold", "silver", "grey", "gray", "copper", "bronze", "brown", "red", "blue", "green", "yellow",
     "orange", "pink", "purple", "beige", "navy", "teal", "ivory", "cream", "rose gold", "antique",
 )
+
+
+_SIZE_NAME = re.compile(r"size|boyut|ölçü|olcu|dimension|length|width|height|diameter|größe|taille|tamaño", re.I)
+
+
+def size_options(variations: dict[str, list[str]]) -> bool:
+    """Listing'de birden çok seçenekli bir ölçü varyasyonu var mı (adından ya da seçeneklerinin ölçü biçiminden)."""
+    for name, vals in variations.items():
+        if len(vals) >= 2 and (_SIZE_NAME.search(name) or sum(1 for v in vals if _SIZE.search(v)) >= 2):
+            return True
+    return False
 
 
 def variation_values(inventory: dict | None) -> dict[str, list[str]]:
@@ -189,9 +202,9 @@ def fact_problems(title: str, description: str, source_text: str, variations: di
 
 
 def clean_title(title: str, variations: dict[str, list[str]]) -> str:
-    """Model denemelere rağmen başlığa ölçü ya da birden çok seçeneği olan bir varyasyonun tek değerini yazdıysa onu
-    başlıktan çıkarır; kalan noktalama toparlanır."""
-    t = _SIZE.sub("", title)
+    """Model denemelere rağmen başlığa (listing'de birden çok ölçü seçeneği varken) ölçü ya da birden çok seçeneği olan
+    bir varyasyonun tek değerini yazdıysa onu başlıktan çıkarır; kalan noktalama toparlanır. Tek ölçülü üründe ölçü kalır."""
+    t = _SIZE.sub("", title) if size_options(variations) else title
     for vals in variations.values():
         if len(vals) < 2:
             continue
@@ -205,9 +218,10 @@ def clean_title(title: str, variations: dict[str, list[str]]) -> str:
     return t.strip(" ,-–|/")
 
 
-def basic_problems(title: str, tags: list[str], product_description: str = "") -> list[str]:
-    """Başlık/etiket/açıklama biçim kuralları."""
-    out = title_problems(title)
+def basic_problems(title: str, tags: list[str], product_description: str = "", source_text: str | None = None, sizes_vary: bool = True) -> list[str]:
+    """Başlık/etiket/açıklama biçim kuralları. `source_text` (listing'in mevcut metni) verilirse, orada zaten geçen iddialar
+    (ör. su geçirmez bir çantada "waterproof") sorun sayılmaz; yalnızca yeni eklenenler sayılır."""
+    out = title_problems(title, sizes_vary)
     if len(tags) != 13:
         out.append(f"{len(tags)} etiket var; tam 13 olmalı.")
     long_tags = [t for t in tags if len(t) > TAG_MAX_LEN]
@@ -216,7 +230,8 @@ def basic_problems(title: str, tags: list[str], product_description: str = "") -
     single = [t for t in tags if " " not in t]
     if len(single) > 3:
         out.append(f"{len(single)} etiket tek kelime ({', '.join(single)}); 2–4 kelimelik uzun kuyruklu etiketler kullan.")
-    claims = sorted({m.group(0).lower() for m in RISKY_CLAIMS.finditer(product_description)})
+    src = html.unescape(source_text or "").lower()
+    claims = sorted({c for c in (m.group(0).lower() for m in RISKY_CLAIMS.finditer(product_description)) if not re.search(rf"\b{re.escape(c)}\b", src)})
     if claims:
         out.append(f"Açıklamada doğrulanmamış iddialar var ({', '.join(claims)}); yalnızca kullanıcının verdiği ya da görselde görünen bilgiyi yaz.")
     return out
@@ -250,23 +265,40 @@ def similar_context(title: str, tags: list[str], others: list[dict], limit: int 
     return [o for _, o in scored[:limit]]
 
 
-def uniqueness_problems(title: str, tags: list[str], description: str, others: list[dict]) -> list[str]:
-    """Başlık/etiket/açıklama açılışı, mağazadaki başka bir listing'in neredeyse kopyasıysa sorun döner."""
-    out: list[str] = []
+def conflicts(title: str, tags: list[str], description: str, others: list[dict]) -> list[dict]:
+    """Mağazadaki başka bir listing'le aynı aramalarda yarışma riski: listing başına bir kayıt (başlık benzerliği,
+    ortak etiketler, açılış paragrafı benzerliği). Çakışma iki listing'in ortak durumudur; hangisinin düzenleneceği kullanıcıya kalır."""
+    out: list[dict] = []
     tg = {t.lower() for t in tags}
     tw = _words(title)
     intro = _words(" ".join(description.split()[:60]))
     for o in others:
         shared = sorted(tg & {t.lower() for t in o["tags"]})
-        if len(shared) > MAX_SHARED_TAGS:
-            out.append(f'"{o["title"][:60]}" listing\'iyle {len(shared)} etiket aynı ({", ".join(shared[:6])}…); en fazla {MAX_SHARED_TAGS} ortak olsun, kalanı bu ürüne özgü farklı uzun kuyruklu etiketlerle değiştir.')
         sim = _jaccard(tw, _words(o["title"]))
-        if sim >= MAX_TITLE_SIMILARITY:
-            out.append(f'Başlık "{o["title"][:60]}" listing\'ine çok benziyor (%{round(sim * 100)}); ana anahtar öbeğini ve ikincil öbekleri farklılaştır.')
-        if intro and len(intro) > 8:
-            isim = _jaccard(intro, _words(" ".join(o["description"].split()[:60])))
-            if isim >= MAX_INTRO_SIMILARITY:
-                out.append(f'Açıklamanın ilk paragrafı "{o["title"][:60]}" ile çok benziyor (%{round(isim * 100)}); bu ürüne özgü yeni bir giriş yaz.')
+        isim = _jaccard(intro, _words(" ".join(o["description"].split()[:60]))) if intro and len(intro) > 8 else 0.0
+        c = {
+            "listing_id": o.get("listing_id"),
+            "title": o["title"],
+            "title_similarity": round(sim * 100) if sim >= MAX_TITLE_SIMILARITY else None,
+            "shared_tags": shared if len(shared) > MAX_SHARED_TAGS else [],
+            "intro_similarity": round(isim * 100) if isim >= MAX_INTRO_SIMILARITY else None,
+        }
+        if c["title_similarity"] is not None or c["shared_tags"] or c["intro_similarity"] is not None:
+            out.append(c)
+    return out[:4]
+
+
+def uniqueness_problems(title: str, tags: list[str], description: str, others: list[dict]) -> list[str]:
+    """Başlık/etiket/açıklama açılışı, mağazadaki başka bir listing'in neredeyse kopyasıysa sorun döner (yapay zekâya geri bildirim)."""
+    out: list[str] = []
+    for c in conflicts(title, tags, description, others):
+        name = c["title"][:60]
+        if c["shared_tags"]:
+            out.append(f'"{name}" listing\'iyle {len(c["shared_tags"])} etiket aynı ({", ".join(c["shared_tags"][:6])}…); en fazla {MAX_SHARED_TAGS} ortak olsun, kalanı bu ürüne özgü farklı uzun kuyruklu etiketlerle değiştir.')
+        if c["title_similarity"] is not None:
+            out.append(f'Başlık "{name}" listing\'ine çok benziyor (%{c["title_similarity"]}); ana arama öbeği kalabilir ama ikincil öbekleri bu ürüne özgü olanlarla (kişi/ad, kullanım yeri, stil, hediye vesilesi) değiştir.')
+        if c["intro_similarity"] is not None:
+            out.append(f'Açıklamanın ilk paragrafı "{name}" ile çok benziyor (%{c["intro_similarity"]}); bu ürüne özgü yeni bir giriş yaz.')
     return out[:6]
 
 
@@ -285,6 +317,8 @@ def strip_common_paragraphs(description: str, others: list[dict], min_count: int
     return "\n\n".join(kept)
 
 
-def all_problems(title: str, tags: list[str], product_description: str, others: list[dict]) -> list[str]:
+def all_problems(
+    title: str, tags: list[str], product_description: str, others: list[dict], source_text: str | None = None, sizes_vary: bool = True,
+) -> list[str]:
     product_part = strip_common_paragraphs(product_description, others)
-    return basic_problems(title, tags, product_part) + uniqueness_problems(title, tags, product_part, others)
+    return basic_problems(title, tags, product_part, source_text, sizes_vary) + uniqueness_problems(title, tags, product_part, others)

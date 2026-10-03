@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.core.uploads import read_limited
 from app.etsy.client import EtsyApiError
-from app.insights import diagnosis, etsy_data, rank
+from app.insights import diagnosis, etsy_data, impact, rank
 from app.shops.deps import get_owned_shop, require_ai_enabled
 from app.shops.models import Shop
 
@@ -18,6 +18,12 @@ router = APIRouter(prefix="/api/shops/{shop_id}/insights", tags=["insights"])
 def attention(shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
     """Düşüşteki listing'ler: en çok satış kaybeden 5'inin teşhisi ve "Düşüşte" filtresi için tüm kimlikler."""
     return diagnosis.attention(db, shop)
+
+
+@router.get("/changes")
+def changes_summary(shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    """Son 90 günde yayınlanan değişikliklerin sonuç dağılımı (iyileşti/değişmedi/kötüleşti/bekliyor) ve en yenileri."""
+    return impact.shop_summary(db, shop)
 
 
 @router.get("/listings/{listing_id}/diagnosis")
@@ -78,6 +84,8 @@ class EtsyDataRow(BaseModel):
     keyword: str = Field(min_length=1, max_length=100)
     searches: int | None = None
     competition: str | None = None
+    conversion: str | None = None
+    trend_pct: int | None = None
     listings_count: int | None = None
     views: int | None = None
     clicks: int | None = None

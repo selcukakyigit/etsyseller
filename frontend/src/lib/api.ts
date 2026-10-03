@@ -45,6 +45,8 @@ export type Shop = {
   /** Elle sabitlenmiş rapor para birimi (ör. "USD"); boşsa finans raporu siparişlerden otomatik seçer. */
   currency: string | null;
   icon_url: string | null;
+  /** Sıra takibi ülkesi (ISO alpha-2); boşsa otomatik: son 12 ayda en çok satılan ülke */
+  rank_country?: string | null;
 };
 
 export type ShopProfile = {
@@ -100,6 +102,16 @@ export type Suggestion = {
   // Üretildiği anda formu doldurmak için döner; kalıcı saklanmaz.
   suggested_materials?: string[];
   warnings?: string[];
+  // Mağazadaki başka listing'lerle aynı aramalarda yarışma riski
+  conflicts?: SuggestionConflict[];
+};
+
+export type SuggestionConflict = {
+  listing_id: number | null;
+  title: string;
+  title_similarity: number | null;
+  shared_tags: string[];
+  intro_similarity: number | null;
 };
 
 export type SuggestInput = {
@@ -131,18 +143,64 @@ export type ListingPerformance = {
   lifetime: { views: number; favorites: number };
   conversion_percent: number | null;
   freshness: { tracking_days: number; etsy_last_modified_days: number | null; content_changed_on?: string; days_since_content_change?: number; unchanged_for_at_least_days?: number };
-  /** İçerik değiştiği günün öncesi/sonrası günlük ortalamalar (eşit uzunlukta pencere) — "AI ile yayınladık, bir şey
-   * değişti mi" sorusuna cevap. Öncesi/sonrası için yeterli veri yoksa null. */
-  since_change: {
-    content_changed_on: string;
-    window_days: number;
-    before: { views_per_day: number | null; favorites_per_day: number | null; units_per_day: number; revenue_per_day: number };
-    after: { views_per_day: number | null; favorites_per_day: number | null; units_per_day: number; revenue_per_day: number };
-  } | null;
+};
+
+/** Etsy'ye giden bir değişikliğin ölçülen etkisi (bkz. backend app/insights/impact.py). `net`: listing'in değişimi,
+ * kontrol grubunun (aynı dönemde dokunulmamış, mümkünse aynı kategorideki listing'ler) değişimine göre yüzde; karar
+ * `metric` ölçütüne göre verilir. `confidence`: yalnızca better/worse için, istatistik testin gücü. */
+export type ChangeResult =
+  | { status: "waiting"; final: false; days: number; ready_in: number }
+  | { status: "no_baseline"; final: true }
+  | { status: "interrupted"; final: true; next_change_days: number }
+  | {
+      status: "measured";
+      final: boolean;
+      window_days: number;
+      partial_window: boolean;
+      metric: "views" | "favorites" | "units";
+      verdict: "better" | "same" | "worse" | "unclear" | "low_data";
+      confidence: "high" | "medium" | null;
+      before: { views: number; favorites: number; units: number };
+      after: { views: number; favorites: number; units: number };
+      control: { kind: "category" | "shop"; listings: number; views_pct: number | null; favorites_pct: number | null; units_pct: number | null };
+      net: { views: number | null; favorites: number | null; units: number | null };
+      z: { views: number | null; favorites: number | null; units: number | null };
+      ranks: { keyword: string; before: number | null; after: number | null }[];
+    };
+
+export type ChangeField =
+  | "title" | "tags" | "description" | "materials" | "images" | "videos" | "price" | "inventory"
+  | "properties" | "personalization" | "shipping" | "category" | "text" | "other";
+
+export type ListingChange = {
+  id: number;
+  published_at: string;
+  source: "ai" | "manual" | "etsy";
+  fields: ChangeField[];
+  details: {
+    title_before?: string;
+    title_after?: string;
+    tags_added?: string[];
+    tags_removed?: string[];
+    price_before?: number | null;
+    price_after?: number | null;
+    images_before?: number;
+    images_after?: number;
+    thumbnail_changed?: boolean;
+  };
+  focus: string | null;
+  result: ChangeResult | null;
+};
+
+export type ChangesSummary = {
+  days: number;
+  total: number;
+  counts: { better: number; same: number; worse: number; unclear: number; waiting: number; other: number };
+  items: { listing_id: number; title: string; change_id: number; published_at: string; fields: ChangeField[]; source: ListingChange["source"]; result: ChangeResult }[];
 };
 
 export type ListingHistory = {
-  versions: Suggestion[];
+  changes: ListingChange[];
   stats: StatSnapshot[];
 };
 
@@ -166,7 +224,6 @@ export type Listing = {
   image_url: string | null;
   views: number | null;
   favorites: number | null;
-  pending_suggestion: Suggestion | null;
   // Yerel taslak varsa başlık/etiket/açıklama/görsel taslaktan gelir.
   has_draft?: boolean;
   draft_updated_at?: string | null;
@@ -241,6 +298,7 @@ export interface ListingDiagnosis {
   months: { month: string; units: number; prev_year_units: number }[];
   evidence: { kind: string; tone: "bad" | "good" | "info"; text: string }[];
   events: { date: string; kind: string; text: string }[];
+  last_change: { published_at: string; days_ago: number; fields: ChangeField[]; details: ListingChange["details"]; source: ListingChange["source"]; result: ChangeResult | null } | null;
 }
 
 /** Bir listing'in takip edilen Etsy aramaları ve sırası (bkz. backend app/insights/rank.py). */
@@ -275,10 +333,15 @@ export interface ShopAttention {
 }
 
 export type EtsyDataSource = "marketplace_insights" | "search_terms" | "ads";
+export type EtsyConversion = "very_low" | "low" | "medium" | "high" | "very_high";
 export interface EtsyDataRow {
   keyword: string;
   searches: number | null;
   competition: "low" | "medium" | "high" | null;
+  /** Marketplace Insights dönüşüm bandı: alıcıların bu aramada satın alma eğilimi */
+  conversion: EtsyConversion | null;
+  /** Aramadaki değişim, önceki döneme göre (%) */
+  trend_pct: number | null;
   listings_count: number | null;
   views: number | null;
   clicks: number | null;
@@ -307,14 +370,18 @@ export interface ListingRanks {
   tracked_listings: number;
   is_tracked: boolean;
   suggestions: string[];
+  /** Sıranın ölçüldüğü alıcı ülkesi ve otomatik seçilip seçilmediği */
+  country: string;
+  country_auto: boolean;
 }
 
 export type BulkResult = { id: number; ok: boolean; changed: boolean; error: string | null };
 
 export type KeywordPoolItem = {
   tag: string;
-  /** etsy: Etsy verisine göre listing'i gerçekten getiren arama (yapıştırılan arama terimleri / reklam raporu) */
-  source: "own" | "competitor" | "etsy";
+  /** etsy: Etsy verisine göre listing'i gerçekten getiren arama (yapıştırılan arama terimleri / reklam raporu);
+   * research: kullanıcının Etsy kelime araştırmasından (Marketplace Insights) bu ürünle ilgili arama, skor = aylık arama */
+  source: "own" | "competitor" | "etsy" | "research";
   score: number;
   sample_size: number;
   google_score?: number;
@@ -326,6 +393,10 @@ export type KeywordPoolItem = {
   /** Marketplace Insights: Etsy'de aylık arama ve rekabet (kullanıcının yapıştırdığı veriden) */
   etsy_searches?: number | null;
   etsy_competition?: "low" | "medium" | "high" | null;
+  etsy_conversion?: EtsyConversion | null;
+  etsy_trend_pct?: number | null;
+  /** Marketplace Insights: aramadaki sonuç (rakip listing) sayısı */
+  etsy_results?: number | null;
   etsy_views?: number | null;
   etsy_clicks?: number | null;
   etsy_orders?: number | null;
@@ -563,43 +634,6 @@ export type PublishResult = {
   /** Yapılamayan ama sessizce yutulmaması gereken şeyler (ör. Etsy'den boşaltılamayan alanlar). */
   warnings?: string[];
 };
-
-export type ListingUpdate = Partial<{
-  title: string;
-  description: string;
-  tags: string[];
-  materials: string[];
-  style: string[];
-  taxonomy_id: number;
-  who_made: string;
-  when_made: string;
-  is_supply: boolean;
-  shipping_profile_id: number;
-  return_policy_id: number;
-
-  shop_section_id: number | null;
-  featured_rank: number | null;
-  should_auto_renew: boolean;
-
-  is_taxable: boolean;
-  item_weight: number | null;
-  item_length: number | null;
-  item_width: number | null;
-  item_height: number | null;
-  item_weight_unit: string | null;
-  item_dimensions_unit: string | null;
-
-  production_partner_ids: number[];
-
-  ecgt_garan_brand: string | null;
-  ecgt_garan_years: number | null;
-  ecgt_garan_model: string | null;
-  ecgt_garan_guarantee_details: string | null;
-  ecgt_other_commercial_guarantee_details: string | null;
-  ecgt_after_sales_service_info: string | null;
-  ecgt_software_update_details: string | null;
-  state?: string | null;
-}>;
 
 export type ShopSection = {
   shop_section_id: number;
@@ -1155,6 +1189,7 @@ export const api = {
   insights: {
     diagnosis: (shopId: number, listingId: number) => request<ListingDiagnosis>(`/api/shops/${shopId}/insights/listings/${listingId}/diagnosis`),
     attention: (shopId: number) => request<ShopAttention>(`/api/shops/${shopId}/insights/attention`),
+    changes: (shopId: number) => request<ChangesSummary>(`/api/shops/${shopId}/insights/changes`),
     ranks: (shopId: number, listingId: number) => request<ListingRanks>(`/api/shops/${shopId}/insights/listings/${listingId}/ranks`),
     addKeyword: (shopId: number, listingId: number, keyword: string) =>
       request<ListingRanks>(`/api/shops/${shopId}/insights/listings/${listingId}/keywords`, { method: "POST", body: JSON.stringify({ keyword }) }),
@@ -1232,6 +1267,11 @@ export const api = {
     disconnect: (shopId: number, email: string) =>
       request<{ ok: boolean }>(`/api/shops/${shopId}/disconnect`, { method: "POST", body: JSON.stringify({ email, confirm: true }) }),
     /** `currency: null` = otomatik (siparişlerde en çok geçen para birimi); doluysa 3 harfli ISO kod sabitlenir. */
+    setRankCountry: (shopId: number, country: string | null) =>
+      request<{ ok: boolean; rank_country: string | null }>(`/api/shops/${shopId}/rank-country`, {
+        method: "PUT",
+        body: JSON.stringify({ country }),
+      }),
     setCurrency: (shopId: number, currency: string | null) =>
       request<{ ok: boolean; currency: string | null }>(`/api/shops/${shopId}/currency`, {
         method: "PUT",
@@ -1310,8 +1350,6 @@ export const api = {
         method: "POST",
         body: current ? JSON.stringify(current) : undefined,
       }),
-    apply: (shopId: number, suggestionId: number) =>
-      request<Suggestion>(`/api/shops/${shopId}/listings/suggestions/${suggestionId}/apply`, { method: "POST" }),
     dismiss: (shopId: number, suggestionId: number) =>
       request<Suggestion>(`/api/shops/${shopId}/listings/suggestions/${suggestionId}/dismiss`, { method: "POST" }),
     getEdit: (shopId: number, listingId: number) =>
@@ -1320,16 +1358,6 @@ export const api = {
       request<{ keywords: KeywordPoolItem[] }>(`/api/shops/${shopId}/listings/${listingId}/keyword-pool`),
     keywordTrends: (shopId: number, listingId: number) =>
       request<{ keywords: KeywordPoolItem[] }>(`/api/shops/${shopId}/listings/${listingId}/keyword-pool/trends`),
-    update: (shopId: number, listingId: number, payload: ListingUpdate) =>
-      request<ListingEdit>(`/api/shops/${shopId}/listings/${listingId}`, {
-        method: "PUT",
-        body: JSON.stringify(payload),
-      }),
-    updateInventory: (shopId: number, listingId: number, payload: Inventory) =>
-      request<Inventory>(`/api/shops/${shopId}/listings/${listingId}/inventory`, {
-        method: "PUT",
-        body: JSON.stringify(payload),
-      }),
     // Toplu değişiklikleri seçili listing'lerin yerel sürümüne işler (Etsy'ye gitmez).
     bulkStage: (shopId: number, listingIds: number[], changes: BulkChanges) =>
       request<BulkResult[]>(`/api/shops/${shopId}/listings/bulk-stage`, {

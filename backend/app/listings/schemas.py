@@ -1,6 +1,16 @@
 from pydantic import BaseModel, Field
 
 
+class ConflictOut(BaseModel):
+    """Önerinin mağazadaki başka bir listing'le aynı aramalarda yarışma riski (ikisinin ortak durumu)."""
+
+    listing_id: int | None = None
+    title: str
+    title_similarity: int | None = None  # yüzde; eşiği geçmediyse None
+    shared_tags: list[str] = []
+    intro_similarity: int | None = None
+
+
 class SuggestionOut(BaseModel):
     id: int
     listing_id: int
@@ -18,6 +28,8 @@ class SuggestionOut(BaseModel):
     suggested_materials: list[str] = []
     # Kalite/benzersizlik denetiminde giderilemeyen sorunlar (ör. başka listing'le çok benzer etiketler)
     warnings: list[str] = []
+    # Diğer listing'lerle çakışma (yapay zekâ denemelerden sonra tam ayıramadıysa)
+    conflicts: list[ConflictOut] = []
 
 
 class SuggestIn(BaseModel):
@@ -40,7 +52,6 @@ class ListingOut(BaseModel):
     image_url: str | None
     views: int | None
     favorites: int | None
-    pending_suggestion: SuggestionOut | None
     # Yerel taslak varsa başlık/etiket/açıklama/görsel taslaktan gelir.
     has_draft: bool = False
     draft_updated_at: str | None = None
@@ -81,8 +92,20 @@ class ListingHealthOut(BaseModel):
     killed_at: str | None = None
 
 
+class ChangeOut(BaseModel):
+    """Etsy'ye giden bir değişiklik ve ölçülen sonucu (bkz. listings/changes.py, insights/impact.py)."""
+
+    id: int
+    published_at: str
+    source: str  # ai | manual | etsy
+    fields: list[str]
+    details: dict
+    focus: str | None = None
+    result: dict | None = None
+
+
 class ListingHistoryOut(BaseModel):
-    versions: list[SuggestionOut]
+    changes: list[ChangeOut]
     stats: list[StatSnapshotOut]
 
 

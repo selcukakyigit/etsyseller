@@ -7,6 +7,7 @@ import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import AppShell from "@/components/AppShell";
 import ChatPanel from "@/components/assistant/ChatPanel";
 import AttentionTile from "@/components/dashboard/AttentionTile";
+import ChangesTile from "@/components/dashboard/ChangesTile";
 import { T, useT } from "@/lib/i18n-client";
 import { useCached } from "@/lib/pageCache";
 import { PageSpinner } from "@/components/ui/Spinner";
@@ -141,6 +142,7 @@ export default function DashboardPage() {
               </Link>
 
               <AttentionTile shopId={shopId} className={tile} />
+              <ChangesTile shopId={shopId} className={tile} />
 
               <Link href="/finance" className={`${tile} block hover:border-[#D97757]`}>
                 <div className="text-xs font-medium text-neutral-500">{t("Bu ay", "This month")} ({data?.month.label ?? "…"})</div>

@@ -15,12 +15,10 @@ from app.listings import bulk, creation, drafts, health, performance, service, t
 from app.listings.schemas import (
     DraftSaveIn,
     ImageOrderIn,
-    InventoryUpdateIn,
     ListingEditOut,
     ListingHealthOut,
     ListingHistoryOut,
     ListingOut,
-    ListingUpdateIn,
     PersonalizationIn,
     PersonalizationOut,
     PropertyUpdateIn,
@@ -167,20 +165,6 @@ def history(listing_id: int, shop: Shop = Depends(get_owned_shop), db: Session =
 def get_edit(listing_id: int, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
     try:
         return service.get_listing_for_edit(db, shop, listing_id)
-    except EtsyAuthError as exc:
-        raise HTTPException(401, str(exc)) from exc
-
-
-@router.put("/{listing_id}", response_model=ListingEditOut)
-def update_fields(
-    listing_id: int,
-    payload: ListingUpdateIn,
-    shop: Shop = Depends(get_owned_shop),
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    try:
-        return service.update_listing_fields(db, shop, user.id, listing_id, payload)
     except EtsyAuthError as exc:
         raise HTTPException(401, str(exc)) from exc
 
@@ -399,19 +383,6 @@ def publish_local(
         raise HTTPException(401, str(exc)) from exc
 
 
-@router.put("/{listing_id}/inventory")
-def update_inventory(
-    listing_id: int,
-    payload: InventoryUpdateIn,
-    shop: Shop = Depends(get_owned_shop),
-    db: Session = Depends(get_db),
-):
-    try:
-        return service.update_listing_inventory(db, shop, listing_id, payload)
-    except EtsyAuthError as exc:
-        raise HTTPException(401, str(exc)) from exc
-
-
 @router.get("/{listing_id}/variation-images")
 def get_variation_images(
     listing_id: int,
@@ -558,18 +529,6 @@ def suggest(
         raise HTTPException(401, str(exc)) from exc
     except service.SuggestionError as exc:
         raise HTTPException(502, str(exc)) from exc
-
-
-@router.post("/suggestions/{suggestion_id}/apply", response_model=SuggestionOut)
-def apply(suggestion_id: int, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
-    try:
-        return service.apply_suggestion(db, shop, suggestion_id)
-    except EtsyAuthError as exc:
-        raise HTTPException(401, str(exc)) from exc
-    except service.SuggestionNotFound as exc:
-        raise HTTPException(404, str(exc)) from exc
-    except service.SuggestionConflict as exc:
-        raise HTTPException(409, str(exc)) from exc
 
 
 @router.post("/suggestions/{suggestion_id}/dismiss", response_model=SuggestionOut)

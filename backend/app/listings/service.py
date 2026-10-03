@@ -55,10 +55,6 @@ class SuggestionNotFound(Exception):
     pass
 
 
-class SuggestionConflict(Exception):
-    """Suggestion exists but is not in the state the operation requires."""
-
-
 def _serialize_suggestion(row: ListingVersion) -> SuggestionOut:
     return SuggestionOut(
         id=row.id,
@@ -380,18 +376,6 @@ def _build_listings(db: Session, shop: Shop) -> list[ListingOut]:
         .where(ListingCache.shop_id == shop.id)
         .options(defer(ListingCache.properties_json), defer(ListingCache.variation_images_json), defer(ListingCache.personalization_json))
     ).all()
-    listing_ids = [row.listing_id for row in rows]
-    pending = db.scalars(
-        select(ListingVersion)
-        .where(ListingVersion.shop_id == shop.id)
-        .where(ListingVersion.listing_id.in_(listing_ids))
-        .where(ListingVersion.status == "pending")
-        .order_by(ListingVersion.created_at.desc())
-    ).all()
-    latest_by_listing: dict[int, ListingVersion] = {}
-    for version in pending:
-        latest_by_listing.setdefault(version.listing_id, version)
-
     draft_rows = {
         d.listing_id: d
         for d in db.scalars(select(ListingDraft).where(ListingDraft.shop_id == shop.id)).all()
@@ -404,7 +388,6 @@ def _build_listings(db: Session, shop: Shop) -> list[ListingOut]:
     out = []
     for row in rows:
         raw = json.loads(row.raw_json)
-        suggestion = latest_by_listing.get(row.listing_id)
 
         # Kaydedilmiş yerel sürüm varsa liste Etsy'deki değil onun hâlini gösterir (taslak listeyi değiştirmez).
         draft_row = draft_rows.get(row.listing_id)
@@ -424,7 +407,6 @@ def _build_listings(db: Session, shop: Shop) -> list[ListingOut]:
                 image_url=image_url,
                 views=row.views,
                 favorites=row.favorites,
-                pending_suggestion=_serialize_suggestion(suggestion) if suggestion else None,
                 has_draft=draft_row is not None,
                 draft_updated_at=draft_row.updated_at.isoformat() if draft_row else None,
                 has_local=local_row is not None,
@@ -446,7 +428,6 @@ def _build_listings(db: Session, shop: Shop) -> list[ListingOut]:
                 image_url=item["image_url"],
                 views=0,
                 favorites=0,
-                pending_suggestion=None,
                 has_local=True,
                 local_updated_at=local.updated_at.isoformat(),
                 is_new=True,
@@ -523,6 +504,7 @@ def create_suggestion(
     out = _serialize_suggestion(version_row)
     out.suggested_materials = suggestion.get("materials", [])
     out.warnings = suggestion.get("warnings", [])
+    out.conflicts = suggestion.get("conflicts", [])
     return out
 
 
@@ -533,36 +515,6 @@ def _get_owned_version(db: Session, shop: Shop, suggestion_id: int) -> ListingVe
     return row
 
 
-def apply_suggestion(db: Session, shop: Shop, suggestion_id: int) -> SuggestionOut:
-    row = _get_owned_version(db, shop, suggestion_id)
-    if row.status != "pending":
-        raise SuggestionConflict(f"Öneri zaten '{row.status}' durumunda")
-
-    client = EtsyClient(db, shop)
-    new_title = row.suggested_title
-    new_tags = json.loads(row.suggested_tags)
-    new_description = row.suggested_description
-    etsy_listings.update_listing(
-        client,
-        row.listing_id,
-        {"title": new_title, "tags": new_tags, "description": new_description},
-    )
-
-    cache_row = _get_cache_row(db, shop, row.listing_id)
-    if cache_row is not None:
-        raw = json.loads(cache_row.raw_json)
-        raw["title"] = new_title
-        raw["tags"] = new_tags
-        raw["description"] = new_description
-        cache_row.title = new_title
-        cache_row.raw_json = json.dumps(raw, ensure_ascii=False)
-
-    row.status = "applied"
-    row.applied_at = dt.datetime.utcnow()
-    db.commit()
-    return _serialize_suggestion(row)
-
-
 def dismiss_suggestion(db: Session, shop: Shop, suggestion_id: int) -> SuggestionOut:
     row = _get_owned_version(db, shop, suggestion_id)
     row.status = "dismissed"
@@ -571,12 +523,9 @@ def dismiss_suggestion(db: Session, shop: Shop, suggestion_id: int) -> Suggestio
 
 
 def get_listing_history(db: Session, shop: Shop, listing_id: int) -> ListingHistoryOut:
-    versions = db.scalars(
-        select(ListingVersion)
-        .where(ListingVersion.shop_id == shop.id)
-        .where(ListingVersion.listing_id == listing_id)
-        .order_by(ListingVersion.created_at.desc())
-    ).all()
+    from app.insights import impact
+    from app.listings import changes
+
     stats = db.scalars(
         select(ListingStatSnapshot)
         .where(ListingStatSnapshot.shop_id == shop.id)
@@ -584,7 +533,7 @@ def get_listing_history(db: Session, shop: Shop, listing_id: int) -> ListingHist
         .order_by(ListingStatSnapshot.captured_at.asc())
     ).all()
     return ListingHistoryOut(
-        versions=[_serialize_suggestion(row) for row in versions],
+        changes=[changes.serialize(row) for row in impact.listing_changes(db, shop, listing_id)],
         stats=[
             StatSnapshotOut(views=row.views, favorites=row.favorites, captured_at=row.captured_at.isoformat())
             for row in stats
@@ -714,26 +663,6 @@ def update_listing_fields(
     if data:
         client = EtsyClient(db, shop)
         etsy_listings.update_listing(client, listing_id, data)
-
-        # Manual edits join the same append-only history as AI suggestions
-        # (kind="manual_edit"), so the listing's timeline stays complete.
-        db.add(
-            ListingVersion(
-                shop_id=shop.id,
-                listing_id=listing_id,
-                kind="manual_edit",
-                original_title=before["title"],
-                original_tags=json.dumps(before["tags"], ensure_ascii=False),
-                original_description=before["description"],
-                suggested_title=data.get("title", before["title"]),
-                suggested_tags=json.dumps(data.get("tags", before["tags"]), ensure_ascii=False),
-                suggested_description=data.get("description", before["description"]),
-                rationale="Manuel düzenleme",
-                status="applied",
-                created_by=user_id,
-                applied_at=dt.datetime.utcnow(),
-            )
-        )
 
         # Patch the cache locally from what we just sent, rather than an
         # extra live re-fetch — Etsy's response echoes the same values back.

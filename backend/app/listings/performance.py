@@ -166,49 +166,6 @@ def sales_by_listing(db: Session, shop: Shop, start: dt.date, end: dt.date) -> d
     return out
 
 
-def since_change_comparison(db: Session, shop: Shop, listing_id: int, snaps: list[ListingStatSnapshot], f: dict, today: dt.date) -> dict | None:
-    """"AI ile düzenleyip yayınladık, bir şey değişti mi?" sorusuna cevap: içeriğin değiştiği gün (`freshness()`'ın
-    `content_changed_on`'ı) baz alınarak ÖNCESİ ve SONRASI için günlük ortalama görüntülenme/favori/satış — dönem
-    uzunlukları eşit tutulur (kısa olan hangisiyse) ki adil kıyaslansın. En az 2'şer gün veri yoksa None (henüz erken)."""
-    changed_on = f.get("content_changed_on")
-    if not changed_on:
-        return None
-    changed_on = dt.date.fromisoformat(changed_on)
-    tracking_start = snaps[0].captured_at.date() if snaps else changed_on
-    after_days = (today - changed_on).days
-    before_days = (changed_on - tracking_start).days
-    window = min(after_days, before_days)
-    if window < 2:
-        return None  # değişiklikten önce ya da sonra yeterli veri yok — kıyaslama adil olmaz
-
-    before_start, before_end = changed_on - dt.timedelta(days=window), changed_on - dt.timedelta(days=1)
-    after_start, after_end = changed_on, changed_on + dt.timedelta(days=window - 1)
-
-    before_m, after_m = metric_delta(snaps, before_start, before_end), metric_delta(snaps, after_start, after_end)
-    before_s = sales_by_listing(db, shop, before_start, before_end).get(listing_id, {"units": 0, "revenue": 0.0})
-    after_s = sales_by_listing(db, shop, after_start, after_end).get(listing_id, {"units": 0, "revenue": 0.0})
-
-    def per_day(units: float) -> float:
-        return round(units / window, 3)
-
-    return {
-        "content_changed_on": changed_on.isoformat(),
-        "window_days": window,
-        "before": {
-            "views_per_day": per_day(before_m["views"]) if before_m.get("available") else None,
-            "favorites_per_day": per_day(before_m["favorites"]) if before_m.get("available") else None,
-            "units_per_day": per_day(before_s["units"]),
-            "revenue_per_day": per_day(before_s["revenue"]),
-        },
-        "after": {
-            "views_per_day": per_day(after_m["views"]) if after_m.get("available") else None,
-            "favorites_per_day": per_day(after_m["favorites"]) if after_m.get("available") else None,
-            "units_per_day": per_day(after_s["units"]),
-            "revenue_per_day": per_day(after_s["revenue"]),
-        },
-    }
-
-
 def _cache_row(db: Session, shop_id: int, listing_id: int) -> ListingCache | None:
     return db.scalars(select(ListingCache).where(ListingCache.shop_id == shop_id, ListingCache.listing_id == listing_id)).one_or_none()
 
@@ -246,7 +203,6 @@ def listing_performance(db: Session, shop: Shop, listing_id: int, start: dt.date
         "lifetime": {"views": row.views or 0, "favorites": row.favorites or 0},
         "conversion_percent": conv,
         "freshness": fresh,
-        "since_change": since_change_comparison(db, shop, listing_id, snaps, fresh, today),
     }
 
 

@@ -11,3 +11,5 @@ class ShopOut(BaseModel):
     # sahibi elle sabitlemiş demektir (`PUT /api/shops/{id}/currency`), her yerde bu kullanılır.
     currency: str | None = None
     icon_url: str | None = None
+    # Sıra takibi ülkesi; boşsa otomatik (en çok satılan ülke)
+    rank_country: str | None = None

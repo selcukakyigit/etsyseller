@@ -1,7 +1,7 @@
 "use client";
 
 import { ClipboardEvent, useEffect, useRef, useState } from "react";
-import { api, EtsyDataParsed, EtsyDataSaved, EtsyDataSource } from "@/lib/api";
+import { api, EtsyDataParsed, EtsyDataRow, EtsyDataSaved, EtsyDataSource } from "@/lib/api";
 import { useCached } from "@/lib/pageCache";
 import { useT } from "@/lib/i18n-client";
 import { BlockSpinner, Spinner } from "@/components/ui/Spinner";
@@ -25,11 +25,18 @@ export default function EtsyDataTab({ shopId, listingId }: { shopId: number; lis
   const fileInput = useRef<HTMLInputElement>(null);
 
   const sourceLabel: Record<EtsyDataSource, string> = {
-    marketplace_insights: t("Marketplace Insights (aylık arama, rekabet)", "Marketplace Insights (monthly searches, competition)"),
+    marketplace_insights: t("Marketplace Insights (arama, sonuç, dönüşüm)", "Marketplace Insights (searches, results, conversion)"),
     search_terms: t("Arama terimleri (listing'i getiren aramalar)", "Search terms (searches that brought visits)"),
     ads: t("Etsy Ads arama terimleri", "Etsy Ads search queries"),
   };
   const compLabel = { low: t("düşük", "low"), medium: t("orta", "medium"), high: t("yüksek", "high") };
+  const convLabel = {
+    very_low: t("çok düşük", "very low"),
+    low: t("düşük", "low"),
+    medium: t("orta", "medium"),
+    high: t("yüksek", "high"),
+    very_high: t("çok yüksek", "very high"),
+  };
 
   async function load() {
     try {
@@ -109,6 +116,16 @@ export default function EtsyDataTab({ shopId, listingId }: { shopId: number; lis
   }
 
   const num = (n: number | null) => (n === null || n === undefined ? "–" : n.toLocaleString(locale));
+  // Marketplace Insights satırı: arama (+ değişim) ve dönüşüm + arama sonucu (eski biçimde rekabet).
+  const searchesText = (r: EtsyDataRow) =>
+    t(`${num(r.searches)} arama`, `${num(r.searches)} searches`) + (r.trend_pct !== null && r.trend_pct !== undefined ? ` (${r.trend_pct > 0 ? "+" : ""}${r.trend_pct}%)` : "");
+  const insightDetail = (r: EtsyDataRow) =>
+    [
+      r.conversion ? `${t("dönüşüm", "conversion")}: ${convLabel[r.conversion]}` : r.competition ? `${t("rekabet", "competition")}: ${compLabel[r.competition]}` : "",
+      r.listings_count !== null ? t(`${num(r.listings_count)} sonuç`, `${num(r.listings_count)} results`) : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
   const fmtDay = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(locale, { day: "2-digit", month: "short", year: "numeric" });
 
   if (error && !data) return <p className="text-sm text-red-600 dark:text-red-400">{error}</p>;
@@ -120,10 +137,43 @@ export default function EtsyDataTab({ shopId, listingId }: { shopId: number; lis
     <div className="space-y-4">
       <p className="text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
         {t(
-          "Etsy bu verileri API'de vermiyor. Etsy panelinde Stats > Marketplace Insights, listing istatistiklerindeki arama terimleri ya da Etsy Ads arama terimleri tablosunu kopyalayıp buraya yapıştır (ya da ekran görüntüsünü bırak). Kaydedilen kelimeler Kelime Havuzu'nda rozet olur, AI önerisi bunlara öncelik verir; listing'i getiren aramalar sıra takibine eklenir.",
-          "Etsy does not provide this data through its API. In your Etsy dashboard, copy the Stats > Marketplace Insights table, the listing's search terms or the Etsy Ads search queries and paste it here (or drop a screenshot). Saved keywords get badges in the Keyword pool, the AI suggestion prioritizes them, and searches that bring visits are added to rank tracking.",
+          "Etsy bu verileri API'de vermiyor, yalnızca senin satıcı panelinde gösteriyor. Oradaki tabloyu kopyalayıp buraya yapıştırırsan (ya da ekran görüntüsünü bırakırsan) yapay zekâ okur; sen kontrol edip kaydedersin. Kaydedilen kelimeler Kelime Havuzu'nda rozet olur, AI önerisi bunları kullanır; listing'i getiren aramalar sıra takibine eklenir.",
+          "Etsy does not provide this data through its API; it only shows it in your seller dashboard. Copy the table there and paste it here (or drop a screenshot): the AI reads it and you check and save it. Saved keywords get badges in the Keyword pool, the AI suggestion uses them, and searches that bring visits are added to rank tracking.",
         )}
       </p>
+
+      <details className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
+        <summary className="cursor-pointer font-medium text-neutral-800 dark:text-neutral-200">{t("Nereden, nasıl kopyalanır?", "Where and how to copy?")}</summary>
+        <ol className="mt-2 list-decimal space-y-2 pl-4">
+          <li>
+            <b className="text-neutral-800 dark:text-neutral-200">Marketplace Insights</b>{" "}
+            {t(
+              "(sayfada \"Discover what buyers are searching for on Etsy\" yazar): bir arama gir; aramanın aylık arama sayısı, değişimi, sonuç sayısı, dönüşüm oranı ve benzer aramalar görünür. Tablo kısmını fareyle seçip Ctrl+C ile kopyala. Ne işe yarar: hangi aramanın çok arandığını ve hangisinde alıcının gerçekten satın aldığını (dönüşüm) gösterir.",
+              "(the page says \"Discover what buyers are searching for on Etsy\"): enter a search; you see its searches, change, number of results, conversion rate and similar searches. Select the table with your mouse and copy it with Ctrl+C. Why: it shows which searches are popular and in which ones buyers actually buy (conversion).",
+            )}
+          </li>
+          <li>
+            <b className="text-neutral-800 dark:text-neutral-200">{t("Listing istatistikleri → arama terimleri", "Listing stats → search terms")}</b>{" "}
+            {t(
+              "(Stats'ta listing'e tıklayınca alıcıların seni hangi aramalarla bulduğu bölümü): bu listing'e hangi aramalardan ziyaret geldiğini gösterir. Bu listing'in sekmesine yapıştır.",
+              "(click the listing in Stats, the section on how shoppers found you): shows which searches brought visits to this listing. Paste it on this listing's tab.",
+            )}
+          </li>
+          <li>
+            <b className="text-neutral-800 dark:text-neutral-200">Etsy Ads</b>{" "}
+            {t(
+              "(reklamdaki listing'e tıklayınca arama terimleri tablosu): her aramada reklamın kaç kez gösterildiği, tıklandığı ve sipariş getirdiği. Etsy'nin başka yerde vermediği gösterim/tıklama verisinin tek kaynağı budur.",
+              "(click the advertised listing, search queries table): how often the ad was shown, clicked and led to an order for each search. This is the only source of the impression/click data Etsy does not provide elsewhere.",
+            )}
+          </li>
+        </ol>
+        <p className="mt-2 text-neutral-400 dark:text-neutral-500">
+          {t(
+            "Kopyalanan metin düzensiz görünse de olur; yapay zekâ sütunları kendisi ayırır. Menü adları Etsy'nin diline göre değişebilir.",
+            "It is fine if the copied text looks messy; the AI separates the columns itself. Menu names may vary with your Etsy language.",
+          )}
+        </p>
+      </details>
 
       {data.to_check.length > 0 && (
         <div className="rounded-xl border border-[#D97757]/30 bg-[#D97757]/5 p-3 text-xs dark:bg-[#D97757]/10">
@@ -199,8 +249,8 @@ export default function EtsyDataTab({ shopId, listingId }: { shopId: number; lis
                 <tr className="text-left text-neutral-500 dark:text-neutral-400">
                   <th className="w-6 py-1" />
                   <th className="py-1 font-medium">{t("Arama", "Search")}</th>
-                  <th className="py-1 font-medium">{t("Aylık arama", "Monthly searches")}</th>
-                  <th className="py-1 font-medium">{t("Rekabet", "Competition")}</th>
+                  <th className="py-1 font-medium">{t("Arama", "Searches")}</th>
+                  <th className="py-1 font-medium">{t("Dönüşüm / sonuç", "Conversion / results")}</th>
                   <th className="py-1 font-medium">{t("Görüntülenme", "Views")}</th>
                   <th className="py-1 font-medium">{t("Tıklama", "Clicks")}</th>
                   <th className="py-1 font-medium">{t("Sipariş", "Orders")}</th>
@@ -217,8 +267,8 @@ export default function EtsyDataTab({ shopId, listingId }: { shopId: number; lis
                       />
                     </td>
                     <td className="py-1 font-medium text-neutral-900 dark:text-neutral-100">{r.keyword}</td>
-                    <td className="py-1">{num(r.searches)}</td>
-                    <td className="py-1">{r.competition ? compLabel[r.competition] : num(r.listings_count)}</td>
+                    <td className="py-1">{r.searches !== null ? searchesText(r) : "–"}</td>
+                    <td className="py-1">{insightDetail(r) || "–"}</td>
                     <td className="py-1">{num(r.views)}</td>
                     <td className="py-1">{num(r.clicks)}</td>
                     <td className="py-1">{num(r.orders)}</td>
@@ -257,8 +307,8 @@ export default function EtsyDataTab({ shopId, listingId }: { shopId: number; lis
                       <td className="px-3 py-1.5 font-medium text-neutral-900 dark:text-neutral-100">{r.keyword}</td>
                       {source === "marketplace_insights" ? (
                         <>
-                          <td className="px-3 py-1.5">{t(`${num(r.searches)} arama/ay`, `${num(r.searches)} searches/mo`)}</td>
-                          <td className="px-3 py-1.5">{r.competition ? `${t("rekabet", "competition")}: ${compLabel[r.competition]}` : r.listings_count !== null ? t(`${num(r.listings_count)} listing`, `${num(r.listings_count)} listings`) : ""}</td>
+                          <td className="px-3 py-1.5">{searchesText(r)}</td>
+                          <td className="px-3 py-1.5">{insightDetail(r)}</td>
                         </>
                       ) : (
                         <>

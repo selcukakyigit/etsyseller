@@ -1,37 +1,41 @@
 "use client";
 
-import { ListingHistory } from "@/lib/api";
 import { useT } from "@/lib/i18n-client";
 import { useStoredState } from "@/lib/useStoredState";
-import { ChangeHistoryTab, PerformanceTab, useListingHistory } from "@/components/ListingHistoryPanel";
+import ChangesTab from "./ChangesTab";
 import DiagnosisTab from "./DiagnosisTab";
 import RankTab from "./RankTab";
 import EtsyDataTab from "./EtsyDataTab";
 
 // Sekmeler; yeni bir analiz eklemek için buraya bir giriş ve aşağıya bir dal eklenir.
-const TABS = ["diagnosis", "performance", "ranks", "etsy", "history"] as const;
+const TABS = ["diagnosis", "changes", "ranks", "etsy"] as const;
 type Tab = (typeof TABS)[number];
 
-/** Listing satırındaki "Analiz" paneli: Teşhis, Performans, Sıralama, Etsy verisi ve Değişiklik geçmişi sekmeleri. Seçili sekme hatırlanır.
- * Henüz Etsy'de olmayan (yeni) listing'de yalnızca değişiklik geçmişi anlamlıdır. */
-export default function ListingAnalysisPanel({ shopId, listingId, initialHistory }: { shopId: number; listingId: number; initialHistory?: ListingHistory }) {
+/** Listing satırındaki "Analiz" paneli: Teşhis (ne durumda, neden), Değişiklikler ve sonuçları (ne yaptık, işe yaradı mı),
+ * Sıralama ve Etsy verisi. Seçili sekme hatırlanır. Henüz Etsy'de olmayan (yeni) listing'de analiz yoktur. */
+export default function ListingAnalysisPanel({ shopId, listingId }: { shopId: number; listingId: number }) {
   const { t } = useT();
   const [stored, setTab] = useStoredState<Tab>("listing.analysisTab", "diagnosis", TABS);
-  const tabs: Tab[] = listingId > 0 ? [...TABS] : ["history"];
-  const tab: Tab = tabs.includes(stored) ? stored : tabs[0];
-  const { history, error } = useListingHistory(shopId, listingId, initialHistory);
+  const tab: Tab = TABS.includes(stored) ? stored : "diagnosis";
   const label: Record<Tab, string> = {
     diagnosis: t("Teşhis", "Diagnosis"),
-    performance: t("Performans", "Performance"),
+    changes: t("Değişiklikler ve sonuçları", "Changes and results"),
     ranks: t("Sıralama", "Rankings"),
     etsy: t("Etsy verisi", "Etsy data"),
-    history: t("Değişiklik geçmişi", "Change history"),
   };
+
+  if (listingId <= 0) {
+    return (
+      <div className="border-t border-neutral-100 bg-neutral-50/50 p-4 text-sm text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/50 dark:text-neutral-400">
+        {t("Analiz, listing Etsy'de yayınlandıktan sonra başlar.", "Analysis starts once the listing is published on Etsy.")}
+      </div>
+    );
+  }
 
   return (
     <div className="border-t border-neutral-100 bg-neutral-50/50 p-4 dark:border-neutral-800 dark:bg-neutral-900/50">
       <div role="tablist" className="mb-4 flex flex-wrap gap-1 border-b border-neutral-200 dark:border-neutral-800">
-        {tabs.map((k) => (
+        {TABS.map((k) => (
           <button
             key={k}
             type="button"
@@ -48,12 +52,10 @@ export default function ListingAnalysisPanel({ shopId, listingId, initialHistory
           </button>
         ))}
       </div>
-      {error && tab !== "diagnosis" && <p className="mb-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
       {tab === "diagnosis" && <DiagnosisTab shopId={shopId} listingId={listingId} />}
-      {tab === "performance" && <PerformanceTab shopId={shopId} listingId={listingId} history={history} />}
+      {tab === "changes" && <ChangesTab shopId={shopId} listingId={listingId} />}
       {tab === "ranks" && <RankTab shopId={shopId} listingId={listingId} />}
       {tab === "etsy" && <EtsyDataTab shopId={shopId} listingId={listingId} />}
-      {tab === "history" && <ChangeHistoryTab history={history} />}
     </div>
   );
 }

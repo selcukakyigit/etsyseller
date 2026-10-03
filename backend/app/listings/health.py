@@ -5,8 +5,8 @@ deterministiktir, böylece "değiştir, birkaç gün bekle, tekrar değiştir" d
 
 Akış:
   1. Olgunluk eşiği: pencere en az MIN_DAYS gün sürmüş VEYA MIN_VIEWS görüntülenme birikmiş olmalı.
-     Pencere, son uygulanan değişiklikle (ListingVersion.applied_at) ya da listing'in oluşturulma
-     tarihiyle başlar — her "Uygulandı" yeni bir pencere açar (soğuma).
+     Pencere, Etsy'ye giden son değişiklikle (ListingChange: Ulagg'dan yayın ya da Etsy'de yapılan metin değişikliği)
+     ya da listing'in oluşturulma tarihiyle başlar — her yayın yeni bir pencere açar (soğuma).
   2. Teşhis: mağazadaki diğer olgun listing'lerin medyanına karşı günlük görüntülenme / favori oranı /
      dönüşüm — hangisi mağaza medyanının yarısının altındaysa orası darboğaz.
   3. Aynı darboğaz MAX_ATTEMPTS kez denenip düzelmezse "kill_candidate": listing'i durdurmayı düşün.
@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from app.etsy import listings as etsy_listings
 from app.etsy.client import EtsyClient
 from app.listings import performance
-from app.listings.models import ListingCache, ListingHealth, ListingVersion
+from app.listings.models import ListingCache, ListingChange, ListingHealth
 from app.shops.models import Shop
 
 MIN_DAYS = 21
@@ -44,11 +44,7 @@ def _created_at(raw: dict, fallback: dt.datetime) -> dt.datetime:
 
 def _last_applied(db: Session, shop_id: int, listing_id: int) -> dt.datetime | None:
     return db.execute(
-        select(func.max(ListingVersion.applied_at)).where(
-            ListingVersion.shop_id == shop_id,
-            ListingVersion.listing_id == listing_id,
-            ListingVersion.status == "applied",
-        )
+        select(func.max(ListingChange.published_at)).where(ListingChange.shop_id == shop_id, ListingChange.listing_id == listing_id)
     ).scalar()
 
 

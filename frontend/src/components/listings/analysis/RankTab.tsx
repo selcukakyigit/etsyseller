@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api, ListingRanks, RankKeyword } from "@/lib/api";
 import { useCached } from "@/lib/pageCache";
 import { useT } from "@/lib/i18n-client";
+import { countryName } from "@/lib/countries";
 import { BlockSpinner, Spinner } from "@/components/ui/Spinner";
 import { toast } from "@/lib/toast";
 
@@ -102,8 +103,8 @@ export default function RankTab({ shopId, listingId }: { shopId: number; listing
     <div className="space-y-4">
       <p className="text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
         {t(
-          `Listing'in seçilen aramalarda Etsy'de kaçıncı sırada çıktığı her sabah ölçülür (ABD'ye gönderilen listing'ler arasında, ilk ${data.max_results} sonuç). Sitedeki aramayla birebir aynı değildir ama yükselip düştüğünü güvenilir şekilde gösterir. Listing başına ${data.max_keywords} arama, mağaza başına ${data.max_listings} listing; şu an ${data.tracked_listings}/${data.max_listings} listing takipte.`,
-          `Every morning we measure where the listing appears on Etsy for the chosen searches (among listings shipping to the US, top ${data.max_results} results). It is not identical to the search on the site, but it reliably shows whether the listing is rising or falling. ${data.max_keywords} searches per listing, ${data.max_listings} listings per shop; ${data.tracked_listings}/${data.max_listings} listings tracked now.`,
+          `Listing'in seçilen aramalarda Etsy'de kaçıncı sırada çıktığı her sabah ölçülür (${countryName(data.country, locale)} alıcısı için, oraya gönderilen listing'ler arasında, ilk ${data.max_results} sonuç${data.country_auto ? "; ülke en çok sattığın yere göre otomatik seçildi, Ayarlar > Mağaza'dan değiştirilebilir" : ""}). Sitedeki aramayla birebir aynı değildir ama yükselip düştüğünü güvenilir şekilde gösterir. Listing başına ${data.max_keywords} arama, mağaza başına ${data.max_listings} listing; şu an ${data.tracked_listings}/${data.max_listings} listing takipte.`,
+          `Every morning we measure where the listing appears on Etsy for the chosen searches (for a buyer in ${countryName(data.country, locale)}, among listings shipping there, top ${data.max_results} results${data.country_auto ? "; the country was picked automatically from where you sell most and can be changed in Settings > Shop" : ""}). It is not identical to the search on the site, but it reliably shows whether the listing is rising or falling. ${data.max_keywords} searches per listing, ${data.max_listings} listings per shop; ${data.tracked_listings}/${data.max_listings} listings tracked now.`,
         )}
       </p>
 

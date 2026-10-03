@@ -14,19 +14,16 @@ import json
 import uuid
 from pathlib import Path
 
-import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.etsy import images as etsy_images
-from app.etsy import inventory as etsy_inventory
 from app.etsy import variation_images as etsy_variation_images
 from app.etsy import videos as etsy_videos
 from app.etsy.client import write_count,  EtsyClient
-from app.listings import service
-from app.listings import image_cache
+from app.listings import changes, image_cache, service
 from app.core import blobstore
-from app.listings.models import DraftFile, ListingDraft, ListingLocal, ListingVersion
+from app.listings.models import DraftFile, ListingDraft, ListingLocal
 from app.listings.schemas import (
     ImageOrderIn,
     InventoryUpdateIn,
@@ -630,16 +627,13 @@ def publish_local(db: Session, shop: Shop, user_id: int, listing_id: int, force:
         if not step(name, fn):
             return {"ok": False, "steps": steps, "error": steps[-1]["error"], "edit": None, "warnings": warnings, "conflicts": []}
 
-    # Yayınlanan başlıkla eşleşen bekleyen AI önerisi artık uygulanmış sayılır.
-    for version in db.scalars(
-        select(ListingVersion)
-        .where(ListingVersion.shop_id == shop.id)
-        .where(ListingVersion.listing_id == listing_id)
-        .where(ListingVersion.status == "pending")
-    ).all():
-        if version.suggested_title == work.get("title"):
-            version.status = "applied"
-            version.applied_at = dt.datetime.utcnow()
+    # Ne değişti, neden (teşhis odağı), AI mi elle mi: ölçüm bu kayda göre yapılır (bkz. insights/impact.py).
+    # Etsy'ye yazma bitti; kayıt başarısız olsa bile yayın başarısız sayılmaz (ayrı kayıt noktasında geri alınır).
+    try:
+        with db.begin_nested():
+            changes.record_publish(db, shop, listing_id, verdict, theirs, work)
+    except Exception:  # noqa: BLE001
+        _log.exception("Yayın %s için değişiklik kaydı yazılamadı", listing_id)
 
     # Etsy artık güncel: yerel sürüm ve taslak gereksiz, dosyalar Etsy'ye yüklendi.
     for r in (_local_row(db, shop, listing_id), _row(db, shop, listing_id)):

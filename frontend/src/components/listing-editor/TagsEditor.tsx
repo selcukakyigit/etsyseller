@@ -15,7 +15,10 @@ function fillPercent(item: KeywordPoolItem, ranges: Map<string, { min: number; m
 }
 
 function scoreLabel(item: KeywordPoolItem): string {
-  return item.source === "own" ? `${item.units ?? 0} ${t("satış", "sales")}` : `%${item.sample_size > 0 ? Math.round((item.score / item.sample_size) * 100) : 0}`;
+  if (item.source === "own") return `${item.units ?? 0} ${t("satış", "sales")}`;
+  if (item.source === "etsy") return t(`${item.etsy_orders ?? 0} sip.`, `${item.etsy_orders ?? 0} orders`);
+  if (item.source === "research") return item.etsy_searches ? `E:${item.etsy_searches >= 1000 ? `${(item.etsy_searches / 1000).toFixed(1)}k` : item.etsy_searches}` : "";
+  return `%${item.sample_size > 0 ? Math.round((item.score / item.sample_size) * 100) : 0}`;
 }
 
 function Spinner() {

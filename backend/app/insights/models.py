@@ -46,7 +46,8 @@ class RankSnapshot(Base):
 
 class EtsyKeywordData(Base):
     """Kullanıcının Etsy panelinden yapıştırdığı arama verisi (Etsy bunu API'de vermez). `source`:
-    marketplace_insights (aylık arama + rekabet), search_terms (listing'i getiren aramalar + ziyaret), ads (Etsy Ads
+    marketplace_insights (aylık arama, arama sonucu sayısı, dönüşüm bandı ve önceki döneme göre değişim; eski
+    biçimde "rekabet"), search_terms (listing'i getiren aramalar + ziyaret), ads (Etsy Ads
     arama terimleri: görüntülenme, tıklama, sipariş). `listing_id` yoksa veri mağaza geneli bir kelime araştırmasıdır.
     Her yapıştırma tarihli yeni satırlar ekler; ekranda kelime+kaynak başına en yenisi kullanılır."""
 
@@ -59,6 +60,10 @@ class EtsyKeywordData(Base):
     source: Mapped[str] = mapped_column(String(30))
     searches: Mapped[int | None] = mapped_column(Integer, nullable=True)
     competition: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Marketplace Insights dönüşüm bandı: very_low | low | medium | high | very_high (alıcının bu aramada satın alma eğilimi)
+    conversion: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Aramadaki değişim, önceki eşit döneme göre (%)
+    trend_pct: Mapped[int | None] = mapped_column(Integer, nullable=True)
     listings_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     views: Mapped[int | None] = mapped_column(Integer, nullable=True)
     clicks: Mapped[int | None] = mapped_column(Integer, nullable=True)

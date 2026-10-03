@@ -244,6 +244,16 @@ def listing_performance(ctx: Ctx, a: dict) -> dict:
     r["onceki_donem_aciklamasi"] = "sales.prev_* ve views_prev, seçilen dönemden HEMEN ÖNCEKİ eşit uzunluktaki dönemdir; geçen yılın aynı dönemi DEĞİLDİR."
     r["not"] = ("Görüntülenme/favori geçmişini Etsy vermez; günlük kendimiz biriktiriyoruz. 'partial' ya da 'available: false' ise izleme kısa demektir: "
                 "görüntülenme trendi için kesin konuşma. Satışlar sipariş geçmişinden tam hesaplanır.")
+    from app.insights import impact
+    from app.listings import changes
+
+    r["degisiklikler"] = [changes.serialize(c) for c in impact.listing_changes(ctx.db, ctx.shop, lid, ctx.today)[:5]]
+    r["degisiklik_notu"] = (
+        "degisiklikler: Etsy'ye giden son değişiklikler (yeniden eskiye) ve ölçülen etkisi. result.verdict: better/worse (istatistiksel olarak "
+        "anlamlı; result.confidence high/medium), unclear (fark büyük ama tesadüf olabilir — kesin konuşma), same, low_data. result.net: listing'in "
+        "değişimi, kontrol grubunun (aynı dönemde dokunulmamış, mümkünse aynı kategorideki listing'ler; result.control) değişimine göre yüzde. "
+        "result.metric kararın hangi ölçüte göre verildiğidir. status=waiting ise henüz erken (en az 7 gün gerekir)."
+    )
     return r
 
 
@@ -1174,8 +1184,14 @@ def keyword_pool(ctx: Ctx, a: dict) -> dict:
     pool = keyword_service.build_keyword_pool(ctx.db, ctx.shop, listing)
     limit = max(5, min(int(a.get("limit") or 25), 40))
     return {
-        "etiketler": [{"etiket": p["tag"], "kaynak": "kendi" if p["source"] == "own" else "rakip", "puan": p.get("score")} for p in pool[:limit]],
-        "not": "Puan: kendi etiketlerin için satışa göre, rakip etiketleri için ilk 50 rakip listing'de geçme sayısına göre. Etiket en fazla 20 karakter olmalı; hepsini kopyalama, ürüne uyanları seç.",
+        "etiketler": [{
+            "etiket": p["tag"], "kaynak": {"own": "kendi", "etsy": "etsy_verisi", "research": "arastirma"}.get(p["source"], "rakip"), "puan": p.get("score"),
+            **({"etsy_aylik_arama": p["etsy_searches"], "etsy_donusum": p.get("etsy_conversion"), "etsy_degisim_yuzde": p.get("etsy_trend_pct"),
+                "etsy_arama_sonucu": p.get("etsy_results")} if p.get("etsy_searches") else {}),
+        } for p in pool[:limit]],
+        "not": ("Puan: kendi etiketlerin için satışa göre, rakip etiketleri için ilk 50 rakip listing'de geçme sayısına göre, etsy_verisi için "
+                "listing'i getiren sipariş/tıklama, arastirma için Etsy'de aylık arama. etsy_donusum çok düşük olan geniş aramaları ana öbek yapma. "
+                "Etiket en fazla 20 karakter olmalı; hepsini kopyalama, ürüne uyanları seç."),
     }
 
 

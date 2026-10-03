@@ -14,7 +14,9 @@ anahtar kelime doldurma cezalandırılıyor):
 - Başlık KISA ve NET: 15 kelimeden az. Önce ürünün NE olduğu (ana anahtar öbeği ilk 40 karakterde), ardından \
 renk, boyut, malzeme, stil gibi NESNEL tanımlar. Ana arama öbeği listing'in mevcut başlığından ve satış getiren \
 etiketlerinden gelsin (ör. mevcut başlıkta "metal garage sign" varsa onu koru); kısaltırken ana öbeği atma
-- Başlığa ÖLÇÜ/BOYUT YAZMA (inç, cm, "24 Inch" gibi); ölçüler varyasyonlarda ve açıklamada durur. Listing'de birden çok \
+- Listing'de birden çok ölçü seçeneği varsa (verilen "variations") başlığa ÖLÇÜ/BOYUT YAZMA (inç, cm, "24 Inch" gibi); \
+ölçüler varyasyonlarda ve açıklamada durur. Ürün tek, sabit ölçüdeyse ve ölçü alıcının aradığı bir özellikse (ör. "11 oz \
+mug", "8x10 print") listing'de yazan ölçüyü başlıkta tutabilirsin. Listing'de birden çok \
 renk seçeneği varsa (verilen "variations") başlığa tek bir renk de yazma. Listing'de olmayan ölçü, renk ya da malzeme ASLA \
 uydurma (başlıkta da açıklamada da). "Mevcut listing verisi"ndeki başlık daha önceki bir yapay zekâ önerisi olabilir; \
 içindeki ölçü/renk bilgisine güvenme, "variations"a bak
@@ -43,6 +45,8 @@ olarak kullanarak uygun olanları etiketlere/başlığa doğal şekilde dahil et
 az kullanılmış, öne çıkma şansı daha yüksek olabilir
   * "google ilgisi: X/100" varsa, bu Etsy içi değil Google'daki genel arama ilgisidir — yüksek google ilgisi + \
 düşük rakip kullanımı bir fırsat sinyali olabilir
+  * "Etsy'de aylık N arama" ve "dönüşüm" Etsy Marketplace Insights verisidir (gerçek Etsy aramaları). Dönüşümü "çok düşük" olan geniş aramalar (ör. "metal wall art") çok aranır ama alıcı orada sadece gezinir: ana arama öbeği yapma, en fazla bir etikette kullan. Dönüşümü orta/yüksek, makul aranan ve ürüne birebir uyan uzun kuyruklu aramalar başlığın ana öbeği ve etiketler için en değerli adaylardır. Arama sonucu (rakip listing) sayısı aramaya göre azsa fırsattır; arama hacmi hızla düşüyorsa (değişim çok negatif) ana öbek yapma
+  * "ARAŞTIRMA" işaretli kelimeler kullanıcının Etsy'de araştırdığı, bu ürünle ilgili aramalardır; ürüne gerçekten uyuyorsa değerlendir
   * Yine de havuzdaki her kelimeyi zorla kullanma ve bu sayılara körü körüne bağlı kalma — asıl öncelik her zaman \
 kelimenin ürüne gerçekten uyup uymadığı, uydurma/alakasız kelime ekleme
 - materials: ürünün gerçekten yapıldığı malzemeler (en fazla 13, her biri en fazla 45 karakter, parantez ve özel karakter yok). Verilen mevcut malzeme listesini ve açıklamadan açıkça anlaşılan malzemeleri düzenle; verilmeyen bir malzemeyi UYDURMA. Bilgi yoksa mevcut listeyi aynen döndür.
@@ -83,6 +87,9 @@ def _generate_with_anthropic(user_content: str) -> dict:
     return _extract_json(text or "{}")
 
 
+_CONVERSION_TR = {"very_low": "çok düşük", "low": "düşük", "medium": "orta", "high": "yüksek", "very_high": "çok yüksek"}
+
+
 def _format_keyword_pool(pool: list[dict]) -> str:
     lines = []
     for item in pool:
@@ -93,10 +100,18 @@ def _format_keyword_pool(pool: list[dict]) -> str:
                 "ETSY VERİSİ: bu listing'e gerçekten bu aramayla gelinmiş "
                 f"(görüntülenme {item.get('etsy_views') or 0}, tıklama {item.get('etsy_clicks') or 0}, sipariş {item.get('etsy_orders') or 0}) — yüksek öncelik"
             )
+        elif item.get("source") == "research":
+            info = "ARAŞTIRMA: kullanıcının Etsy kelime araştırmasından, bu ürünle ilgili"
         else:
             info = f"rakip kullanım: {item['score']}/{item['sample_size']}"
         if item.get("etsy_searches"):
             info += f", Etsy'de aylık {item['etsy_searches']} arama"
+            if item.get("etsy_trend_pct") is not None:
+                info += f" (değişim %{item['etsy_trend_pct']:+d})"
+            if item.get("etsy_results"):
+                info += f", {item['etsy_results']} arama sonucu"
+            if item.get("etsy_conversion"):
+                info += f", dönüşüm: {_CONVERSION_TR.get(item['etsy_conversion'], item['etsy_conversion'])}"
             if item.get("etsy_competition"):
                 info += f" (rekabet: {item['etsy_competition']})"
         if item.get("google_score") is not None:
@@ -161,8 +176,12 @@ def generate_seo_suggestion(
     for attempt in range(MAX_RETRIES + 1):
         tags = quality.fix_long_tags(quality.clean_tags(suggestion.get("tags", [])))
         suggestion["tags"] = tags
-        problems = quality.all_problems(str(suggestion.get("title", "")), tags, str(suggestion.get("description", "")), others)
-        problems += quality.fact_problems(str(suggestion.get("title", "")), str(suggestion.get("description", "")), source_text, variations or {})
+        # Ölçü/renk temizliği denetimden önce: yeniden deneme, son hâli görsün (kısalan başlık benzerliği artırabilir)
+        suggestion["title"] = quality.clean_title(str(suggestion.get("title", "")), variations or {})
+        problems = quality.all_problems(
+            suggestion["title"], tags, str(suggestion.get("description", "")), others, source_text, quality.size_options(variations or {}),
+        )
+        problems += quality.fact_problems(suggestion["title"], str(suggestion.get("description", "")), source_text, variations or {})
         if not problems or attempt == MAX_RETRIES:
             break
         feedback = "\n".join(f"- {p}" for p in problems)
@@ -174,12 +193,6 @@ def generate_seo_suggestion(
             + json.dumps(suggestion, ensure_ascii=False)
         )
 
-    cleaned = quality.clean_title(str(suggestion.get("title", "")), variations or {})
-    if cleaned != suggestion.get("title"):
-        suggestion["title"] = cleaned
-        problems = quality.all_problems(cleaned, suggestion["tags"], str(suggestion.get("description", "")), others)
-        problems += quality.fact_problems(cleaned, str(suggestion.get("description", "")), source_text, variations or {})
-
     if len(suggestion.get("tags", [])) != 13:
         raise ValueError(f"Beklenen 13 etiket, alınan: {len(suggestion.get('tags', []))}")
 
@@ -187,5 +200,9 @@ def generate_seo_suggestion(
     suggestion["materials"] = [
         re.sub(r"[()]", "", str(m)).strip()[:45] for m in (suggestion.get("materials") or []) if str(m).strip()
     ][:13]
-    suggestion["warnings"] = problems  # denemelerden sonra hâlâ kalan sorunlar (kullanıcıya gösterilir)
+    # Denemelerden sonra hâlâ kalanlar kullanıcıya gösterilir. Diğer listing'lerle çakışma ayrı döner: iki listing'in
+    # ortak durumudur ve aynı nişteki ürünlerde kaçınılmaz olabilir; arayüz onu "hata" değil bilgi olarak gösterir.
+    description_part = quality.strip_common_paragraphs(str(suggestion.get("description", "")), others)
+    suggestion["conflicts"] = quality.conflicts(suggestion["title"], suggestion["tags"], description_part, others)
+    suggestion["warnings"] = [p for p in problems if p not in quality.uniqueness_problems(suggestion["title"], suggestion["tags"], description_part, others)]
     return suggestion

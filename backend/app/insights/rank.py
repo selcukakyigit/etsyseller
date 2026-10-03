@@ -33,7 +33,7 @@ MAX_KEYWORDS = 3
 MAX_RESULTS = 200
 PAGE = 100
 TOP_PRICES = 20
-BUYER_COUNTRY = "US"  # alıcıların çoğu ABD'de; ABD'ye gönderim yapan listing'ler arasında sıra
+DEFAULT_COUNTRY = "US"  # sipariş geçmişi yoksa: Etsy alıcılarının çoğu ABD'de
 KEYWORD_MAX_LEN = 100
 
 
@@ -166,8 +166,30 @@ def auto_select(db: Session, shop: Shop, today: dt.date | None = None) -> int:
 
 # ------------------------------------------------------------------ ölçüm
 
-def _search(keyword: str, offset: int, currency: str) -> dict:
-    params = {"keywords": keyword, "sort_on": "score", "limit": PAGE, "offset": offset, "buyer_country": BUYER_COUNTRY}
+def buyer_country(db: Session, shop: Shop) -> tuple[str, bool]:
+    """Sıranın hangi ülkedeki alıcıya göre ölçüleceği: (ISO kod, otomatik mi). Mağaza ayarında seçilmişse o; değilse son
+    12 ayda en çok sipariş gelen ülke (6 saat önbellekte), sipariş yoksa ABD. Etsy aramayı alıcının ülkesine gönderim
+    yapan listing'lerle sınırlar; Avrupa'ya satan bir mağaza için ABD sıralaması yanıltıcı olurdu."""
+    from app.core import ttl_cache
+    from app.orders.models import OrderCache
+
+    if shop.rank_country:
+        return shop.rank_country, False
+
+    def load() -> str:
+        since = dt.datetime.utcnow() - dt.timedelta(days=365)
+        row = db.execute(
+            select(OrderCache.country_iso, func.count()).where(
+                OrderCache.shop_id == shop.id, OrderCache.created_at >= since, OrderCache.country_iso.is_not(None), OrderCache.country_iso != "",
+            ).group_by(OrderCache.country_iso).order_by(func.count().desc()).limit(1)
+        ).first()
+        return str(row[0]).upper() if row else DEFAULT_COUNTRY
+
+    return ttl_cache.cached(("rank_country", shop.id), load), True
+
+
+def _search(keyword: str, offset: int, currency: str, country: str = DEFAULT_COUNTRY) -> dict:
+    params = {"keywords": keyword, "sort_on": "score", "limit": PAGE, "offset": offset, "buyer_country": country}
     if currency:
         params["currency"] = currency
     rate_limit.throttle()
@@ -194,8 +216,9 @@ def measure(db: Session, shop: Shop, listing_id: int, keyword: str, today: dt.da
     own_price = own_money["amount"] / own_money["divisor"] if own_money.get("divisor") else None
 
     position, total, top_prices = None, 0, []
+    country, _ = buyer_country(db, shop)
     for offset in range(0, MAX_RESULTS, PAGE):
-        data = _search(keyword, offset, currency)
+        data = _search(keyword, offset, currency, country)
         total = int(data.get("count") or 0)
         results = data.get("results") or []
         for i, item in enumerate(results):
@@ -294,8 +317,10 @@ def listing_ranks(db: Session, shop: Shop, listing_id: int, days: int = 60, toda
             "change_7d": change(series, 7), "change_30d": change(series, 30),
             "history": [{"day": s.day.isoformat(), "position": s.position} for s in series],
         })
+    country, country_auto = buyer_country(db, shop)
     return {
         "keywords": out, "max_keywords": MAX_KEYWORDS, "max_listings": MAX_LISTINGS, "max_results": MAX_RESULTS,
+        "country": country, "country_auto": country_auto,
         "tracked_listings": len(tracked_listing_ids(db, shop)), "is_tracked": bool(keywords),
         "suggestions": [s for s in suggest_keywords(db, shop, listing_id) if s not in {k.keyword for k in keywords}][:5],
     }

@@ -6,6 +6,7 @@ import { api, ListingDiagnosis } from "@/lib/api";
 import { useCached } from "@/lib/pageCache";
 import { useT } from "@/lib/i18n-client";
 import { BlockSpinner } from "@/components/ui/Spinner";
+import HealthBanner from "./HealthBanner";
 
 const TONE_DOT = {
   bad: "bg-red-500",
@@ -51,7 +52,8 @@ function MonthlyBars({ months }: { months: ListingDiagnosis["months"] }) {
   );
 }
 
-/** Teşhis sekmesi: listing'in durumu, neden düştüğü (kanıtlarla), önerilen tek hamle, mevsim ve olaylar. */
+/** Teşhis sekmesi: listing'in durumu, neden düştüğü (kanıtlarla; son değişikliğin ölçülen sonucu da kanıttır), önerilen
+ * tek hamle, huni sağlığı (durdurma önerisi dahil), mevsim ve olaylar. */
 export default function DiagnosisTab({ shopId, listingId }: { shopId: number; listingId: number }) {
   const { t, locale } = useT();
   const [d, setD] = useCached<ListingDiagnosis>(`diagnosis:${shopId}:${listingId}`);
@@ -107,6 +109,8 @@ export default function DiagnosisTab({ shopId, listingId }: { shopId: number; li
           </Link>
         )}
       </div>
+
+      <HealthBanner shopId={shopId} listingId={listingId} />
 
       {d.season.peak_months.length > 0 && <p className={`rounded-lg border px-3 py-2 text-xs ${seasonStyle}`}>{d.season.text}</p>}
 

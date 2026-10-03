@@ -7,6 +7,7 @@ import SettingsSubpage from "@/components/SettingsSubpage";
 import DangerConfirmModal from "@/components/settings/DangerConfirmModal";
 import { useT } from "@/lib/i18n-client";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { countryName, RANK_COUNTRIES } from "@/lib/countries";
 
 function CurrencyPicker({ shopId, value }: { shopId: number; value: string | null }) {
   const { t } = useT();
@@ -50,6 +51,45 @@ function CurrencyPicker({ shopId, value }: { shopId: number; value: string | nul
         {(options ?? []).map((c) => (
           <option key={c} value={c}>
             {c}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/** Sıra takibinin hangi ülkedeki alıcıya göre ölçüleceği. "Otomatik": son 12 ayda en çok satılan ülke. */
+function RankCountryPicker({ shopId, value }: { shopId: number; value: string | null }) {
+  const { t, locale } = useT();
+  const [current, setCurrent] = useState(value);
+  const [saving, setSaving] = useState(false);
+
+  async function onChange(next: string) {
+    const code = next === "auto" ? null : next;
+    setSaving(true);
+    try {
+      await api.shops.setRankCountry(shopId, code);
+      setCurrent(code);
+    } catch {
+      // sessizce geç — seçici eski değerinde kalır, kullanıcı tekrar deneyebilir
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <label className="flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+      {t("Sıra takibi ülkesi", "Rank tracking country")}
+      <select
+        value={current ?? "auto"}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={saving}
+        className="rounded-lg border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-700 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+      >
+        <option value="auto">{t("Otomatik", "Automatic")}</option>
+        {[...RANK_COUNTRIES].sort((a, b) => countryName(a, locale).localeCompare(countryName(b, locale), locale)).map((c) => (
+          <option key={c} value={c}>
+            {countryName(c, locale)}
           </option>
         ))}
       </select>
@@ -108,6 +148,7 @@ export default function ShopSettingsPage() {
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {shop.connected && <CurrencyPicker shopId={shop.id} value={shop.currency} />}
+                {shop.connected && <RankCountryPicker shopId={shop.id} value={shop.rank_country ?? null} />}
                 {shop.connected ? (
                   <>
                     <span className="text-xs font-medium text-green-600 dark:text-green-400 px-2.5 py-1 rounded-full bg-green-50 dark:bg-green-950">
@@ -143,6 +184,12 @@ export default function ShopSettingsPage() {
             {t(
               "Para birimi \"Otomatik\"ken finans raporu siparişlerinde en çok geçen para birimini kullanır; elle seçersen (ör. mağazan çok para biriminde satış aldıysa ve yanlış otomatik seçilmişse) o sabitlenir.",
               "With currency set to \"Automatic\", the finance report uses the currency that appears most in your orders. If you pick one (for example when your shop sells in several currencies and the automatic choice is wrong), it stays fixed.",
+            )}
+          </p>
+          <p className="text-xs text-neutral-400 dark:text-neutral-500">
+            {t(
+              "Sıra takibi ülkesi: Etsy aramayı alıcının ülkesine gönderilen listing'lerle sınırlar, bu yüzden sıran ülkeye göre değişir. \"Otomatik\"te son 12 ayda en çok sattığın ülke kullanılır (sipariş yoksa ABD). Değiştirirsen sonraki ölçümler yeni ülkeye göre yapılır; eski sıralar eski ülkeye aittir.",
+              "Rank tracking country: Etsy limits search to listings that ship to the buyer's country, so your rank depends on the country. \"Automatic\" uses the country you sold to most in the last 12 months (the US if there are no orders). If you change it, later measurements use the new country; earlier ranks belong to the old one.",
             )}
           </p>
 

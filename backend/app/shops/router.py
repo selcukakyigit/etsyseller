@@ -32,7 +32,7 @@ router = APIRouter(prefix="/api/shops", tags=["shops"])
 def list_shops(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     shops = db.query(Shop).filter(Shop.workspace_id.in_(workspace_ids(db, user))).all()
     return [
-        ShopOut(id=s.id, etsy_shop_id=s.etsy_shop_id, shop_name=s.shop_name, connected=s.oauth_token is not None or s.is_demo, is_demo=s.is_demo, currency=s.currency, icon_url=s.icon_url)
+        ShopOut(id=s.id, etsy_shop_id=s.etsy_shop_id, shop_name=s.shop_name, connected=s.oauth_token is not None or s.is_demo, is_demo=s.is_demo, currency=s.currency, icon_url=s.icon_url, rank_country=s.rank_country)
         for s in shops
     ]
 
@@ -56,6 +56,24 @@ def set_currency(payload: CurrencyIn, shop: Shop = Depends(get_owned_shop), db: 
     shop.currency = code
     db.commit()
     return {"ok": True, "currency": shop.currency}
+
+
+class RankCountryIn(BaseModel):
+    # None = "Otomatik" (son 12 ayda en çok satılan ülke); doluysa 2 harfli ISO ülke kodu (US, GB, DE…).
+    country: str | None = None
+
+
+@router.put("/{shop_id}/rank-country")
+def set_rank_country(payload: RankCountryIn, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    from app.core import ttl_cache
+
+    code = payload.country.strip().upper() if payload.country else None
+    if code and (len(code) != 2 or not code.isalpha()):
+        raise HTTPException(400, "Ülke 2 harfli bir ISO kod olmalı (ör. US, GB, DE).")
+    shop.rank_country = code
+    db.commit()
+    ttl_cache.clear(("rank_country", shop.id))
+    return {"ok": True, "rank_country": shop.rank_country}
 
 
 @router.post("/{shop_id}/disconnect")

@@ -3,6 +3,7 @@
 import DescriptionTemplatePicker from "@/components/listing-editor/DescriptionTemplatePicker";
 import DiagnosisStrip from "@/components/listings/analysis/DiagnosisStrip";
 import { useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { api, Suggestion } from "@/lib/api";
 import { useListingWorkingCopy } from "@/lib/useListingWorkingCopy";
@@ -251,13 +252,46 @@ export default function ListingEditPage() {
                   <div className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
                     <b>{t("Dikkat:", "Note:")}</b>{" "}
                     {t(
-                      "öneri, mağazanın diğer listing'lerine ya da kalite kurallarına şu noktalarda hâlâ takılıyor; yayınlamadan önce düzenle:",
-                      "the suggestion still conflicts with the shop's other listings or quality rules here; edit before publishing:",
+                      "yapay zekâ 3 denemede şunları düzeltemedi; yayınlamadan önce bak:",
+                      "the AI could not fix these in 3 attempts; check them before publishing:",
                     )}
                     <ul className="mt-1 list-disc pl-4">
                       {ai.suggestion.warnings.map((w, i) => (
                         <li key={i}>{w}</li>
                       ))}
+                    </ul>
+                  </div>
+                )}
+                {ai.suggestion.conflicts && ai.suggestion.conflicts.length > 0 && (
+                  <div className="mt-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300">
+                    <p>
+                      <b className="text-neutral-800 dark:text-neutral-100">{t("Aynı aramalarda yarışabilir:", "May compete in the same searches:")}</b>{" "}
+                      {t(
+                        "bu öneri mağazandaki şu listing'lere benziyor. Aynı nişteki ürünlerde bu normal olabilir; hata değil. Hangisinin bu aramayı hedefleyeceğine sen karar ver: bunu ya da diğerini farklılaştırabilir ya da böyle bırakabilirsin.",
+                        "this suggestion resembles these listings in your shop. That can be normal for products in the same niche; it is not an error. You decide which one targets this search: change this one or the other one, or leave it as it is.",
+                      )}
+                    </p>
+                    <ul className="mt-1 space-y-1">
+                      {ai.suggestion.conflicts.map((c, i) => {
+                        const reasons = [
+                          c.title_similarity != null && t(`başlıklar %${c.title_similarity} benzer`, `titles ${c.title_similarity}% alike`),
+                          c.shared_tags.length > 0 &&
+                            t(`${c.shared_tags.length} ortak etiket (${c.shared_tags.slice(0, 4).join(", ")}…)`, `${c.shared_tags.length} shared tags (${c.shared_tags.slice(0, 4).join(", ")}…)`),
+                          c.intro_similarity != null && t(`açılış paragrafı %${c.intro_similarity} benzer`, `opening paragraph ${c.intro_similarity}% alike`),
+                        ].filter(Boolean);
+                        return (
+                          <li key={i}>
+                            {c.listing_id ? (
+                              <Link href={`/listings/${c.listing_id}/edit`} target="_blank" className="font-medium text-[#D97757] hover:text-[#C6613F] hover:underline">
+                                {c.title.slice(0, 70)}
+                              </Link>
+                            ) : (
+                              <span className="font-medium">{c.title.slice(0, 70)}</span>
+                            )}
+                            <span className="text-neutral-400 dark:text-neutral-500"> · {reasons.join(" · ")}</span>
+                          </li>
+                        );
+                      })}
                     </ul>
                   </div>
                 )}

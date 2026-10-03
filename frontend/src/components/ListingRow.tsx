@@ -2,13 +2,22 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { api, KeywordPoolItem, Listing, ListingHistory } from "@/lib/api";
+import { api, KeywordPoolItem, Listing } from "@/lib/api";
 import ListingAnalysisPanel from "@/components/listings/analysis/ListingAnalysisPanel";
 import { toast } from "@/lib/toast";
 import { PublishJob } from "@/lib/publishJobs";
 import PublishBar from "@/components/listings/PublishBar";
 import { competitionFill, normalizedScore, poolRanges } from "@/lib/keywordScore";
 import { useT } from "@/lib/i18n-client";
+
+// Marketplace Insights dönüşüm bandı: [Türkçe, İngilizce]
+const CONVERSION: Record<NonNullable<KeywordPoolItem["etsy_conversion"]>, [string, string]> = {
+  very_low: ["çok düşük", "very low"],
+  low: ["düşük", "low"],
+  medium: ["orta", "medium"],
+  high: ["yüksek", "high"],
+  very_high: ["çok yüksek", "very high"],
+};
 
 function ScoredKeywordPills({ items, onTrack }: { items: KeywordPoolItem[]; onTrack?: (keyword: string) => void }) {
   // Normalized against the min/max *within this pool*, not the raw
@@ -34,32 +43,58 @@ function ScoredKeywordPills({ items, onTrack }: { items: KeywordPoolItem[]; onTr
                     `Senin listing'lerinden: ${(item.from_listings ?? []).join(" · ")}. Bu etiketi taşıyan benzer listing'lerin son 180 günde toplam ${item.units ?? 0} satışı var.${item.in_listing ? " Bu listing'de zaten kullanılıyor." : ""}`,
                     `From your listings: ${(item.from_listings ?? []).join(" · ")}. Similar listings with this tag sold ${item.units ?? 0} units in the last 180 days.${item.in_listing ? " Already used in this listing." : ""}`,
                   )
-                : t(
-                    `Rakip listing'lerden: ilk ${item.sample_size} rakip listing'in ${item.score} tanesi bu etiketi kullanıyor (yüksek = kalabalık/rekabetçi)`,
-                    `From competitor listings: ${item.score} of the top ${item.sample_size} competitor listings use this tag (high = crowded/competitive)`,
-                  )
+                : item.source === "etsy"
+                  ? t(
+                      `Etsy verisi: bu listing'e bu aramayla gelinmiş (${item.etsy_views ?? 0} görüntülenme, ${item.etsy_clicks ?? 0} tıklama, ${item.etsy_orders ?? 0} sipariş).`,
+                      `Etsy data: this search brought visits to this listing (${item.etsy_views ?? 0} views, ${item.etsy_clicks ?? 0} clicks, ${item.etsy_orders ?? 0} orders).`,
+                    )
+                  : item.source === "research"
+                    ? t(
+                        "Kelime araştırman (Marketplace Insights): bu ürünle ilgili, Etsy'de aranan bir arama. Henüz bu listing'in kelime havuzunda yoktu.",
+                        "Your keyword research (Marketplace Insights): a search on Etsy related to this product that was not yet in this listing's keyword pool.",
+                      )
+                    : t(
+                        `Rakip listing'lerden: ilk ${item.sample_size} rakip listing'in ${item.score} tanesi bu etiketi kullanıyor (yüksek = kalabalık/rekabetçi)`,
+                        `From competitor listings: ${item.score} of the top ${item.sample_size} competitor listings use this tag (high = crowded/competitive)`,
+                      )
             }
             style={{ background: `linear-gradient(to right, ${fill} ${normalized * 100}%, transparent ${normalized * 100}%)` }}
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-600 dark:text-neutral-300"
           >
             {item.source === "own" && <span className="text-[9px] font-semibold text-[#D97757]">{t("SENİN", "YOURS")}</span>}
             {item.source === "etsy" && <span className="text-[9px] font-semibold text-violet-600 dark:text-violet-400">ETSY</span>}
+            {item.source === "research" && <span className="text-[9px] font-semibold text-sky-600 dark:text-sky-400">{t("ARAŞTIRMA", "RESEARCH")}</span>}
             {item.tag}
             <span className="text-neutral-400 dark:text-neutral-500">
               {item.source === "own"
                 ? `${item.units ?? 0} ${t("satış", "sales")}`
                 : item.source === "etsy"
                   ? t(`${item.etsy_clicks ?? 0} tık · ${item.etsy_orders ?? 0} sip.`, `${item.etsy_clicks ?? 0} clicks · ${item.etsy_orders ?? 0} orders`)
-                  : `${item.score}/${item.sample_size}`}
+                  : item.source === "research"
+                    ? ""
+                    : `${item.score}/${item.sample_size}`}
             </span>
             {item.in_listing && <span className="text-emerald-500" title={t("Bu listing'de zaten var", "Already in this listing")}>✓</span>}
             {item.google_score !== undefined && <span className="text-blue-500 dark:text-blue-400">G:{item.google_score}</span>}
             {item.etsy_searches ? (
               <span
                 className="text-violet-600 dark:text-violet-400"
-                title={t("Etsy'de aylık arama (Marketplace Insights)", "Monthly searches on Etsy (Marketplace Insights)")}
+                title={[
+                  t("Etsy'de arama sayısı (Marketplace Insights)", "Searches on Etsy (Marketplace Insights)"),
+                  item.etsy_trend_pct != null ? t(`değişim ${item.etsy_trend_pct > 0 ? "+" : ""}${item.etsy_trend_pct}%`, `change ${item.etsy_trend_pct > 0 ? "+" : ""}${item.etsy_trend_pct}%`) : "",
+                  item.etsy_results != null ? t(`${item.etsy_results.toLocaleString()} arama sonucu`, `${item.etsy_results.toLocaleString()} search results`) : "",
+                  item.etsy_conversion ? t(`dönüşüm: ${CONVERSION[item.etsy_conversion][0]}`, `conversion: ${CONVERSION[item.etsy_conversion][1]}`) : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               >
                 E:{item.etsy_searches >= 1000 ? `${(item.etsy_searches / 1000).toFixed(1)}k` : item.etsy_searches}
+                {item.etsy_conversion && (
+                  <span className={item.etsy_conversion === "very_low" || item.etsy_conversion === "low" ? "text-red-500 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}>
+                    {" "}
+                    {t(`dön. ${CONVERSION[item.etsy_conversion][0]}`, `conv. ${CONVERSION[item.etsy_conversion][1]}`)}
+                  </span>
+                )}
               </span>
             ) : null}
             {onTrack && (
@@ -85,7 +120,6 @@ const pill =
 export default function ListingRow({
   shopId,
   listing,
-  mockHistory,
   selected,
   onSelectChange,
   onPublish,
@@ -96,7 +130,6 @@ export default function ListingRow({
   shopId: number;
   listing: Listing;
   /** Preview/test escape hatch: pass pre-built history instead of hitting the API. */
-  mockHistory?: ListingHistory;
   /** Toplu işlem için seçim; verilmezse onay kutusu gösterilmez. */
   selected?: boolean;
   onSelectChange?: (selected: boolean) => void;
@@ -237,7 +270,7 @@ export default function ListingRow({
       {(error || publishError) && <p className="px-4 pb-3 text-sm text-red-600">{error ?? publishError}</p>}
       {job && <PublishBar id={listing.listing_id} job={job} />}
 
-      {historyOpen && <ListingAnalysisPanel shopId={shopId} listingId={listing.listing_id} initialHistory={mockHistory} />}
+      {historyOpen && <ListingAnalysisPanel shopId={shopId} listingId={listing.listing_id} />}
 
       {keywordPool && (
         <div className="border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/50 p-4 space-y-2">

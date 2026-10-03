@@ -38,9 +38,9 @@ class ListingCache(Base):
 
 
 class ListingVersion(Base):
-    """Append-only record of every AI suggestion or manual edit for a listing,
-    plus whether/when it was applied to Etsy. This is the audit trail the
-    performance analysis (ListingStatSnapshot) is compared against."""
+    """Yapay zekâ önerilerinin günlüğü (her "AI önerisi" bir satır; geri alınırsa `status="dismissed"`). Yayının
+    AI destekli olup olmadığı buradan anlaşılır (bkz. listings/changes.py). Etsy'ye giden değişikliklerin kaydı
+    ListingChange'tir; eski sürümlerde `kind="manual_edit"` ve `status="applied"` satırlar da yazılırdı (0017'de taşındı)."""
 
     __tablename__ = "listing_versions"
 
@@ -65,9 +65,33 @@ class ListingVersion(Base):
     applied_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class ListingChange(Base):
+    """Etsy'ye giden bir değişiklik: Ulagg'dan yayın (`source` = ai | manual) ya da Etsy'de yapılıp günlük kayıtta
+    yakalanan metin değişikliği (`source` = etsy). "Değiştir → bekle → ölç" döngüsünün omurgası: sağlık değerlendirmesi
+    yeni gözlem penceresini, teşhis olayları, ölçüm (insights/impact.py) önce/sonra karşılaştırmasını buradan alır.
+
+    `fields`: değişen alanlar (title, tags, description, materials, images, videos, price, inventory, properties,
+    personalization, shipping, other). `details`: kısa özet (eski/yeni başlık, eklenen/çıkan etiketler, fiyat, fotoğraf
+    sayısı). `focus`: yayın anındaki teşhisin önerdiği odak (seo | appeal | conversion | shop | demand | track | keep | wait).
+    `result_json`: son ölçüm (günlük iş yazar; 30 günlük ölçüm tamamlanınca `final` olur ve bir daha hesaplanmaz)."""
+
+    __tablename__ = "listing_changes"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
+    listing_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    published_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+    source: Mapped[str] = mapped_column(String(10), default="manual")
+    fields: Mapped[str] = mapped_column(Text, default="[]")  # JSON liste
+    details: Mapped[str] = mapped_column(Text, default="{}")  # JSON
+    focus: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    measured_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class ListingStatSnapshot(Base):
-    """Daily views/favorites capture (populated by jobs/daily_stats.py in Faz B)
-    used to measure whether an applied change actually helped."""
+    """Günlük görüntülenme/favori kaydı (jobs/daily_stats.py). Etsy yalnızca ömür boyu toplamı verdiği için dönem
+    değerleri bu kayıtların farkından hesaplanır; değişikliklerin etkisi de buna göre ölçülür (insights/impact.py)."""
 
     __tablename__ = "listing_stat_snapshots"
 
@@ -140,7 +164,7 @@ class ListingHealth(Base):
 
     # Şu anki gözlem penceresinin başlangıcı: son uygulanan değişiklik, yoksa listing'in oluşturulma tarihi
     window_start: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
-    # Bu pencereye kadar kaç farklı değişiklik döngüsü denendi (her yeni "applied" versiyon +1)
+    # Bu pencereye kadar kaç farklı değişiklik döngüsü denendi (her yeni yayın +1)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     # Daha önce denenmiş bottleneck türleri (JSON liste) — aynı teşhisi tekrar tekrar önermemek için
     tried_bottlenecks: Mapped[str] = mapped_column(Text, default="[]")

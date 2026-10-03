@@ -1,6 +1,7 @@
 import datetime as dt
 import logging
 import math
+import re
 from collections import Counter
 
 from sqlalchemy.orm import Session
@@ -172,7 +173,8 @@ def build_keyword_pool(db: Session, shop: Shop, listing: dict) -> list[dict]:
 
 def _add_etsy_data(db: Session, shop: Shop, listing: dict, pool: list[dict], seen: set[str], mine: set[str]) -> None:
     """Kullanıcının Etsy'den yapıştırdığı veri: havuzdaki kelimelere Marketplace Insights arama/rekabet bilgisi eklenir;
-    listing'i gerçekten getiren aramalar (arama terimleri / reklam) havuza "etsy" kaynağıyla girer."""
+    listing'i gerçekten getiren aramalar (arama terimleri / reklam) havuza "etsy" kaynağıyla, ürünle ilgili ama havuzda
+    olmayan araştırma kelimeleri "research" kaynağıyla girer."""
     from app.insights import etsy_data
 
     lid = listing.get("listing_id")
@@ -185,8 +187,18 @@ def _add_etsy_data(db: Session, shop: Shop, listing: dict, pool: list[dict], see
             "tag": r["keyword"], "source": "etsy", "score": r["orders"] or r["clicks"] or r["views"] or 0, "sample_size": 0,
             "in_listing": r["keyword"] in mine, "etsy_views": r["views"], "etsy_clicks": r["clicks"], "etsy_orders": r["orders"],
         })
+    # Kelime araştırmasında olup havuzda olmayan, bu ürünle ilgili aramalar ("research" kaynağı; skor = aylık arama).
+    text = " ".join([str(listing.get("title") or ""), " ".join(listing.get("tags") or []), " ".join(listing.get("materials") or [])]).lower()
+    words = {w for w in re.findall(r"[^\W_]+(?:'[^\W_]+)?", text) if len(w) > 2}
+    for r in etsy_data.related_research(db, shop, words, seen):
+        seen.add(r["keyword"])
+        pool.append({"tag": r["keyword"], "source": "research", "score": r["searches"] or 0, "sample_size": 0, "in_listing": r["keyword"] in mine})
     info = etsy_data.keyword_index(db, shop, {p["tag"] for p in pool})
     for p in pool:
         if p["tag"] in info:
-            p["etsy_searches"] = info[p["tag"]]["searches"]
-            p["etsy_competition"] = info[p["tag"]]["competition"]
+            i = info[p["tag"]]
+            p["etsy_searches"] = i["searches"]
+            p["etsy_competition"] = i["competition"]
+            p["etsy_conversion"] = i["conversion"]
+            p["etsy_trend_pct"] = i["trend_pct"]
+            p["etsy_results"] = i["listings_count"]

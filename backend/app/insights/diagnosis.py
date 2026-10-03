@@ -18,10 +18,10 @@ from sqlalchemy.orm import Session
 
 from app.core.fingerprint import ResultCache
 from app.core.i18n import get_lang, tr
-from app.insights import sales, seasonality
+from app.insights import impact, sales, seasonality
 from app.listings import health as listing_health
 from app.listings import performance
-from app.listings.models import ListingCache, ListingVersion
+from app.listings.models import ListingCache, ListingChange
 from app.shops.models import ReviewCache, Shop
 
 NEW_LISTING_DAYS = 120
@@ -165,33 +165,97 @@ def shop_signal(c: Ctx) -> tuple[list[Evidence], list[Vote]]:
     return out, []
 
 
+FIELD_LABELS = {
+    "title": ("başlık", "title"), "tags": ("etiketler", "tags"), "description": ("açıklama", "description"),
+    "materials": ("malzemeler", "materials"), "images": ("fotoğraflar", "photos"), "videos": ("video", "video"),
+    "price": ("fiyat", "price"), "inventory": ("varyasyonlar", "variations"), "properties": ("özellikler", "attributes"),
+    "personalization": ("kişiselleştirme", "personalization"), "shipping": ("kargo", "shipping"),
+    "category": ("kategori", "category"), "text": ("başlık/etiket/açıklama", "title/tags/description"), "other": ("diğer", "other"),
+}
+
+
+def fields_text(fields: list[str]) -> str:
+    return ", ".join(tr(*FIELD_LABELS.get(f, (f, f))) for f in fields)
+
+
+def _changes(c: Ctx) -> list[ListingChange]:
+    return list(c.db.scalars(
+        select(ListingChange).where(ListingChange.shop_id == c.shop.id, ListingChange.listing_id == c.listing_id).order_by(ListingChange.published_at)
+    ))
+
+
 def content_signal(c: Ctx) -> tuple[list[Evidence], list[Vote]]:
-    """Düşüş başlangıcı çevresinde içerik değişti mi (uygulamadan yayınlanan değişiklikler ve Etsy'de görülen değişiklikler)."""
-    dates: list[tuple[dt.date, str]] = []
-    for applied in c.db.scalars(select(ListingVersion.applied_at).where(
-        ListingVersion.shop_id == c.shop.id, ListingVersion.listing_id == c.listing_id, ListingVersion.status == "applied", ListingVersion.applied_at.is_not(None)
-    )):
-        dates.append((applied.date(), "app"))
-    prev_hash = None
-    for s in performance._snapshots(c.db, c.shop.id, c.listing_id):
-        if s.content_hash and prev_hash and s.content_hash != prev_hash:
-            dates.append((s.captured_at.date(), "etsy"))
-        prev_hash = s.content_hash or prev_hash
-    for d, src in sorted(set(dates)):
+    """Düşüş başlangıcı çevresinde içerik değişti mi (Ulagg'dan yayınlar ve Etsy'de yapılan metin değişiklikleri)."""
+    dates: list[dt.date] = []
+    for ch in _changes(c):
+        d = ch.published_at.date()
+        dates.append(d)
+        what = fields_text(json.loads(ch.fields or "[]"))
         c.events.append({"date": d.isoformat(), "kind": "content", "text": tr(
-            "İçerik değişti (Ulagg'dan yayınlandı)" if src == "app" else "İçerik değişti (Etsy'de)",
-            "Content changed (published from Ulagg)" if src == "app" else "Content changed (on Etsy)",
+            f"Etsy'de değiştirildi: {what}" if ch.source == "etsy" else f"Ulagg'dan yayınlandı: {what}",
+            f"Changed on Etsy: {what}" if ch.source == "etsy" else f"Published from Ulagg: {what}",
         )})
     if not c.decline_start:
         return [], []
     start = dt.date(int(c.decline_start[:4]), int(c.decline_start[5:]), 1)
-    near = [d for d, _ in dates if start - dt.timedelta(days=60) <= d <= start + dt.timedelta(days=45)]
+    near = [d for d in sorted(dates) if start - dt.timedelta(days=60) <= d <= start + dt.timedelta(days=45)]
     if near:
         return [Evidence("content", "bad", tr(
             f"Düşüş {near[0].isoformat()} tarihli bir içerik değişikliğinin hemen ardından başlıyor; o değişiklik görünürlüğü bozmuş olabilir.",
             f"The drop starts right after a content change on {near[0].isoformat()}; that change may have hurt visibility.",
         ))], [Vote("visibility", 1.5)]
     return [], []
+
+
+_METRIC_LABEL = {"views": ("görüntülenme", "views"), "favorites": ("favori", "favorites"), "units": ("satış", "sales")}
+
+
+def impact_signal(c: Ctx) -> tuple[list[Evidence], list[Vote]]:
+    """Son değişikliğin ölçülen sonucu (insights/impact.py): işe yaradı mı, henüz erken mi?"""
+    rows = _changes(c)
+    if not rows:
+        return [], []
+    ch = rows[-1]
+    r = json.loads(ch.result_json) if ch.result_json else {}
+    fields = json.loads(ch.fields or "[]")
+    what, day = fields_text(fields), ch.published_at.date().isoformat()
+    if r.get("status") == "waiting" or not r:
+        days = (c.today - ch.published_at.date()).days
+        return [Evidence("impact", "info", tr(
+            f"Son değişiklik {days} gün önce yayınlandı ({what}). Sonucu en erken {max(impact.MIN_WINDOW - days, 1)} gün sonra ölçülür; o zamana kadar yeni değişiklik ölçümü karıştırır.",
+            f"The last change was published {days} days ago ({what}). Its effect can be measured in {max(impact.MIN_WINDOW - days, 1)} days at the earliest; another change before then will muddy the result.",
+        ))], []
+    if r.get("status") != "measured" or r.get("verdict") == "low_data":
+        return [], []
+    metric, net = r["metric"], r["net"][r["metric"]] or 0
+    label = tr(*_METRIC_LABEL[metric])
+    verdict = r["verdict"]
+    if verdict == "better":
+        return [Evidence("impact", "good", tr(
+            f"{day} tarihli değişiklik ({what}) işe yaradı: {label} dokunulmamış benzer listing'lere göre %{net:+d}.",
+            f"The change on {day} ({what}) worked: {label} {net:+d}% relative to similar untouched listings.",
+        ))], []
+    if verdict == "unclear":
+        return [Evidence("impact", "info", tr(
+            f"{day} tarihli değişiklikten ({what}) sonra {label} %{net:+d} değişti ama veri tesadüften ayırt etmeye yetmiyor; biraz daha bekle.",
+            f"After the change on {day} ({what}), {label} changed {net:+d}%, but there is not enough data to rule out chance yet; wait a little longer.",
+        ))], []
+    if verdict == "same":
+        return [Evidence("impact", "info", tr(
+            f"{day} tarihli değişiklik ({what}) belirgin bir fark yaratmadı ({label} %{net:+d}). Aynı alanı tekrar değiştirmek yerine başka bir aşamaya bak.",
+            f"The change on {day} ({what}) made no clear difference ({label} {net:+d}%). Look at another stage instead of changing the same fields again.",
+        ))], []
+    votes = []
+    if {"title", "tags", "text", "category", "properties"} & set(fields):
+        votes.append(Vote("visibility", 1.0))
+    if "images" in fields:
+        votes.append(Vote("appeal", 1.0))
+    if {"price", "inventory", "description"} & set(fields):
+        votes.append(Vote("conversion", 1.0))
+    return [Evidence("impact", "bad", tr(
+        f"{day} tarihli değişiklikten ({what}) sonra {label} dokunulmamış benzer listing'lere göre %{net:+d} düştü; o değişikliği gözden geçir ya da geri al.",
+        f"After the change on {day} ({what}), {label} fell {net:+d}% relative to similar untouched listings; review or revert that change.",
+    ))], votes
 
 
 def price_signal(c: Ctx) -> tuple[list[Evidence], list[Vote]]:
@@ -386,12 +450,13 @@ def demand_signal(c: Ctx) -> tuple[list[Evidence], list[Vote]]:
     return [Evidence("demand", "info", tr(f"Google'da ilgi geçen yıla göre biraz düşük ({parts}).", f"Google interest is somewhat lower than last year ({parts_en})."))], []
 
 
-SIGNALS: list[Signal] = [shop_signal, content_signal, price_signal, review_signal, funnel_signal, rank_signal, etsy_data_signal, demand_signal]
+SIGNALS: list[Signal] = [shop_signal, content_signal, impact_signal, price_signal, review_signal, funnel_signal, rank_signal, etsy_data_signal, demand_signal]
 
 
 # ------------------------------------------------------------------ sonuç
 
-def _action(cause: str | None, status: str) -> dict:
+def _action(cause: str | None, status: str, digital: bool = False) -> dict:
+    """Önerilen tek hamle. `digital`: indirilebilir ürün (kargo/teslim süresi yok; dosya, önizleme ve kullanım hakkı önemli)."""
     if status in ("new", "low_data"):
         return {"key": "wait", "text": tr("Henüz yeterli satış geçmişi yok; değişiklik için veri birikmesini bekle.", "Not enough sales history yet; wait for more data before changing things.")}
     if status != "declining":
@@ -399,8 +464,14 @@ def _action(cause: str | None, status: str) -> dict:
     return {
         "visibility": {"key": "seo", "text": tr("Başlık, etiketler ve özellikler: listing aramada eskisi kadar görünmüyor.", "Title, tags and attributes: the listing is not showing up in search as before.")},
         "appeal": {"key": "appeal", "text": tr("Kapak fotoğrafı ve başlık: görülüyor ama tıklanmıyor.", "Main photo and title: it is seen but not clicked.")},
-        "conversion": {"key": "conversion", "text": tr("Fiyat, açıklama ve varyasyonlar: ilgi var ama satışa dönmüyor.", "Price, description and variations: there is interest but it does not turn into sales.")},
+        "conversion": {"key": "conversion", "text": tr(
+            "Fiyat, açıklama ve önizleme görselleri: ilgi var ama satışa dönmüyor (alıcı ne indireceğini net görmeli).",
+            "Price, description and preview images: there is interest but it does not turn into sales (buyers need to see clearly what they download).",
+        ) if digital else tr("Fiyat, açıklama ve varyasyonlar: ilgi var ama satışa dönmüyor.", "Price, description and variations: there is interest but it does not turn into sales.")},
         "shop_wide": {"key": "shop", "text": tr(
+            "Sorun büyük ölçüde mağaza genelinde. Listing metnini değiştirmek tek başına yetmez: mağaza puanına, fiyatlara ve reklam ayarlarına bak.",
+            "The problem is mostly shop-wide. Changing this listing's text alone will not fix it: check your shop rating, prices and ad settings.",
+        ) if digital else tr(
             "Sorun büyük ölçüde mağaza genelinde. Listing metnini değiştirmek tek başına yetmez: mağaza puanına, teslim süresine, fiyatlara ve reklam ayarlarına bak.",
             "The problem is mostly shop-wide. Changing this listing's text alone will not fix it: check your shop rating, processing times, prices and ad settings.",
         )},
@@ -437,6 +508,7 @@ def diagnose(db: Session, shop: Shop, listing_id: int, today: dt.date | None = N
     if row is None:
         return None
     raw = json.loads(row.raw_json)
+    digital = raw.get("listing_type") == "download"
     idx = sales.index(db, shop)
     rows = idx.get(listing_id, [])
     lm, sm = sales.monthly(rows), sales.shop_monthly(idx)
@@ -478,30 +550,86 @@ def diagnose(db: Session, shop: Shop, listing_id: int, today: dt.date | None = N
         "cause": cause,
         "confidence": confidence if cause else None,
         "headline": _headline(status, cause, metrics, change_pct),
-        "action": _action(cause, status),
+        "action": _action(cause, status, digital),
+        "digital": digital,
         "metrics": {**metrics, "change_pct": change_pct, "shop_change_pct": shop_change_pct, "peak_month": peak_key, "peak_units": int(lm[peak_key][0]) if peak_key else 0},
         "decline_start": decline_start,
         "season": seasonality.season(lm, sm, today),
         "months": months,
         "evidence": [e.__dict__ for e in sales_lines + evidence],
         "events": sorted(c.events, key=lambda e: e["date"], reverse=True)[:20],
+        "last_change": _last_change_out(c),
+    }
+
+
+def _last_change_out(c: Ctx) -> dict | None:
+    """Son değişiklik ve ölçüm durumu (editörde "henüz erken" uyarısı ve yapay zekâ özeti için)."""
+    rows = _changes(c)
+    if not rows:
+        return None
+    ch = rows[-1]
+    return {
+        "published_at": ch.published_at.isoformat(),
+        "days_ago": (c.today - ch.published_at.date()).days,
+        "fields": json.loads(ch.fields or "[]"),
+        "details": json.loads(ch.details or "{}"),
+        "source": ch.source,
+        "result": json.loads(ch.result_json) if ch.result_json else None,
     }
 
 
 def prompt_brief(d: dict) -> str:
-    """AI önerisine giden teşhis özeti (modele; Türkçe yeterli)."""
-    if not d or d["status"] != "declining":
+    """AI önerisine giden teşhis özeti (modele; Türkçe yeterli): satış düşüşünün sebebi ve son değişikliğin sonucu."""
+    if not d:
         return ""
-    focus = {
-        "seo": "Odak: aramada görünürlük. Başlık (Etsy rehberine uygun, kısa ve net), etiketler ve açıklamanın ilk cümleleri ürünü arayanın kullandığı kelimelerle anlatsın; satış getiren eski etiketleri koru.",
-        "appeal": "Odak: tıklanma. Başlık ilk 40 karakterde ürünü net ve çekici anlatsın; kapak fotoğrafının da değişmesi gerektiğini gerekçede belirt.",
-        "conversion": "Odak: satın alma. Açıklama alıcının sorularını (ölçü, malzeme, kişiselleştirme, teslim) ilk paragraflarda cevaplasın; fiyat/varyasyon gözden geçirilmeli diye gerekçede belirt.",
-        "shop": "Sorun büyük ölçüde mağaza genelinde; metni yine de Etsy kurallarına göre iyileştir ama gerekçede tek başına yetmeyeceğini belirt.",
-        "track": "Sebep net değil; Etsy kurallarına göre dengeli bir iyileştirme yap.",
-        "demand": "Talep genel olarak düşmüş; ürünün farklı kullanım/alıcı aramalarını etiketlerle yakala.",
-    }.get(d["action"]["key"], "")
-    lines = [f"- {e['text']}" for e in d["evidence"][:6]]
-    return "Bu listing'in satış teşhisi:\n" + "\n".join(lines) + f"\n{focus}"
+    parts = []
+    if d["status"] == "declining":
+        focus = {
+            "seo": "Odak: aramada görünürlük. Başlık (Etsy rehberine uygun, kısa ve net), etiketler ve açıklamanın ilk cümleleri ürünü arayanın kullandığı kelimelerle anlatsın; satış getiren eski etiketleri koru.",
+            "appeal": "Odak: tıklanma. Başlık ilk 40 karakterde ürünü net ve çekici anlatsın; kapak fotoğrafının da değişmesi gerektiğini gerekçede belirt.",
+            "conversion": (
+                "Odak: satın alma. Bu dijital (indirilebilir) bir ürün: açıklama ilk paragraflarda alıcının sorularını cevaplasın "
+                "(dosya biçimi, çözünürlük/boyut, kaç dosya, nasıl indirilip kullanılacağı, kullanım hakkı); kargo/teslim süresinden söz etme. "
+                "Fiyat ve önizleme görselleri gözden geçirilmeli diye gerekçede belirt."
+                if d.get("digital") else
+                "Odak: satın alma. Açıklama alıcının sorularını (ölçü, malzeme, kişiselleştirme, teslim) ilk paragraflarda cevaplasın; fiyat/varyasyon gözden geçirilmeli diye gerekçede belirt."
+            ),
+            "shop": "Sorun büyük ölçüde mağaza genelinde; metni yine de Etsy kurallarına göre iyileştir ama gerekçede tek başına yetmeyeceğini belirt.",
+            "track": "Sebep net değil; Etsy kurallarına göre dengeli bir iyileştirme yap.",
+            "demand": "Talep genel olarak düşmüş; ürünün farklı kullanım/alıcı aramalarını etiketlerle yakala.",
+        }.get(d["action"]["key"], "")
+        lines = [f"- {e['text']}" for e in d["evidence"][:6]]
+        parts.append("Bu listing'in satış teşhisi:\n" + "\n".join(lines) + f"\n{focus}")
+    lc = d.get("last_change")
+    if lc:
+        parts.append(_change_brief(lc))
+    return "\n\n".join(p for p in parts if p)
+
+
+def _change_brief(lc: dict) -> str:
+    """Son değişikliğin sonucu, modelin aynı hatayı tekrarlamaması ya da işe yarayanı bozmaması için."""
+    names = {k: v[0] for k, v in FIELD_LABELS.items()}
+    what = ", ".join(names.get(f, f) for f in lc["fields"])
+    det, r = lc.get("details") or {}, lc.get("result") or {}
+    head = f"Son değişiklik {lc['days_ago']} gün önce yayınlandı ({what})."
+    if det.get("tags_removed"):
+        head += f" O değişiklikte çıkarılan etiketler: {', '.join(det['tags_removed'])}."
+    if det.get("title_before"):
+        head += f' Önceki başlık: "{det["title_before"]}".'
+    status, verdict = r.get("status"), r.get("verdict")
+    if status in (None, "waiting"):
+        return head + " Sonucu henüz ölçülmedi: büyük değişiklik yapma, yalnızca açık hataları düzelt ve iyi çalışan kısımları koru; gerekçede bunu belirt."
+    if status != "measured" or verdict == "low_data":
+        return head
+    label = {"views": "görüntülenme", "favorites": "favori", "units": "satış"}[r["metric"]]
+    net = r["net"][r["metric"]] or 0
+    if verdict == "better":
+        return head + f" Sonuç: {label} dokunulmamış benzer listing'lere göre %{net:+d} — işe yaradı. Aynı yönü koru, o değişikliği bozma; yalnızca kalan zayıf noktaları iyileştir."
+    if verdict == "worse":
+        return head + f" Sonuç: {label} dokunulmamış benzer listing'lere göre %{net:+d} — kötüleşti. O değişiklikte kaybedilen satış getiren kelimeleri (çıkarılan etiketler, önceki başlıktaki ana öbek) geri getirmeyi değerlendir; gerekçede bunu açıkla."
+    if verdict == "unclear":
+        return head + f" Sonuç henüz belirsiz ({label} %{net:+d}, veri yetersiz): büyük değişiklik yapma, iyi çalışan kısımları koru."
+    return head + f" Sonuç: belirgin fark yok ({label} %{net:+d}). Aynı alanları aynı şekilde yeniden yazmak yerine farklı bir yaklaşım dene; gerekçede neyi farklı yaptığını açıkla."
 
 
 # ------------------------------------------------------------------ mağaza geneli: dikkat isteyen listing'ler

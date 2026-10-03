@@ -24,6 +24,7 @@ def tr(tr_text: str, en_text: str) -> str:
 EN_MESSAGES: dict[str, str] = {
     "Yalnızca ekran görüntüsü (resim) yüklenebilir": "Only a screenshot (image) can be uploaded",
     "Listing bulunamadı": "Listing not found",
+    "Ülke 2 harfli bir ISO kod olmalı (ör. US, GB, DE).": "The country must be a 2-letter ISO code (e.g. US, GB, DE).",
     "Fatura metni çok kısa.": "The invoice text is too short.",
     "Şablon bulunamadı": "Template not found",
     "Şablon adı boş olamaz": "The template name cannot be empty",
