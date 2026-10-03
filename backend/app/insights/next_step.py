@@ -15,7 +15,10 @@ Kural sırası (ilk eşleşen kazanır):
      → aşamanın hamlesi; aynı hamle yakın zamanda denenip etki etmediyse aşamanın sıradaki hamlesi
   7. Zayıf aşama yok                                                 → dokunma (son değişiklik işe yaradıysa "koru")
 
-Bir seferde tek hamle önerilir: 30 gün sonra neyin işe yaradığı ancak böyle anlaşılır."""
+Bir seferde tek hamle önerilir: 30 gün sonra neyin işe yaradığı ancak böyle anlaşılır. İstisna: eskiden satıp sönmüş
+listing (satış neredeyse sıfır, korunacak bir şey yok, turlar çok yavaş kalır) için "kapsamlı yenile" tek turda başlık,
+etiket, açıklama ve kapak fotoğrafını birlikte yeniler; ölçüm yenilemenin bütün olarak işe yarayıp yaramadığını söyler.
+Kapsamlı yenileme denenip işe yaramadıysa tekrar önerilmez, adım adım akışa dönülür."""
 import datetime as dt
 import html
 import json
@@ -35,6 +38,9 @@ ABS_MIN_VPD = 1.0  # günde 1 görüntülenmenin altı mağaza ortalaması ne ol
 #                    "ortancaya yakın" yanlış bir teselli olurdu); mağaza ortancasından iyiyse uygulanmaz
 MIN_LIFETIME_AGE = 30  # ömür boyu kıyasa girecek listing en az bu kadar günlük olmalı
 MIN_LIFETIME_SAMPLE = 5  # ...ve mağazada en az bu kadar kıyaslanabilir listing olmalı
+FADED_PEAK = 6  # bir takvim yılında en az bu kadar satmış ve…
+FADED_RATIO = 0.25  # …son 12 ayda o yılın bu oranına bile ulaşamamışsa listing "sönmüş" sayılır
+OVERHAUL_MAX_UNITS = 3  # kapsamlı yenileme yalnızca son 12 ayda en fazla bu kadar satan (korunacak satışı olmayan) listing'e
 PRICE_HIGH = 1.3  # kendi fiyatın ilk 20 rakibin ortancasının bu katından fazlaysa fiyat hamlesi adaydır
 TRIED_DAYS = 150  # bu kadar gün içinde denenip etki etmeyen hamle tekrar önerilmez
 
@@ -60,7 +66,7 @@ _BOTTLENECK_STAGE = {"seo": "visibility", "appeal": "appeal", "conversion": "con
 # Hamle → AI önerisinin ve ölçümün odağı (eski "action.key" değerleri; bkz. diagnosis.prompt_brief, impact._METRIC_BY_FOCUS)
 FOCUS = {
     "title_tags": "seo", "photo": "appeal", "price": "conversion", "description": "conversion", "shop": "shop", "demand": "demand",
-    "track": "track", "watching": "keep", "keep": "keep", "keep_peak": "keep", "keep_working": "keep", "wait": "wait", "wait_data": "wait", "deactivate": "keep",
+    "track": "track", "overhaul": "seo", "watching": "keep", "keep": "keep", "keep_peak": "keep", "keep_working": "keep", "wait": "wait", "wait_data": "wait", "deactivate": "keep",
 }
 
 
@@ -163,6 +169,22 @@ def _near_duplicates(db: Session, shop_id: int, listing_id: int, today: dt.date)
         if lid != listing_id and quality._jaccard(me[1], words) >= DUPLICATE_SIMILARITY:
             out.append({"listing_id": lid, "title": title, "views": views})
     return sorted(out, key=lambda x: -x["views"])[:3]
+
+
+def faded(rows: list, today: dt.date) -> dict | None:
+    """Eskiden satıp sönmüş listing: en iyi takvim yılı ≥ FADED_PEAK adet, son 12 ay ≤ zirvenin FADED_RATIO'su. Ömür boyu
+    ortalama bunu gizler (eski satışlar oranı iyi gösterir), teşhisin 24 aylık eğrisi de göremez (son iki yılda satış yok)."""
+    by_year: dict[int, int] = {}
+    for day, units, _ in rows:
+        by_year[day.year] = by_year.get(day.year, 0) + units
+    if not by_year:
+        return None
+    peak_year = max(by_year, key=by_year.get)
+    peak = by_year[peak_year]
+    last12 = sum(u for day, u, _ in rows if day > today - dt.timedelta(days=365))
+    if peak >= FADED_PEAK and last12 <= peak * FADED_RATIO and peak_year < today.year:
+        return {"peak_year": peak_year, "peak": peak, "last12": last12}
+    return None
 
 
 def _price_info(db: Session, shop_id: int, listing_id: int, today: dt.date) -> dict | None:
@@ -324,8 +346,28 @@ def decide(
                "Try catching other uses and buyer searches with tags; consider a new product idea too.")])
 
     stage, life_why, compared = None, "", False
+    fade = faded(idx.get(listing_id, []), today) if idx is not None else None
+    fade_line = ""
+    if fade:
+        life = _lifetime(db, shop_id, idx, today) if idx is not None else None
+        me = (life["per"].get(listing_id) or {}) if life else {}
+        fade_line = tr(
+            f"Eskiden satıyordu: {fade['peak_year']} yılında {fade['peak']} satış, son 12 ayda {fade['last12']}.",
+            f"It used to sell: {fade['peak']} sales in {fade['peak_year']}, {fade['last12']} in the last 12 months.",
+        )
+        if life and me.get("fav") and life["fav"] and me["fav"] >= life["fav"]:
+            fade_line += " " + tr(
+                f"Görenler hâlâ beğeniyor (favori oranı %{me['fav'] * 100:.1f}); ürün değil, büyük olasılıkla aramadaki yeri ve kullandığı dil eskidi.",
+                f"Viewers still like it (favorite rate {me['fav'] * 100:.1f}%); not the item, most likely its place and wording in search have aged.",
+            )
     if health is not None and health.stage == "flagged" and health.bottleneck:
         stage, compared = _BOTTLENECK_STAGE.get(health.bottleneck), True
+    elif status == "declining" and cause in _CAUSE_STAGE:
+        # Gerçek satış eğrisine dayanan teşhis sebebi, ömür boyu kaba kıyastan önce gelir.
+        stage, compared = _CAUSE_STAGE[cause], True
+    elif fade:
+        # Sönmüş listing: önce aramadaki yeri (başlık/etiket); sonraki turlarda fotoğraf ve fiyat.
+        stage, compared = "visibility", True
     elif health is not None and health.stage == "stable":
         compared = True
     elif idx is not None:
@@ -364,6 +406,17 @@ def decide(
         ])
 
     tried = _tried(changes, today)
+    if fade and fade["last12"] <= OVERHAUL_MAX_UNITS and len(tried & {"title_tags", "photo", "description"}) < 2:
+        return _step("overhaul", tr(
+            "Kapsamlı yenile: başlık, etiketler, açıklama ve kapak fotoğrafı bu turda birlikte; fiyatı da gözden geçir.",
+            "Full refresh: title, tags, description and main photo together this round; review the price too.",
+        ), [fade_line, tr(
+            "Satış neredeyse sıfır: korunacak bir şey yok ve tek tek denemek (her tur 30 gün) çok yavaş kalır. Bu listing'i bugünün aramalarına göre baştan kur. Ölçüm yine yapılır ve yenilemenin bütün olarak işe yarayıp yaramadığını gösterir.",
+            "Sales are close to zero: there is nothing to protect and trying one thing at a time (30 days a round) is too slow. Rebuild this listing for today's searches. It is still measured and shows whether the refresh as a whole worked.",
+        ), _price_why(price) or tr(
+            "Fiyatı rakiplerle kıyaslamak için listing'i sıra takibine al.",
+            "Add the listing to rank tracking to compare its price with competitors.",
+        ), _season_why(season)], "ai", price=price)
     move = _move_for(stage, tried, price)
     why_stage = {
         "visibility": tr("Aramada az görünüyor: günlük görüntülenme mağaza ortancasının çok altında ya da satış görünürlük kaybıyla düşüyor.",
@@ -375,6 +428,12 @@ def decide(
     }[stage]
     if life_why:
         why_stage = life_why + " " + tr("(Günlük kayıt yeni başladığı için ömür boyu sayılarla kaba bir kıyas.)", "(A rough comparison on lifetime counts, since daily records have only just started.)")
+    if fade_line:
+        why_stage = fade_line + " " + why_stage
+    fade_next = tr(
+        "Bu tur başlık ve etiketler; etkisi ölçülünce sıradaki turlarda kapak fotoğrafı ve fiyat gelir (rakip fiyatlarıyla kıyas için listing'i sıra takibine al).",
+        "This round: title and tags; once measured, the next rounds are the main photo and the price (add the listing to rank tracking to compare with competitor prices).",
+    ) if fade else ""
     tried_why = tr(
         f"Daha önce denenip etki etmeyenler atlandı: {', '.join(_MOVE_LABEL[m][0] for m in sorted(tried) if m in _MOVE_LABEL)}.",
         f"Moves already tried without effect were skipped: {', '.join(_MOVE_LABEL[m][1] for m in sorted(tried) if m in _MOVE_LABEL)}.",
@@ -396,7 +455,7 @@ def decide(
         ), [why_stage, tr(
             f"Takip edilen şu aramalarda ilk 100'de yoksun: {', '.join(missing)}." if missing else "Ana arama öbeğini başlığın başında tut; satış getiren eski etiketleri koru.",
             f"You are not in the top 100 for these tracked searches: {', '.join(missing)}." if missing else "Keep the main search phrase at the start of the title; keep the old tags that bring sales.",
-        ), dupe_why, tried_why, season_why], "ai", keywords=missing, duplicates=dupes)
+        ), dupe_why, fade_next, tried_why, season_why], "ai", keywords=missing, duplicates=dupes)
     if move == "photo":
         return _step("photo", tr(
             "Kapak fotoğrafını değiştir; metne bu tur dokunma.",
@@ -423,7 +482,10 @@ def decide(
         "İlk paragraf ölçü, malzeme, kişiselleştirmenin nasıl yapıldığı ve teslim süresini net cevaplasın.",
         "The first paragraph should cover the file format, resolution, number of files, how to download and usage rights." if digital else
         "The first paragraph should clearly answer size, material, how personalization works and delivery time.",
-    ), _price_why(price), tried_why, season_why], "ai", price=price)
+    ), _price_why(price) or (tr(
+        "Fiyatın rakiplerle kıyası için listing'i sıra takibine al; aramadaki ilk 20 rakibin fiyatı ölçülür.",
+        "Add the listing to rank tracking to compare its price with the top 20 competitors in search.",
+    ) if price is None else ""), tried_why, season_why], "ai", price=price)
 
 
 _MOVE_LABEL = {

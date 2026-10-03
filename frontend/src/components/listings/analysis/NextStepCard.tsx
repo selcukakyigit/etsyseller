@@ -5,9 +5,9 @@ import { NextStep } from "@/lib/api";
 import { T, useT } from "@/lib/i18n-client";
 
 /** Düzenleyicinin odak modu: yalnızca sıradaki adımın alanı görünür (bir turda tek şey değişsin ki etkisi ölçülebilsin). */
-export type FocusKey = "photo" | "price" | "title_tags" | "description" | "text";
+export type FocusKey = "photo" | "price" | "title_tags" | "description" | "text" | "overhaul";
 
-export const FOCUS_KEYS: FocusKey[] = ["photo", "price", "title_tags", "description", "text"];
+export const FOCUS_KEYS: FocusKey[] = ["photo", "price", "title_tags", "description", "text", "overhaul"];
 
 export const focusLabel = (t: T, f: FocusKey) =>
   ({
@@ -16,11 +16,12 @@ export const focusLabel = (t: T, f: FocusKey) =>
     title_tags: t("Başlık ve etiketler", "Title and tags"),
     description: t("Açıklama", "Description"),
     text: t("Başlık, etiketler ve açıklama", "Title, tags and description"),
+    overhaul: t("Kapsamlı yenileme", "Full refresh"),
   })[f];
 
 /** Adımın düzenleyicide hangi odak alanını açacağı (yoksa düzenlenecek bir şey yok: bekle, koru, mağaza geneli…). */
 export function stepFocus(step: NextStep): FocusKey | null {
-  if (step.key === "photo" || step.key === "price" || step.key === "title_tags" || step.key === "description") return step.key;
+  if (step.key === "photo" || step.key === "price" || step.key === "title_tags" || step.key === "description" || step.key === "overhaul") return step.key;
   if (step.key === "revert") return step.target === "sec-media" ? "photo" : step.target === "sec-options" ? "price" : step.target === "ai" ? "text" : null;
   return null;
 }
@@ -30,6 +31,7 @@ const ICON: Record<NextStep["key"], string> = {
   wait_data: "⏳",
   watching: "⏳",
   revert: "↩",
+  overhaul: "🔄",
   keep: "✓",
   keep_working: "✓",
   keep_peak: "✓",
@@ -53,6 +55,7 @@ const TONE: Record<NextStep["key"], string> = {
   revert: "border-red-200 bg-red-50/60 dark:border-red-900 dark:bg-red-950/30",
   deactivate: "border-red-200 bg-red-50/60 dark:border-red-900 dark:bg-red-950/30",
   title_tags: "border-[#D97757]/40 bg-[#D97757]/5 dark:bg-[#D97757]/10",
+  overhaul: "border-[#D97757]/40 bg-[#D97757]/5 dark:bg-[#D97757]/10",
   description: "border-[#D97757]/40 bg-[#D97757]/5 dark:bg-[#D97757]/10",
   photo: "border-[#D97757]/40 bg-[#D97757]/5 dark:bg-[#D97757]/10",
   price: "border-[#D97757]/40 bg-[#D97757]/5 dark:bg-[#D97757]/10",

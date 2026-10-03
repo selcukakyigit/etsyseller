@@ -105,6 +105,17 @@ export default function DiagnosisTab({ shopId, listingId }: { shopId: number; li
 
       <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
         <MonthlyBars months={d.months} />
+        {d.years && d.years.length > 1 && (
+          <p className="mt-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+            {t("Yıllara göre satış:", "Sales by year:")}{" "}
+            {d.years.map((y, i) => (
+              <span key={y.year}>
+                {i > 0 && " · "}
+                {y.year}: <b className="font-semibold text-neutral-700 dark:text-neutral-300">{y.units}</b>
+              </span>
+            ))}
+          </p>
+        )}
       </div>
 
       {d.evidence.length > 0 && (

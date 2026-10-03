@@ -279,7 +279,7 @@ export type DiagnosisCause = "visibility" | "appeal" | "conversion" | "shop_wide
  * düzenleyici bölümü ("sec-media", "sec-options") ya da yok. `focus`: AI önerisinin ve ölçümün odağı. */
 export interface NextStep {
   key:
-    | "wait" | "wait_data" | "watching" | "revert" | "keep" | "keep_working" | "keep_peak" | "title_tags" | "description" | "photo" | "price"
+    | "wait" | "wait_data" | "watching" | "revert" | "overhaul" | "keep" | "keep_working" | "keep_peak" | "title_tags" | "description" | "photo" | "price"
     | "shop" | "demand" | "track" | "deactivate";
   focus: string;
   text: string;
@@ -310,6 +310,8 @@ export interface ListingDiagnosis {
   decline_start: string | null;
   season: { peak_months: number[]; source: "listing" | "shop"; in_peak: boolean; weeks_to_peak: number | null; advice: "in_peak" | "prepare" | "off_season" | null; text: string };
   months: { month: string; units: number; prev_year_units: number }[];
+  /** Takvim yılına göre satış (ilk satış yılından bu yıla); 24 aylık grafiğin göremediği uzun dönem */
+  years: { year: number; units: number }[];
   evidence: { kind: string; tone: "bad" | "good" | "info"; text: string }[];
   events: { date: string; kind: string; text: string }[];
   next_step: NextStep;

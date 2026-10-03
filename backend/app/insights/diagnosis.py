@@ -121,13 +121,14 @@ def _status(raw: dict, rows: list, today: dt.date) -> tuple[str, dict]:
 # ------------------------------------------------------------------ sinyaller
 
 def shop_signal(c: Ctx) -> tuple[list[Evidence], list[Vote]]:
-    """Listing mağazayla birlikte mi düşüyor, yoksa ondan hızlı mı?"""
+    """Listing mağazayla birlikte mi düşüyor, yoksa ondan hızlı mı? Mağaza = listing'in KENDİSİ HARİÇ geri kalanı: çok satan
+    bir listing çökünce mağaza da onunla çöker; kendisiyle kıyaslanırsa düşüş yanlışlıkla "mağaza geneli" görünürdü."""
     if c.change_pct is None or c.shop_change_pct is None:
         return [], []
     gap = c.change_pct - c.shop_change_pct
     text = tr(
-        f"Son 12 ay: bu listing %{c.change_pct:+d}, mağazanın tamamı %{c.shop_change_pct:+d}.",
-        f"Last 12 months: this listing {c.change_pct:+d}%, the whole shop {c.shop_change_pct:+d}%.",
+        f"Son 12 ay: bu listing %{c.change_pct:+d}, mağazanın geri kalanı %{c.shop_change_pct:+d}.",
+        f"Last 12 months: this listing {c.change_pct:+d}%, the rest of the shop {c.shop_change_pct:+d}%.",
     )
     if c.status != "declining":
         return [Evidence("shop", "info", text)], []
@@ -142,14 +143,14 @@ def shop_signal(c: Ctx) -> tuple[list[Evidence], list[Vote]]:
     if years:
         best = max(years, key=years.get)
         last12 = sales.units_between(c.rows, c.today - dt.timedelta(days=364), c.today)
-        shop_best = sales.shop_units_between(c.idx, dt.date(best, 1, 1), dt.date(best, 12, 31))
-        shop_last = sales.shop_units_between(c.idx, c.today - dt.timedelta(days=364), c.today)
+        shop_best = sales.shop_units_between(c.idx, dt.date(best, 1, 1), dt.date(best, 12, 31)) - years[best]
+        shop_last = sales.shop_units_between(c.idx, c.today - dt.timedelta(days=364), c.today) - last12
         lp, sp = _pct(last12, years[best]), _pct(shop_last, shop_best)
         if years[best] >= MIN_UNITS_FOR_TREND and lp is not None and sp is not None and best < c.today.year - 1:
             long_gap = lp - sp
             out.append(Evidence("shop", "bad" if long_gap < -SHOP_WIDE_GAP else "info", tr(
-                f"En iyi yılına ({best}: {years[best]} adet) göre bu listing %{lp:+d}, mağaza aynı dönemde %{sp:+d}.",
-                f"Compared with its best year ({best}: {years[best]} units) this listing is {lp:+d}%, the shop {sp:+d}% over the same period.",
+                f"En iyi yılına ({best}: {years[best]} adet) göre bu listing %{lp:+d}, mağazanın geri kalanı aynı dönemde %{sp:+d}.",
+                f"Compared with its best year ({best}: {years[best]} units) this listing is {lp:+d}%, the rest of the shop {sp:+d}% over the same period.",
             )))
     listing_specific = gap < -SHOP_WIDE_GAP or (long_gap is not None and long_gap < -SHOP_WIDE_GAP)
     if c.shop_change_pct <= -20 and not listing_specific:
@@ -486,8 +487,9 @@ def diagnose(db: Session, shop: Shop, listing_id: int, today: dt.date | None = N
     rows = idx.get(listing_id, [])
     lm, sm = sales.monthly(rows), sales.shop_monthly(idx)
     status, metrics = _status(raw, rows, today)
-    shop_last = sales.shop_units_between(idx, today - dt.timedelta(days=364), today)
-    shop_prev = sales.shop_units_between(idx, today - dt.timedelta(days=729), today - dt.timedelta(days=365))
+    # Mağazanın geri kalanı (listing hariç): bkz. shop_signal
+    shop_last = sales.shop_units_between(idx, today - dt.timedelta(days=364), today) - metrics["last12"]
+    shop_prev = sales.shop_units_between(idx, today - dt.timedelta(days=729), today - dt.timedelta(days=365)) - metrics["prev12"]
     change_pct = _pct(metrics["last12"], metrics["prev12"])
     shop_change_pct = _pct(shop_last, shop_prev)
     decline_start = _decline_start(lm, today) if status == "declining" else None
@@ -535,10 +537,22 @@ def diagnose(db: Session, shop: Shop, listing_id: int, today: dt.date | None = N
         "decline_start": decline_start,
         "season": season,
         "months": months,
+        # Takvim yılına göre satış (24 aylık grafiğin göremediği uzun dönem: "eskiden satıyordu, söndü")
+        "years": [{"year": y, "units": u} for y, u in sorted(_years(rows, today).items())],
         "evidence": [e.__dict__ for e in sales_lines + evidence],
         "events": sorted(c.events, key=lambda e: e["date"], reverse=True)[:20],
         "last_change": _last_change_out(c),
     }
+
+
+def _years(rows: list, today: dt.date) -> dict[int, int]:
+    """Listing'in ilk satış yılından bu yıla her takvim yılının satış adedi (satışsız yıllar 0)."""
+    if not rows:
+        return {}
+    out = {y: 0 for y in range(rows[0][0].year, today.year + 1)}
+    for day, units, _ in rows:
+        out[day.year] = out.get(day.year, 0) + units
+    return out
 
 
 def _last_change_out(c: Ctx) -> dict | None:
@@ -576,6 +590,7 @@ def prompt_brief(d: dict) -> str:
             if d.get("digital") else
             "Bu turun hamlesi: açıklama (satın alma). Açıklama alıcının sorularını (ölçü, malzeme, kişiselleştirme, teslim) ilk paragraflarda cevaplasın. Başlıkta büyük değişiklik yapma."
         ),
+        "overhaul": "Bu listing eskiden satıp sönmüş; kapsamlı yenileme turu. Başlığı, etiketleri ve açıklamayı bugünün Etsy aramalarına göre baştan kur (ürünün ne olduğunu anlatan ana öbeği koru ama eski, artık aranmayan ifadeleri bırak); açıklamanın ilk paragrafı alıcının sorularını cevaplasın. Gerekçede kapak fotoğrafını ve fiyatı da yenilemesini öner.",
         "photo": "Bu turun asıl hamlesi kapak fotoğrafı, metin değil. Aynı anda iki şey değişirse hangisinin işe yaradığı ölçülemez: başlığı ve etiketleri büyük ölçüde koru, yalnızca açık hataları düzelt; gerekçede kapak fotoğrafını değiştirmesini öner.",
         "price": "Bu turun asıl hamlesi fiyat, metin değil. Aynı anda iki şey değişirse hangisinin işe yaradığı ölçülemez: başlığı, etiketleri ve açıklamayı büyük ölçüde koru, yalnızca açık hataları düzelt.",
         "shop": "Sorun büyük ölçüde mağaza genelinde; metni yine de Etsy kurallarına göre iyileştir ama gerekçede tek başına yetmeyeceğini belirt.",

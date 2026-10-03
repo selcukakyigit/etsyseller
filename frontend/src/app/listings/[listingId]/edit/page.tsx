@@ -78,7 +78,7 @@ export default function ListingEditPage() {
   }
   // Odak modunda AI yalnızca o adımın alanlarını forma yazar (açıklama adımında başlığa dokunmaz…)
   const aiFields: ("title" | "tags" | "description" | "materials")[] =
-    focus === "title_tags" ? ["title", "tags"] : focus === "description" ? ["description"] : focus === "text" ? ["title", "tags", "description"] : ["title", "tags", "description", "materials"];
+    focus === "title_tags" ? ["title", "tags"] : focus === "description" ? ["description"] : focus === "text" ? ["title", "tags", "description"] : ["title", "tags", "description", "materials"]; // tam form ve kapsamlı yenileme: hepsi
   const [invKey, setInvKey] = useState(0); // işlem profili kartı envanteri değiştirince varyasyon tablosunu yeniden kurar
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -195,6 +195,7 @@ export default function ListingEditPage() {
       title_tags: ["title", "tags"],
       description: ["description"],
       text: ["title", "tags", "description"],
+      overhaul: ["images", "inventory", "title", "tags", "description"],
     };
     const areas: [string, unknown, unknown, string][] = [
       ["title", edit.title, live.title, t("başlık", "title")],
@@ -298,7 +299,7 @@ export default function ListingEditPage() {
               ) : (
                 <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{isNew ? t("Yeni listing", "New listing") : t("Listing'i Düzenle", "Edit listing")}</h1>
               )}
-              {(!focus || focus === "title_tags" || focus === "description" || focus === "text") && (
+              {(!focus || focus === "title_tags" || focus === "description" || focus === "text" || focus === "overhaul") && (
               <button
                 onClick={handleAi}
                 disabled={aiBusy}
@@ -424,7 +425,7 @@ export default function ListingEditPage() {
               </div>
             )}
 
-            {(!focus || focus === "photo") && (
+            {(!focus || focus === "photo" || focus === "overhaul") && (
             <SectionCard
               id="sec-media"
               hideInnerTitle
@@ -448,7 +449,7 @@ export default function ListingEditPage() {
             </SectionCard>
             )}
 
-            {focus && (focus === "title_tags" || focus === "description" || focus === "text") && (
+            {focus && (focus === "title_tags" || focus === "description" || focus === "text" || focus === "overhaul") && (
               <div className="space-y-5 rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
                 {focus !== "description" && titleField()}
                 {focus !== "title_tags" && descriptionField()}
@@ -478,7 +479,7 @@ export default function ListingEditPage() {
             </SectionCard>
             )}
 
-            {(!focus || focus === "price") && (
+            {(!focus || focus === "price" || focus === "overhaul") && (
             <SectionCard
               id="sec-options"
               title={t("Varyasyon, Fiyat & Kişiselleştirme", "Variations, Price & Personalization")}
