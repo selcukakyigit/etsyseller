@@ -10,23 +10,31 @@ Kural sırası (ilk eşleşen kazanır):
   3. Son değişiklik 30 günü doldurmadı                               → bekle (ön sonuç)
   4. Huni 3 denemeye rağmen zayıf                                    → durdurmayı değerlendir
   5. Satış zirvesindeyiz ve düşüş yok                                → dokunma
-  6. Zayıf aşama: düşüş mağaza geneli/talepse o; değilse huni darboğazı, o da yoksa teşhis sebebi
+  6. Zayıf aşama: düşüş mağaza geneli/talepse o; değilse huni darboğazı (günlük kayıt yetersizse ömür boyu sayılarla kaba
+     huni karşılaştırması), o da yoksa teşhis sebebi; hiçbir kıyas yapılamıyorsa bunu söyler (asla "sorun yok" uydurmaz)
      → aşamanın hamlesi; aynı hamle yakın zamanda denenip etki etmediyse aşamanın sıradaki hamlesi
   7. Zayıf aşama yok                                                 → dokunma (son değişiklik işe yaradıysa "koru")
 
 Bir seferde tek hamle önerilir: 30 gün sonra neyin işe yaradığı ancak böyle anlaşılır."""
 import datetime as dt
+import html
 import json
 import statistics
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.fingerprint import ResultCache
 from app.core.i18n import tr
 from app.insights import impact
 from app.insights.models import RankSnapshot, TrackedKeyword
-from app.listings.models import ListingChange, ListingHealth
+from app.listings.models import ListingCache, ListingChange, ListingHealth
 
+WEAK_RATIO = 0.5  # mağaza ortancasının bu oranının altı "zayıf" (listings/health.py ile aynı)
+ABS_MIN_VPD = 1.0  # günde 1 görüntülenmenin altı mağaza ortalaması ne olursa olsun az görünmektir (mağazanın tamamı zayıfsa
+#                    "ortancaya yakın" yanlış bir teselli olurdu); mağaza ortancasından iyiyse uygulanmaz
+MIN_LIFETIME_AGE = 30  # ömür boyu kıyasa girecek listing en az bu kadar günlük olmalı
+MIN_LIFETIME_SAMPLE = 5  # ...ve mağazada en az bu kadar kıyaslanabilir listing olmalı
 PRICE_HIGH = 1.3  # kendi fiyatın ilk 20 rakibin ortancasının bu katından fazlaysa fiyat hamlesi adaydır
 TRIED_DAYS = 150  # bu kadar gün içinde denenip etki etmeyen hamle tekrar önerilmez
 
@@ -52,8 +60,109 @@ _BOTTLENECK_STAGE = {"seo": "visibility", "appeal": "appeal", "conversion": "con
 # Hamle → AI önerisinin ve ölçümün odağı (eski "action.key" değerleri; bkz. diagnosis.prompt_brief, impact._METRIC_BY_FOCUS)
 FOCUS = {
     "title_tags": "seo", "photo": "appeal", "price": "conversion", "description": "conversion", "shop": "shop", "demand": "demand",
-    "track": "track", "keep": "keep", "keep_peak": "keep", "keep_working": "keep", "wait": "wait", "wait_data": "wait", "deactivate": "keep",
+    "track": "track", "watching": "keep", "keep": "keep", "keep_peak": "keep", "keep_working": "keep", "wait": "wait", "wait_data": "wait", "deactivate": "keep",
 }
+
+
+_lifetime_cache = ResultCache(max_items=20)
+
+
+def _lifetime(db: Session, shop_id: int, idx: dict, today: dt.date) -> dict:
+    """Günlük kayıt birikene kadar kaba huni: Etsy'nin ömür boyu görüntülenme/favori sayıları ve sipariş geçmişinden satış.
+    Döner: {listing_id: {vpd, fav, conv}} ve mağaza ortancaları. Dönüşüm yalnızca sipariş geçmişi listing'in tüm ömrünü
+    kapsıyorsa hesaplanır (daha eski listing'in satışı eksik sayılırdı)."""
+    key = (shop_id, today.isoformat(), len(idx), sum(len(v) for v in idx.values()))
+    hit = _lifetime_cache.get(key)
+    if hit is not None:
+        return hit
+    history_start = min((rows[0][0] for rows in idx.values() if rows), default=today)
+    per: dict[int, dict] = {}
+    for lid, views, favs, raw_json in db.execute(
+        select(ListingCache.listing_id, ListingCache.views, ListingCache.favorites, ListingCache.raw_json).where(ListingCache.shop_id == shop_id)
+    ):
+        raw = json.loads(raw_json)
+        created = raw.get("original_creation_timestamp") or raw.get("creation_timestamp")
+        if raw.get("state") != "active" or not created:
+            continue
+        born = dt.datetime.fromtimestamp(created, dt.timezone.utc).date()
+        age = (today - born).days
+        if age < MIN_LIFETIME_AGE or not views:
+            continue
+        units = sum(u for _, u, _ in idx.get(lid, []))
+        per[lid] = {
+            "age": age, "views": views, "vpd": views / age, "fav": (favs or 0) / views,
+            "conv": units / views * 100 if born >= history_start else None, "units": units,
+        }
+
+    def med(k: str) -> float | None:
+        vals = [v[k] for v in per.values() if v[k] is not None and v["views"] >= 20]
+        return statistics.median(vals) if len(vals) >= MIN_LIFETIME_SAMPLE else None
+
+    out = {"per": per, "vpd": med("vpd"), "fav": med("fav"), "conv": med("conv")}
+    _lifetime_cache.set(key, out)
+    return out
+
+
+def _lifetime_stage(life: dict, listing_id: int) -> tuple[str | None, str, bool]:
+    """(zayıf aşama, gerekçe, kıyas yapılabildi mi) — ömür boyu sayılarla."""
+    me = life["per"].get(listing_id)
+    if me is None or me["views"] < 20 or life["vpd"] is None:
+        return None, "", False
+    if me["vpd"] < life["vpd"] * WEAK_RATIO or (me["vpd"] < ABS_MIN_VPD and me["vpd"] <= life["vpd"]):
+        why = tr(
+            f"Etsy'ye göre ömür boyu günde {me['vpd']:.1f} görüntülenme alıyor (mağazandaki listing'lerin ortancası {life['vpd']:.1f}); çok az kişi görüyor.",
+            f"Per Etsy's lifetime counts it gets {me['vpd']:.1f} views a day (your listings' median is {life['vpd']:.1f}); very few people see it.",
+        )
+        if life["fav"] is not None and me["fav"] >= life["fav"]:
+            why += " " + tr(
+                f"Görenlerin favorileme oranı %{me['fav'] * 100:.1f} (mağaza ortancası %{life['fav'] * 100:.1f}): ürün beğeniliyor, sorun görünürlük.",
+                f"{me['fav'] * 100:.1f}% of viewers favorite it (shop median {life['fav'] * 100:.1f}%): buyers like it, the problem is visibility.",
+            )
+        return "visibility", why, True
+    if life["fav"] is not None and me["fav"] < life["fav"] * WEAK_RATIO:
+        return "appeal", tr(
+            f"Görüntüleyenlerin favorileme oranı %{me['fav'] * 100:.1f}; mağaza ortancası %{life['fav'] * 100:.1f}.",
+            f"{me['fav'] * 100:.1f}% of viewers favorite it; the shop median is {life['fav'] * 100:.1f}%.",
+        ), True
+    if life["conv"] is not None and me["conv"] is not None and me["views"] >= 100 and me["conv"] < life["conv"] * WEAK_RATIO:
+        return "conversion", tr(
+            f"{me['views']} görüntülenmeden {me['units']} satış (%{me['conv']:.1f}); mağaza ortancası %{life['conv']:.1f}.",
+            f"{me['units']} sales from {me['views']} views ({me['conv']:.1f}%); the shop median is {life['conv']:.1f}%.",
+        ), True
+    return None, tr(
+        f"Etsy'nin ömür boyu sayılarına göre görüntülenme (günde {me['vpd']:.1f}), favori oranı (%{me['fav'] * 100:.1f}) ve satış mağaza ortancasının çok altında değil.",
+        f"Per Etsy's lifetime counts, views ({me['vpd']:.1f}/day), favorite rate ({me['fav'] * 100:.1f}%) and sales are not far below the shop median.",
+    ), True
+
+
+DUPLICATE_SIMILARITY = 0.8  # başlık kelime kümesi benzerliği; bunun üstü "neredeyse aynı başlık"
+_titles_cache = ResultCache(max_items=20)
+
+
+def _near_duplicates(db: Session, shop_id: int, listing_id: int, today: dt.date) -> list[dict]:
+    """Mağazada başlığı neredeyse aynı olan diğer aktif listing'ler: aynı aramalarda birbirleriyle yarışırlar ve Etsy
+    çoğunlukla yalnızca birini öne çıkarır."""
+    from app.ai import quality
+
+    key = (shop_id, today.isoformat())
+    titles = _titles_cache.get(key)
+    if titles is None:
+        titles = {
+            lid: (html.unescape(title or ""), quality._words(html.unescape(title or "")), views or 0)
+            for lid, title, views, raw_json in db.execute(
+                select(ListingCache.listing_id, ListingCache.title, ListingCache.views, ListingCache.raw_json).where(ListingCache.shop_id == shop_id)
+            )
+            if json.loads(raw_json).get("state") == "active"
+        }
+        _titles_cache.set(key, titles)
+    me = titles.get(listing_id)
+    if not me or not me[1]:
+        return []
+    out = []
+    for lid, (title, words, views) in titles.items():
+        if lid != listing_id and quality._jaccard(me[1], words) >= DUPLICATE_SIMILARITY:
+            out.append({"listing_id": lid, "title": title, "views": views})
+    return sorted(out, key=lambda x: -x["views"])[:3]
 
 
 def _price_info(db: Session, shop_id: int, listing_id: int, today: dt.date) -> dict | None:
@@ -118,7 +227,7 @@ def _step(key: str, text: str, why: list[str], target: str | None = None, **extr
 
 def decide(
     db: Session, shop_id: int, listing_id: int, today: dt.date, status: str, cause: str | None, season: dict, digital: bool,
-    changes: list[ListingChange], fields_text,
+    changes: list[ListingChange], fields_text, idx: dict | None = None,
 ) -> dict:
     """Tek sıradaki adım. `changes`: listing'in değişiklikleri (eskiden yeniye); `fields_text`: alan listesini metne çevirir."""
     last = changes[-1] if changes else None
@@ -214,9 +323,14 @@ def decide(
         ), [tr("Etiketlerle ürünün farklı kullanım ve alıcı aramalarını yakalamayı dene; yeni ürün fikrine de bak.",
                "Try catching other uses and buyer searches with tags; consider a new product idea too.")])
 
-    stage = None
+    stage, life_why, compared = None, "", False
     if health is not None and health.stage == "flagged" and health.bottleneck:
-        stage = _BOTTLENECK_STAGE.get(health.bottleneck)
+        stage, compared = _BOTTLENECK_STAGE.get(health.bottleneck), True
+    elif health is not None and health.stage == "stable":
+        compared = True
+    elif idx is not None:
+        # Günlük kayıt henüz kıyas için yetersiz: Etsy'nin ömür boyu sayılarıyla kaba huni.
+        stage, life_why, compared = _lifetime_stage(_lifetime(db, shop_id, idx, today), listing_id)
     if stage is None and status == "declining":
         stage = _CAUSE_STAGE.get(cause or "")
         if stage is None:
@@ -231,10 +345,23 @@ def decide(
                 f"Sonuç: {_verdict_text(r)}. Hunide belirgin bir zayıf nokta görünmüyor; iyi çalışanı bozma.",
                 f"Result: {_verdict_text(r)}. No clear weak spot in the funnel; do not break what works.",
             ), _season_why(season)])
-        return _step("keep", tr("Dokunma: belirgin bir zayıf nokta yok.", "Leave it: no clear weak spot."), [tr(
-            "Satış düşmüyor ve görüntülenme, favori, dönüşüm mağaza ortancasının çok altında değil.",
-            "Sales are not falling and views, favorites and conversion are not far below the shop median.",
-        ), _season_why(season)])
+        if not compared:
+            return _step("watching", tr(
+                "Henüz karar verecek kadar veri yok.",
+                "Not enough data to decide yet.",
+            ), [tr(
+                "Satış geçmişi az ve bu listing için görüntülenme/favori karşılaştırması yapılamadı (çok az görüntülenme ya da mağazada kıyaslanacak yeterli listing yok). Günlük görüntülenme kaydı birikince (yaklaşık 3 hafta) huni karşılaştırması başlar. Bu sürede listing'i sıra takibine almak aramada nerede olduğunu gösterir.",
+                "There is little sales history and no view/favorite comparison was possible for this listing (too few views or not enough comparable listings in the shop). The funnel comparison starts once daily view records build up (about 3 weeks). Meanwhile, rank tracking shows where it stands in search.",
+            ), _season_why(season)])
+        return _step("keep", tr("Dokunma: belirgin bir zayıf nokta yok.", "Leave it: no clear weak spot."), [
+            life_why or tr(
+                "Görüntülenme, favori ve dönüşüm son dönemde mağaza ortancasının çok altında değil.",
+                "Views, favorites and conversion have recently not been far below the shop median.",
+            ),
+            tr("Satış düşmüyor." if status in ("stable", "growing") else "Satış geçmişi az; bu kıyas kaba bir göstergedir.",
+               "Sales are not falling." if status in ("stable", "growing") else "Sales history is thin; this comparison is a rough indicator."),
+            _season_why(season),
+        ])
 
     tried = _tried(changes, today)
     move = _move_for(stage, tried, price)
@@ -246,6 +373,8 @@ def decide(
         "conversion": tr("İlgi var ama satışa dönmüyor: favori alıyor, satış mağaza ortancasının çok altında.",
                          "There is interest but few sales: it gets favorites, but sales are far below the shop median."),
     }[stage]
+    if life_why:
+        why_stage = life_why + " " + tr("(Günlük kayıt yeni başladığı için ömür boyu sayılarla kaba bir kıyas.)", "(A rough comparison on lifetime counts, since daily records have only just started.)")
     tried_why = tr(
         f"Daha önce denenip etki etmeyenler atlandı: {', '.join(_MOVE_LABEL[m][0] for m in sorted(tried) if m in _MOVE_LABEL)}.",
         f"Moves already tried without effect were skipped: {', '.join(_MOVE_LABEL[m][1] for m in sorted(tried) if m in _MOVE_LABEL)}.",
@@ -254,13 +383,20 @@ def decide(
 
     if move == "title_tags":
         missing = _missing_searches(db, shop_id, listing_id, today)
+        dupes = _near_duplicates(db, shop_id, listing_id, today)
+        dupe_why = tr(
+            "Mağazanda neredeyse aynı başlıklı aktif listing var: " + "; ".join(f'"{x["title"][:60]}" ({x["views"]} görüntülenme)' for x in dupes)
+            + ". Aynı aramalarda birbirinizle yarışıyorsunuz ve Etsy çoğunlukla yalnızca birini öne çıkarır: bu listing'i farklı bir ana aramaya (boyut, kullanım yeri, stil, alıcı) yönelt ya da gerçekten aynı ürünse tek listing'te birleştir.",
+            "You have active listings with almost the same title: " + "; ".join(f'"{x["title"][:60]}" ({x["views"]} views)' for x in dupes)
+            + ". They compete in the same searches and Etsy usually promotes only one: steer this listing to a different main search (size, place of use, style, buyer) or merge them if they really are the same item.",
+        ) if dupes else ""
         return _step("title_tags", tr(
             "Başlığı ve etiketleri güncelle (AI önerisi bu aşamaya odaklanır).",
             "Update the title and tags (the AI suggestion focuses on this stage).",
         ), [why_stage, tr(
             f"Takip edilen şu aramalarda ilk 100'de yoksun: {', '.join(missing)}." if missing else "Ana arama öbeğini başlığın başında tut; satış getiren eski etiketleri koru.",
             f"You are not in the top 100 for these tracked searches: {', '.join(missing)}." if missing else "Keep the main search phrase at the start of the title; keep the old tags that bring sales.",
-        ), tried_why, season_why], "ai", keywords=missing)
+        ), dupe_why, tried_why, season_why], "ai", keywords=missing, duplicates=dupes)
     if move == "photo":
         return _step("photo", tr(
             "Kapak fotoğrafını değiştir; metne bu tur dokunma.",

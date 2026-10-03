@@ -517,7 +517,7 @@ def diagnose(db: Session, shop: Shop, listing_id: int, today: dt.date | None = N
 
     season = seasonality.season(lm, sm, today)
     # Tek sıradaki adım: teşhis, huni sağlığı, son değişikliğin sonucu, fiyat ve sıra birlikte (bkz. insights/next_step.py).
-    step = next_step.decide(db, shop.id, listing_id, today, status, cause, season, digital, _changes(c), fields_text)
+    step = next_step.decide(db, shop.id, listing_id, today, status, cause, season, digital, _changes(c), fields_text, idx)
 
     end_key = sales.ym(today)
     months = [{"month": k, "units": int(lm.get(k, [0, 0])[0]), "prev_year_units": int(lm.get(sales.add_months(k, -12), [0, 0])[0])} for k in sales.month_range(end_key, 24)]
@@ -568,7 +568,8 @@ def prompt_brief(d: dict) -> str:
         parts.append("Bu listing'in satış teşhisi:\n" + "\n".join(lines))
     focus = {
         "title_tags": "Bu turun hamlesi: başlık ve etiketler (aramada görünürlük). Başlık Etsy rehberine uygun, kısa ve net olsun; etiketler ve açıklamanın ilk cümleleri ürünü arayanın kullandığı kelimelerle anlatsın; satış getiren eski etiketleri koru."
-        + (f" Listing'in görünmediği takip edilen aramalar: {', '.join(step['keywords'])}; ürüne uyuyorsa başlıkta ya da etiketlerde kullan." if step.get("keywords") else ""),
+        + (f" Listing'in görünmediği takip edilen aramalar: {', '.join(step['keywords'])}; ürüne uyuyorsa başlıkta ya da etiketlerde kullan." if step.get("keywords") else "")
+        + (" Mağazada neredeyse aynı başlıklı listing var (" + "; ".join(f'"{x["title"]}"' for x in step["duplicates"]) + "): bu listing'i onlardan FARKLI bir ana aramaya yönelt (boyut, kullanım yeri, stil, alıcı); aynı ana öbeği kullanma." if step.get("duplicates") else ""),
         "description": (
             "Bu turun hamlesi: açıklama (satın alma). Bu dijital (indirilebilir) bir ürün: açıklama ilk paragraflarda alıcının sorularını cevaplasın "
             "(dosya biçimi, çözünürlük/boyut, kaç dosya, nasıl indirilip kullanılacağı, kullanım hakkı); kargo/teslim süresinden söz etme. Başlıkta büyük değişiklik yapma."

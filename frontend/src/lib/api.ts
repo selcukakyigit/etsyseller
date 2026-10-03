@@ -279,7 +279,7 @@ export type DiagnosisCause = "visibility" | "appeal" | "conversion" | "shop_wide
  * düzenleyici bölümü ("sec-media", "sec-options") ya da yok. `focus`: AI önerisinin ve ölçümün odağı. */
 export interface NextStep {
   key:
-    | "wait" | "wait_data" | "revert" | "keep" | "keep_working" | "keep_peak" | "title_tags" | "description" | "photo" | "price"
+    | "wait" | "wait_data" | "watching" | "revert" | "keep" | "keep_working" | "keep_peak" | "title_tags" | "description" | "photo" | "price"
     | "shop" | "demand" | "track" | "deactivate";
   focus: string;
   text: string;

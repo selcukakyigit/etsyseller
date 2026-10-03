@@ -7,6 +7,7 @@ import { useT } from "@/lib/i18n-client";
 const ICON: Record<NextStep["key"], string> = {
   wait: "⏸",
   wait_data: "⏳",
+  watching: "⏳",
   revert: "↩",
   keep: "✓",
   keep_working: "✓",
@@ -24,6 +25,7 @@ const ICON: Record<NextStep["key"], string> = {
 const TONE: Record<NextStep["key"], string> = {
   wait: "border-sky-200 bg-sky-50/60 dark:border-sky-900 dark:bg-sky-950/30",
   wait_data: "border-sky-200 bg-sky-50/60 dark:border-sky-900 dark:bg-sky-950/30",
+  watching: "border-sky-200 bg-sky-50/60 dark:border-sky-900 dark:bg-sky-950/30",
   keep: "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/30",
   keep_working: "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/30",
   keep_peak: "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/30",
