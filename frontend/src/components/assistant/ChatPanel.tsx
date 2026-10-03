@@ -314,7 +314,7 @@ export default function ChatPanel({
             {t("Yeni sohbet", "New chat")}
           </button>
           {providers && (
-            <select value={provider} onChange={(e) => setProvider(e.target.value)} className="min-w-0 max-w-[7.5rem] rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs sm:max-w-none dark:border-neutral-700 dark:bg-neutral-900" title={t("Yapay zekâ sağlayıcısı", "AI provider")}>
+            <select value={provider} onChange={(e) => setProvider(e.target.value)} className="min-w-0 max-w-[7.5rem] rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs sm:max-w-[14rem] dark:border-neutral-700 dark:bg-neutral-900" title={t("Yapay zekâ sağlayıcısı", "AI provider")}>
               {providers.providers.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.label}

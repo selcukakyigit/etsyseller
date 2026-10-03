@@ -112,3 +112,4 @@ export const TagIcon = navIcon("M20.6 13.4l-7.2 7.2a2 2 0 01-2.8 0L3 13V3h10l7.6
 export const ChartIcon = navIcon("M4 20V10M10 20V4M16 20v-7M22 20H2");
 export const MenuIcon = navIcon("M4 7h16M4 12h16M4 17h16");
 export const CloseIcon = navIcon("M6 6l12 12M18 6L6 18");
+export const PulseIcon = navIcon("M3 12h4l2.5-6 5 12L17 12h4");
