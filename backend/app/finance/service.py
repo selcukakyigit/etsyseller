@@ -297,6 +297,18 @@ def _link_receipts(db: Session, shop: Shop) -> None:
         select(LedgerEntry).where(LedgerEntry.shop_id == shop.id).where(LedgerEntry.receipt_id.is_(None))
         .where(LedgerEntry.reference_type.in_(["transaction", "shop_payment", "processing_fee"]))
     ).all()
+    # İşlem -> sipariş eşlemesi yalnızca eşleşmemiş ledger satırlarının işlemleri için kurulur ve siparişler parça parça
+    # okunur: tüm siparişlerin ham JSON'unu aynı anda belleğe almak 512 MB sunucuyu çökertiyordu.
+    wanted = {int(e.reference_id) for e in rows if e.reference_type == "transaction" and e.reference_id.isdigit()}
+    tx: dict[int, int] = {}
+    if wanted:
+        q = select(OrderCache.receipt_id, OrderCache.raw_json).where(OrderCache.shop_id == shop.id).execution_options(yield_per=200)
+        for rid, raw in db.execute(q):
+            for t in json.loads(raw).get("transactions") or []:
+                if t.get("transaction_id") in wanted:
+                    tx[t["transaction_id"]] = rid
+            if len(tx) == len(wanted):
+                break
     for e in rows:
         if not e.reference_id.isdigit():
             continue
