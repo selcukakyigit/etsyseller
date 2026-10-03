@@ -2,7 +2,28 @@
 
 import Link from "next/link";
 import { NextStep } from "@/lib/api";
-import { useT } from "@/lib/i18n-client";
+import { T, useT } from "@/lib/i18n-client";
+
+/** Düzenleyicinin odak modu: yalnızca sıradaki adımın alanı görünür (bir turda tek şey değişsin ki etkisi ölçülebilsin). */
+export type FocusKey = "photo" | "price" | "title_tags" | "description" | "text";
+
+export const FOCUS_KEYS: FocusKey[] = ["photo", "price", "title_tags", "description", "text"];
+
+export const focusLabel = (t: T, f: FocusKey) =>
+  ({
+    photo: t("Fotoğraflar", "Photos"),
+    price: t("Fiyat ve varyasyonlar", "Price and variations"),
+    title_tags: t("Başlık ve etiketler", "Title and tags"),
+    description: t("Açıklama", "Description"),
+    text: t("Başlık, etiketler ve açıklama", "Title, tags and description"),
+  })[f];
+
+/** Adımın düzenleyicide hangi odak alanını açacağı (yoksa düzenlenecek bir şey yok: bekle, koru, mağaza geneli…). */
+export function stepFocus(step: NextStep): FocusKey | null {
+  if (step.key === "photo" || step.key === "price" || step.key === "title_tags" || step.key === "description") return step.key;
+  if (step.key === "revert") return step.target === "sec-media" ? "photo" : step.target === "sec-options" ? "price" : step.target === "ai" ? "text" : null;
+  return null;
+}
 
 const ICON: Record<NextStep["key"], string> = {
   wait: "⏸",
@@ -40,43 +61,46 @@ const TONE: Record<NextStep["key"], string> = {
   track: "border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900",
 };
 
-/** Sıradaki adım (bkz. backend insights/next_step.py): listing için tek, somut öneri ve gerekçeleri. `compact`: düzenleyicideki
- * kısa hâl (yalnızca ilk gerekçe). Düğme hedefe götürür: düzenleyicide bölüm/AI önerisi (`onGo`/`onAi`), dışarıda düzenleyici bağlantısı. */
+/** Sıradaki adım (bkz. backend insights/next_step.py): listing için tek, somut öneri ve gerekçeleri.
+ * Düğme: düzenleyicinin dışında odak modunda düzenleyiciyi açar; düzenleyicide odak moduna geçer (`onFocus`); odak modundayken
+ * metin adımlarında odaklı AI önerisini üretir (`onAi`). `compact`: düzenleyicideki kısa hâl (yalnızca ilk gerekçe). */
 export default function NextStepCard({
   step,
   listingId,
   compact = false,
-  onGo,
+  onFocus,
   onAi,
 }: {
   step: NextStep;
   listingId: number;
   compact?: boolean;
-  onGo?: (sectionId: string) => void;
+  onFocus?: (focus: FocusKey) => void;
   onAi?: () => void;
 }) {
   const { t } = useT();
-  const label =
-    step.target === "ai"
-      ? t("Bu adıma odaklı AI önerisi üret", "Generate an AI suggestion for this step")
-      : step.target === "sec-media"
-        ? t("Fotoğraflara git", "Go to photos")
-        : step.target === "sec-options"
-          ? t("Fiyat ve varyasyonlara git", "Go to price and variations")
-          : null;
+  const focus = stepFocus(step);
   const why = compact ? step.why.slice(0, 1) : step.why;
   const button = "rounded-lg bg-[#D97757] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#C6613F]";
 
   let action: React.ReactNode = null;
-  if (label && step.target) {
-    if (step.target === "ai" && onAi) {
-      action = <button type="button" onClick={onAi} className={button}>{label}</button>;
-    } else if (step.target !== "ai" && onGo) {
-      action = <button type="button" onClick={() => onGo(step.target!)} className={button}>{label}</button>;
-    } else if (!onGo && !onAi) {
-      const href = step.target === "ai" ? `/listings/${listingId}/edit` : `/listings/${listingId}/edit?section=${step.target}`;
-      action = <Link href={href} className={`inline-block ${button}`}>{label} →</Link>;
-    }
+  if (focus && onFocus) {
+    action = (
+      <button type="button" onClick={() => onFocus(focus)} className={button}>
+        {t(`Yalnızca bunu düzenle: ${focusLabel(t, focus)}`, `Edit only this: ${focusLabel(t, focus)}`)}
+      </button>
+    );
+  } else if (focus && onAi && step.target === "ai") {
+    action = (
+      <button type="button" onClick={onAi} className={button}>
+        {t("Bu adıma odaklı AI önerisi üret", "Generate an AI suggestion for this step")}
+      </button>
+    );
+  } else if (focus && !onFocus && !onAi) {
+    action = (
+      <Link href={`/listings/${listingId}/edit?focus=${focus}`} className={`inline-block ${button}`}>
+        {t(`Düzenle: ${focusLabel(t, focus)}`, `Edit: ${focusLabel(t, focus)}`)} →
+      </Link>
+    );
   }
 
   return (

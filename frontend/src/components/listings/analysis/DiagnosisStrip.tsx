@@ -5,20 +5,23 @@ import { api, ListingDiagnosis } from "@/lib/api";
 import { useCached } from "@/lib/pageCache";
 import { useT } from "@/lib/i18n-client";
 import { fieldsText, VERDICT_STYLE, verdictKey, verdictLabel } from "./changeLabels";
-import NextStepCard from "./NextStepCard";
+import NextStepCard, { FocusKey } from "./NextStepCard";
 
-/** Düzenleyicide "AI Önerisi Üret"in altındaki kısa teşhis: sıradaki adım (AI önerisi buna odaklanır; düğmesi ilgili bölüme
- * götürür), son değişikliğin sonucu ve mevsim uyarısı. */
+/** Düzenleyicide "AI Önerisi Üret"in altındaki kısa teşhis: sıradaki adım (AI önerisi buna odaklanır; düğmesi odak moduna
+ * geçirir, odak modundayken odaklı AI önerisini üretir), son değişikliğin sonucu ve mevsim uyarısı. */
 export default function DiagnosisStrip({
   shopId,
   listingId,
-  onGo,
+  onFocus,
   onAi,
+  full = false,
 }: {
   shopId: number;
   listingId: number;
-  onGo?: (sectionId: string) => void;
+  onFocus?: (focus: FocusKey) => void;
   onAi?: () => void;
+  /** Odak modunda kart tüm gerekçeleriyle gösterilir */
+  full?: boolean;
 }) {
   const { t, locale } = useT();
   const [d, setD] = useCached<ListingDiagnosis>(`diagnosis:${shopId}:${listingId}`);
@@ -48,7 +51,7 @@ export default function DiagnosisStrip({
       {d.status === "declining" && (
         <span className="inline-block rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-300">{d.headline}</span>
       )}
-      <NextStepCard step={step} listingId={listingId} compact onGo={onGo} onAi={onAi} />
+      <NextStepCard step={step} listingId={listingId} compact={!full} onFocus={onFocus} onAi={onAi} />
       {showChange && (
         <p className="text-xs text-neutral-600 dark:text-neutral-400">
           <span className={`mr-2 rounded-full px-2 py-0.5 font-medium ${VERDICT_STYLE[verdictKey(lc.result)]}`}>{verdictLabel(t, lc.result)}</span>

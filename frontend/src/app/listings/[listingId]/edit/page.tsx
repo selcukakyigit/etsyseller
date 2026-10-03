@@ -2,6 +2,7 @@
 
 import DescriptionTemplatePicker from "@/components/listing-editor/DescriptionTemplatePicker";
 import DiagnosisStrip from "@/components/listings/analysis/DiagnosisStrip";
+import { FOCUS_KEYS, FocusKey, focusLabel } from "@/components/listings/analysis/NextStepCard";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -29,6 +30,12 @@ import TagsEditor from "@/components/listing-editor/TagsEditor";
 import { useT } from "@/lib/i18n-client";
 import { PageSpinner } from "@/components/ui/Spinner";
 
+// Alan sırasından bağımsız karşılaştırma (taslaktan gelen nesnede anahtar sırası değişebilir)
+const stableJson = (v: unknown) =>
+  JSON.stringify(v, (_k, val) =>
+    val && typeof val === "object" && !Array.isArray(val) ? Object.fromEntries(Object.entries(val).sort(([a], [b]) => (a < b ? -1 : 1))) : val,
+  );
+
 export default function ListingEditPage() {
   const { user, shops, activeShop, setActiveShopId, error: bootError } = useAuthAndShop();
   const { t, locale } = useT();
@@ -45,7 +52,9 @@ export default function ListingEditPage() {
   const conflict = job?.phase === "error" ? job.conflicts : undefined;
   const publishError = job?.phase === "error" && !job.conflicts ? job.error : undefined;
   const [closed, setClosed] = useState<Record<string, boolean>>({});
-  const isOpen = (id: string) => !closed[id];
+  // Odak modu (?focus=photo|price|title_tags|description|text): yalnızca sıradaki adımın alanı görünür, bir turda tek şey değişir.
+  const [focus, setFocus] = useState<FocusKey | null>(null);
+  const isOpen = (id: string) => !!focus || !closed[id];
   const toggle = (id: string) => setClosed((c) => ({ ...c, [id]: !c[id] }));
   const allOpen = EDIT_SECTIONS.every(([id]) => isOpen(id));
   const toggleAll = () => setClosed(allOpen ? Object.fromEntries(EDIT_SECTIONS.map(([id]) => [id, true])) : {});
@@ -53,13 +62,22 @@ export default function ListingEditPage() {
     setClosed((c) => ({ ...c, [id]: false }));
     setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
   }
-  // Teşhisteki "Sıradaki adım" düğmesi (?section=sec-media gibi) ilgili bölüme getirir; form yüklenince bir kez kaydırılır.
-  const ready = !!edit;
+  // Teşhisteki "Sıradaki adım" düğmesi düzenleyiciyi odak modunda açar (?focus=…).
   useEffect(() => {
-    if (!ready) return;
-    const section = new URLSearchParams(window.location.search).get("section");
-    if (section && EDIT_SECTIONS.some(([id]) => id === section)) setTimeout(() => goTo(section), 0);
-  }, [ready]);
+    const f = new URLSearchParams(window.location.search).get("focus");
+    if (f && (FOCUS_KEYS as string[]).includes(f)) setTimeout(() => setFocus(f as FocusKey), 0);
+  }, []);
+  function enterFocus(f: FocusKey | null) {
+    setFocus(f);
+    const url = new URL(window.location.href);
+    if (f) url.searchParams.set("focus", f);
+    else url.searchParams.delete("focus");
+    window.history.replaceState(null, "", url);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  // Odak modunda AI yalnızca o adımın alanlarını forma yazar (açıklama adımında başlığa dokunmaz…)
+  const aiFields: ("title" | "tags" | "description" | "materials")[] =
+    focus === "title_tags" ? ["title", "tags"] : focus === "description" ? ["description"] : focus === "text" ? ["title", "tags", "description"] : ["title", "tags", "description", "materials"];
   const [invKey, setInvKey] = useState(0); // işlem profili kartı envanteri değiştirince varyasyon tablosunu yeniden kurar
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -85,10 +103,10 @@ export default function ListingEditPage() {
       const previous = { title: edit.title, tags: edit.tags, description: edit.description, materials: edit.materials };
       const s = await api.listings.suggest(activeShop.id, listingId, { ...previous, inventory: edit.inventory });
       wc.patch({
-        title: s.suggested_title,
-        tags: s.suggested_tags,
-        description: s.suggested_description,
-        ...(s.suggested_materials && s.suggested_materials.length > 0 ? { materials: s.suggested_materials } : {}),
+        ...(aiFields.includes("title") ? { title: s.suggested_title } : {}),
+        ...(aiFields.includes("tags") ? { tags: s.suggested_tags } : {}),
+        ...(aiFields.includes("description") ? { description: s.suggested_description } : {}),
+        ...(aiFields.includes("materials") && s.suggested_materials && s.suggested_materials.length > 0 ? { materials: s.suggested_materials } : {}),
       });
       setAi({ suggestion: s, previous });
     } catch (e) {
@@ -166,6 +184,62 @@ export default function ListingEditPage() {
       ? t(`Kaydedildi (yerel) · ${fmt(wc.localAt)} · Etsy'ye yayınlanmadı`, `Saved (local) · ${fmt(wc.localAt)} · not published to Etsy`)
       : t("Etsy ile aynı — değişiklik yok", "Same as Etsy — no changes");
 
+  // Odak dışında kalan, Etsy'den farklı (yayınlanınca gidecek) alanlar: aynı yayında iki şey değişirse ölçüm karışır.
+  const outsideFocus = (() => {
+    const live = wc.live;
+    if (!focus || !edit || !live) return [] as string[];
+    const inFocus: Record<FocusKey, string[]> = {
+      photo: ["images"],
+      price: ["inventory"],
+      title_tags: ["title", "tags"],
+      description: ["description"],
+      text: ["title", "tags", "description"],
+    };
+    const areas: [string, unknown, unknown, string][] = [
+      ["title", edit.title, live.title, t("başlık", "title")],
+      ["tags", edit.tags, live.tags, t("etiketler", "tags")],
+      ["description", edit.description, live.description, t("açıklama", "description")],
+      ["images", edit.images.map((i) => i.listing_image_id), live.images.map((i) => i.listing_image_id), t("fotoğraflar", "photos")],
+      ["inventory", edit.inventory, live.inventory, t("fiyat/varyasyonlar", "price/variations")],
+    ];
+    return areas
+      .filter(([key, a, b]) => !inFocus[focus].includes(key) && stableJson(a) !== stableJson(b))
+      .map(([, , , label]) => label);
+  })();
+
+  const titleField = () =>
+    edit && (
+      <div>
+        <label className="mb-1 block text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("Başlık", "Title")}</label>
+        <input
+          value={edit.title}
+          maxLength={140}
+          onChange={(e) => wc.patch({ title: e.target.value })}
+          className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-[#D97757] dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100"
+        />
+      </div>
+    );
+  const descriptionField = () =>
+    edit &&
+    activeShop && (
+      <div>
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("Açıklama", "Description")}</label>
+          <DescriptionTemplatePicker
+            shopId={activeShop.id}
+            listing={{ description: edit.description, title: edit.title, materials: edit.materials ?? [], inventory: edit.inventory }}
+            onApply={(description) => wc.patch({ description })}
+          />
+        </div>
+        <textarea
+          value={edit.description}
+          onChange={(e) => wc.patch({ description: e.target.value })}
+          rows={focus ? 12 : 6}
+          className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-[#D97757] dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100"
+        />
+      </div>
+    );
+
   return (
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/listings">
       <div className="mx-auto max-w-5xl px-6 py-8">
@@ -208,7 +282,22 @@ export default function ListingEditPage() {
         {edit && activeShop && (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{isNew ? t("Yeni listing", "New listing") : t("Listing'i Düzenle", "Edit listing")}</h1>
+              {focus ? (
+                <div>
+                  <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+                    {t("Odak modu", "Focus mode")}: {focusLabel(t, focus)}
+                  </h1>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    <span className="mr-1 truncate">{edit.title.slice(0, 80)}</span> ·{" "}
+                    <button type="button" onClick={() => enterFocus(null)} className="font-medium text-[#B4553A] hover:underline dark:text-[#E89A7F]">
+                      {t("Tüm formu göster", "Show the full form")}
+                    </button>
+                  </p>
+                </div>
+              ) : (
+                <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{isNew ? t("Yeni listing", "New listing") : t("Listing'i Düzenle", "Edit listing")}</h1>
+              )}
+              {(!focus || focus === "title_tags" || focus === "description" || focus === "text") && (
               <button
                 onClick={handleAi}
                 disabled={aiBusy}
@@ -216,9 +305,31 @@ export default function ListingEditPage() {
               >
                 {aiBusy ? t("Üretiliyor…", "Generating…") : t("✨ AI Önerisi Üret", "✨ Generate AI suggestion")}
               </button>
+              )}
             </div>
 
-            {listingId > 0 && <DiagnosisStrip shopId={activeShop.id} listingId={listingId} onGo={goTo} onAi={handleAi} />}
+            {listingId > 0 &&
+              (focus ? (
+                <DiagnosisStrip shopId={activeShop.id} listingId={listingId} onAi={handleAi} full />
+              ) : (
+                <DiagnosisStrip shopId={activeShop.id} listingId={listingId} onFocus={enterFocus} onAi={handleAi} />
+              ))}
+            {focus && outsideFocus.length > 0 && (
+              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                {t(
+                  `Bu ekranda görünmeyen alanlarda da Etsy'den farklı, yayınlanmamış değişiklik var: ${outsideFocus.join(", ")}. Yayınlarsan onlar da gider ve hangi değişikliğin işe yaradığı ayrıştırılamaz. İstemiyorsan "Tüm formu göster" ile bakıp geri al.`,
+                  `Fields not shown here also have unpublished changes that differ from Etsy: ${outsideFocus.join(", ")}. Publishing sends them too, and it will not be possible to tell which change worked. If you do not want that, use "Show the full form" to review and undo them.`,
+                )}
+              </p>
+            )}
+            {focus && (
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                {t(
+                  "Bu turda yalnızca bu alanı değiştir: 30 gün sonra neyin işe yaradığı ancak böyle anlaşılır. Kaydedip Etsy'de yayınladığında değişiklik kaydedilir ve ölçüm başlar.",
+                  "Change only this area this round: that is the only way to tell what worked 30 days later. Once you save and publish to Etsy, the change is recorded and measuring starts.",
+                )}
+              </p>
+            )}
 
             <ProgressBar
               busy={aiBusy}
@@ -229,6 +340,7 @@ export default function ListingEditPage() {
                 [80, t("Sonuçlar hazırlanıyor…", "Preparing results…")],
               ]}
             />
+            {!focus && (
             <ListingStatusBar
               state={edit.state}
               liveState={wc.live?.state}
@@ -239,16 +351,21 @@ export default function ListingEditPage() {
               isNew={isNew}
               onStateChange={(state) => wc.patch({ state })}
             />
+            )}
 
-            <SectionNav onNavigate={goTo} allOpen={allOpen} onToggleAll={toggleAll} />
+            {!focus && <SectionNav onNavigate={goTo} allOpen={allOpen} onToggleAll={toggleAll} />}
 
             {aiError && <p className="text-sm text-red-600">{aiError}</p>}
             {ai && (
               <div className="rounded-xl border border-[#D97757]/40 bg-[#D97757]/5 p-4 text-sm">
                 <div className="mb-1 flex items-center justify-between gap-3">
                   <p className="font-semibold text-neutral-900 dark:text-neutral-100">
-                    {t("AI önerisi forma uygulandı (başlık, etiketler, açıklama", "AI suggestion applied to the form (title, tags, description")}
-                    {ai.suggestion.suggested_materials?.length ? t(", malzemeler", ", materials") : ""})
+                    {t("AI önerisi forma uygulandı", "AI suggestion applied to the form")} (
+                    {aiFields
+                      .filter((f) => f !== "materials" || ai.suggestion.suggested_materials?.length)
+                      .map((f) => ({ title: t("başlık", "title"), tags: t("etiketler", "tags"), description: t("açıklama", "description"), materials: t("malzemeler", "materials") })[f])
+                      .join(", ")}
+                    )
                   </p>
                   <button onClick={handleUndoAi} className="text-xs font-medium text-neutral-600 hover:underline dark:text-neutral-300">
                     {t("Geri al", "Undo")}
@@ -306,6 +423,7 @@ export default function ListingEditPage() {
               </div>
             )}
 
+            {(!focus || focus === "photo") && (
             <SectionCard
               id="sec-media"
               hideInnerTitle
@@ -327,7 +445,17 @@ export default function ListingEditPage() {
               title={edit.title}
             />
             </SectionCard>
+            )}
 
+            {focus && (focus === "title_tags" || focus === "description" || focus === "text") && (
+              <div className="space-y-5 rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+                {focus !== "description" && titleField()}
+                {focus !== "title_tags" && descriptionField()}
+                {focus !== "description" && <TagsEditor shopId={activeShop.id} listingId={listingId} tags={edit.tags} onChange={(tags) => wc.patch({ tags })} />}
+              </div>
+            )}
+
+            {!focus && (
             <SectionCard
               id="sec-details"
               title={t("Ürün Detayları", "Item details")}
@@ -341,40 +469,15 @@ export default function ListingEditPage() {
 
               <CategoryPicker shopId={activeShop?.id} taxonomyId={edit.taxonomy_id} onChange={(id) => wc.patch({ taxonomy_id: id })} />
 
-              <div>
-                <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">
-                  {t("Başlık", "Title")}
-                </label>
-                <input
-                  value={edit.title}
-                  maxLength={140}
-                  onChange={(e) => wc.patch({ title: e.target.value })}
-                  className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
-                />
-              </div>
+              {titleField()}
 
-              <div>
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400">
-                    {t("Açıklama", "Description")}
-                  </label>
-                  <DescriptionTemplatePicker
-                    shopId={activeShop.id}
-                    listing={{ description: edit.description, title: edit.title, materials: edit.materials ?? [], inventory: edit.inventory }}
-                    onApply={(description) => wc.patch({ description })}
-                  />
-                </div>
-                <textarea
-                  value={edit.description}
-                  onChange={(e) => wc.patch({ description: e.target.value })}
-                  rows={6}
-                  className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
-                />
-              </div>
+              {descriptionField()}
 
             </div>
             </SectionCard>
+            )}
 
+            {(!focus || focus === "price") && (
             <SectionCard
               id="sec-options"
               title={t("Varyasyon, Fiyat & Kişiselleştirme", "Variations, Price & Personalization")}
@@ -404,6 +507,10 @@ export default function ListingEditPage() {
               onChange={(personalization) => wc.patch({ personalization })}
             />
             </SectionCard>
+            )}
+
+            {!focus && (
+            <>
 
             <SectionCard
               id="sec-attributes"
@@ -510,6 +617,8 @@ export default function ListingEditPage() {
               onChange={(p) => wc.patch(p)}
             />
             </SectionCard>
+            </>
+            )}
 
             {conflict && (
               <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-800 dark:bg-amber-950/40">
