@@ -275,6 +275,20 @@ export type DescriptionTemplate = { id: number; name: string; body: string; is_d
 /** Listing satış teşhisi (bkz. backend app/insights/diagnosis.py). Metinler istek dilinde gelir. */
 export type DiagnosisStatus = "new" | "low_data" | "declining" | "stable" | "growing";
 export type DiagnosisCause = "visibility" | "appeal" | "conversion" | "shop_wide" | "demand";
+/** Sıradaki adım (bkz. backend app/insights/next_step.py): listing için tek, somut öneri. `target`: "ai" (odaklı AI önerisi),
+ * düzenleyici bölümü ("sec-media", "sec-options") ya da yok. `focus`: AI önerisinin ve ölçümün odağı. */
+export interface NextStep {
+  key:
+    | "wait" | "wait_data" | "revert" | "keep" | "keep_working" | "keep_peak" | "title_tags" | "description" | "photo" | "price"
+    | "shop" | "demand" | "track" | "deactivate";
+  focus: string;
+  text: string;
+  why: string[];
+  target: "ai" | "sec-media" | "sec-options" | null;
+  price?: { current: number; median: number; currency: string; ratio: number | null; suggest_low?: number; suggest_high?: number } | null;
+  keywords?: string[];
+}
+
 export interface ListingDiagnosis {
   listing_id: number;
   status: DiagnosisStatus;
@@ -298,6 +312,7 @@ export interface ListingDiagnosis {
   months: { month: string; units: number; prev_year_units: number }[];
   evidence: { kind: string; tone: "bad" | "good" | "info"; text: string }[];
   events: { date: string; kind: string; text: string }[];
+  next_step: NextStep;
   last_change: { published_at: string; days_ago: number; fields: ChangeField[]; details: ListingChange["details"]; source: ListingChange["source"]; result: ChangeResult | null } | null;
 }
 

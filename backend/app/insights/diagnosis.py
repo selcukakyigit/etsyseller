@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.core.fingerprint import ResultCache
 from app.core.i18n import get_lang, tr
-from app.insights import impact, sales, seasonality
+from app.insights import impact, next_step, sales, seasonality
 from app.listings import health as listing_health
 from app.listings import performance
 from app.listings.models import ListingCache, ListingChange
@@ -455,33 +455,6 @@ SIGNALS: list[Signal] = [shop_signal, content_signal, impact_signal, price_signa
 
 # ------------------------------------------------------------------ sonuç
 
-def _action(cause: str | None, status: str, digital: bool = False) -> dict:
-    """Önerilen tek hamle. `digital`: indirilebilir ürün (kargo/teslim süresi yok; dosya, önizleme ve kullanım hakkı önemli)."""
-    if status in ("new", "low_data"):
-        return {"key": "wait", "text": tr("Henüz yeterli satış geçmişi yok; değişiklik için veri birikmesini bekle.", "Not enough sales history yet; wait for more data before changing things.")}
-    if status != "declining":
-        return {"key": "keep", "text": tr("Satış düşmüyor; büyük bir değişiklik gerekmiyor.", "Sales are not falling; no big change is needed.")}
-    return {
-        "visibility": {"key": "seo", "text": tr("Başlık, etiketler ve özellikler: listing aramada eskisi kadar görünmüyor.", "Title, tags and attributes: the listing is not showing up in search as before.")},
-        "appeal": {"key": "appeal", "text": tr("Kapak fotoğrafı ve başlık: görülüyor ama tıklanmıyor.", "Main photo and title: it is seen but not clicked.")},
-        "conversion": {"key": "conversion", "text": tr(
-            "Fiyat, açıklama ve önizleme görselleri: ilgi var ama satışa dönmüyor (alıcı ne indireceğini net görmeli).",
-            "Price, description and preview images: there is interest but it does not turn into sales (buyers need to see clearly what they download).",
-        ) if digital else tr("Fiyat, açıklama ve varyasyonlar: ilgi var ama satışa dönmüyor.", "Price, description and variations: there is interest but it does not turn into sales.")},
-        "shop_wide": {"key": "shop", "text": tr(
-            "Sorun büyük ölçüde mağaza genelinde. Listing metnini değiştirmek tek başına yetmez: mağaza puanına, fiyatlara ve reklam ayarlarına bak.",
-            "The problem is mostly shop-wide. Changing this listing's text alone will not fix it: check your shop rating, prices and ad settings.",
-        ) if digital else tr(
-            "Sorun büyük ölçüde mağaza genelinde. Listing metnini değiştirmek tek başına yetmez: mağaza puanına, teslim süresine, fiyatlara ve reklam ayarlarına bak.",
-            "The problem is mostly shop-wide. Changing this listing's text alone will not fix it: check your shop rating, processing times, prices and ad settings.",
-        )},
-        "demand": {"key": "demand", "text": tr("Bu ürüne olan talep genel olarak düşmüş; listing'i değiştirmek sınırlı fayda sağlar.", "Demand for this product has dropped overall; changing the listing will help only a little.")},
-    }.get(cause or "", {"key": "track", "text": tr(
-        "Sebep henüz net değil. Listing'i sıra takibine al: aramada mı kayboluyor, yoksa görünüp satmıyor mu, netleşsin.",
-        "The cause is not clear yet. Add the listing to rank tracking to see whether it is losing search position or being seen without selling.",
-    )})
-
-
 def _headline(status: str, cause: str | None, m: dict, change_pct: float | None) -> str:
     if status == "new":
         return tr("Yeni listing", "New listing")
@@ -542,6 +515,10 @@ def diagnose(db: Session, shop: Shop, listing_id: int, today: dt.date | None = N
     if decline_start:
         sales_lines.append(Evidence("sales", "bad", tr(f"Düşüş {decline_start} civarında başlamış.", f"The drop started around {decline_start}.")))
 
+    season = seasonality.season(lm, sm, today)
+    # Tek sıradaki adım: teşhis, huni sağlığı, son değişikliğin sonucu, fiyat ve sıra birlikte (bkz. insights/next_step.py).
+    step = next_step.decide(db, shop.id, listing_id, today, status, cause, season, digital, _changes(c), fields_text)
+
     end_key = sales.ym(today)
     months = [{"month": k, "units": int(lm.get(k, [0, 0])[0]), "prev_year_units": int(lm.get(sales.add_months(k, -12), [0, 0])[0])} for k in sales.month_range(end_key, 24)]
     return {
@@ -550,11 +527,13 @@ def diagnose(db: Session, shop: Shop, listing_id: int, today: dt.date | None = N
         "cause": cause,
         "confidence": confidence if cause else None,
         "headline": _headline(status, cause, metrics, change_pct),
-        "action": _action(cause, status, digital),
+        # Eski alan adı korunur (pano kartı, yayın kaydının odağı): key = AI/ölçüm odağı, text = sıradaki adım.
+        "action": {"key": step["focus"], "text": step["text"]},
+        "next_step": step,
         "digital": digital,
         "metrics": {**metrics, "change_pct": change_pct, "shop_change_pct": shop_change_pct, "peak_month": peak_key, "peak_units": int(lm[peak_key][0]) if peak_key else 0},
         "decline_start": decline_start,
-        "season": seasonality.season(lm, sm, today),
+        "season": season,
         "months": months,
         "evidence": [e.__dict__ for e in sales_lines + evidence],
         "events": sorted(c.events, key=lambda e: e["date"], reverse=True)[:20],
@@ -583,23 +562,31 @@ def prompt_brief(d: dict) -> str:
     if not d:
         return ""
     parts = []
-    if d["status"] == "declining":
-        focus = {
-            "seo": "Odak: aramada görünürlük. Başlık (Etsy rehberine uygun, kısa ve net), etiketler ve açıklamanın ilk cümleleri ürünü arayanın kullandığı kelimelerle anlatsın; satış getiren eski etiketleri koru.",
-            "appeal": "Odak: tıklanma. Başlık ilk 40 karakterde ürünü net ve çekici anlatsın; kapak fotoğrafının da değişmesi gerektiğini gerekçede belirt.",
-            "conversion": (
-                "Odak: satın alma. Bu dijital (indirilebilir) bir ürün: açıklama ilk paragraflarda alıcının sorularını cevaplasın "
-                "(dosya biçimi, çözünürlük/boyut, kaç dosya, nasıl indirilip kullanılacağı, kullanım hakkı); kargo/teslim süresinden söz etme. "
-                "Fiyat ve önizleme görselleri gözden geçirilmeli diye gerekçede belirt."
-                if d.get("digital") else
-                "Odak: satın alma. Açıklama alıcının sorularını (ölçü, malzeme, kişiselleştirme, teslim) ilk paragraflarda cevaplasın; fiyat/varyasyon gözden geçirilmeli diye gerekçede belirt."
-            ),
-            "shop": "Sorun büyük ölçüde mağaza genelinde; metni yine de Etsy kurallarına göre iyileştir ama gerekçede tek başına yetmeyeceğini belirt.",
-            "track": "Sebep net değil; Etsy kurallarına göre dengeli bir iyileştirme yap.",
-            "demand": "Talep genel olarak düşmüş; ürünün farklı kullanım/alıcı aramalarını etiketlerle yakala.",
-        }.get(d["action"]["key"], "")
-        lines = [f"- {e['text']}" for e in d["evidence"][:6]]
-        parts.append("Bu listing'in satış teşhisi:\n" + "\n".join(lines) + f"\n{focus}")
+    step = d.get("next_step") or {}
+    lines = [f"- {e['text']}" for e in d["evidence"][:6]]
+    if lines:
+        parts.append("Bu listing'in satış teşhisi:\n" + "\n".join(lines))
+    focus = {
+        "title_tags": "Bu turun hamlesi: başlık ve etiketler (aramada görünürlük). Başlık Etsy rehberine uygun, kısa ve net olsun; etiketler ve açıklamanın ilk cümleleri ürünü arayanın kullandığı kelimelerle anlatsın; satış getiren eski etiketleri koru."
+        + (f" Listing'in görünmediği takip edilen aramalar: {', '.join(step['keywords'])}; ürüne uyuyorsa başlıkta ya da etiketlerde kullan." if step.get("keywords") else ""),
+        "description": (
+            "Bu turun hamlesi: açıklama (satın alma). Bu dijital (indirilebilir) bir ürün: açıklama ilk paragraflarda alıcının sorularını cevaplasın "
+            "(dosya biçimi, çözünürlük/boyut, kaç dosya, nasıl indirilip kullanılacağı, kullanım hakkı); kargo/teslim süresinden söz etme. Başlıkta büyük değişiklik yapma."
+            if d.get("digital") else
+            "Bu turun hamlesi: açıklama (satın alma). Açıklama alıcının sorularını (ölçü, malzeme, kişiselleştirme, teslim) ilk paragraflarda cevaplasın. Başlıkta büyük değişiklik yapma."
+        ),
+        "photo": "Bu turun asıl hamlesi kapak fotoğrafı, metin değil. Aynı anda iki şey değişirse hangisinin işe yaradığı ölçülemez: başlığı ve etiketleri büyük ölçüde koru, yalnızca açık hataları düzelt; gerekçede kapak fotoğrafını değiştirmesini öner.",
+        "price": "Bu turun asıl hamlesi fiyat, metin değil. Aynı anda iki şey değişirse hangisinin işe yaradığı ölçülemez: başlığı, etiketleri ve açıklamayı büyük ölçüde koru, yalnızca açık hataları düzelt.",
+        "shop": "Sorun büyük ölçüde mağaza genelinde; metni yine de Etsy kurallarına göre iyileştir ama gerekçede tek başına yetmeyeceğini belirt.",
+        "track": "Sebep net değil; Etsy kurallarına göre dengeli bir iyileştirme yap.",
+        "demand": "Talep genel olarak düşmüş; ürünün farklı kullanım/alıcı aramalarını etiketlerle yakala.",
+        "keep": "Listing'de belirgin bir zayıf nokta yok: büyük değişiklik yapma, yalnızca Etsy kurallarına aykırı açık hataları düzelt ve iyi çalışan kısımları koru.",
+        "keep_working": "Son değişiklik işe yaradı: büyük değişiklik yapma, iyi çalışan kısımları koru.",
+        "keep_peak": "Satış zirvesindeyiz: büyük değişiklik yapma, yalnızca açık hataları düzelt.",
+        "deactivate": "Bu listing birkaç denemeye rağmen zayıf; son bir kez dengeli bir iyileştirme yap ve gerekçede durdurmanın da düşünülebileceğini belirt.",
+    }.get(step.get("key", ""), "")
+    if focus:
+        parts.append(focus)
     lc = d.get("last_change")
     if lc:
         parts.append(_change_brief(lc))

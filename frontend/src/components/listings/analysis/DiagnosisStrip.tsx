@@ -5,10 +5,21 @@ import { api, ListingDiagnosis } from "@/lib/api";
 import { useCached } from "@/lib/pageCache";
 import { useT } from "@/lib/i18n-client";
 import { fieldsText, VERDICT_STYLE, verdictKey, verdictLabel } from "./changeLabels";
+import NextStepCard from "./NextStepCard";
 
-/** Düzenleyicide "AI Önerisi Üret"in altındaki kısa teşhis: öneri bu teşhise göre odaklanır. Düşüşte olan listing'lerde,
- * mevsim uyarısı varken ya da son değişikliğin sonucu varken/beklenirken görünür; diğer durumlarda yer kaplamaz. */
-export default function DiagnosisStrip({ shopId, listingId }: { shopId: number; listingId: number }) {
+/** Düzenleyicide "AI Önerisi Üret"in altındaki kısa teşhis: sıradaki adım (AI önerisi buna odaklanır; düğmesi ilgili bölüme
+ * götürür), son değişikliğin sonucu ve mevsim uyarısı. */
+export default function DiagnosisStrip({
+  shopId,
+  listingId,
+  onGo,
+  onAi,
+}: {
+  shopId: number;
+  listingId: number;
+  onGo?: (sectionId: string) => void;
+  onAi?: () => void;
+}) {
   const { t, locale } = useT();
   const [d, setD] = useCached<ListingDiagnosis>(`diagnosis:${shopId}:${listingId}`);
 
@@ -25,34 +36,26 @@ export default function DiagnosisStrip({ shopId, listingId }: { shopId: number; 
     };
   }, [shopId, listingId, setD]);
 
-  if (!d) return null;
-  const seasonWarning = d.season.advice === "in_peak" || d.season.advice === "prepare";
+  if (!d || !d.next_step) return null;
+  const step = d.next_step;
   const lc = d.last_change;
-  if (d.status !== "declining" && !seasonWarning && !lc) return null;
-  const waiting = lc && (!lc.result || lc.result.status === "waiting");
+  // Bekle / geri al / koru adımları son değişikliği zaten anlatıyor; diğerlerinde sonucu ayrıca göster.
+  const showChange = lc && !["wait", "revert", "keep_working"].includes(step.key);
+  const seasonWarning = (d.season.advice === "in_peak" || d.season.advice === "prepare") && !step.why.includes(d.season.text);
 
   return (
-    <div className="space-y-1.5 rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm dark:border-neutral-800 dark:bg-neutral-900">
+    <div className="space-y-2">
       {d.status === "declining" && (
-        <p className="text-neutral-800 dark:text-neutral-200">
-          <span className="mr-2 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-300">{d.headline}</span>
-          {d.action.text}{" "}
-          <span className="text-xs text-neutral-500 dark:text-neutral-400">{t("AI önerisi bu teşhise göre odaklanır.", "The AI suggestion focuses on this diagnosis.")}</span>
-        </p>
+        <span className="inline-block rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-300">{d.headline}</span>
       )}
-      {lc && (
+      <NextStepCard step={step} listingId={listingId} compact onGo={onGo} onAi={onAi} />
+      {showChange && (
         <p className="text-xs text-neutral-600 dark:text-neutral-400">
           <span className={`mr-2 rounded-full px-2 py-0.5 font-medium ${VERDICT_STYLE[verdictKey(lc.result)]}`}>{verdictLabel(t, lc.result)}</span>
           {t(
-            `Son değişiklik: ${new Date(lc.published_at).toLocaleDateString(locale, { day: "2-digit", month: "short" })} (${fieldsText(t, lc.fields)}).`,
-            `Last change: ${new Date(lc.published_at).toLocaleDateString(locale, { day: "2-digit", month: "short" })} (${fieldsText(t, lc.fields)}).`,
-          )}{" "}
-          {waiting
-            ? t(
-                "Etkisi henüz ölçülmedi; şimdi yeni bir değişiklik yayınlarsan ikisinin etkisi birbirine karışır. Acil değilse bekle.",
-                "Its effect has not been measured yet; publishing another change now will mix up the two effects. Wait unless it is urgent.",
-              )
-            : t("AI önerisi bu sonucu dikkate alır.", "The AI suggestion takes this result into account.")}
+            `Son değişiklik: ${new Date(lc.published_at).toLocaleDateString(locale, { day: "2-digit", month: "short" })} (${fieldsText(t, lc.fields)}). AI önerisi bu sonucu dikkate alır.`,
+            `Last change: ${new Date(lc.published_at).toLocaleDateString(locale, { day: "2-digit", month: "short" })} (${fieldsText(t, lc.fields)}). The AI suggestion takes this result into account.`,
+          )}
         </p>
       )}
       {seasonWarning && (

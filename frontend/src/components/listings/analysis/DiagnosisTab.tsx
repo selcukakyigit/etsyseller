@@ -1,12 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, ListingDiagnosis } from "@/lib/api";
 import { useCached } from "@/lib/pageCache";
 import { useT } from "@/lib/i18n-client";
 import { BlockSpinner } from "@/components/ui/Spinner";
 import HealthBanner from "./HealthBanner";
+import NextStepCard from "./NextStepCard";
 
 const TONE_DOT = {
   bad: "bg-red-500",
@@ -52,8 +52,8 @@ function MonthlyBars({ months }: { months: ListingDiagnosis["months"] }) {
   );
 }
 
-/** Teşhis sekmesi: listing'in durumu, neden düştüğü (kanıtlarla; son değişikliğin ölçülen sonucu da kanıttır), önerilen
- * tek hamle, huni sağlığı (durdurma önerisi dahil), mevsim ve olaylar. */
+/** Teşhis sekmesi: listing'in durumu, sıradaki adım (teşhis, huni, son değişikliğin sonucu, fiyat ve sıranın ortak kararı),
+ * durdurma düğmeleri (gerekirse), mevsim, aylık satış, kanıtlar ve olaylar. */
 export default function DiagnosisTab({ shopId, listingId }: { shopId: number; listingId: number }) {
   const { t, locale } = useT();
   const [d, setD] = useCached<ListingDiagnosis>(`diagnosis:${shopId}:${listingId}`);
@@ -97,18 +97,7 @@ export default function DiagnosisTab({ shopId, listingId }: { shopId: number; li
         {confidence && <span className="text-xs text-neutral-500 dark:text-neutral-400">{confidence}</span>}
       </div>
 
-      <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-        <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 dark:text-neutral-500">{t("Önerilen hamle", "Suggested move")}</p>
-        <p className="mt-1 text-sm text-neutral-800 dark:text-neutral-200">{d.action.text}</p>
-        {["seo", "appeal", "conversion", "shop", "track"].includes(d.action.key) && (
-          <Link
-            href={`/listings/${listingId}/edit`}
-            className="mt-3 inline-block rounded-lg bg-[#D97757] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#C6613F]"
-          >
-            {t("Düzenleyicide bu teşhisle AI önerisi üret →", "Generate an AI suggestion with this diagnosis →")}
-          </Link>
-        )}
-      </div>
+      <NextStepCard step={d.next_step} listingId={listingId} />
 
       <HealthBanner shopId={shopId} listingId={listingId} />
 

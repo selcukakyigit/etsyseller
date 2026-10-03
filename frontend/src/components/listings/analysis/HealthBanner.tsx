@@ -23,11 +23,8 @@ const STAGE_STYLE: Record<ListingHealth["stage"], string> = {
 
 // Not metni backend'de Türkçe saklanır (günlük işte hesaplanır, istek dili yoktur); İngilizce arayüzde aşamaya göre bu metin gösterilir.
 const EN_NOTE: Record<string, string> = {
-  seo: "Search visibility is weak: daily views are far below the shop median (tags, title or category may be the issue).",
-  appeal: "It gets views but few favorites (the main photo or the title may not be attractive enough).",
-  conversion: "It gets favorites but few sales (description, price or variations may be in the way).",
-  stable: "Performance is close to or above the shop median; no need to change anything.",
   kill_candidate: "Performance is still below the shop median after 3 different change cycles. Consider deactivating this listing.",
+  killed: "This listing was deactivated on Etsy. You can make it active again at any time.",
 };
 
 /** Huni sağlığı (bkz. backend listings/health.py): son yayından bu yana en az 21 gün/100 görüntülenme birikmeden sessiz
@@ -51,7 +48,8 @@ export default function HealthBanner({ shopId, listingId }: { shopId: number; li
     };
   }, [shopId, listingId]);
 
-  if (!healthState || healthState.stage === "watching") return null;
+  // Zayıf aşama "Sıradaki adım"da söylenir; bu kutu yalnızca durdurma kararı için görünür.
+  if (!healthState || (healthState.stage !== "kill_candidate" && healthState.stage !== "killed")) return null;
 
   const handleKill = async () => {
     const ok = await confirm({
@@ -114,7 +112,7 @@ export default function HealthBanner({ shopId, listingId }: { shopId: number; li
         <p className="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400">
           {locale === "tr"
             ? healthState.note
-            : EN_NOTE[healthState.stage === "flagged" ? healthState.bottleneck ?? "" : healthState.stage] ?? ""}
+            : EN_NOTE[healthState.stage] ?? ""}
         </p>
       </div>
     </>

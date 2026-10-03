@@ -2,7 +2,7 @@
 
 import DescriptionTemplatePicker from "@/components/listing-editor/DescriptionTemplatePicker";
 import DiagnosisStrip from "@/components/listings/analysis/DiagnosisStrip";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { api, Suggestion } from "@/lib/api";
@@ -53,6 +53,13 @@ export default function ListingEditPage() {
     setClosed((c) => ({ ...c, [id]: false }));
     setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
   }
+  // Teşhisteki "Sıradaki adım" düğmesi (?section=sec-media gibi) ilgili bölüme getirir; form yüklenince bir kez kaydırılır.
+  const ready = !!edit;
+  useEffect(() => {
+    if (!ready) return;
+    const section = new URLSearchParams(window.location.search).get("section");
+    if (section && EDIT_SECTIONS.some(([id]) => id === section)) setTimeout(() => goTo(section), 0);
+  }, [ready]);
   const [invKey, setInvKey] = useState(0); // işlem profili kartı envanteri değiştirince varyasyon tablosunu yeniden kurar
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -211,7 +218,7 @@ export default function ListingEditPage() {
               </button>
             </div>
 
-            {listingId > 0 && <DiagnosisStrip shopId={activeShop.id} listingId={listingId} />}
+            {listingId > 0 && <DiagnosisStrip shopId={activeShop.id} listingId={listingId} onGo={goTo} onAi={handleAi} />}
 
             <ProgressBar
               busy={aiBusy}
