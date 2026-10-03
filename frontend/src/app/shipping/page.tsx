@@ -25,11 +25,15 @@ export default function ShippingSettingsPage() {
 
   const load = useCallback(() => {
     if (shopId === undefined) return;
-    setError(null);
+    // Hata, istekler dönünce güncellenir (effect içinde eşzamanlı setState yok): başarılı yanıt eski hatayı temizler.
     const fail = (e: unknown) => setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error"));
-    api.shops.readinessStateDefinitions(shopId).then(setProcessing).catch(fail);
-    api.shops.shippingProfiles(shopId).then(setProfiles).catch(fail);
-    api.shops.returnPolicies(shopId).then(setPolicies).catch(fail);
+    const ok = <V,>(set: (v: V) => void) => (v: V) => {
+      setError(null);
+      set(v);
+    };
+    api.shops.readinessStateDefinitions(shopId).then(ok(setProcessing)).catch(fail);
+    api.shops.shippingProfiles(shopId).then(ok(setProfiles)).catch(fail);
+    api.shops.returnPolicies(shopId).then(ok(setPolicies)).catch(fail);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shopId, setProcessing, setProfiles, setPolicies]);
 
