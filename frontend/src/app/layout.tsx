@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { InlineScript } from "@/components/InlineScript";
 import CookieNotice from "@/components/legal/CookieNotice";
@@ -15,6 +15,9 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
+
+// viewportFit "cover": iPhone'da alt çubuk/çentik için env(safe-area-inset-*) değerleri gelsin (mobil alt sekme çubuğu).
+export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };
 
 export const metadata: Metadata = {
   title: BRAND,

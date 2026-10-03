@@ -95,3 +95,20 @@ export function ChevronRightIcon({ className = "" }: { className?: string }) {
     </svg>
   );
 }
+
+// Mobil gezinme (components/layout) ikonları
+const navIcon = (d: string) =>
+  function NavIcon({ className = "" }: { className?: string }) {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className={`h-5 w-5 ${className}`} aria-hidden>
+        <path d={d} />
+      </svg>
+    );
+  };
+
+export const HomeIcon = navIcon("M3 10.5L12 3l9 7.5V20a1 1 0 01-1 1h-5v-6h-6v6H4a1 1 0 01-1-1v-9.5z");
+export const BoxIcon = navIcon("M21 8l-9-5-9 5v8l9 5 9-5V8zM3 8l9 5 9-5M12 13v8");
+export const TagIcon = navIcon("M20.6 13.4l-7.2 7.2a2 2 0 01-2.8 0L3 13V3h10l7.6 7.6a2 2 0 010 2.8zM7.5 7.5h.01");
+export const ChartIcon = navIcon("M4 20V10M10 20V4M16 20v-7M22 20H2");
+export const MenuIcon = navIcon("M4 7h16M4 12h16M4 17h16");
+export const CloseIcon = navIcon("M6 6l12 12M18 6L6 18");

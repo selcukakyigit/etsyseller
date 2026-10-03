@@ -6,10 +6,12 @@ import { api, AppNotification, OrderInsights, Shop } from "@/lib/api";
 import ThemeToggle from "@/components/ThemeToggle";
 import LangSwitch from "@/components/LangSwitch";
 import { useT } from "@/lib/i18n-client";
-import { BellIcon, SyncIcon } from "@/components/icons";
+import { BellIcon, MenuIcon, SyncIcon } from "@/components/icons";
+import Logo from "@/components/Logo";
 import { emitSyncDone } from "@/lib/syncEvents";
 
-export default function Topbar({ activeShop }: { activeShop: Shop | null }) {
+/** Üst bar. `onMenu`: mobilde (lg altı) ☰ düğmesi menü çekmecesini açar. */
+export default function Topbar({ activeShop, onMenu }: { activeShop: Shop | null; onMenu?: () => void }) {
   const { t, locale } = useT();
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -162,11 +164,25 @@ export default function Topbar({ activeShop }: { activeShop: Shop | null }) {
   const notificationCount = reminderCount + unread;
 
   return (
-    <header className="sticky top-0 z-40 box-border h-[49px] flex items-center justify-end gap-1 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-4 py-2">
-      {syncError && <span className="text-xs text-red-600 mr-2">{syncError}</span>}
+    <header className="sticky top-0 z-40 box-border flex h-[49px] items-center justify-end gap-1 border-b border-neutral-200 bg-white px-3 py-2 dark:border-neutral-800 dark:bg-neutral-900 sm:px-4">
+      <div className="mr-auto flex items-center gap-1 lg:hidden">
+        <button
+          type="button"
+          onClick={onMenu}
+          aria-label={t("Menüyü aç", "Open menu")}
+          className="-ml-1 flex h-9 w-9 items-center justify-center rounded-lg text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+        >
+          <MenuIcon />
+        </button>
+        <Link href="/dashboard" aria-label={t("Ana sayfa", "Home")}>
+          <Logo height={20} />
+        </Link>
+      </div>
+
+      {syncError && <span className="mr-2 hidden truncate text-xs text-red-600 dark:text-red-400 sm:inline">{syncError}</span>}
 
       {syncing && pct !== null && (
-        <div className="mr-1.5 flex items-center gap-2" title={`${progress?.done} / ${progress?.total} listing`}>
+        <div className="mr-1.5 hidden items-center gap-2 sm:flex" title={`${progress?.done} / ${progress?.total} listing`}>
           <div className="h-2.5 w-28 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
             <div className="h-full min-w-[3px] rounded-full bg-[#D97757] transition-[width]" style={{ width: `${pct}%` }} />
           </div>
@@ -200,7 +216,7 @@ export default function Topbar({ activeShop }: { activeShop: Shop | null }) {
         {notifOpen && (
           <div
             style={{ zIndex: 60 }}
-            className="absolute right-0 mt-2 w-80 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-lg p-3 space-y-2"
+            className="fixed inset-x-3 top-[53px] max-h-[70vh] overflow-y-auto rounded-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-80 border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-lg p-3 space-y-2"
           >
             <p className="text-xs font-medium text-neutral-400 dark:text-neutral-500">{t("Bildirimler", "Notifications")}</p>
             {reminderCount === 0 && events.length === 0 && (

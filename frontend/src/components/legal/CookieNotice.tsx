@@ -30,7 +30,7 @@ export default function CookieNotice() {
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-50 p-3 sm:p-4">
+    <div className="fixed inset-x-0 bottom-0 z-[60] p-3 sm:p-4">
       <div className="mx-auto flex max-w-3xl flex-col gap-3 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4 shadow-lg sm:flex-row sm:items-center">
         <p className="flex-1 text-xs leading-relaxed text-neutral-600 dark:text-neutral-300">
           {lang === "tr"

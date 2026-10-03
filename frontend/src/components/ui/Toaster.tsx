@@ -16,7 +16,7 @@ export default function Toaster() {
   const items = useSyncExternalStore(toast.subscribe, toast.getSnapshot, () => EMPTY);
   if (items.length === 0) return null;
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-[200] flex w-[min(92vw,380px)] flex-col gap-2" aria-live="polite">
+    <div className="pointer-events-none fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] right-4 z-[200] lg:bottom-4 flex w-[min(92vw,380px)] flex-col gap-2" aria-live="polite">
       {items.map((t) => (
         <div
           key={t.id}
