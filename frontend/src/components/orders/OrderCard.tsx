@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Order } from "@/lib/api";
 import { addressText, copyText, fmtDate, shipBucket, shipByLabel } from "./orderUtils";
 import { useT } from "@/lib/i18n-client";
+import FulfillmentTimes from "./FulfillmentTimes";
 
 const btn =
   "rounded-full border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-800 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800";
@@ -147,7 +148,10 @@ export default function OrderCard({
         <div className="w-full shrink-0 space-y-3 text-xs text-neutral-600 dark:text-neutral-300 lg:w-72">
           {order.is_shipped ? (
             <div>
-              <p className="text-sm font-semibold text-green-700 dark:text-green-400">{t("Gönderildi", "Shipped")}</p>
+              <p className="text-sm font-semibold text-green-700 dark:text-green-400">
+                {order.delivered_at ? t("Teslim edildi", "Delivered") : t("Gönderildi", "Shipped")}
+              </p>
+              <FulfillmentTimes f={order} className="mb-1" />
               {order.shipments.length === 0 && <p>{t("Takip bilgisi yok", "No tracking info")}</p>}
               {order.shipments.map((s, i) => (
                 <p key={i} className="mt-0.5">

@@ -1,7 +1,7 @@
 import datetime as dt
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
-from sqlalchemy.sql import true as sa_true
+from sqlalchemy.sql import false as sa_false, true as sa_true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -21,6 +21,9 @@ class User(Base):
     # Google gibi sağlayıcıdan gelen profil fotoğrafı; kullanıcı kendi fotoğrafını yüklemediyse bu gösterilir.
     picture_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    # Yeni (ödenmiş) siparişte e-posta; varsayılan kapalı (Etsy de satış e-postası atar). Dil, tercih kaydedilirken alınır.
+    notify_order_email: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa_false())
+    email_lang: Mapped[str] = mapped_column(String(2), default="en", server_default="en")
 
     shops: Mapped[list["Shop"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     memberships: Mapped[list["WorkspaceMember"]] = relationship(back_populates="user", cascade="all, delete-orphan")

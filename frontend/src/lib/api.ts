@@ -442,7 +442,16 @@ export type OrderAddress = {
 
 export type OrderShipment = { carrier: string | null; tracking_code: string | null; notified_at: string | null };
 
-export type Order = {
+/** Kargo süreleri (backend orders/derive.fulfillment). Teslim yalnızca Etsy webhook'u kurulduktan sonra bilinir. */
+export type Fulfillment = {
+  shipped_at: string | null;
+  delivered_at: string | null;
+  ship_days: number | null;
+  transit_days: number | null;
+  total_days: number | null;
+};
+
+export type Order = Fulfillment & {
   receipt_id: number;
   status: string;
   buyer_name: string;
@@ -469,6 +478,27 @@ export type Order = {
   has_personalization: boolean;
   is_canceled: boolean;
 };
+
+/** Etsy webhook'larından gelen sipariş olayları (backend app/notifications). Metin arayüzde kurulur. */
+export type AppNotification = {
+  id: number;
+  kind: "order_paid" | "order_canceled" | "order_shipped" | "order_delivered";
+  receipt_id: number | null;
+  data: {
+    buyer?: string;
+    amount?: number | null;
+    divisor?: number;
+    currency?: string;
+    items?: number;
+    title?: string;
+    listing_id?: number | null;
+    carrier?: string;
+    tracking?: string;
+  };
+  created_at: string;
+  read: boolean;
+};
+export type NotificationsOut = { items: AppNotification[]; unread: number };
 
 export type OrdersPage = {
   items: Order[];
@@ -1043,7 +1073,7 @@ export interface InvoiceShipment {
   last_invoice_date: string;
   warnings: string[];
 }
-export interface FinOrderCost {
+export interface FinOrderCost extends Fulfillment {
   receipt_id: number;
   date: string;
   buyer: string;
@@ -1256,6 +1286,9 @@ export const api = {
       return requestForm<User>("/api/account/avatar", form);
     },
     ai: () => request<{ enabled: boolean }>("/api/account/ai"),
+    notificationSettings: () => request<{ order_email: boolean }>("/api/account/notifications"),
+    setNotificationSettings: (orderEmail: boolean) =>
+      request<{ order_email: boolean }>("/api/account/notifications", { method: "PUT", body: JSON.stringify({ order_email: orderEmail }) }),
     setAi: (enabled: boolean) => request<{ enabled: boolean }>("/api/account/ai", { method: "PUT", body: JSON.stringify({ enabled }) }),
     apiKeys: () => request<ApiKeys>("/api/account/api-keys"),
     updateApiKeys: (payload: ApiKeysUpdate) =>
@@ -1545,6 +1578,10 @@ export const api = {
     nodes: () => request<TaxonomyNode[]>("/api/taxonomy/nodes"),
     properties: (taxonomyId: number) =>
       request<TaxonomyProperty[]>(`/api/taxonomy/nodes/${taxonomyId}/properties`),
+  },
+  notifications: {
+    list: (shopId: number) => request<NotificationsOut>(`/api/shops/${shopId}/notifications`),
+    markRead: (shopId: number) => request<{ ok: boolean }>(`/api/shops/${shopId}/notifications/read`, { method: "POST" }),
   },
   orders: {
     list: (shopId: number, needsShipping = false) =>

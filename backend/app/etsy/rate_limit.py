@@ -1,7 +1,7 @@
 import threading
 import time
 
-# Etsy's default per-app limit is 5 requests/second, shared across every
+# Etsy's per-app limit (Commercial Access: 150 requests/second, 100,000/day) is shared across every
 # shop and every code path (sync jobs, page loads, AI suggestion generation,
 # keyword pool lookups...). A per-function sleep() only protects that one
 # function — two different features calling Etsy around the same moment can
@@ -10,13 +10,13 @@ import time
 # taxonomy/search), so the spacing is enforced app-wide, not per caller.
 _lock = threading.Lock()
 _last_call = 0.0
-MIN_INTERVAL_SECONDS = 0.22  # a bit above 1/5s for safety margin
+MIN_INTERVAL_SECONDS = 0.01  # ~100/s, well under the 150 QPS commercial limit
 
 
-# Personal API anahtarı günde yaklaşık 5.000 istek verir (Commercial daha fazlası). Sayaç bellek içidir (yeniden
+# Commercial Access anahtarı günde 100.000 istek verir. Sayaç bellek içidir (yeniden
 # başlatmada sıfırlanır, yaklaşık bir ölçüdür): amaç, zamanlanmış yenilemelerin kullanıcının etkileşimli kullanımına
 # ayrılan payı yememesi.
-DAILY_BUDGET_FOR_BACKGROUND = 3500
+DAILY_BUDGET_FOR_BACKGROUND = 70_000
 _day = ""
 _calls = 0
 

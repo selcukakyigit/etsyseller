@@ -59,6 +59,12 @@ class OrderOut(BaseModel):
     shipping_method: str | None = None
     shipping_upgrade: str | None = None
     shipments: list[ShipmentOut] = []
+    # Kargo süreleri (bkz. orders/derive.fulfillment); teslim yalnızca webhook kurulduktan sonra bilinir.
+    shipped_at: str | None = None
+    delivered_at: str | None = None
+    ship_days: int | None = None
+    transit_days: int | None = None
+    total_days: int | None = None
     has_personalization: bool = False
     is_canceled: bool = False
 

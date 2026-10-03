@@ -30,6 +30,7 @@ from app.assistant import models as _assistant_models  # noqa: F401
 from app.keywords import models as _keyword_models  # noqa: F401
 from app.contact import models as _contact_models  # noqa: F401
 from app.insights import models as _insights_models  # noqa: F401
+from app.notifications import models as _notification_models  # noqa: F401
 
 from app.account.router import router as account_router
 from app.account.service import AVATAR_DIR
@@ -43,9 +44,11 @@ from app.keywords.router import router as keywords_router
 from app.listings.router import router as listings_router
 from app.listings.templates_router import router as description_templates_router
 from app.insights.router import router as insights_router
+from app.notifications.router import router as notifications_router
 from app.orders.router import router as orders_router
 from app.shops.router import router as shops_router
 from app.taxonomy.router import router as taxonomy_router
+from app.webhooks.router import router as webhooks_router
 
 
 @asynccontextmanager
@@ -126,9 +129,11 @@ app.include_router(listings_router)
 app.include_router(description_templates_router)
 app.include_router(insights_router)
 app.include_router(orders_router)
+app.include_router(notifications_router)
 app.include_router(finance_router)
 app.include_router(finance_invoices_router)
 app.include_router(assistant_router)
 app.include_router(taxonomy_router)
 app.include_router(keywords_router)
 app.include_router(contact_router)
+app.include_router(webhooks_router)

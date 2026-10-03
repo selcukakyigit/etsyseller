@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% import "_components.html" as c %}
+{% block content %}
+{{ c.heading(heading) }}
+{{ c.facts(rows) }}
+{{ c.button(url, button_label) }}
+{{ c.small(footer) }}
+{% endblock %}

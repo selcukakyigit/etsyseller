@@ -41,5 +41,9 @@ class OrderCache(Base):
     is_canceled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", index=True)
     search_text: Mapped[str] = mapped_column(Text, default="", server_default="")
 
+    # Etsy makbuzunda teslim tarihi yok; yalnızca order.delivered webhook'u söyler. Olayın Etsy'deki zamanı buraya
+    # yazılır (webhook kurulmadan önce teslim edilen siparişlerde boş kalır).
+    delivered_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
     raw_json: Mapped[str] = mapped_column(Text)
     synced_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)

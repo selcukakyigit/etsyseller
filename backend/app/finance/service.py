@@ -22,6 +22,7 @@ import copy
 from app.etsy.client import EtsyClient
 from app.finance.models import FinPayment, LedgerEntry, ListingCost, OrderCost, VariantCost
 from app.listings.models import ListingCache
+from app.orders.derive import fulfillment
 from app.orders.models import OrderCache
 from app.shops.models import Shop
 
@@ -963,6 +964,7 @@ def orders_costs(db: Session, shop: Shop, start: dt.date, end: dt.date, q: str =
                 "fees_known": net["fees_known"],
                 "override": o.cost if o else None,
                 "note": o.note if o else "",
+                **fulfillment(raw, row.created_at, row.delivered_at),
             }
         )
     return {"total": total, "orders": out, "currency": tbl["R"]}

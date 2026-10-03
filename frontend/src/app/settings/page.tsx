@@ -4,7 +4,7 @@ import Link from "next/link";
 import Avatar from "@/components/Avatar";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import AppShell from "@/components/AppShell";
-import { ChevronRightIcon, HelpIcon, KeyIcon, ShieldIcon, StoreIcon, UserIcon } from "@/components/icons";
+import { BellIcon, ChevronRightIcon, HelpIcon, KeyIcon, ShieldIcon, StoreIcon, UserIcon } from "@/components/icons";
 import { useT } from "@/lib/i18n-client";
 import { PageSpinner } from "@/components/ui/Spinner";
 
@@ -36,6 +36,13 @@ const CARDS = [
     color: "bg-violet-600",
     title: ["Yapay Zekâ", "AI"],
     description: ["AI özelliklerini aç/kapat, verinin nereye gittiğini gör", "Turn AI features on or off and see where data goes"],
+  },
+  {
+    href: "/settings/notifications",
+    icon: BellIcon,
+    color: "bg-amber-500",
+    title: ["Bildirimler", "Notifications"],
+    description: ["Yeni siparişte e-posta al", "Get an email on new orders"],
   },
   {
     href: "/settings/security",

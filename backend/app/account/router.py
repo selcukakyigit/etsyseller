@@ -11,6 +11,7 @@ from app.auth.router import user_out
 from app.auth.schemas import UserOut
 from app.core.db import get_db
 from app.core.deps import get_current_user, require_admin
+from app.core.i18n import get_lang
 from app.core.uploads import read_limited
 
 router = APIRouter(prefix="/api/account", tags=["account"])
@@ -54,6 +55,24 @@ def set_ai_setting(payload: AiSettingIn, user: User = Depends(get_current_user),
     ws.ai_enabled = payload.enabled
     db.commit()
     return {"enabled": ws.ai_enabled}
+
+
+class NotificationSettingsIn(BaseModel):
+    order_email: bool
+
+
+@router.get("/notifications")
+def get_notification_settings(user: User = Depends(get_current_user)):
+    return {"order_email": user.notify_order_email}
+
+
+@router.put("/notifications")
+def set_notification_settings(payload: NotificationSettingsIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Yeni siparişte e-posta. E-posta arka planda gider ve isteğin dilini bilemez; dil burada (arayüz dilinden) saklanır."""
+    user.notify_order_email = payload.order_email
+    user.email_lang = get_lang()
+    db.commit()
+    return {"order_email": user.notify_order_email}
 
 
 @router.get("/api-keys", response_model=ApiKeysOut)

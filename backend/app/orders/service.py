@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.etsy import orders as etsy_orders
 from app.etsy.client import EtsyClient
 from app.listings.models import ListingCache
-from app.orders.derive import derive
+from app.orders.derive import derive, fulfillment
 from app.orders.models import OrderCache
 from app.orders.schemas import (
     AddressOut,
@@ -237,6 +237,7 @@ def _serialize_order(row: OrderCache, images: dict[int, str] | None = None) -> O
         shipping_method=first_t.get("shipping_method"),
         shipping_upgrade=first_t.get("shipping_upgrade"),
         shipments=shipments,
+        **fulfillment(receipt, row.created_at, row.delivered_at),
         has_personalization=personalized,
         is_canceled=(row.status or "").lower() in ("canceled", "fully refunded"),
     )

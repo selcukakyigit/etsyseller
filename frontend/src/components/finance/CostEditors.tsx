@@ -7,6 +7,7 @@ import { api, FinOrderCost, FinOrdersPage, FinProduct, FinVariant } from "@/lib/
 import OrderCostBreakdown from "./OrderCostBreakdown";
 import OrderDetailModal from "./OrderDetailModal";
 import ProductThumb from "./ProductThumb";
+import FulfillmentTimes from "@/components/orders/FulfillmentTimes";
 import { tNow as t } from "@/lib/i18n";
 import { useCached } from "@/lib/pageCache";
 import { BlockSpinner } from "@/components/ui/Spinner";
@@ -607,6 +608,7 @@ function OrderRow({ o, shopId, money2, onSaved, onOpen, onBreakdown, currency }:
             {i.variant && <span className="text-neutral-400"> · {i.variant}</span>}
           </div>
         ))}
+        <FulfillmentTimes f={o} className="mt-0.5" />
       </td>
       <td className="py-2 pr-3 text-right">
         {money2.format(o.total)}

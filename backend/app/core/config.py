@@ -5,6 +5,8 @@ class Settings(BaseSettings):
     etsy_api_key: str = ""
     etsy_shared_secret: str = ""
     etsy_redirect_uri: str = "http://localhost:8000/api/shops/connect/callback"
+    # Etsy Webhook Portal'daki uç noktanın "Signing Secret"ı (whsec_...). Boşsa /webhooks/etsy 503 döner.
+    etsy_webhook_secret: str = ""
 
     openai_api_key: str = ""
     openai_model: str = "gpt-4o"

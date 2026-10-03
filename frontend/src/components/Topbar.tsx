@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { api, OrderInsights, Shop } from "@/lib/api";
+import { api, AppNotification, OrderInsights, Shop } from "@/lib/api";
 import ThemeToggle from "@/components/ThemeToggle";
 import LangSwitch from "@/components/LangSwitch";
 import { useT } from "@/lib/i18n-client";
@@ -10,18 +10,79 @@ import { BellIcon, SyncIcon } from "@/components/icons";
 import { emitSyncDone } from "@/lib/syncEvents";
 
 export default function Topbar({ activeShop }: { activeShop: Shop | null }) {
-  const { t } = useT();
+  const { t, locale } = useT();
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [insights, setInsights] = useState<OrderInsights | null>(null);
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
+  const [events, setEvents] = useState<AppNotification[]>([]);
+  const [unread, setUnread] = useState(0);
 
   useEffect(() => {
     if (!activeShop) return;
     api.orders.insights(activeShop.id).then(setInsights).catch(() => {});
   }, [activeShop]);
+
+  // Sipariş olayları (Etsy webhook'u) arka planda gelir; sayfa açıkken dakikada bir yoklanır.
+  useEffect(() => {
+    if (!activeShop) return;
+    const shopId = activeShop.id;
+    const load = () =>
+      api.notifications
+        .list(shopId)
+        .then((r) => {
+          setEvents(r.items);
+          setUnread(r.unread);
+        })
+        .catch(() => {});
+    load();
+    const timer = setInterval(load, 60_000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeShop?.id]);
+
+  function toggleNotifications() {
+    const next = !notifOpen;
+    setNotifOpen(next);
+    // Açınca okundu say; liste açıkken "yeni" vurgusu kalsın diye yerel öğeler bir sonraki yüklemede güncellenir.
+    if (next && unread > 0 && activeShop) {
+      setUnread(0);
+      api.notifications.markRead(activeShop.id).catch(() => {});
+    }
+  }
+
+  function eventText(n: AppNotification): string {
+    const d = n.data;
+    const money = d.amount != null ? new Intl.NumberFormat(locale, { style: "currency", currency: d.currency || "USD" }).format(d.amount / (d.divisor || 100)) : "";
+    const who = d.buyer || t("Alıcı", "Buyer");
+    switch (n.kind) {
+      case "order_paid":
+        return t(`Yeni sipariş: ${who}${money ? ` · ${money}` : ""}`, `New order: ${who}${money ? ` · ${money}` : ""}`);
+      case "order_canceled":
+        return t(`Sipariş iptal edildi: ${who}`, `Order canceled: ${who}`);
+      case "order_shipped":
+        return t(`Kargoya verildi: ${who}`, `Shipped: ${who}`);
+      case "order_delivered":
+        return t(`Teslim edildi: ${who}`, `Delivered: ${who}`);
+    }
+  }
+
+  const KIND_DOT: Record<AppNotification["kind"], string> = {
+    order_paid: "bg-emerald-500",
+    order_canceled: "bg-red-500",
+    order_shipped: "bg-sky-500",
+    order_delivered: "bg-[#D97757]",
+  };
+
+  function ago(iso: string): string {
+    const min = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000));
+    if (min < 60) return t(`${min} dk önce`, `${min} min ago`);
+    const h = Math.round(min / 60);
+    if (h < 24) return t(`${h} sa önce`, `${h} h ago`);
+    return new Date(iso).toLocaleDateString(locale, { day: "numeric", month: "short" });
+  }
 
   // Senkron backend'de arka planda sürüyor (sayfa değiştirmek/sekmeyi kapatmak durdurmaz). Bu bileşen her sayfa
   // geçişinde yeniden monte olduğu için, sayfa değiştirip geri gelince zaten süren bir senkronu kaldığı yerden
@@ -97,7 +158,8 @@ export default function Topbar({ activeShop }: { activeShop: Shop | null }) {
 
   const pct = progress && progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : null;
 
-  const notificationCount = insights ? insights.needs_shipping_today + insights.overdue : 0;
+  const reminderCount = insights ? insights.needs_shipping_today + insights.overdue : 0;
+  const notificationCount = reminderCount + unread;
 
   return (
     <header className="sticky top-0 z-40 box-border h-[49px] flex items-center justify-end gap-1 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-4 py-2">
@@ -125,7 +187,7 @@ export default function Topbar({ activeShop }: { activeShop: Shop | null }) {
 
       <div className="relative" ref={notifRef}>
         <button
-          onClick={() => setNotifOpen((v) => !v)}
+          onClick={toggleNotifications}
           title={t("Bildirimler", "Notifications")}
           className="relative w-8 h-8 flex items-center justify-center rounded-lg text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
         >
@@ -138,10 +200,12 @@ export default function Topbar({ activeShop }: { activeShop: Shop | null }) {
         {notifOpen && (
           <div
             style={{ zIndex: 60 }}
-            className="absolute right-0 mt-2 w-72 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-lg p-3 space-y-2"
+            className="absolute right-0 mt-2 w-80 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-lg p-3 space-y-2"
           >
-            <p className="text-xs font-medium text-neutral-400">{t("Bildirimler", "Notifications")}</p>
-            {notificationCount === 0 && <p className="text-sm text-neutral-500">{t("Yeni bildirim yok.", "No new notifications.")}</p>}
+            <p className="text-xs font-medium text-neutral-400 dark:text-neutral-500">{t("Bildirimler", "Notifications")}</p>
+            {reminderCount === 0 && events.length === 0 && (
+              <p className="text-sm text-neutral-500 dark:text-neutral-400">{t("Yeni bildirim yok.", "No new notifications.")}</p>
+            )}
             {insights && insights.overdue > 0 && (
               <Link
                 href="/orders"
@@ -159,6 +223,28 @@ export default function Topbar({ activeShop }: { activeShop: Shop | null }) {
               >
                 {t(`${insights.needs_shipping_today} sipariş bugün kargoya verilmeli`, `${insights.needs_shipping_today} orders must ship today`)}
               </Link>
+            )}
+            {events.length > 0 && (
+              <ul className={`max-h-80 space-y-0.5 overflow-y-auto ${reminderCount > 0 ? "border-t border-neutral-100 pt-2 dark:border-neutral-800" : ""}`}>
+                {events.map((n) => (
+                  <li key={n.id}>
+                    <Link
+                      href="/orders"
+                      onClick={() => setNotifOpen(false)}
+                      className={`flex gap-2 rounded-lg px-2 py-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 ${n.read ? "" : "bg-[#D97757]/5 dark:bg-[#D97757]/10"}`}
+                    >
+                      <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${KIND_DOT[n.kind]}`} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm text-neutral-800 dark:text-neutral-100">{eventText(n)}</span>
+                        <span className="block truncate text-xs text-neutral-500 dark:text-neutral-400">
+                          {n.data.title ? `${n.data.title} · ` : ""}
+                          {ago(n.created_at)}
+                        </span>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
         )}
