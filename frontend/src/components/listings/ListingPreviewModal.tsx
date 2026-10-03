@@ -162,7 +162,7 @@ export default function ListingPreviewModal({ shopId, listingId, shopName, onClo
         {view && "error" in view && <p className="p-8 text-center text-sm text-red-600">{view.error}</p>}
 
         {data && info && (
-          <div className="grid items-start gap-8 p-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+          <div className="grid grid-cols-1 items-start gap-8 p-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
             {/* Galeri: solda dikey küçük resimler, ortada 1:1 kare içinde ortalanmış fotoğraf (açıklama uzayınca gerilmez) */}
             <div className="flex flex-col-reverse gap-3 md:flex-row md:items-start lg:sticky lg:top-4 lg:self-start">
               {images.length > 1 && (
@@ -352,7 +352,7 @@ export default function ListingPreviewModal({ shopId, listingId, shopName, onClo
 
               <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
                 <h3 className="mb-2 text-sm font-semibold">{t("Yayın öncesi kontrol", "Pre-publish check")}</h3>
-                <div className="grid gap-x-8 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
                   <Check ok={data.title.length >= 80 && data.title.length <= 140 ? true : data.title.length > 0 && data.title.length <= 140 ? "warn" : false} label={t(`Başlık ${data.title.length}/140 karakter`, `Title ${data.title.length}/140 characters`)} hint={data.title.length < 80 ? t("80–120 arası daha iyi", "80–120 is better") : undefined} />
                   <Check ok={data.tags.length === 13 ? true : data.tags.length > 0 ? "warn" : false} label={t(`${data.tags.length}/13 etiket`, `${data.tags.length}/13 tags`)} hint={data.tags.length < 13 ? t("13'ünü de kullan", "use all 13") : undefined} />
                   <Check ok={images.length >= 5 ? true : images.length > 0 ? "warn" : false} label={t(`${images.length} fotoğraf`, `${images.length} photos`)} hint={images.length < 5 ? t("en az 5 önerilir", "at least 5 recommended") : undefined} />

@@ -139,7 +139,7 @@ export default function TagsEditor({
                 setDraft("");
               }
             }}
-            className="flex-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm outline-none focus:border-[#D97757] dark:border-neutral-700 dark:bg-neutral-900"
+            className="min-w-0 flex-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm outline-none focus:border-[#D97757] dark:border-neutral-700 dark:bg-neutral-900"
             placeholder={t("Ekle ve Enter'a bas…", "Type and press Enter…")}
           />
           <button

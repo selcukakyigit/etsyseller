@@ -184,7 +184,7 @@ function FieldEditor({
         </>
       }
     >
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <div className="space-y-5">
           <div>
             <label className={labelCls}>{t("Alan başlığı", "Field title")}</label>
@@ -309,7 +309,7 @@ function FieldEditor({
                       value={o.label}
                       onChange={(e) => patch({ options: q.options.map((x, xi) => (xi === oi ? { ...x, label: e.target.value } : x)) })}
                       placeholder={`${labeled ? t("Etiket", "Label") : t("Seçenek", "Option")} ${oi + 1}`}
-                      className={`${inputCls} flex-1`}
+                      className={`min-w-0 ${inputCls} flex-1`}
                     />
                     <button
                       type="button"

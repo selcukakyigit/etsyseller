@@ -140,7 +140,7 @@ export default function DashboardPage() {
               </Link>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
               <ChatPanel shopId={shopId} onSent={load} heightClass="h-[70vh] min-h-[28rem] lg:h-[calc(100vh-16rem)]" />
 
               {/* Sağ sütun yalnızca yapılacak işler; boşsa kartlar kendini gizler. */}

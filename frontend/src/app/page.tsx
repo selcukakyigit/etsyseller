@@ -107,7 +107,7 @@ export default async function LandingPage() {
 
       <main>
         {/* Hero */}
-        <section className="mx-auto grid max-w-6xl items-center gap-14 px-6 pb-20 pt-16 md:pt-24 lg:grid-cols-[1.05fr_0.95fr]">
+        <section className="mx-auto grid grid-cols-1 max-w-6xl items-center gap-14 px-6 pb-20 pt-16 md:pt-24 lg:grid-cols-[1.05fr_0.95fr]">
           <div className="min-w-0">
             <Eyebrow>{c.eyebrow}</Eyebrow>
             <h1 className={`${serif.className} mt-5 text-5xl leading-[1.05] tracking-tight text-neutral-900 dark:text-neutral-50 md:text-6xl`}>
@@ -137,7 +137,7 @@ export default async function LandingPage() {
         <section id="features" className="scroll-mt-20 border-t border-black/5 dark:border-white/10">
           <div className="mx-auto max-w-6xl px-6 py-20">
             <h2 className={`${serif.className} text-4xl text-neutral-900 dark:text-neutral-50`}>{c.featuresTitle}</h2>
-            <div className="mt-12 grid gap-x-16 gap-y-12 md:grid-cols-2">
+            <div className="mt-12 grid grid-cols-1 gap-x-16 gap-y-12 md:grid-cols-2">
               {c.features.map(([title, text], i) => (
                 <div key={title} className="border-t border-black/10 pt-5 dark:border-white/15">
                   <p className={`${serif.className} text-2xl text-[#D97757]`}>{String(i + 1).padStart(2, "0")}</p>
@@ -153,7 +153,7 @@ export default async function LandingPage() {
         <section id="how" className="scroll-mt-20 bg-[#F3EEE7] dark:bg-[#151311]">
           <div className="mx-auto max-w-6xl px-6 py-20">
             <h2 className={`${serif.className} text-4xl text-neutral-900 dark:text-neutral-50`}>{c.howTitle}</h2>
-            <ol className="mt-12 grid gap-10 md:grid-cols-3">
+            <ol className="mt-12 grid grid-cols-1 gap-10 md:grid-cols-3">
               {c.steps.map(([title, text], i) => (
                 <li key={title} className="flex gap-4">
                   <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full border border-black/20 text-sm font-medium text-neutral-800 dark:border-white/25 dark:text-neutral-100">
@@ -171,7 +171,7 @@ export default async function LandingPage() {
 
         {/* Data */}
         <section id="data" className="scroll-mt-20">
-          <div className="mx-auto grid max-w-6xl gap-12 px-6 py-20 lg:grid-cols-[0.8fr_1.2fr]">
+          <div className="mx-auto grid grid-cols-1 max-w-6xl gap-12 px-6 py-20 lg:grid-cols-[0.8fr_1.2fr]">
             <div>
               <h2 className={`${serif.className} text-4xl text-neutral-900 dark:text-neutral-50`}>{c.dataTitle}</h2>
               <p className="mt-4 max-w-sm leading-relaxed text-neutral-600 dark:text-neutral-300">{c.dataLead}</p>
@@ -179,7 +179,7 @@ export default async function LandingPage() {
                 {c.dataLink}
               </Link>
             </div>
-            <dl className="grid gap-x-10 gap-y-8 sm:grid-cols-2">
+            <dl className="grid grid-cols-1 gap-x-10 gap-y-8 sm:grid-cols-2">
               {c.data.map(([title, text]) => (
                 <div key={title}>
                   <dt className="font-semibold text-neutral-900 dark:text-neutral-100">{title}</dt>

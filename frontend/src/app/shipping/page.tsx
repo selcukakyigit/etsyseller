@@ -39,7 +39,7 @@ export default function ShippingSettingsPage() {
 
   return (
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/shipping">
-      <div className="mx-auto max-w-4xl space-y-10 px-6 py-8">
+      <div className="mx-auto max-w-4xl space-y-10 px-4 sm:px-6 py-6 sm:py-8">
         <div>
           <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t("Kargo ayarları", "Shipping settings")}</h1>
           <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">

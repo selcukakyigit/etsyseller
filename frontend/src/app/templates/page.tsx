@@ -107,7 +107,7 @@ export default function DescriptionTemplatesPage() {
 
   return (
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/templates">
-      <div className="mx-auto max-w-2xl space-y-6 px-6 py-8">
+      <div className="mx-auto max-w-2xl space-y-6 px-4 sm:px-6 py-6 sm:py-8">
       <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{t("Açıklama şablonları", "Description templates")}</h1>
       {(bootError || error) && <p className="text-sm text-red-600 dark:text-red-400">{bootError ?? error}</p>}
 

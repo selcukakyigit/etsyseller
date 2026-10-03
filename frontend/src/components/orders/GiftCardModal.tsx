@@ -160,7 +160,7 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
         </>
       }
     >
-      <div className="grid gap-6 md:grid-cols-[1fr_auto]">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_auto]">
         <div className="space-y-5">
           <div>
             <label className={labelCls}>{tx("Tasarım", "Design")}</label>
@@ -219,7 +219,7 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1 flex items-center gap-2 text-xs font-semibold text-neutral-700 dark:text-neutral-200">
                 <input type="checkbox" checked={cfg.showRecipient} onChange={(e) => update({ showRecipient: e.target.checked })} /> {tx("Kime", "To")}
@@ -234,7 +234,7 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className={labelCls}>{tx("Yazı tipi", "Font")}</label>
               <select value={cfg.font} onChange={(e) => update({ font: e.target.value as FontId })} className={inputCls}>
@@ -261,7 +261,7 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
             <input type="range" min={10} max={48} value={cfg.fontSize} onChange={(e) => update({ fontSize: Number(e.target.value) })} className="w-full accent-[#D97757]" />
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className={labelCls}>{tx("Yatay hizalama", "Horizontal alignment")}</label>
               <Seg<Align> value={cfg.align} options={[["left", tx("Sol", "Left")], ["center", tx("Orta", "Center")], ["right", tx("Sağ", "Right")]]} onChange={(align) => update({ align })} />
@@ -281,7 +281,7 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
             <input type="range" min={-30} max={30} value={cfg.offsetY} onChange={(e) => update({ offsetY: Number(e.target.value) })} className="w-full accent-[#D97757]" />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className={labelCls}>{tx("Kart boyutu", "Card size")}</label>
               {addingSize ? (

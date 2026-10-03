@@ -183,7 +183,7 @@ function ProfileForm({
           </p>
         )}
 
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="sm:col-span-3">
             <label className={labelCls}>{t("Profil adı", "Profile name")}</label>
             <input value={f.title} maxLength={100} onChange={(e) => setF({ ...f, title: e.target.value })} className={`${inputCls} w-full`} />
@@ -215,7 +215,7 @@ function ProfileForm({
                     {t("Kaldır", "Remove")}
                   </button>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label className={labelCls}>{t("Ne kadar ücret alacaksın", "What you will charge")}</label>
                     <select value={d.free ? "free" : "fixed"} onChange={(e) => patchDest(d.key, { free: e.target.value === "free" })} className={`${inputCls} w-full`}>
@@ -369,8 +369,8 @@ export default function ShippingProfilesSection({
           <thead>
             <tr className="text-left text-xs font-semibold text-neutral-500">
               <th className="px-4 py-3">{t("Ad", "Name")}</th>
-              <th className="px-4 py-3">{t("Çıkış", "Origin")}</th>
-              <th className="px-4 py-3">{t("Aktif listing", "Active listings")}</th>
+              <th className="hidden px-4 py-3 sm:table-cell">{t("Çıkış", "Origin")}</th>
+              <th className="hidden px-4 py-3 sm:table-cell">{t("Aktif listing", "Active listings")}</th>
               <th className="px-4 py-3 text-right">{t("İşlemler", "Actions")}</th>
             </tr>
           </thead>
@@ -385,9 +385,13 @@ export default function ShippingProfilesSection({
                     <span className="ml-2 rounded-full border border-neutral-400 px-2 py-0.5 text-[10px] font-medium text-neutral-600 dark:text-neutral-300">
                       {calculated ? t("Hesaplanan", "Calculated") : t("Sabit", "Fixed")}
                     </span>
+                    {/* mobilde gizlenen sütunlar adın altında */}
+                    <span className="mt-0.5 block text-xs font-normal text-neutral-500 dark:text-neutral-400 sm:hidden">
+                      {p.origin_postal_code ?? p.origin_country_iso} · {t(`${n} aktif listing`, `${n} active listings`)}
+                    </span>
                   </td>
-                  <td className="px-4 py-3 text-neutral-600 dark:text-neutral-300">{p.origin_postal_code ?? p.origin_country_iso}</td>
-                  <td className="px-4 py-3 text-neutral-600 dark:text-neutral-300">{n}</td>
+                  <td className="hidden px-4 py-3 text-neutral-600 dark:text-neutral-300 sm:table-cell">{p.origin_postal_code ?? p.origin_country_iso}</td>
+                  <td className="hidden px-4 py-3 text-neutral-600 dark:text-neutral-300 sm:table-cell">{n}</td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-1">
                       <button

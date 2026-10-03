@@ -299,22 +299,22 @@ export default function ChatPanel({
       onDrop={onDrop}
     >
       <div className="flex min-w-0 flex-1 flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-neutral-100 px-4 py-2.5 dark:border-neutral-800">
-        <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1.5 px-2 py-1 text-sm font-semibold">
+      <div className="flex items-center justify-between gap-2 border-b border-neutral-100 px-3 py-2.5 dark:border-neutral-800 sm:px-4">
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="flex items-center gap-1.5 px-1 py-1 text-sm font-semibold sm:px-2">
             <UlaggMark size={18} />
-            Ulagg
+            <span className="hidden sm:inline">Ulagg</span>
           </span>
-          <button type="button" onClick={() => setHistoryOpen((v) => !v)} className="rounded-lg border border-neutral-200 px-2.5 py-1 text-xs hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">
+          <button type="button" onClick={() => setHistoryOpen((v) => !v)} className="whitespace-nowrap rounded-lg border border-neutral-200 px-2.5 py-1 text-xs hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">
             {historyOpen ? t("Geçmişi gizle", "Hide history") : `${t("Geçmiş", "History")} (${sessions.length})`}
           </button>
         </div>
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={newChat} className="rounded-lg border border-neutral-200 px-2.5 py-1 text-xs hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">
+        <div className="flex min-w-0 items-center gap-2">
+          <button type="button" onClick={newChat} className="whitespace-nowrap rounded-lg border border-neutral-200 px-2.5 py-1 text-xs hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">
             {t("Yeni sohbet", "New chat")}
           </button>
           {providers && (
-            <select value={provider} onChange={(e) => setProvider(e.target.value)} className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-900" title={t("Yapay zekâ sağlayıcısı", "AI provider")}>
+            <select value={provider} onChange={(e) => setProvider(e.target.value)} className="min-w-0 max-w-[7.5rem] rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs sm:max-w-none dark:border-neutral-700 dark:bg-neutral-900" title={t("Yapay zekâ sağlayıcısı", "AI provider")}>
               {providers.providers.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.label}
@@ -417,7 +417,7 @@ export default function ChatPanel({
             onPaste={onPaste}
             rows={2}
             placeholder={t("Ulagg'a sor ya da yaptır… (Enter gönderir, Shift+Enter satır atlar)", "Ask Ulagg or have it do something… (Enter sends, Shift+Enter adds a line)")}
-            className="max-h-40 min-h-[2.75rem] flex-1 resize-none rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-[#D97757] focus:outline-none dark:border-neutral-700 dark:bg-neutral-900"
+            className="min-w-0 max-h-40 min-h-[2.75rem] flex-1 resize-none rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-[#D97757] focus:outline-none dark:border-neutral-700 dark:bg-neutral-900"
           />
           <button
             type="button"
@@ -432,7 +432,7 @@ export default function ChatPanel({
       </div>
 
       <aside
-        className={`${historyOpen ? "absolute right-2 top-14 z-20 flex h-[26rem] w-72 rounded-xl border border-neutral-200 shadow-xl dark:border-neutral-700" : "hidden"} flex-col bg-white dark:bg-neutral-900 xl:static xl:z-auto xl:h-auto xl:w-64 xl:flex-shrink-0 xl:rounded-none xl:border-0 xl:border-l xl:border-neutral-100 xl:shadow-none xl:dark:border-neutral-800`}
+        className={`${historyOpen ? "absolute inset-x-2 top-14 z-20 flex h-[26rem] rounded-xl sm:left-auto sm:w-72 border border-neutral-200 shadow-xl dark:border-neutral-700" : "hidden"} flex-col bg-white dark:bg-neutral-900 xl:static xl:z-auto xl:h-auto xl:w-64 xl:flex-shrink-0 xl:rounded-none xl:border-0 xl:border-l xl:border-neutral-100 xl:shadow-none xl:dark:border-neutral-800`}
       >
         <div className="flex items-center justify-between gap-2 border-b border-neutral-100 px-3 py-2.5 dark:border-neutral-800">
           <span className="text-sm font-semibold">{t("Geçmiş sohbetler", "Past chats")}</span>

@@ -73,7 +73,7 @@ export default function SettingsHub() {
 
   return (
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/settings">
-      <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
         <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{t("Ayarlar", "Settings")}</h1>
 
         {bootError && <p className="text-sm text-red-600">{bootError}</p>}
@@ -93,7 +93,7 @@ export default function SettingsHub() {
         )}
 
         {user && (
-          <div className="grid sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {CARDS.filter((card) => card.href !== "/settings/api-keys" || user.is_admin).map((card) => {
               const Icon = card.icon;
               return (

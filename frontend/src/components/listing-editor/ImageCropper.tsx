@@ -5,6 +5,7 @@ import { Modal, btnGhost, btnPrimary } from "./Modal";
 import { tNow as t } from "@/lib/i18n";
 
 const BOX_MAX = 420; // kırpma alanının en büyük kenarı (px)
+const MODAL_GUTTER = 88; // modal dış boşluğu + iç kenar boşluğu: dar ekranda kırpma alanı ekrana sığsın
 const OUT_MAX = 2000; // çıktı görselin en uzun kenarı (px)
 
 const RATIOS: { key: string; label: [string, string]; value: number | null }[] = [
@@ -57,9 +58,11 @@ export default function ImageCropper({
     };
   }, [src]);
 
+  // Telefonda kırpma alanı ekran genişliğine göre küçülür (çıktı yine görselin gerçek çözünürlüğünden kesilir).
+  const [boxMax] = useState(() => (typeof window === "undefined" ? BOX_MAX : Math.min(BOX_MAX, window.innerWidth - MODAL_GUTTER)));
   const ratio = RATIOS.find((r) => r.key === ratioKey)?.value ?? (img ? img.naturalWidth / img.naturalHeight : 1);
-  const boxW = ratio >= 1 ? BOX_MAX : Math.round(BOX_MAX * ratio);
-  const boxH = ratio >= 1 ? Math.round(BOX_MAX / ratio) : BOX_MAX;
+  const boxW = ratio >= 1 ? boxMax : Math.round(boxMax * ratio);
+  const boxH = ratio >= 1 ? Math.round(boxMax / ratio) : boxMax;
 
   // Görselin kutuyu tam kapladığı temel ölçek; zoom bunun katı.
   const cover = img ? Math.max(boxW / img.naturalWidth, boxH / img.naturalHeight) : 1;
@@ -186,7 +189,7 @@ export default function ImageCropper({
                 value={zoom}
                 onChange={(e) => setZoom(Number(e.target.value))}
                 aria-label={t("Yakınlaştır", "Zoom")}
-                className="flex-1 accent-neutral-900 dark:accent-neutral-100"
+                className="min-w-0 flex-1 accent-neutral-900 dark:accent-neutral-100"
               />
               <span className="text-xs text-neutral-500">+</span>
             </div>

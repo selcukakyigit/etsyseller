@@ -6,8 +6,7 @@ import { useT } from "@/lib/i18n-client";
 import { BOTTOM_TABS } from "./navItems";
 
 /** Mobil alt sekme çubuğu (lg altı): en sık açılan sayfalar + geri kalanı için "Menü". Telefonun alt güvenli alanına
- * (ana ekran çubuğu) göre boşluk bırakır; AppShell içeriğin altına bu yükseklik kadar boşluk ekler (BOTTOM_NAV_SPACE). */
-export const BOTTOM_NAV_SPACE = "pb-[calc(3.5rem+env(safe-area-inset-bottom))] lg:pb-0";
+ * (ana ekran çubuğu) göre boşluk bırakır; içeriğin ve yapışkan öğelerin yerleşimi için bkz. ./constants. */
 
 export default function BottomNav({ current, onMenu }: { current: string; onMenu: () => void }) {
   const { t } = useT();

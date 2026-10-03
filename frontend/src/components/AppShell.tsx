@@ -4,7 +4,8 @@ import { ReactNode, useCallback, useState } from "react";
 import { Shop, User } from "@/lib/api";
 import Sidebar from "@/components/layout/Sidebar";
 import MobileDrawer from "@/components/layout/MobileDrawer";
-import BottomNav, { BOTTOM_NAV_SPACE } from "@/components/layout/BottomNav";
+import BottomNav from "@/components/layout/BottomNav";
+import { BOTTOM_NAV_SPACE } from "@/components/layout/constants";
 import Topbar from "@/components/Topbar";
 import { useT } from "@/lib/i18n-client";
 

@@ -29,6 +29,7 @@ import StringListEditor from "@/components/listing-editor/StringListEditor";
 import TagsEditor from "@/components/listing-editor/TagsEditor";
 import { useT } from "@/lib/i18n-client";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { ABOVE_BOTTOM_NAV } from "@/components/layout/constants";
 
 // Alan sırasından bağımsız karşılaştırma (taslaktan gelen nesnede anahtar sırası değişebilir)
 const stableJson = (v: unknown) =>
@@ -242,7 +243,7 @@ export default function ListingEditPage() {
 
   return (
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/listings">
-      <div className="mx-auto max-w-5xl px-6 py-8">
+      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <button
           onClick={() => router.push("/listings")}
           className="text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 transition mb-4"
@@ -656,8 +657,8 @@ export default function ListingEditPage() {
               </div>
             )}
 
-            <div className="sticky bottom-4 flex flex-wrap items-center gap-3 rounded-xl border border-neutral-200 bg-white p-3 shadow-lg dark:border-neutral-800 dark:bg-neutral-900">
-              <span className="flex-1 text-sm text-neutral-600 dark:text-neutral-300">{statusLabel}</span>
+            <div className={`sticky z-30 flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 bg-white p-3 shadow-lg dark:border-neutral-800 dark:bg-neutral-900 sm:gap-3 ${ABOVE_BOTTOM_NAV}`}>
+              <span className="w-full text-xs text-neutral-600 dark:text-neutral-300 sm:w-auto sm:flex-1 sm:text-sm">{statusLabel}</span>
               {(wc.unsaved || wc.hasLocal || wc.hasDraft) && (
                 <button
                   onClick={handleDiscard}
@@ -671,7 +672,7 @@ export default function ListingEditPage() {
                 onClick={wc.saveDraft}
                 disabled={!wc.unsaved || wc.draftCurrent || wc.publishing || wc.saveState === "saving"}
                 title={t("Ara kayıt alır; liste sayfası değişmez, editörü tekrar açınca kaldığın yerden devam edersin", "Saves your progress; the list page does not change, and you continue where you left off next time")}
-                className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-800 transition hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800"
+                className="flex-1 whitespace-nowrap rounded-lg border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-800 transition hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800 sm:flex-none sm:px-4"
               >
                 {wc.draftCurrent ? t("Taslak kaydedildi ✓", "Draft saved ✓") : t("Taslak kaydet", "Save draft")}
               </button>
@@ -679,14 +680,14 @@ export default function ListingEditPage() {
                 onClick={wc.saveLocal}
                 disabled={!wc.unsaved || wc.publishing || wc.saveState === "saving"}
                 title={t("Değişiklikleri yerel listing'e kaydeder; liste sayfası güncellenir, Etsy'ye gönderilmez", "Saves changes to the local listing; the list page updates, nothing is sent to Etsy")}
-                className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-800 transition hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800"
+                className="flex-1 whitespace-nowrap rounded-lg border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-800 transition hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800 sm:flex-none sm:px-4"
               >
                 {wc.saveState === "saving" ? t("Kaydediliyor…", "Saving…") : t("Kaydet", "Save")}
               </button>
               <button
                 onClick={handlePublish}
                 disabled={(!wc.unsaved && !wc.hasLocal) || wc.publishing || wc.saveState === "saving"}
-                className="rounded-lg bg-[#D97757] px-4 py-2 text-sm font-medium text-white shadow transition hover:bg-[#C6613F] disabled:opacity-50"
+                className="w-full whitespace-nowrap rounded-lg bg-[#D97757] px-4 py-2 text-sm font-medium text-white shadow transition hover:bg-[#C6613F] disabled:opacity-50 sm:w-auto"
               >
                 {wc.publishing ? t("Yayınlanıyor…", "Publishing…") : t("Etsy'de yayınla", "Publish to Etsy")}
               </button>

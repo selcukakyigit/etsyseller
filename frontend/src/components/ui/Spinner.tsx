@@ -18,7 +18,7 @@ export function Spinner({ size = 20, className = "" }: { size?: number; classNam
  * Sabit konumlu bir katmandır, sayfada yer kaplamaz: başlık ve filtreler aşağı itilmez, yerinde kalır. */
 export function PageSpinner() {
   return (
-    <div className="pointer-events-none fixed bottom-0 left-56 right-0 top-[49px] z-[5] flex items-center justify-center">
+    <div className="pointer-events-none fixed bottom-0 left-0 right-0 top-[49px] z-[5] flex items-center justify-center lg:left-56">
       <Spinner size={36} />
     </div>
   );

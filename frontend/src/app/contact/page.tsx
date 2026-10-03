@@ -53,7 +53,7 @@ export default async function ContactPage() {
         <h1 className={`${serif.className} text-5xl text-neutral-900 dark:text-neutral-50`}>{c.title}</h1>
         <p className="mt-4 max-w-2xl text-lg leading-relaxed text-neutral-600 dark:text-neutral-300">{c.lead}</p>
 
-        <div className="mt-12 grid gap-12 lg:grid-cols-[0.8fr_1.2fr]">
+        <div className="mt-12 grid grid-cols-1 gap-12 lg:grid-cols-[0.8fr_1.2fr]">
           <div className="space-y-8 text-sm">
             <div>
               <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-[#A9502F] dark:text-[#F48771]">{c.find}</h2>

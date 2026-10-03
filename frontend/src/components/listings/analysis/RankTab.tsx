@@ -181,7 +181,7 @@ export default function RankTab({ shopId, listingId }: { shopId: number; listing
               onChange={(e) => setInput(e.target.value)}
               maxLength={100}
               placeholder={t("Takip edilecek arama, örn. metal farm sign", "Search to track, e.g. metal farm sign")}
-              className="min-w-[220px] flex-1 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+              className="min-w-0 min-w-[220px] flex-1 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
             />
             <button
               type="submit"

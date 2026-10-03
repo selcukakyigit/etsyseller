@@ -116,7 +116,7 @@ export default function ContactForm({ lang }: { lang: Lang }) {
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label className={label} htmlFor="c-name">{t.name}</label>
           <input id="c-name" name="name" required maxLength={120} autoComplete="name" className={field} />

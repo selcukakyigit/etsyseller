@@ -108,7 +108,7 @@ export default function ListingSettings({
                 }
               }}
               placeholder={t("Bölüm başlığı (en fazla 24 karakter)", "Section title (up to 24 characters)")}
-              className="flex-1 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-1.5 text-sm outline-none focus:border-[#D97757]"
+              className="min-w-0 flex-1 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-1.5 text-sm outline-none focus:border-[#D97757]"
             />
             <button
               type="button"

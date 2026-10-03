@@ -10,12 +10,14 @@ import ShipModal from "@/components/orders/ShipModal";
 import GiftCardModal, { configForOrder } from "@/components/orders/GiftCardModal";
 import { printCards } from "@/components/orders/giftCard";
 import { EMPTY_ORDER_FILTERS, OrderFilters, Tab, addressText, copyText, groupByShipBy } from "@/components/orders/orderUtils";
+import { changedCount } from "@/lib/filters";
 import { onSyncDone } from "@/lib/syncEvents";
 import { useUrlTab } from "@/lib/useUrlTab";
 import { useT } from "@/lib/i18n-client";
 import { useCached } from "@/lib/pageCache";
 import { useStoredState } from "@/lib/useStoredState";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { useResponsiveFilters } from "@/components/ui/ResponsiveFilters";
 
 const TABS: [Tab, string, string][] = [
   ["toship", "Gönderilecek", "To ship"],
@@ -217,9 +219,20 @@ export default function OrdersPage() {
     if (withMsg.length < gifts.length) setNotice(t(`${gifts.length - withMsg.length} siparişte mesaj olmadığı için atlandı.`, `${gifts.length - withMsg.length} orders were skipped because they have no message.`));
   }
 
+  const changeFilters = (f: OrderFilters) => {
+    setFilters(f);
+    setPage(0);
+  };
+  // Mobilde filtre paneli "Filtreler" düğmesiyle alttan açılır; masaüstünde listenin sağında durur.
+  const filterUI = useResponsiveFilters({
+    activeCount: changedCount(filters, EMPTY_ORDER_FILTERS),
+    onReset: () => changeFilters(EMPTY_ORDER_FILTERS),
+    children: <OrderFilterPanel destinations={data?.destinations ?? []} filters={filters} onChange={changeFilters} />,
+  });
+
   return (
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/orders">
-      <div className="mx-auto max-w-6xl px-6 pb-8 pt-0">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 pb-8 pt-0">
         <div>
           {!user && !bootError && <PageSpinner />}
         </div>
@@ -251,7 +264,7 @@ export default function OrdersPage() {
               </p>
             )}
 
-            <div ref={stickyRef} className="sticky top-[49px] z-[9] -mx-6 bg-neutral-50 px-6 pb-3 pt-3 dark:bg-neutral-950">
+            <div ref={stickyRef} className="z-[9] lg:sticky lg:top-[49px] -mx-4 sm:-mx-6 bg-neutral-50 px-4 sm:px-6 pb-3 pt-3 dark:bg-neutral-950">
             <div className="mb-3 flex flex-wrap items-center gap-3">
               <h1 className="mr-auto text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t("Siparişler", "Orders")}</h1>
               <div className="relative w-full sm:w-80">
@@ -305,7 +318,8 @@ export default function OrdersPage() {
                   </div>
                 )}
               </div>
-              <div className="ml-auto flex items-center gap-2">
+              {filterUI.button}
+              <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
                 <select
                   value={sort}
                   onChange={(e) => {
@@ -313,7 +327,7 @@ export default function OrdersPage() {
                     setPage(0);
                   }}
                   aria-label={t("Sırala", "Sort")}
-                  className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+                  className="min-w-0 flex-1 rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
                 >
                   <option value="shipby">{t("Sırala: gönderim tarihi", "Sort: ship-by date")}</option>
                   <option value="newest">{t("Sırala: en yeni", "Sort: newest")}</option>
@@ -327,7 +341,7 @@ export default function OrdersPage() {
                     setPage(0);
                   }}
                   aria-label={t("Sayfa başına", "Per page")}
-                  className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+                  className="min-w-0 flex-1 rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
                 >
                   {[25, 50, 100].map((n) => (
                     <option key={n} value={n}>
@@ -380,7 +394,7 @@ export default function OrdersPage() {
                 {groups.map((g) => (
                   <section key={g.key} className="space-y-3">
                     {g.label && (
-                      <div className="sticky top-[calc(49px+var(--os,150px))] z-[8] flex items-center gap-2 rounded-lg bg-neutral-100 px-4 py-2 text-sm dark:bg-neutral-800">
+                      <div className="sticky top-[49px] z-[8] lg:top-[calc(49px+var(--os,150px))] flex items-center gap-2 rounded-lg bg-neutral-100 px-4 py-2 text-sm dark:bg-neutral-800">
                         <b className="text-neutral-900 dark:text-neutral-100">{g.label}</b>
                         <span className="rounded-full bg-white px-2 text-xs dark:bg-neutral-900">{g.orders.length}</span>
                         <button
@@ -433,14 +447,7 @@ export default function OrdersPage() {
                 )}
               </div>
 
-              <OrderFilterPanel
-                destinations={data?.destinations ?? []}
-                filters={filters}
-                onChange={(f) => {
-                  setFilters(f);
-                  setPage(0);
-                }}
-              />
+              {filterUI.panel}
             </div>
           </>
         )}

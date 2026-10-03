@@ -40,7 +40,7 @@ function TextForm({ value, onChange, field }: { value: BulkTextOp; onChange: (v:
         </select>
       </div>
       {value.mode === "find_replace" ? (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label className={labelCls}>{t("Bulunacak", "Find")}</label>
             <input value={value.find ?? ""} onChange={(e) => onChange({ ...value, find: e.target.value })} className={inputCls} />
@@ -244,7 +244,7 @@ export default function BulkEditModal({
                 <option value="set">{t("Hepsini şu fiyata ayarla", "Set all to this price")}</option>
               </select>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className={labelCls}>{priceMode === "percent" ? t("Yüzde (ör. 10 ya da -5)", "Percent (e.g. 10 or -5)") : priceMode === "amount" ? t("Tutar (ör. 5 ya da -2)", "Amount (e.g. 5 or -2)") : t("Fiyat", "Price")}</label>
                 <input value={priceValue} onChange={(e) => setPriceValue(e.target.value)} inputMode="decimal" className={inputCls} />

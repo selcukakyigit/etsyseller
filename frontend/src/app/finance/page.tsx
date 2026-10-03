@@ -59,6 +59,7 @@ export default function FinancePage() {
   const { user, shops, activeShop, setActiveShopId, error: bootError } = useAuthAndShop();
   const { t, locale } = useT();
   const shopId = activeShop?.id;
+  const isDemo = !!activeShop?.is_demo; // demo mağaza Etsy'ye bağlanmaz: finans senkronu başlatılmaz
   const [tab, setTab] = useUrlTab<(typeof TABS)[number]>("tab", "overview", TABS);
   const [topTab, setTopTab] = useState<"customers" | "best" | "worst">("customers");
   // Dönem, özel tarih aralığı ve ülke seçimi bu tarayıcıda hatırlanır (sayfaya dönünce ya da yenileyince aynı kalır).
@@ -158,7 +159,7 @@ export default function FinancePage() {
           setSync(s);
           if (wasRunning.current && !s.running) setReloadTick((n) => n + 1);
           wasRunning.current = s.running;
-          if (!s.running && s.entries === 0 && autoStarted.current !== shopId) {
+          if (!s.running && s.entries === 0 && autoStarted.current !== shopId && !isDemo) {
             autoStarted.current = shopId;
             startSync(false);
           }
@@ -170,7 +171,7 @@ export default function FinancePage() {
       stop = true;
       clearInterval(id);
     };
-  }, [shopId, startSync]);
+  }, [shopId, startSync, isDemo]);
 
   // Tek "senkronize et" düğmesi navbar'da; o bitince rapor kendiliğinden tazelenir.
   useEffect(() => onSyncDone(() => setReloadTick((n) => n + 1)), []);
@@ -233,7 +234,7 @@ export default function FinancePage() {
 
   return (
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/finance">
-      <div className="mx-auto max-w-6xl px-6 pb-8 pt-0">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 pb-8 pt-0">
         {/* Sabit yükseklik: bu satır `user` gelince DOM'dan tamamen kalkıyor — sarmalayıcı olmadan
             altındaki başlık/filtre satırı bir anda yukarı kayıyordu ("UI zıplaması"). */}
         <div>
@@ -250,7 +251,7 @@ export default function FinancePage() {
               </div>
             </div>
           )}
-          {sync?.error && <p className="text-sm text-red-600">{t("Senkronizasyon hatası", "Sync error")}: {sync.error}</p>}
+          {sync?.error && !isDemo && <p className="text-sm text-red-600">{t("Senkronizasyon hatası", "Sync error")}: {sync.error}</p>}
           {!sync?.running && !sync?.error && missingFees > 0 && (
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
               {t(
@@ -261,7 +262,7 @@ export default function FinancePage() {
           )}
         </div>
 
-        <div className="sticky top-[49px] z-[9] -mx-6 bg-neutral-50 px-6 pb-3 pt-3 dark:bg-neutral-950">
+        <div className="z-[9] -mx-4 lg:sticky lg:top-[49px] sm:-mx-6 bg-neutral-50 px-4 sm:px-6 pb-3 pt-3 dark:bg-neutral-950">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t("Finans", "Finance")}</h1>
           <div className="flex flex-wrap items-center gap-2">
@@ -538,7 +539,7 @@ export default function FinancePage() {
                     ]}
                     fmt={fmt}
                   />
-                  <div className="mt-4 grid gap-x-8 gap-y-1 text-sm sm:grid-cols-2">
+                  <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-1 text-sm sm:grid-cols-2">
                     {[...Object.entries(k.fee_types), ...Object.entries(k.overhead_types)].map(([n, v]) => (
                       <div key={n} className="flex justify-between border-b border-neutral-100 py-1 dark:border-neutral-800">
                         <span className="text-neutral-600 dark:text-neutral-300">{n}</span>

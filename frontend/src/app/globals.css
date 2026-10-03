@@ -81,3 +81,12 @@ body {
   .ulagg-draw { animation: ulagg-pulse 1.6s ease-in-out infinite; stroke-dasharray: none; }
   @keyframes ulagg-pulse { 50% { opacity: 0.45; } }
 }
+
+/* Dokunmatik cihazlarda 16px altı yazı alanına odaklanınca iOS sayfayı yakınlaştırır; form alanları en az 16px. */
+@media (pointer: coarse) and (max-width: 1023px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}

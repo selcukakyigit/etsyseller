@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { toast, ToastKind } from "@/lib/toast";
+import { ABOVE_BOTTOM_NAV } from "@/components/layout/constants";
 
 const STYLE: Record<ToastKind, string> = {
   error: "border-red-200 bg-white text-red-700 dark:border-red-900 dark:bg-neutral-900 dark:text-red-300",
@@ -16,7 +17,7 @@ export default function Toaster() {
   const items = useSyncExternalStore(toast.subscribe, toast.getSnapshot, () => EMPTY);
   if (items.length === 0) return null;
   return (
-    <div className="pointer-events-none fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] right-4 z-[200] lg:bottom-4 flex w-[min(92vw,380px)] flex-col gap-2" aria-live="polite">
+    <div className={`pointer-events-none fixed right-4 z-[200] flex w-[min(92vw,380px)] flex-col gap-2 ${ABOVE_BOTTOM_NAV}`} aria-live="polite">
       {items.map((t) => (
         <div
           key={t.id}

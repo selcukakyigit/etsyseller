@@ -195,10 +195,10 @@ function ReviewsPageInner() {
 
   return (
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/reviews">
-      <div className="mx-auto max-w-3xl space-y-6 px-6 py-8">
+      <div className="mx-auto max-w-3xl space-y-6 px-4 sm:px-6 py-6 sm:py-8">
         {/* Başlık + üst sayfalama + istatistik kartları: hepsi tek blok olarak sabit — kaydırınca liste
             altından geçer, sayfa değiştirince de bu blok yerinden oynamaz. */}
-        <div className="sticky top-[49px] z-10 -mx-6 bg-neutral-50 px-6 pb-4 dark:bg-neutral-950">
+        <div className="sticky top-[49px] z-10 -mx-4 sm:-mx-6 bg-neutral-50 px-4 sm:px-6 pb-4 dark:bg-neutral-950">
           <div className="pt-2">
             <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t("Yorumlar", "Reviews")}</h1>
             {total !== null && average !== null && (
@@ -215,7 +215,7 @@ function ReviewsPageInner() {
           )}
 
           {stats && (
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
                 <p className="mb-2 text-xs font-semibold text-neutral-500">{t("Puan dağılımı — tıklayınca filtreler", "Rating breakdown — click to filter")}</p>
                 <RatingDistribution dist={stats.rating_distribution} active={ratingFilter} onSelect={toggleRating} />

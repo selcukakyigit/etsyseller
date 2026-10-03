@@ -20,11 +20,14 @@ import { useT } from "@/lib/i18n-client";
 import { useCached } from "@/lib/pageCache";
 import { useStoredState } from "@/lib/useStoredState";
 import { PageSpinner, Spinner } from "@/components/ui/Spinner";
+import { useResponsiveFilters } from "@/components/ui/ResponsiveFilters";
+import { changedCount } from "@/lib/filters";
 
 type PublishOutcome = { id: number; title: string; ok: boolean; error?: string; updated?: string[]; warnings?: string[] };
 
 const SYNC_POLL_INTERVAL_MS = 3000;
 const EMPTY_REFERENCE: Reference = { sections: [], shipping: [], returns: [], partners: [] };
+const DEFAULT_FILTERS: Filters = { ...EMPTY_FILTERS, status: "active" };
 const STALE_AFTER_MS = 5 * 60 * 60 * 1000; // 5 saat: 6 saatlik sınırın altında kal
 
 export default function Home() {
@@ -37,7 +40,7 @@ export default function Home() {
   const [confirm, confirmElement] = useConfirm();
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const router = useRouter();
-  const [filters, setFilters] = useState<Filters>({ ...EMPTY_FILTERS, status: "active" });
+  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useStoredState<string>("listings.sort", "ending");
   const [view, setView] = useStoredState<"grid" | "list">("listings.view", "grid", ["grid", "list"]);
@@ -431,9 +434,26 @@ export default function Home() {
     if (ok) await runPublish(selectedDrafts, true);
   }
 
+  // Mobilde filtre paneli "Filtreler" düğmesiyle alttan açılır; masaüstünde listenin sağında durur.
+  const filterUI = useResponsiveFilters({
+    activeCount: changedCount(filters, DEFAULT_FILTERS),
+    onReset: () => setFilters(DEFAULT_FILTERS),
+    children: activeShop && listings ? (
+      <ListingFilters
+        listings={listings}
+        filters={filters}
+        onChange={setFilters}
+        reference={reference}
+        shopId={activeShop.id}
+        onSectionsChanged={loadReference}
+        decliningCount={attention?.declining_count}
+      />
+    ) : null,
+  });
+
   return (
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/listings">
-      <div className="max-w-7xl mx-auto px-6 pb-8 pt-0">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-8 pt-0">
         <div>
           {!user && !bootError && <PageSpinner />}
         </div>
@@ -478,7 +498,7 @@ export default function Home() {
 
         {activeShop && listings && listings.length > 0 && (
           <>
-            <div className="sticky top-[49px] z-[9] -mx-6 bg-neutral-50 px-6 pb-3 pt-3 dark:bg-neutral-950">
+            <div className="z-[9] -mx-4 lg:sticky lg:top-[49px] sm:-mx-6 bg-neutral-50 px-4 sm:px-6 pb-3 pt-3 dark:bg-neutral-950">
             <div className="mb-3 flex flex-wrap items-center gap-3">
               <h1 className="mr-auto text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t("Listing'ler", "Listings")}</h1>
               <button
@@ -544,6 +564,7 @@ export default function Home() {
                 >
                   {t("Düzenleme seçenekleri", "Editing options")} ▾
                 </button>
+                {filterUI.button}
                 <div className="ml-auto flex items-center gap-2">
                   <select
                     value={sort}
@@ -722,15 +743,7 @@ export default function Home() {
                 )}
               </div>
 
-              <ListingFilters
-                listings={listings}
-                filters={filters}
-                onChange={setFilters}
-                reference={reference}
-                shopId={activeShop.id}
-                onSectionsChanged={loadReference}
-                decliningCount={attention?.declining_count}
-              />
+              {filterUI.panel}
             </div>
           </>
         )}
