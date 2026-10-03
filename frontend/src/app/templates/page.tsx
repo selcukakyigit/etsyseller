@@ -113,8 +113,8 @@ export default function DescriptionTemplatesPage() {
 
       <p className="text-sm leading-relaxed text-neutral-500 dark:text-neutral-400">
         {t(
-          "Kargo, garanti, iletişim gibi her listing'de tekrar eden metinleri bir kez yaz, kaydet. Asistan yeni listing açarken varsayılan şablonu ekler; editörde ya da toplu düzenlemede istediğin şablonu uygulayabilirsin. Uygulanınca açıklamadaki eski şablon metni çıkarılır, yenisi konur; ürüne özel yazı korunur.",
-          "Write the text that repeats in every listing (shipping, guarantee, contact) once and save it. The assistant adds the default template to new listings, and you can apply any template in the editor or in bulk edit. When applied, the old template text in the description is removed and the new one is added; the product-specific text is kept.",
+          "Kargo, garanti, iletişim gibi her listing'de tekrar eden metinleri bir kez yaz, kaydet. Ulagg yeni listing açarken varsayılan şablonu ekler; editörde ya da toplu düzenlemede istediğin şablonu uygulayabilirsin. Uygulanınca açıklamadaki eski şablon metni çıkarılır, yenisi konur; ürüne özel yazı korunur.",
+          "Write the text that repeats in every listing (shipping, guarantee, contact) once and save it. Ulagg adds the default template to new listings, and you can apply any template in the editor or in bulk edit. When applied, the old template text in the description is removed and the new one is added; the product-specific text is kept.",
         )}
       </p>
       <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
@@ -256,7 +256,7 @@ export default function DescriptionTemplatesPage() {
           </p>
           <label className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300">
             <input type="checkbox" checked={draft.is_default} onChange={(e) => setDraft({ ...draft, is_default: e.target.checked })} />
-            {t("Varsayılan yap (asistan yeni listing'lere bunu ekler)", "Make default (the assistant adds it to new listings)")}
+            {t("Varsayılan yap (Ulagg yeni listing'lere bunu ekler)", "Make default (Ulagg adds it to new listings)")}
           </label>
         </Modal>
       )}

@@ -65,7 +65,7 @@ export default function DangerSettingsPage() {
           effects={[
             t("Etsy mağaza bağlantıları ve oturum yetkileri kaldırılır", "Etsy shop connections and access tokens are removed"),
             t("İlanlar, siparişler, finans kayıtları, maliyetler ve kargo faturaları silinir", "Listings, orders, finance records, costs and shipping invoices are deleted"),
-            t("Taslaklar, yerel fotoğraflar ve asistan sohbetleri silinir", "Drafts, local photos and assistant chats are deleted"),
+            t("Taslaklar, yerel fotoğraflar ve Ulagg sohbetleri silinir", "Drafts, local photos and Ulagg chats are deleted"),
             t("Hesabın (e-posta, şifre, profil) ve API anahtarları ayarları kalır", "Your account (email, password, profile) and API key settings stay"),
           ]}
           actionLabel={t("Verileri sıfırla", "Reset data")}

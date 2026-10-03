@@ -47,8 +47,8 @@ export default function AiSettingsPage() {
               <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("Yapay zekâ özellikleri", "AI features")}</h2>
               <p className="mt-1 text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
                 {t(
-                  "Başlık, etiket ve açıklama önerileri, görsel üretimi ve düzenleme, alt metin, fatura okuma ve sohbet asistanı. Kapatırsan içeriğin hiçbir yapay zekâ sağlayıcısına gönderilmez ve bu özellikler çalışmaz. Mağaza verilerin ve diğer özellikler etkilenmez.",
-                  "Title, tag and description suggestions, image generation and editing, alt text, invoice reading and the chat assistant. If you turn this off, your content is not sent to any AI provider and these features stop working. Your shop data and other features are not affected.",
+                  "Başlık, etiket ve açıklama önerileri, görsel üretimi ve düzenleme, alt metin, fatura okuma ve sohbet asistanı Ulagg. Kapatırsan içeriğin hiçbir yapay zekâ sağlayıcısına gönderilmez ve bu özellikler çalışmaz. Mağaza verilerin ve diğer özellikler etkilenmez.",
+                  "Title, tag and description suggestions, image generation and editing, alt text, invoice reading and the chat assistant Ulagg. If you turn this off, your content is not sent to any AI provider and these features stop working. Your shop data and other features are not affected.",
                 )}
               </p>
             </div>

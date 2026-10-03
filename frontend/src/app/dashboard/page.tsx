@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { api, DashboardData, ShopProfile, ShopReview } from "@/lib/api";
+import { api, DashboardData, ShopProfile } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import AppShell from "@/components/AppShell";
 import ChatPanel from "@/components/assistant/ChatPanel";
@@ -18,6 +18,11 @@ const localToday = () => {
 };
 
 const tile = "rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900";
+const strip = "block rounded-xl border border-neutral-200 bg-white px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900";
+const link = "transition hover:border-[#D97757] dark:hover:border-[#D97757]";
+const label = "text-xs font-medium text-neutral-500 dark:text-neutral-400";
+const value = "text-xl font-semibold text-neutral-900 dark:text-neutral-100";
+const sub = "truncate text-xs text-neutral-500 dark:text-neutral-400";
 
 function Change({ cur, prev, label, t }: { cur: number; prev: number; label: string; t: T }) {
   if (!prev) return <span className="text-[11px] text-neutral-400">{label}: {t("veri yok", "no data")}</span>;
@@ -36,7 +41,6 @@ export default function DashboardPage() {
   const [data, setData] = useCached<DashboardData>(shopId !== undefined ? `dashboard:${shopId}:${localToday()}` : null);
   const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useCached<ShopProfile | null>(shopId !== undefined ? `profile:${shopId}` : null);
-  const [reviews, setReviews] = useCached<ShopReview[]>(shopId !== undefined ? `reviews-top:${shopId}` : null);
 
   const load = useCallback(() => {
     if (shopId === undefined) return;
@@ -53,24 +57,18 @@ export default function DashboardPage() {
     load();
   }, [load]);
 
-  // Mağaza profili/yorumları yerelden okunuyor (jobs/shop_profile.py, jobs/reviews.py günlük tazeler) —
+  // Mağaza profili yerelden okunuyor (jobs/shop_profile.py tazeler) —
   // her dashboard açılışında Etsy'ye istek atmaz.
   useEffect(() => {
     if (shopId === undefined) return;
     api.shops.profile(shopId).then(setProfile).catch(() => setProfile(null));
-    api.shops
-      .reviews(shopId, { limit: 3 })
-      .then((r) => setReviews(r.reviews))
-      .catch(() => setReviews([]));
-  }, [shopId, setProfile, setReviews]);
+  }, [shopId, setProfile]);
 
   const money = (n: number, digits = 0) => new Intl.NumberFormat(locale, { style: "currency", currency: data?.currency ?? "USD", maximumFractionDigits: digits }).format(n);
-  const now = new Date();
-  const lastYear = String(now.getFullYear() - 1);
 
   return (
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/dashboard">
-      <div className="mx-auto max-w-[96rem] px-6 py-6">
+      <div className="mx-auto max-w-[96rem] px-4 py-4 sm:px-6 sm:py-6">
         <div className="min-h-[20px]">
           {!user && !bootError && <PageSpinner />}
         </div>
@@ -79,7 +77,7 @@ export default function DashboardPage() {
         {user && shops !== null && !activeShop && (
           <div className="rounded-xl border border-neutral-200 bg-white p-8 text-center dark:border-neutral-800 dark:bg-neutral-900">
             <p className="mb-4 text-neutral-600 dark:text-neutral-300">
-              {t("Asistanı kullanmak için önce Etsy mağazanı bağlaman gerekiyor.", "Connect your Etsy shop to start using the assistant.")}
+              {t("Ulagg'ı kullanmak için önce Etsy mağazanı bağlaman gerekiyor.", "Connect your Etsy shop to start using Ulagg.")}
             </p>
             <a href={api.shops.connectUrl()} className="inline-block rounded-lg bg-[#D97757] px-4 py-2 text-sm font-medium text-white hover:bg-[#C6613F]">
               {t("Etsy'ye Bağlan", "Connect Etsy")}
@@ -88,85 +86,75 @@ export default function DashboardPage() {
         )}
 
         {shopId !== undefined && (
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
-            <ChatPanel shopId={shopId} onSent={load} />
-
-            <aside className="space-y-3">
-              {(activeShop?.icon_url || profile) && (
-                <Link href="/reviews" className={`${tile} block hover:border-[#D97757]`}>
-                  <div className="flex items-center gap-2.5">
-                    {activeShop?.icon_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={activeShop.icon_url} alt="" className="h-9 w-9 flex-shrink-0 rounded-full object-cover" />
-                    ) : (
-                      <div className="h-9 w-9 flex-shrink-0 rounded-full bg-neutral-100 dark:bg-neutral-800" />
-                    )}
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold">{activeShop?.shop_name}</div>
-                      {profile?.review_average != null && (
-                        <div className="text-xs text-neutral-500">
-                          ⭐ {profile.review_average.toFixed(1)} · {profile.review_count ?? 0} {t("yorum", "reviews")}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  {profile?.num_favorers != null && (
-                    <div className="mt-2 text-xs text-neutral-500">{t(`${profile.num_favorers} kişi mağazayı favoriledi`, `${profile.num_favorers} people favorited the shop`)}</div>
-                  )}
-                  {profile?.is_vacation && (
-                    <div className="mt-1 text-xs font-medium text-amber-600">{t("Mağaza tatil modunda", "Shop is in vacation mode")}</div>
-                  )}
-                  {reviews && reviews.length > 0 && (
-                    <div className="mt-3 space-y-2 border-t border-neutral-100 pt-3 dark:border-neutral-800">
-                      {reviews.map((r) => (
-                        <div key={r.transaction_id}>
-                          <div className="text-xs text-amber-500">{"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)}</div>
-                          {r.review && <p className="mt-0.5 line-clamp-2 text-xs text-neutral-600 dark:text-neutral-300">{r.review}</p>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </Link>
-              )}
-
-              <div className={tile}>
-                <div className="text-xs font-medium text-neutral-500">{t("Bugün", "Today")}</div>
-                <div className="mt-1 text-2xl font-semibold">{data ? money(data.today.sales) : "—"}</div>
-                <div className="text-xs text-neutral-500">{data ? t(`${data.today.orders} sipariş`, `${data.today.orders} orders`) : ""}</div>
+          <div className="space-y-4">
+            {/* Sayılar tek şeritte: tıklanınca ilgili sayfaya gider. Mobilde 2×2. */}
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <div className={strip}>
+                <div className={label}>{t("Bugün", "Today")}</div>
+                <div className={value}>{data ? money(data.today.sales) : "—"}</div>
+                <div className={sub}>{data ? t(`${data.today.orders} sipariş`, `${data.today.orders} orders`) : ""}</div>
               </div>
 
-              <Link href="/orders" className={`${tile} block hover:border-[#D97757]`}>
-                <div className="text-xs font-medium text-neutral-500">{t("Gönderilecek siparişler", "Orders to ship")}</div>
-                <div className="mt-1 text-2xl font-semibold">{data ? data.to_ship : "—"}</div>
-                {data && data.overdue > 0 ? <div className="text-xs font-medium text-red-600">{t(`${data.overdue} tanesi gecikmiş`, `${data.overdue} overdue`)}</div> : <div className="text-xs text-neutral-500">{t("gecikmiş yok", "none overdue")}</div>}
-              </Link>
-
-              <AttentionTile shopId={shopId} className={tile} />
-              <ChangesTile shopId={shopId} className={tile} />
-
-              <Link href="/finance" className={`${tile} block hover:border-[#D97757]`}>
-                <div className="text-xs font-medium text-neutral-500">{t("Bu ay", "This month")} ({data?.month.label ?? "…"})</div>
-                <div className="mt-1 text-2xl font-semibold">{data ? money(data.month.sales) : "—"}</div>
-                {data && <Change t={t} cur={data.month.sales} prev={data.month.prev_sales} label={t(`${lastYear} aynı dönem`, `same period ${lastYear}`)} />}
-                <div className="mt-3 border-t border-neutral-100 pt-3 dark:border-neutral-800">
-                  <div className="text-xs text-neutral-500">{t("Net kâr", "Net profit")}</div>
-                  <div className={`text-xl font-semibold ${data && data.month.profit < 0 ? "text-red-600" : "text-emerald-600"}`}>{data ? money(data.month.profit) : "—"}</div>
-                  {data && <Change t={t} cur={data.month.profit} prev={data.month.prev_profit} label={t(`${lastYear} aynı dönem`, `same period ${lastYear}`)} />}
-                  {data && !data.month.costs_entered && <div className="mt-1 text-[11px] text-amber-600">{t("Ürün maliyetleri girilmediği için bu brüt kârdır.", "Product costs are not entered, so this is gross profit.")}</div>}
-                </div>
-                <div className="mt-3 text-xs text-neutral-500">
-                  {data ? t(`${data.month.orders} sipariş · Etsy ücretleri ${money(data.month.fees)}`, `${data.month.orders} orders · Etsy fees ${money(data.month.fees)}`) : ""}
-                </div>
-              </Link>
-
-              <div className={`${tile} text-xs text-neutral-500`}>
-                <b className="text-neutral-700 dark:text-neutral-200">{t("İpucu:", "Tip:")}</b>{" "}
-                {t(
-                  "Asistan Etsy'ye kendiliğinden bir şey göndermez. Oluşturduğu listing taslağını açıp kontrol ettikten sonra \"Etsy'de yayınla\" ile sen yayınlarsın.",
-                  "The assistant never sends anything to Etsy by itself. Open the listing draft it creates, check it, then publish it yourself with \"Publish to Etsy\".",
+              <Link href="/orders" className={`${strip} ${link}`}>
+                <div className={label}>{t("Gönderilecek", "To ship")}</div>
+                <div className={value}>{data ? data.to_ship : "—"}</div>
+                {data && data.overdue > 0 ? (
+                  <div className="text-xs font-medium text-red-600 dark:text-red-400">{t(`${data.overdue} gecikmiş`, `${data.overdue} overdue`)}</div>
+                ) : (
+                  <div className={sub}>{t("gecikmiş yok", "none overdue")}</div>
                 )}
-              </div>
-            </aside>
+              </Link>
+
+              <Link href="/finance" className={`${strip} ${link}`}>
+                <div className={label}>
+                  {t("Bu ay", "This month")} {data ? `(${data.month.label})` : ""}
+                </div>
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <span className={value}>{data ? money(data.month.sales) : "—"}</span>
+                  {data && <Change t={t} cur={data.month.sales} prev={data.month.prev_sales} label={t("geçen yıla göre", "vs last year")} />}
+                </div>
+                {data && (
+                  <div className={sub} title={data.month.costs_entered ? undefined : t("Ürün maliyetleri girilmediği için bu brüt kârdır.", "Product costs are not entered, so this is gross profit.")}>
+                    {data.month.costs_entered ? t("Net kâr", "Net profit") : t("Brüt kâr", "Gross profit")}{" "}
+                    <b className={data.month.profit < 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}>{money(data.month.profit)}</b>
+                  </div>
+                )}
+              </Link>
+
+              <Link href="/reviews" className={`${strip} ${link}`}>
+                <div className={label}>{t("Mağaza", "Shop")}</div>
+                <div className="flex items-center gap-2">
+                  {activeShop?.icon_url && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={activeShop.icon_url} alt="" className="h-6 w-6 shrink-0 rounded-full object-cover" />
+                  )}
+                  <span className={value}>{profile?.review_average != null ? `★ ${profile.review_average.toFixed(1)}` : "—"}</span>
+                </div>
+                <div className={sub}>
+                  {profile?.is_vacation ? (
+                    <span className="font-medium text-amber-600 dark:text-amber-400">{t("Tatil modunda", "Vacation mode")}</span>
+                  ) : (
+                    t(`${profile?.review_count ?? 0} yorum`, `${profile?.review_count ?? 0} reviews`)
+                  )}
+                </div>
+              </Link>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+              <ChatPanel shopId={shopId} onSent={load} heightClass="h-[70vh] min-h-[28rem] lg:h-[calc(100vh-16rem)]" />
+
+              {/* Sağ sütun yalnızca yapılacak işler; boşsa kartlar kendini gizler. */}
+              <aside className="space-y-3">
+                <AttentionTile shopId={shopId} className={tile} />
+                <ChangesTile shopId={shopId} className={tile} />
+                <p className="px-1 text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
+                  {t(
+                    "Ulagg Etsy'ye kendiliğinden bir şey göndermez. Oluşturduğu listing taslağını açıp kontrol ettikten sonra \"Etsy'de yayınla\" ile sen yayınlarsın.",
+                    "Ulagg never sends anything to Etsy by itself. Open the listing draft it creates, check it, then publish it yourself with \"Publish to Etsy\".",
+                  )}
+                </p>
+              </aside>
+            </div>
           </div>
         )}
       </div>
