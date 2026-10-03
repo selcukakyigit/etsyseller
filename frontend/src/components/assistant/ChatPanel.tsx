@@ -4,6 +4,7 @@ import { ClipboardEvent, DragEvent, Fragment, KeyboardEvent, useCallback, useEff
 import { api, API_URL, AssistantProviders, ChatMessageOut, ChatSessionInfo } from "@/lib/api";
 import Card from "./Cards";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
+import UlaggMark from "@/components/brand/UlaggMark";
 import { useT } from "@/lib/i18n-client";
 import { Spinner } from "@/components/ui/Spinner";
 
@@ -34,17 +35,13 @@ function Text({ text }: { text: string }) {
   );
 }
 
-/** "Düşünüyor" göstergesi: hareketli noktalar + asistanın o an yaptığı iş (sunucudan gelir). */
+/** "Düşünüyor" göstergesi: çizilen Ulagg işareti + asistanın o an yaptığı iş (sunucudan gelir). */
 function Thinking({ step }: { step: string }) {
   const { t } = useT();
   return (
     <div className="flex justify-start">
       <div className="flex items-center gap-3 rounded-2xl bg-neutral-100 px-4 py-3 text-sm text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
-        <span className="flex items-end gap-1" aria-hidden>
-          {[0, 1, 2].map((i) => (
-            <span key={i} className="inline-block h-2 w-2 animate-bounce rounded-full bg-[#D97757]" style={{ animationDelay: `${i * 150}ms` }} />
-          ))}
-        </span>
+        <UlaggMark animated size={22} />
         <span className="transition-opacity">{step || t("Düşünüyor", "Thinking")}…</span>
       </div>
     </div>
