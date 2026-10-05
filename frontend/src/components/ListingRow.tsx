@@ -115,7 +115,7 @@ function ScoredKeywordPills({ items, onTrack }: { items: KeywordPoolItem[]; onTr
 }
 
 const pill =
-  "text-xs font-medium text-neutral-500 dark:text-neutral-400 px-2.5 py-1 rounded-full border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition";
+  "whitespace-nowrap text-center text-xs font-medium text-neutral-600 dark:text-neutral-300 px-2.5 py-2 sm:py-1 rounded-full border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition";
 
 export default function ListingRow({
   shopId,
@@ -139,7 +139,8 @@ export default function ListingRow({
   job?: PublishJob;
   publishError?: string | null;
 }) {
-  const { t } = useT();
+  const { t, locale } = useT();
+  const num = (n: number | null | undefined) => new Intl.NumberFormat(locale).format(n ?? 0); // 48561 → 48.561 / 48,561
   const [historyOpen, setHistoryOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [keywordPool, setKeywordPool] = useState<KeywordPoolItem[] | null>(null);
@@ -198,59 +199,75 @@ export default function ListingRow({
         selected ? "border-[#D97757]" : "border-neutral-200 dark:border-neutral-800"
       }`}
     >
-      <div className="flex items-center gap-4 p-4">
-        {onSelectChange && (
-          <input
-            type="checkbox"
-            checked={!!selected}
-            onChange={(e) => onSelectChange(e.target.checked)}
-            aria-label={t(`${listing.title} seç`, `Select ${listing.title}`)}
-            className="h-4 w-4 flex-shrink-0 accent-[#D97757]"
-          />
-        )}
+      {/* Mobilde iki kat (bilgi üstte, düğmeler altta eşit genişlikte); geniş ekranda tek satır. */}
+      <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:gap-4 sm:p-4">
+        <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
+          {onSelectChange && (
+            <input
+              type="checkbox"
+              checked={!!selected}
+              onChange={(e) => onSelectChange(e.target.checked)}
+              aria-label={t(`${listing.title} seç`, `Select ${listing.title}`)}
+              className="h-4 w-4 flex-shrink-0 accent-[#D97757]"
+            />
+          )}
 
-        {listing.image_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={listing.image_url}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            className="w-14 h-14 rounded-lg object-cover flex-shrink-0 border border-neutral-100 dark:border-neutral-800"
-          />
-        ) : (
-          <div className="w-14 h-14 rounded-lg bg-neutral-100 dark:bg-neutral-800 flex-shrink-0" />
-        )}
+          <Link href={`/listings/${listing.listing_id}/edit`} className="flex-shrink-0">
+            {listing.image_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={listing.image_url}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="h-16 w-16 rounded-lg border border-neutral-100 object-cover dark:border-neutral-800 sm:h-14 sm:w-14"
+              />
+            ) : (
+              <div className="h-16 w-16 rounded-lg bg-neutral-100 dark:bg-neutral-800 sm:h-14 sm:w-14" />
+            )}
+          </Link>
 
-        <div className="min-w-0 flex-1">
-          <p className="font-medium text-neutral-900 dark:text-neutral-100 truncate">{listing.title}</p>
-          <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">
-            {t(`${listing.views ?? 0} görüntülenme · ${listing.favorites ?? 0} favori · ${listing.tags.length} etiket`, `${listing.views ?? 0} views · ${listing.favorites ?? 0} favorites · ${listing.tags.length} tags`)}
-          </p>
+          <div className="min-w-0 flex-1">
+            <Link
+              href={`/listings/${listing.listing_id}/edit`}
+              title={listing.title}
+              className="line-clamp-2 text-sm font-medium leading-snug text-neutral-900 hover:underline dark:text-neutral-100 sm:line-clamp-1 sm:text-base"
+            >
+              {listing.title}
+            </Link>
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-neutral-500 dark:text-neutral-400">
+              {listing.has_local && (
+                <span
+                  title={t("Kaydedildi ama Etsy'ye henüz yayınlanmadı", "Saved but not yet published to Etsy")}
+                  className="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+                >
+                  {t("Yayınlanmadı", "Unpublished")}
+                </span>
+              )}
+              {listing.has_draft && (
+                <span
+                  title={t("Bu listing için kayıtlı bir taslak var (listeyi etkilemez)", "This listing has a saved draft (it does not affect the list)")}
+                  className="rounded-full bg-neutral-100 px-2 py-0.5 font-medium text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300"
+                >
+                  {t("Taslak", "Draft")}
+                </span>
+              )}
+              <span className="tabular-nums">
+                {t(
+                  `${num(listing.views)} görüntülenme · ${num(listing.favorites)} favori · ${listing.tags.length} etiket`,
+                  `${num(listing.views)} views · ${num(listing.favorites)} favorites · ${listing.tags.length} tags`,
+                )}
+              </span>
+            </div>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {listing.has_local && (
-            <span
-              title={t("Kaydedildi ama Etsy'ye henüz yayınlanmadı", "Saved but not yet published to Etsy")}
-              className="text-xs font-medium text-amber-700 px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300"
-            >
-              {t("Yayınlanmadı", "Unpublished")}
-            </span>
-          )}
-          {listing.has_draft && (
-            <span
-              title={t("Bu listing için kayıtlı bir taslak var (listeyi etkilemez)", "This listing has a saved draft (it does not affect the list)")}
-              className="text-xs font-medium text-neutral-600 px-2.5 py-1 rounded-full bg-neutral-100 dark:bg-neutral-800 dark:text-neutral-300"
-            >
-              {t("Taslak", "Draft")}
-            </span>
-          )}
+        <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-shrink-0 sm:items-center">
           <button onClick={() => setHistoryOpen((v) => !v)} className={pill}>
             {historyOpen ? t("Analizi gizle", "Hide analysis") : t("Analiz", "Analysis")}
           </button>
           <button onClick={handleToggleKeywordPool} disabled={keywordPoolLoading} className={`${pill} disabled:opacity-50`}>
-            {keywordPoolLoading ? t("Yükleniyor…", "Loading…") : keywordPool ? t("Havuzu gizle", "Hide pool") : t("Kelime Havuzu", "Keyword pool")}
+            {keywordPoolLoading ? t("Yükleniyor…", "Loading…") : keywordPool ? t("Havuzu gizle", "Hide pool") : t("Kelime havuzu", "Keyword pool")}
           </button>
           <Link href={`/listings/${listing.listing_id}/edit`} className={pill}>
             {t("Düzenle", "Edit")}
@@ -259,7 +276,7 @@ export default function ListingRow({
             <button
               onClick={onPublish}
               disabled={publishing}
-              className="text-sm font-medium px-3 py-1.5 rounded-lg bg-[#D97757] text-white hover:bg-[#C6613F] transition disabled:opacity-50"
+              className="col-span-3 rounded-lg bg-[#D97757] px-3 py-2 text-sm font-medium text-white transition hover:bg-[#C6613F] disabled:opacity-50 sm:col-span-1 sm:py-1.5"
             >
               {publishing ? t("Yayınlanıyor…", "Publishing…") : t("Etsy'de yayınla", "Publish to Etsy")}
             </button>

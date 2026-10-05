@@ -16,6 +16,8 @@ import ListingAnalysisPanel from "@/components/listings/analysis/ListingAnalysis
 import { Modal, btnGhost } from "@/components/listing-editor/Modal";
 import { ReconnectNotice, isPermissionError } from "@/components/shipping/shared";
 import ListingFilters, { applyFilters, EMPTY_FILTERS, Filters, Reference } from "@/components/listings/ListingFilters";
+import ListingsToolbar, { ListingSort } from "@/components/listings/ListingsToolbar";
+import SelectionBar from "@/components/listings/SelectionBar";
 import { useT } from "@/lib/i18n-client";
 import { useCached } from "@/lib/pageCache";
 import { useStoredState } from "@/lib/useStoredState";
@@ -42,7 +44,7 @@ export default function Home() {
   const router = useRouter();
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useStoredState<string>("listings.sort", "ending");
+  const [sort, setSort] = useStoredState<ListingSort>("listings.sort", "ending");
   const [view, setView] = useStoredState<"grid" | "list">("listings.view", "grid", ["grid", "list"]);
   const [cachedReference, setReference] = useCached<Reference>(cacheShopId !== undefined ? `listing-reference:${cacheShopId}` : null);
   const reference = cachedReference ?? EMPTY_REFERENCE;
@@ -434,6 +436,27 @@ export default function Home() {
     if (ok) await runPublish(selectedDrafts, true);
   }
 
+  async function fullSync() {
+    if (!activeShop) return;
+    const ok = await confirm({
+      title: t("Tam senkronizasyon başlatılsın mı?", "Start a full sync?"),
+      message: t(
+        "Normal senkronizasyon yalnızca Etsy'de değişen listing'leri çeker. Tam senkronizasyon hepsini baştan çeker: birkaç dakika sürer ve Etsy API kotanı harcar. Yalnızca veri tutarsız görünüyorsa kullan.",
+        "A normal sync only fetches listings that changed on Etsy. A full sync fetches all of them again: it takes a few minutes and uses your Etsy API quota. Only use it if the data looks inconsistent.",
+      ),
+      confirmLabel: t("Tam senkronize et", "Run full sync"),
+    });
+    if (!ok) return;
+    await api.listings.sync(activeShop.id, true).catch((e) => setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error")));
+    setStageMsg({
+      text: t(
+        "Tam senkronizasyon arka planda başladı; birkaç dakika sürebilir. Bitince listeyi yenile.",
+        "Full sync started in the background; it can take a few minutes. Refresh the list when it is done.",
+      ),
+      errors: [],
+    });
+  }
+
   // Mobilde filtre paneli "Filtreler" düğmesiyle alttan açılır; masaüstünde listenin sağında durur.
   const filterUI = useResponsiveFilters({
     activeCount: changedCount(filters, DEFAULT_FILTERS),
@@ -453,7 +476,7 @@ export default function Home() {
 
   return (
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/listings">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-8 pt-0">
+      <div className={`mx-auto max-w-7xl px-3 pt-0 sm:px-6 ${selected.size > 0 ? "pb-28" : "pb-8"}`}>
         <div>
           {!user && !bootError && <PageSpinner />}
         </div>
@@ -498,150 +521,32 @@ export default function Home() {
 
         {activeShop && listings && listings.length > 0 && (
           <>
-            <div className="z-[9] -mx-4 lg:sticky lg:top-[49px] sm:-mx-6 bg-neutral-50 px-4 sm:px-6 pb-3 pt-3 dark:bg-neutral-950">
-            <div className="mb-3 flex flex-wrap items-center gap-3">
-              <h1 className="mr-auto text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t("Listing'ler", "Listings")}</h1>
-              <button
-                onClick={() => newListing()}
-                disabled={busyAction}
-                className="rounded-full bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-700 disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
-              >
-                {t("+ Yeni listing", "+ New listing")}
-              </button>
-              <div className="relative w-full sm:w-80">
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder={t("Başlık, etiket veya SKU ara", "Search title, tag or SKU")}
-                  className="w-full rounded-full border border-neutral-300 bg-white py-2 pl-4 pr-10 text-sm outline-none focus:border-[#D97757] dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
-                />
-                <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-neutral-400">⌕</span>
-              </div>
-            </div>
-
-            <div className="space-y-3 rounded-xl border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="flex cursor-pointer items-center gap-2 pr-2 text-sm text-neutral-700 dark:text-neutral-200">
-                  <input
-                    type="checkbox"
-                    checked={allVisibleSelected}
-                    onChange={(e) =>
-                      setSelected((prev) => {
-                        const next = new Set(prev);
-                        visibleListings.forEach((l) => (e.target.checked ? next.add(l.listing_id) : next.delete(l.listing_id)));
-                        return next;
-                      })
-                    }
-                    className="h-4 w-4 accent-[#D97757]"
-                  />
-                  {selected.size > 0 ? t(`${selected.size} seçili`, `${selected.size} selected`) : t("Tümünü seç", "Select all")}
-                </label>
-                {[
-                  { label: t("Yenile", "Renew"), show: allRenewable, run: () => changeState(selectedListings, "active", true) },
-                  { label: t("Pasife al", "Deactivate"), show: true, run: () => changeState(selectedListings, "inactive") },
-                  { label: t("Aktif et", "Activate"), show: true, run: () => changeState(selectedListings, "active") },
-                  { label: t("Sil", "Delete"), show: true, run: () => deleteListings(selectedListings), danger: true },
-                ]
-                  .filter((b) => b.show)
-                  .map((b) => (
-                    <button
-                      key={b.label}
-                      onClick={b.run}
-                      disabled={selected.size === 0 || busyAction}
-                      className={`rounded-full border px-4 py-1.5 text-sm font-medium disabled:opacity-40 ${
-                        "danger" in b && b.danger
-                          ? "border-red-300 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/40"
-                          : "border-neutral-300 text-neutral-800 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800"
-                      }`}
-                    >
-                      {b.label}
-                    </button>
-                  ))}
-                <button
-                  onClick={() => setEditModal({ ids: selectedListings.map((l) => l.listing_id) })}
-                  disabled={selected.size === 0 || busyAction}
-                  className="rounded-full border border-neutral-300 px-4 py-1.5 text-sm font-medium text-neutral-800 hover:bg-neutral-50 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800"
-                >
-                  {t("Düzenleme seçenekleri", "Editing options")} ▾
-                </button>
-                {filterUI.button}
-                <div className="ml-auto flex items-center gap-2">
-                  <select
-                    value={sort}
-                    onChange={(e) => setSort(e.target.value)}
-                    aria-label={t("Sırala", "Sort")}
-                    className="rounded-lg border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
-                  >
-                    <option value="ending">{t("Bitiş: en yeni önce", "Expiration: newest first")}</option>
-                    <option value="modified">{t("Son düzenlenen", "Recently edited")}</option>
-                    <option value="views">{t("En çok görüntülenen", "Most viewed")}</option>
-                    <option value="favorites">{t("En çok favorilenen", "Most favorited")}</option>
-                    <option value="price_asc">{t("Fiyat: düşükten yükseğe", "Price: low to high")}</option>
-                    <option value="price_desc">{t("Fiyat: yüksekten düşüğe", "Price: high to low")}</option>
-                    <option value="title">{t("Başlık (A–Z)", "Title (A–Z)")}</option>
-                  </select>
-                  {(["grid", "list"] as const).map((v) => (
-                    <button
-                      key={v}
-                      onClick={() => setView(v)}
-                      aria-label={v === "grid" ? t("Kart görünümü", "Grid view") : t("Liste görünümü", "List view")}
-                      aria-pressed={view === v}
-                      className={`rounded-full border px-3 py-1.5 text-sm ${
-                        view === v
-                          ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900"
-                          : "border-neutral-300 text-neutral-600 dark:border-neutral-700 dark:text-neutral-300"
-                      }`}
-                    >
-                      {v === "grid" ? "▦" : "☰"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-3 border-t border-neutral-100 pt-3 dark:border-neutral-800">
-                <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                  {visibleListings.length}/{listings.length} {t("listing", "listings")} · {draftListings.length} {t("yayınlanmamış", "unpublished")}
-                </span>
-                <button
-                  onClick={() => setSelected(new Set(draftListings.map((l) => l.listing_id)))}
-                  disabled={draftListings.length === 0}
-                  className="rounded-full border border-neutral-200 px-3 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-800"
-                >
-                  {t("Yayınlanmamışları seç", "Select unpublished")}
-                </button>
-                <button
-                  onClick={async () => {
-                    if (!activeShop) return;
-                    const ok = await confirm({
-                      title: t("Tam senkronizasyon başlatılsın mı?", "Start a full sync?"),
-                      message: t(
-                        "Normal senkronizasyon yalnızca Etsy'de değişen listing'leri çeker. Tam senkronizasyon hepsini baştan çeker: birkaç dakika sürer ve Etsy API kotanı harcar. Yalnızca veri tutarsız görünüyorsa kullan.",
-                        "A normal sync only fetches listings that changed on Etsy. A full sync fetches all of them again: it takes a few minutes and uses your Etsy API quota. Only use it if the data looks inconsistent.",
-                      ),
-                      confirmLabel: t("Tam senkronize et", "Run full sync"),
-                    });
-                    if (!ok) return;
-                    await api.listings.sync(activeShop.id, true).catch((e) => setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error")));
-                    setStageMsg({
-                      text: t(
-                        "Tam senkronizasyon arka planda başladı; birkaç dakika sürebilir. Bitince listeyi yenile.",
-                        "Full sync started in the background; it can take a few minutes. Refresh the list when it is done.",
-                      ),
-                      errors: [],
-                    });
-                  }}
-                  className="text-xs text-neutral-500 underline underline-offset-2 hover:text-neutral-800"
-                >
-                  {t("Tam senkronizasyon", "Full sync")}
-                </button>
-                <button
-                  onClick={publishSelected}
-                  disabled={selectedDrafts.length === 0 || bulk?.running}
-                  className="ml-auto rounded-lg bg-[#D97757] px-3 py-1.5 text-sm font-medium text-white transition hover:bg-[#C6613F] disabled:opacity-50"
-                >
-                  {t("Seçilenleri Etsy'de yayınla", "Publish selected to Etsy")} ({selectedDrafts.length})
-                </button>
-              </div>
-            </div>
+            <div className="z-[9] -mx-3 bg-neutral-50 px-3 pb-3 pt-3 dark:bg-neutral-950 sm:-mx-6 sm:px-6 lg:sticky lg:top-[49px]">
+              <ListingsToolbar
+                total={listings.length}
+                visible={visibleListings.length}
+                draftCount={draftListings.length}
+                query={query}
+                onQuery={setQuery}
+                sort={sort}
+                onSort={setSort}
+                view={view}
+                onView={setView}
+                filterButton={filterUI.button}
+                onNew={() => void newListing()}
+                busy={busyAction}
+                allSelected={allVisibleSelected}
+                selectedCount={selected.size}
+                onToggleAll={(on) =>
+                  setSelected((prev) => {
+                    const next = new Set(prev);
+                    visibleListings.forEach((l) => (on ? next.add(l.listing_id) : next.delete(l.listing_id)));
+                    return next;
+                  })
+                }
+                onSelectUnpublished={() => setSelected(new Set(draftListings.map((l) => l.listing_id)))}
+                onFullSync={() => void fullSync()}
+              />
             </div>
 
             {needsReconnect && (
@@ -705,7 +610,7 @@ export default function Home() {
                 )}
 
                 {view === "grid" ? (
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3 2xl:grid-cols-4">
                     {shown.map((listing) => (
                       <ListingCard
                         key={listing.listing_id}
@@ -748,6 +653,20 @@ export default function Home() {
           </>
         )}
       </div>
+      <SelectionBar
+        count={selected.size}
+        publishCount={selectedDrafts.length}
+        publishing={!!bulk?.running}
+        busy={busyAction}
+        renewable={allRenewable}
+        onPublish={() => void publishSelected()}
+        onActivate={() => void changeState(selectedListings, "active")}
+        onDeactivate={() => void changeState(selectedListings, "inactive")}
+        onRenew={() => void changeState(selectedListings, "active", true)}
+        onEdit={() => setEditModal({ ids: selectedListings.map((l) => l.listing_id) })}
+        onDelete={() => void deleteListings(selectedListings)}
+        onClear={() => setSelected(new Set())}
+      />
       {confirmElement}
       {editModal && activeShop && (
         <BulkEditModal

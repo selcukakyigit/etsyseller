@@ -91,24 +91,24 @@ export default function ListingCard({
         )}
       </Link>
 
-      <div className="flex-1 space-y-1 p-3 text-xs text-neutral-500 dark:text-neutral-400">
+      <div className="flex-1 space-y-1 p-2.5 text-xs text-neutral-500 dark:text-neutral-400 sm:p-3">
         <Link
           href={`/listings/${listing.listing_id}/edit`}
           title={listing.title}
-          className="block truncate text-sm font-semibold text-neutral-900 hover:underline dark:text-neutral-100"
+          className="line-clamp-2 text-sm font-semibold leading-snug text-neutral-900 hover:underline dark:text-neutral-100 sm:line-clamp-1"
         >
           {listing.title}
         </Link>
         {listing.quantity != null && <p>{t(`${listing.quantity} stokta`, `${listing.quantity} in stock`)}</p>}
         {skus && (
-          <p className="truncate" title={skus}>
+          <p className="hidden truncate sm:block" title={skus}>
             {skus}
           </p>
         )}
         {price && <p className="text-[#1a7f4b] dark:text-green-400">{price}</p>}
-        {renews && <p>{listing.should_auto_renew ? t("Otomatik yenilenir", "Auto-renews") : t("Sona erer", "Expires")} {renews}</p>}
+        {renews && <p className="hidden sm:block">{listing.should_auto_renew ? t("Otomatik yenilenir", "Auto-renews") : t("Sona erer", "Expires")} {renews}</p>}
         <div className="mt-2 border-t border-neutral-100 pt-2 dark:border-neutral-800">
-          <p className="text-[10px] font-semibold uppercase tracking-wide">{t("İstatistikler", "Stats")}</p>
+          <p className="hidden text-[10px] font-semibold uppercase tracking-wide sm:block">{t("İstatistikler", "Stats")}</p>
           <p>
             {listing.views ?? 0} {t("görüntülenme", "views")} · {listing.favorites ?? 0} {t("favori", "favorites")}
           </p>
@@ -116,7 +116,7 @@ export default function ListingCard({
         {publishError && <p className="text-red-600">{publishError}</p>}
       </div>
 
-      <div className="flex items-center justify-between border-t border-neutral-100 px-3 py-2 dark:border-neutral-800">
+      <div className="flex items-center justify-between border-t border-neutral-100 px-2.5 py-1.5 dark:border-neutral-800 sm:px-3 sm:py-2">
         <input
           type="checkbox"
           checked={selected}
@@ -146,7 +146,7 @@ export default function ListingCard({
             ⚙ ▾
           </button>
           {menuOpen && (
-            <div className="absolute bottom-full right-0 z-20 mb-1 w-52 overflow-hidden rounded-lg border border-neutral-200 bg-white py-1 text-sm shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+            <div className="absolute bottom-full right-0 z-20 mb-1 w-44 overflow-hidden sm:w-52 rounded-lg border border-neutral-200 bg-white py-1 text-sm shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
               {listing.url && !listing.is_new && (
                 <a
                   href={listing.url}
