@@ -279,6 +279,50 @@ def run_shop(db: Session, shop: Shop, today: dt.date | None = None) -> int:
 
 # ------------------------------------------------------------------ okuma
 
+def _change(series: list[RankSnapshot], back: int) -> int | None:
+    """Pozitif = yükseldi (sıra numarası küçüldü). Listede yoksa MAX_RESULTS+1 sayılır."""
+    if not series:
+        return None
+    latest = series[-1]
+    target = latest.day - dt.timedelta(days=back)
+    older = [s for s in series if s.day <= target]
+    if not older:
+        return None
+    a = older[-1].position or MAX_RESULTS + 1
+    b = latest.position or MAX_RESULTS + 1
+    return a - b
+
+
+def shop_summary(db: Session, shop: Shop, today: dt.date | None = None) -> dict:
+    """Takipteki listing'lerin özeti (liste rozeti ve "Takipte" filtresi için): her biri için en iyi sıradaki arama,
+    o sıra ve 7 günlük değişimi. Henüz ölçülmemişse `position` ve `measured` boş döner."""
+    today = today or dt.date.today()
+    keywords = _active(db, shop)
+    snaps = db.scalars(select(RankSnapshot).where(
+        RankSnapshot.shop_id == shop.id, RankSnapshot.day >= today - dt.timedelta(days=14)
+    ).order_by(RankSnapshot.day)).all()
+    series: dict[tuple[int, str], list[RankSnapshot]] = {}
+    for s in snaps:
+        series.setdefault((s.listing_id, s.keyword), []).append(s)
+    out: dict[int, dict] = {}
+    for k in keywords:
+        ser = series.get((k.listing_id, k.keyword), [])
+        latest = ser[-1] if ser else None
+        item = {
+            "keyword": k.keyword,
+            "position": latest.position if latest else None,
+            "measured": latest.day.isoformat() if latest else None,
+            "change_7d": _change(ser, 7),
+        }
+        cur = out.get(k.listing_id)
+        # En iyi arama: ölçülmüş olan, sonra sıra numarası en küçük olan (ilk 200'de yoksa en sona).
+        rank_of = lambda i: (i["measured"] is None, i["position"] or MAX_RESULTS + 1)  # noqa: E731
+        if cur is None or rank_of(item) < rank_of(cur):
+            out[k.listing_id] = {**item, "keywords": (cur or {}).get("keywords", 0)}
+        out[k.listing_id]["keywords"] = out[k.listing_id].get("keywords", 0) + 1
+    return {"listings": out, "max_listings": MAX_LISTINGS, "max_results": MAX_RESULTS}
+
+
 def listing_ranks(db: Session, shop: Shop, listing_id: int, days: int = 60, today: dt.date | None = None) -> dict:
     today = today or dt.date.today()
     since = today - dt.timedelta(days=days - 1)
@@ -290,19 +334,7 @@ def listing_ranks(db: Session, shop: Shop, listing_id: int, days: int = 60, toda
     for s in snaps:
         by_kw.setdefault(s.keyword, []).append(s)
 
-    def change(series: list[RankSnapshot], back: int) -> int | None:
-        """Pozitif = yükseldi (sıra numarası küçüldü). Listede yoksa MAX_RESULTS+1 sayılır."""
-        if not series:
-            return None
-        latest = series[-1]
-        target = latest.day - dt.timedelta(days=back)
-        older = [s for s in series if s.day <= target]
-        if not older:
-            return None
-        a = older[-1].position or MAX_RESULTS + 1
-        b = latest.position or MAX_RESULTS + 1
-        return a - b
-
+    change = _change
     out = []
     for k in keywords:
         series = by_kw.get(k.keyword, [])

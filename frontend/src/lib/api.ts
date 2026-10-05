@@ -376,6 +376,21 @@ export interface EtsyDataSaved extends EtsyDataRow {
   captured_on: string;
 }
 
+/** Takipteki bir listing'in özeti: en iyi sıradaki arama (bkz. backend insights/rank.shop_summary). */
+export interface TrackedRank {
+  keyword: string;
+  position: number | null; // ilk max_results içinde değilse null
+  measured: string | null; // henüz ölçülmediyse null
+  change_7d: number | null; // pozitif = yükseldi
+  keywords: number;
+}
+
+export interface RanksSummary {
+  listings: Record<string, TrackedRank>;
+  max_listings: number;
+  max_results: number;
+}
+
 export interface ListingRanks {
   keywords: RankKeyword[];
   max_keywords: number;
@@ -1463,6 +1478,7 @@ export const api = {
     attention: (shopId: number) => request<ShopAttention>(`/api/shops/${shopId}/insights/attention`),
     faded: (shopId: number) => request<FadedListings>(`/api/shops/${shopId}/insights/faded`),
     changes: (shopId: number) => request<ChangesSummary>(`/api/shops/${shopId}/insights/changes`),
+    ranksSummary: (shopId: number) => request<RanksSummary>(`/api/shops/${shopId}/insights/ranks`),
     ranks: (shopId: number, listingId: number) => request<ListingRanks>(`/api/shops/${shopId}/insights/listings/${listingId}/ranks`),
     addKeyword: (shopId: number, listingId: number, keyword: string) =>
       request<ListingRanks>(`/api/shops/${shopId}/insights/listings/${listingId}/keywords`, { method: "POST", body: JSON.stringify({ keyword }) }),

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { emitRanksChanged } from "@/lib/syncEvents";
 import { api, ListingRanks, RankKeyword } from "@/lib/api";
 import { useCached } from "@/lib/pageCache";
 import { useT } from "@/lib/i18n-client";
@@ -74,6 +75,7 @@ export default function RankTab({ shopId, listingId }: { shopId: number; listing
       toast.error(e instanceof Error && e.message ? e.message : t("İşlem yapılamadı", "Could not complete the action"));
     } finally {
       setBusy("");
+      emitRanksChanged();
     }
   }
 

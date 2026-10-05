@@ -2,14 +2,14 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { api, FadedInfo, KeywordPoolItem, Listing } from "@/lib/api";
-import ListingAnalysisPanel from "@/components/listings/analysis/ListingAnalysisPanel";
+import { api, FadedInfo, KeywordPoolItem, Listing, TrackedRank } from "@/lib/api";
+import ListingAnalysisPanel, { AnalysisTab } from "@/components/listings/analysis/ListingAnalysisPanel";
 import { toast } from "@/lib/toast";
 import { PublishJob } from "@/lib/publishJobs";
 import PublishBar from "@/components/listings/PublishBar";
 import { competitionFill, normalizedScore, poolRanges } from "@/lib/keywordScore";
 import { useT } from "@/lib/i18n-client";
-import ListingDateBadges, { FadedBadge } from "@/components/listings/ListingDateBadges";
+import ListingDateBadges, { FadedBadge, RankBadge } from "@/components/listings/ListingDateBadges";
 
 // Marketplace Insights dönüşüm bandı: [Türkçe, İngilizce]
 const CONVERSION: Record<NonNullable<KeywordPoolItem["etsy_conversion"]>, [string, string]> = {
@@ -128,9 +128,14 @@ export default function ListingRow({
   job,
   publishError,
   faded,
+  rank,
+  rankMax = 200,
 }: {
   shopId: number;
   listing: Listing;
+  /** Sıra takibindeyse en iyi aramadaki sırası. */
+  rank?: TrackedRank;
+  rankMax?: number;
   /** Sönmüş (eskiden satan, uzun süredir satmayan) aktif listing ise bilgisi. */
   faded?: FadedInfo;
   /** Preview/test escape hatch: pass pre-built history instead of hitting the API. */
@@ -146,6 +151,7 @@ export default function ListingRow({
   const { t, locale } = useT();
   const num = (n: number | null | undefined) => new Intl.NumberFormat(locale).format(n ?? 0); // 48561 → 48.561 / 48,561
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [analysisTab, setAnalysisTab] = useState<AnalysisTab | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [keywordPool, setKeywordPool] = useState<KeywordPoolItem[] | null>(null);
   const [keywordPoolLoading, setKeywordPoolLoading] = useState(false);
@@ -262,6 +268,14 @@ export default function ListingRow({
                   `${num(listing.views)} views · ${num(listing.favorites)} favorites · ${listing.tags.length} tags`,
                 )}
               </span>
+              <RankBadge
+                info={rank}
+                maxResults={rankMax}
+                onClick={() => {
+                  setAnalysisTab("ranks");
+                  setHistoryOpen(true);
+                }}
+              />
               <FadedBadge info={faded} />
               <ListingDateBadges updated={listing.updated_timestamp} renewed={listing.renewed_timestamp} />
             </div>
@@ -269,7 +283,13 @@ export default function ListingRow({
         </div>
 
         <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-shrink-0 sm:items-center">
-          <button onClick={() => setHistoryOpen((v) => !v)} className={pill}>
+          <button
+            onClick={() => {
+              setAnalysisTab(undefined);
+              setHistoryOpen((v) => !v);
+            }}
+            className={pill}
+          >
             {historyOpen ? t("Analizi gizle", "Hide analysis") : t("Analiz", "Analysis")}
           </button>
           <button onClick={handleToggleKeywordPool} disabled={keywordPoolLoading} className={`${pill} disabled:opacity-50`}>
@@ -293,7 +313,9 @@ export default function ListingRow({
       {(error || publishError) && <p className="px-4 pb-3 text-sm text-red-600">{error ?? publishError}</p>}
       {job && <PublishBar id={listing.listing_id} job={job} />}
 
-      {historyOpen && <ListingAnalysisPanel shopId={shopId} listingId={listing.listing_id} />}
+      {historyOpen && (
+        <ListingAnalysisPanel key={analysisTab ?? "default"} shopId={shopId} listingId={listing.listing_id} initialTab={analysisTab} />
+      )}
 
       {keywordPool && (
         <div className="border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/50 p-4 space-y-2">

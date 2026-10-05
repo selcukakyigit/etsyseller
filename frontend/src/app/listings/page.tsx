@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, BulkChanges, FadedInfo, FadedListings, Listing, ShopAttention } from "@/lib/api";
+import { api, BulkChanges, FadedInfo, FadedListings, Listing, RanksSummary, ShopAttention } from "@/lib/api";
+import { onRanksChanged } from "@/lib/syncEvents";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import { useIncrementalList } from "@/lib/useIncrementalList";
 import AppShell from "@/components/AppShell";
@@ -347,12 +348,32 @@ export default function Home() {
     (l: Listing): FadedInfo | undefined => (l.state === "active" ? faded?.listings[String(l.listing_id)] : undefined),
     [faded],
   );
+  // Sıra takibindeki listing'ler: rozet ve "Takipte" filtresi için (en fazla 10 kayıt; hafif istek).
+  const [ranks, setRanks] = useCached<RanksSummary>(activeShop ? `ranks:${activeShop.id}` : null);
+  useEffect(() => {
+    if (!activeShop) return;
+    let cancelled = false;
+    const load = () =>
+      api.insights
+        .ranksSummary(activeShop.id)
+        .then((r) => {
+          if (!cancelled) setRanks(r);
+        })
+        .catch(() => undefined);
+    load();
+    const off = onRanksChanged(load); // Analiz panelinde takip değişince
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, [activeShop, setRanks]);
+  const trackedIds = useMemo(() => new Set(Object.keys(ranks?.listings ?? {}).map(Number)), [ranks]);
   const fadedIds = useMemo(() => new Set((listings ?? []).filter((l) => fadedOf(l)).map((l) => l.listing_id)), [listings, fadedOf]);
 
   const draftListings = (listings ?? []).filter((l) => l.has_local);
   const visibleListings = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const searched = applyFilters(listings ?? [], filters, decliningIds, fadedIds).filter(
+    const searched = applyFilters(listings ?? [], filters, decliningIds, fadedIds, trackedIds).filter(
       (l) =>
         !q ||
         l.title.toLowerCase().includes(q) ||
@@ -369,7 +390,7 @@ export default function Home() {
       title: (a, b) => a.title.localeCompare(b.title),
     };
     return [...searched].sort(cmp[sort] ?? cmp.ending);
-  }, [listings, filters, query, sort, decliningIds, fadedIds]);
+  }, [listings, filters, query, sort, decliningIds, fadedIds, trackedIds]);
   // Yüzlerce kartı bir anda çizmek sayfayı kasıyor: 12 ile başla (xl ekranda 3 sıra), kaydırdıkça 12 daha ekle.
   const { shown, hasMore, sentinelRef } = useIncrementalList(
     visibleListings,
@@ -493,6 +514,7 @@ export default function Home() {
         onSectionsChanged={loadReference}
         decliningCount={attention?.declining_count}
         fadedCount={faded ? fadedIds.size : undefined}
+        tracked={ranks ? { count: trackedIds.size, max: ranks.max_listings } : undefined}
       />
     ) : null,
   });
@@ -645,6 +667,8 @@ export default function Home() {
                         publishError={rowErrors[listing.listing_id]}
                         job={jobs.get(listing.listing_id)}
                         faded={fadedOf(listing)}
+                        rank={ranks?.listings[String(listing.listing_id)]}
+                        rankMax={ranks?.max_results}
                       />
                     ))}
                   </div>
@@ -662,6 +686,8 @@ export default function Home() {
                         publishError={rowErrors[listing.listing_id]}
                         job={jobs.get(listing.listing_id)}
                         faded={fadedOf(listing)}
+                        rank={ranks?.listings[String(listing.listing_id)]}
+                        rankMax={ranks?.max_results}
                       />
                     ))}
                   </div>

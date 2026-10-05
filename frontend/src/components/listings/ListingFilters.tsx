@@ -17,6 +17,7 @@ export type Filters = {
   video: "all" | "with" | "without";
   tag: string;
   trend: "all" | "declining" | "faded";
+  rank: "all" | "tracked";
 };
 
 export const EMPTY_FILTERS: Filters = {
@@ -29,6 +30,7 @@ export const EMPTY_FILTERS: Filters = {
   video: "all",
   tag: "",
   trend: "all",
+  rank: "all",
 };
 
 export type Reference = {
@@ -50,8 +52,15 @@ const STATUSES: [string, string, string][] = [
  * `declining`: satışı düşen listing'lerin kimlikleri (bkz. api.insights.attention); `faded`: sönmüş aktif listing'lerin
  * kimlikleri (bkz. api.insights.faded). Yoksa ilgili filtre boş sonuç verir.
  */
-export function applyFilters(listings: Listing[], f: Filters, declining?: Set<number>, faded?: Set<number>): Listing[] {
+export function applyFilters(
+  listings: Listing[],
+  f: Filters,
+  declining?: Set<number>,
+  faded?: Set<number>,
+  tracked?: Set<number>,
+): Listing[] {
   return listings.filter((l) => {
+    if (f.rank === "tracked" && !tracked?.has(l.listing_id)) return false;
     if (f.trend === "declining" && !declining?.has(l.listing_id)) return false;
     if (f.trend === "faded" && !faded?.has(l.listing_id)) return false;
     if (!l.is_new && f.status !== "all" && (l.state ?? "active") !== f.status) return false;
@@ -113,6 +122,7 @@ export default function ListingFilters({
   onSectionsChanged,
   decliningCount,
   fadedCount,
+  tracked,
 }: {
   listings: Listing[];
   filters: Filters;
@@ -125,6 +135,8 @@ export default function ListingFilters({
   decliningCount?: number;
   /** Sönmüş aktif listing sayısı; yüklenmediyse sayısız görünür. */
   fadedCount?: number;
+  /** Sıra takibi: takipteki listing sayısı ve üst sınır; yüklenmediyse bölüm gizlenir. */
+  tracked?: { count: number; max: number };
 }) {
   const set = (patch: Partial<Filters>) => onChange({ ...filters, ...patch });
   const { t } = useT();
@@ -182,6 +194,18 @@ export default function ListingFilters({
             {t("Sönmüş (90+ gün satışsız)", "Faded (no sales 90+ days)")}
           </span>
         </Radio>
+
+        {tracked && (
+          <>
+            <span className={label}>{t("Sıra takibi", "Rank tracking")}</span>
+            <Radio checked={filters.rank === "all"} onChange={() => set({ rank: "all" })}>
+              {t("Hepsi", "All")}
+            </Radio>
+            <Radio checked={filters.rank === "tracked"} onChange={() => set({ rank: "tracked" })} count={tracked.count} disabled={tracked.count === 0}>
+              {t(`Takipte (en fazla ${tracked.max})`, `Tracked (max ${tracked.max})`)}
+            </Radio>
+          </>
+        )}
 
         <span className={label}>{t("Yerel değişiklikler", "Local changes")}</span>
         <Radio checked={filters.local === "all"} onChange={() => set({ local: "all" })}>

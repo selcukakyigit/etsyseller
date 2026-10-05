@@ -13,3 +13,15 @@ export function onSyncDone(cb: () => void): () => void {
   window.addEventListener(EVENT, cb);
   return () => window.removeEventListener(EVENT, cb);
 }
+
+/** Sıra takibi değişti (arama eklendi/çıkarıldı, ölçüldü): listing sayfasındaki rozet ve "Takipte" sayısı tazelenir. */
+const RANKS_EVENT = "ranks-changed";
+
+export function emitRanksChanged(): void {
+  window.dispatchEvent(new Event(RANKS_EVENT));
+}
+
+export function onRanksChanged(cb: () => void): () => void {
+  window.addEventListener(RANKS_EVENT, cb);
+  return () => window.removeEventListener(RANKS_EVENT, cb);
+}

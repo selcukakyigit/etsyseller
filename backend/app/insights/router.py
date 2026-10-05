@@ -45,6 +45,12 @@ class KeywordIn(BaseModel):
     keyword: str = Field(min_length=1, max_length=rank.KEYWORD_MAX_LEN)
 
 
+@router.get("/ranks")
+def ranks_summary(shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    """Takipteki listing'ler: her birinin en iyi aramadaki sırası ve 7 günlük değişimi (liste rozeti ve filtresi için)."""
+    return rank.shop_summary(db, shop)
+
+
 @router.get("/listings/{listing_id}/ranks")
 def listing_ranks(listing_id: int, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
     """Takip edilen aramalar: son sıra, 7/30 günlük değişim, rakip sayısı, fiyat kıyası ve 60 günlük geçmiş."""

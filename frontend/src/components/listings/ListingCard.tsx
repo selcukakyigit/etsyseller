@@ -2,11 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { FadedInfo, Listing } from "@/lib/api";
+import { FadedInfo, Listing, TrackedRank } from "@/lib/api";
 import { PublishJob } from "@/lib/publishJobs";
 import PublishBar from "@/components/listings/PublishBar";
 import { useT } from "@/lib/i18n-client";
-import ListingDateBadges, { FadedBadge } from "./ListingDateBadges";
+import ListingDateBadges, { FadedBadge, RankBadge } from "./ListingDateBadges";
 
 export type CardAction = "preview" | "stats" | "copy" | "activate" | "deactivate" | "renew" | "section" | "delete" | "publish";
 
@@ -29,8 +29,13 @@ export default function ListingCard({
   publishError,
   job,
   faded,
+  rank,
+  rankMax = 200,
 }: {
   listing: Listing;
+  /** Sıra takibindeyse en iyi aramadaki sırası. */
+  rank?: TrackedRank;
+  rankMax?: number;
   /** Sönmüş (eskiden satan, uzun süredir satmayan) aktif listing ise bilgisi. */
   faded?: FadedInfo;
   selected: boolean;
@@ -110,8 +115,9 @@ export default function ListingCard({
           </p>
         )}
         {price && <p className="text-[#1a7f4b] dark:text-green-400">{price}</p>}
-        {(faded || listing.updated_timestamp || listing.renewed_timestamp) && (
+        {(rank || faded || listing.updated_timestamp || listing.renewed_timestamp) && (
           <p className="flex flex-wrap gap-1 text-xs">
+            <RankBadge info={rank} maxResults={rankMax} />
             <FadedBadge info={faded} />
             <ListingDateBadges updated={listing.updated_timestamp} renewed={listing.renewed_timestamp} />
           </p>

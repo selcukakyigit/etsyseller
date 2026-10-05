@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useT } from "@/lib/i18n-client";
 import { useStoredState } from "@/lib/useStoredState";
 import ChangesTab from "./ChangesTab";
@@ -9,14 +10,30 @@ import EtsyDataTab from "./EtsyDataTab";
 
 // Sekmeler; yeni bir analiz eklemek için buraya bir giriş ve aşağıya bir dal eklenir.
 const TABS = ["diagnosis", "changes", "ranks", "etsy"] as const;
-type Tab = (typeof TABS)[number];
+export type AnalysisTab = (typeof TABS)[number];
+type Tab = AnalysisTab;
 
 /** Listing satırındaki "Analiz" paneli: Teşhis (ne durumda, neden), Değişiklikler ve sonuçları (ne yaptık, işe yaradı mı),
  * Sıralama ve Etsy verisi. Seçili sekme hatırlanır. Henüz Etsy'de olmayan (yeni) listing'de analiz yoktur. */
-export default function ListingAnalysisPanel({ shopId, listingId }: { shopId: number; listingId: number }) {
+export default function ListingAnalysisPanel({
+  shopId,
+  listingId,
+  initialTab,
+}: {
+  shopId: number;
+  listingId: number;
+  /** Panel bu sekmeyle açılır (ör. sıra rozetinden gelince); kullanıcı sekme değiştirince hatırlanan sekmeye döner. */
+  initialTab?: Tab;
+}) {
   const { t } = useT();
-  const [stored, setTab] = useStoredState<Tab>("listing.analysisTab", "diagnosis", TABS);
-  const tab: Tab = TABS.includes(stored) ? stored : "diagnosis";
+  const [stored, setStored] = useStoredState<Tab>("listing.analysisTab", "diagnosis", TABS);
+  const [override, setOverride] = useState<Tab | undefined>(initialTab);
+  const setTab = (k: Tab) => {
+    setOverride(undefined);
+    setStored(k);
+  };
+  const current = override ?? stored;
+  const tab: Tab = TABS.includes(current) ? current : "diagnosis";
   const label: Record<Tab, string> = {
     diagnosis: t("Teşhis", "Diagnosis"),
     changes: t("Değişiklikler ve sonuçları", "Changes and results"),
