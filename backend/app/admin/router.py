@@ -9,7 +9,7 @@ from app.admin.deps import AdminError, admin_only
 from app.admin.schemas import (
     AdjustIn, AiModelIn, AiModelOut, AssignPlanIn, AttachmentUrlOut, AuditOut, BillingOverviewOut, BulkIn, BulkResultOut,
     CatalogOut, CreditSettingsIn, CreditSettingsOut, DeleteUserIn, KeyIn, KeyTestIn, MessageOut, MessageUpdateIn, NoteIn,
-    OverviewOut, ProductIn, ProductOut, RoleIn, StatusIn, SystemOut, TaskIn, TestOut, UsageReportOut, UserCreditsIn,
+    OnlineUserOut, OverviewOut, ProductIn, ProductOut, RoleIn, StatusIn, SystemOut, TaskIn, TestOut, UsageReportOut, UserCreditsIn,
     UserDetailOut, UsersPageOut, WorkspaceCreditsPageOut,
 )
 from app.auth.models import User
@@ -45,11 +45,19 @@ def list_users(
     joined_from: dt.date | None = None,
     joined_to: dt.date | None = None,
     sort: Literal["newest", "oldest", "last_seen"] = "newest",
+    online: bool = False,
     limit: int = Query(50, ge=1, le=users.MAX_PAGE),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ):
-    return users.list_users(db, q=q, status=status, plan=plan, joined_from=joined_from, joined_to=joined_to, sort=sort, limit=limit, offset=offset)
+    return users.list_users(
+        db, q=q, status=status, plan=plan, joined_from=joined_from, joined_to=joined_to, sort=sort, limit=limit, offset=offset, online=online,
+    )
+
+
+@router.get("/online", response_model=list[OnlineUserOut])
+def online_users(db: Session = Depends(get_db)):
+    return users.online_users(db)
 
 
 @router.get("/users/{user_id}", response_model=UserDetailOut)

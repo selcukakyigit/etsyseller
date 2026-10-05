@@ -7,6 +7,7 @@ import AdminShell from "@/components/admin/AdminShell";
 import { Badge, Button, EmptyState, Field, errorText, inputClass, useFormat } from "@/components/admin/ui";
 import { StatusBadge, UserActionsMenu, useUserAction } from "@/components/admin/userActions";
 import { Modal, btnGhost, btnPrimary } from "@/components/listing-editor/Modal";
+import DateRangePicker, { presetOptions } from "@/components/ui/DateRangePicker";
 import { BlockSpinner, Spinner } from "@/components/ui/Spinner";
 import { AdminBulkAction, AdminUserQuery, api } from "@/lib/api";
 import { useT } from "@/lib/i18n-client";
@@ -14,7 +15,7 @@ import { toast } from "@/lib/toast";
 import { useApiData } from "@/lib/useApiData";
 
 const PAGE_SIZE = 50;
-const EMPTY_QUERY: AdminUserQuery = { q: "", status: "", plan: "", joined_from: "", joined_to: "", sort: "newest", offset: 0 };
+const EMPTY_QUERY: AdminUserQuery = { q: "", status: "", plan: "", joined_from: "", joined_to: "", sort: "newest", online: false, offset: 0 };
 
 export default function AdminUsersPage() {
   return (
@@ -30,6 +31,7 @@ function Users() {
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState<AdminUserQuery>(EMPTY_QUERY);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [joined, setJoined] = useState("all");
   const [bulk, setBulk] = useState<AdminBulkAction | null>(null);
 
   // Arama yazma bitince (300 ms) uygulanır; filtre değişince ilk sayfaya dönülür ve seçim temizlenir.
@@ -50,7 +52,7 @@ function Users() {
   const items = useMemo(() => data?.items ?? [], [data]);
   const total = data?.total ?? 0;
   const allSelected = items.length > 0 && items.every((u) => selected.has(u.id));
-  const filtered = query.q || query.status || query.plan || query.joined_from || query.joined_to;
+  const filtered = query.q || query.status || query.plan || query.joined_from || query.joined_to || query.online;
 
   function toggle(id: number) {
     setSelected((s) => {
@@ -88,14 +90,30 @@ function Users() {
               </option>
             ))}
           </select>
-          <label className="flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
-            {t("Kayıt", "Joined")}
-            <input type="date" value={query.joined_from} max={query.joined_to || undefined} onChange={(e) => update({ joined_from: e.target.value })} className={`${inputClass} py-1.5`} aria-label={t("Başlangıç", "From")} />
-          </label>
-          <label className="flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
-            –
-            <input type="date" value={query.joined_to} min={query.joined_from || undefined} onChange={(e) => update({ joined_to: e.target.value })} className={`${inputClass} py-1.5`} aria-label={t("Bitiş", "To")} />
-          </label>
+          <DateRangePicker
+            label={t("Kayıt tarihi", "Joined")}
+            value={joined}
+            custom={query.joined_from && query.joined_to ? { start: query.joined_from, end: query.joined_to } : null}
+            options={[{ id: "all", label: t("Kayıt: tüm zamanlar", "Joined: all time"), range: null }, ...presetOptions(["today", "yesterday", "7d", "30d", "month", "last_month", "ytd"], t)]}
+            onChange={(id, r) => {
+              setJoined(id);
+              update({ joined_from: r?.start ?? "", joined_to: r?.end ?? "" });
+            }}
+            className="col-span-2 sm:col-span-1"
+          />
+          <button
+            type="button"
+            aria-pressed={query.online}
+            onClick={() => update({ online: !query.online })}
+            className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border px-3 text-sm transition ${
+              query.online
+                ? "border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300"
+                : "border-neutral-200 text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
+            }`}
+          >
+            <span className="h-2 w-2 rounded-full bg-green-500" aria-hidden />
+            {t("Şu an çevrimiçi", "Online now")}
+          </button>
           <select value={query.sort} onChange={(e) => update({ sort: e.target.value as AdminUserQuery["sort"] })} className={`${inputClass} sm:w-auto`} aria-label={t("Sıralama", "Sort")}>
             <option value="newest">{t("En yeni kayıt", "Newest")}</option>
             <option value="oldest">{t("En eski kayıt", "Oldest")}</option>
@@ -107,6 +125,7 @@ function Users() {
             <Button
               onClick={() => {
                 setSearch("");
+                setJoined("all");
                 update(EMPTY_QUERY);
               }}
             >
@@ -179,7 +198,15 @@ function Users() {
                     </td>
                     <td className="max-w-[260px] px-3 py-2.5">
                       <Link href={`/admin/users/${u.id}`} className="flex min-w-0 items-center gap-2.5">
-                        <Avatar user={u} size={32} className="flex-shrink-0" />
+                        <span className="relative flex-shrink-0">
+                          <Avatar user={u} size={32} />
+                          {u.online && (
+                            <span
+                              title={t("Şu an çevrimiçi", "Online now")}
+                              className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white bg-green-500 dark:border-neutral-900"
+                            />
+                          )}
+                        </span>
                         <span className="min-w-0">
                           <span className="block truncate font-medium text-neutral-900 hover:underline dark:text-neutral-100">{u.name || u.email}</span>
                           {u.name && <span className="block truncate text-xs text-neutral-500 dark:text-neutral-400">{u.email}</span>}
@@ -213,7 +240,9 @@ function Users() {
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-neutral-700 dark:text-neutral-300">{u.ai_enabled ? f.num(u.ai_requests_30d) : t("kapalı", "off")}</td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-xs text-neutral-500 dark:text-neutral-400">{f.dateTime(u.last_seen_at)}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-xs text-neutral-500 dark:text-neutral-400">
+                      {u.online ? <span className="font-medium text-green-700 dark:text-green-400">{t("Şu an", "Now")}</span> : f.dateTime(u.last_seen_at)}
+                    </td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-xs text-neutral-500 dark:text-neutral-400">{f.date(u.created_at)}</td>
                     <td className="px-3 py-2.5 text-right">
                       <UserActionsMenu user={u} onSelect={(a) => action.open(u, a)} />

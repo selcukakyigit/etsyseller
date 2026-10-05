@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -47,3 +48,14 @@ def accept_terms(
     db.add(UserConsent(user_id=user.id, version=payload.version, ip=ip, user_agent=(request.headers.get("user-agent") or "")[:255]))
     db.commit()
     return user_out(db, user)
+
+
+class PingIn(BaseModel):
+    path: str = Field(default="", max_length=500)
+
+
+@router.post("/ping")
+def ping(payload: PingIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Sekme görünürken dakikada bir: son aktif zamanı ve bulunulan sayfa (yönetim panelindeki çevrimiçi listesi)."""
+    access.ping(db, user, payload.path)
+    return {"ok": True}

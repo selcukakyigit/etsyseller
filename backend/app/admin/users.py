@@ -10,9 +10,9 @@ from sqlalchemy.orm import Session
 from app.admin.deps import AdminError
 from app.admin.models import AdminAuditLog, AdminUserNote
 from app.admin.schemas import (
-    AdminUserOut, AuditOut, LedgerRowOut, NoteOut, UserDetailOut, UsersPageOut, UserShopOut, UserSubscriptionOut,
+    AdminUserOut, AuditOut, LedgerRowOut, NoteOut, OnlineUserOut, UserDetailOut, UsersPageOut, UserShopOut, UserSubscriptionOut,
 )
-from app.auth.access import UserAccess, env_admin
+from app.auth.access import ONLINE_WINDOW, UserAccess, env_admin, is_online
 from app.auth.models import User, Workspace, WorkspaceMember
 from app.billing.models import BillingProduct, CreditBalance, CreditLedger, Subscription
 from app.billing.service import LIVE_STATUSES, MANUAL_PREFIX
@@ -38,8 +38,10 @@ def _primary_ws():
     )
 
 
-def _filters(q: str, status: str, plan: str, joined_from: dt.date | None, joined_to: dt.date | None, ws) -> list:
+def _filters(q: str, status: str, plan: str, joined_from: dt.date | None, joined_to: dt.date | None, ws, online: bool = False) -> list:
     where = []
+    if online:
+        where.append(UserAccess.last_seen_at >= dt.datetime.utcnow() - ONLINE_WINDOW)
     if q.strip():
         pattern = f"%{_escape_like(q.strip().lower())}%"
         where.append(or_(func.lower(User.email).like(pattern, escape="\\"), func.lower(User.name).like(pattern, escape="\\")))
@@ -102,6 +104,7 @@ def _rows_out(db: Session, rows: list[tuple]) -> list[AdminUserOut]:
             AdminUserOut(
                 id=u.id, email=u.email, name=u.name, avatar_url=u.avatar_url, created_at=iso(u.created_at),
                 last_seen_at=iso(acc.last_seen_at) if acc else None, status=acc.status if acc else "active",
+                online=is_online(acc), last_path=acc.last_path if acc else None,
                 status_reason=acc.status_reason if acc else None, role="admin" if is_env or (acc is not None and acc.role == "admin") else "user",
                 env_admin=is_env, workspace_id=wid, plan=plan_name, plan_manual=manual, credits=balances.get(wid, 0) if wid else 0,
                 ai_enabled=ai_enabled.get(wid, True) if wid else True, ai_requests_30d=int(ai_counts.get(u.id, 0)), shops=shops.get(u.id, []),
@@ -120,10 +123,10 @@ def _base(ws):
 
 def list_users(
     db: Session, q: str = "", status: str = "", plan: str = "", joined_from: dt.date | None = None, joined_to: dt.date | None = None,
-    sort: str = "newest", limit: int = 50, offset: int = 0,
+    sort: str = "newest", limit: int = 50, offset: int = 0, online: bool = False,
 ) -> UsersPageOut:
     ws = _primary_ws()
-    stmt = _base(ws).where(*_filters(q, status, plan, joined_from, joined_to, ws))
+    stmt = _base(ws).where(*_filters(q, status, plan, joined_from, joined_to, ws, online))
     total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
     order = {
         "oldest": (User.id.asc(),),
@@ -168,3 +171,15 @@ def get_detail(db: Session, user_id: int) -> UserDetailOut:
         user=user_out, balance_plan=balance.plan if balance else 0, balance_purchased=balance.purchased if balance else 0,
         subscriptions=subs, ledger=ledger, notes=notes, audit=audit,
     )
+
+
+def online_users(db: Session) -> list[OnlineUserOut]:
+    """Son ONLINE_WINDOW içinde görülen kullanıcılar, en son görülen en üstte."""
+    since = dt.datetime.utcnow() - ONLINE_WINDOW
+    rows = db.execute(
+        select(User, UserAccess).join(UserAccess, UserAccess.user_id == User.id).where(UserAccess.last_seen_at >= since).order_by(UserAccess.last_seen_at.desc()).limit(200)
+    ).all()
+    return [
+        OnlineUserOut(id=u.id, email=u.email, name=u.name, avatar_url=u.avatar_url, last_seen_at=iso(a.last_seen_at), last_path=a.last_path)
+        for u, a in rows
+    ]

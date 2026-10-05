@@ -7,27 +7,11 @@ import { tNow as t } from "@/lib/i18n";
 import { useCached } from "@/lib/pageCache";
 import { BlockSpinner } from "@/components/ui/Spinner";
 import { CameraIcon } from "@/components/icons";
+import DateRangePicker, { presetOptions } from "@/components/ui/DateRangePicker";
 
 const card = "rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900";
 const input = "rounded-lg border border-neutral-300 bg-white px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900";
 
-const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-const daysAgo = (n: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return iso(d);
-};
-/** Menüdeki hazır aralık -> [başlangıç, bitiş] (boş = sınırsız). "custom" için tarihler kullanıcıdan gelir. */
-const RANGES: { id: string; label: [string, string]; get?: () => [string, string] }[] = [
-  { id: "all", label: ["Tüm tarihler", "All dates"], get: () => ["", ""] },
-  { id: "7", label: ["Son 7 gün", "Last 7 days"], get: () => [daysAgo(7), ""] },
-  { id: "30", label: ["Son 30 gün", "Last 30 days"], get: () => [daysAgo(30), ""] },
-  { id: "90", label: ["Son 90 gün", "Last 90 days"], get: () => [daysAgo(90), ""] },
-  { id: "month", label: ["Bu ay", "This month"], get: () => [iso(new Date(new Date().getFullYear(), new Date().getMonth(), 1)), ""] },
-  { id: "lastmonth", label: ["Geçen ay", "Last month"], get: () => { const n = new Date(); return [iso(new Date(n.getFullYear(), n.getMonth() - 1, 1)), iso(new Date(n.getFullYear(), n.getMonth(), 0))]; } },
-  { id: "year", label: ["Bu yıl", "This year"], get: () => [iso(new Date(new Date().getFullYear(), 0, 1)), ""] },
-  { id: "custom", label: ["Özel aralık…", "Custom range…"] },
-];
 
 type Review = { id: number; candidate: InvoiceCandidate; receiptId: number | null };
 type Progress = { done: number; total: number; startedAt: number; name: string };
@@ -359,35 +343,18 @@ export default function ShippingInvoices({
             <option value="ek hizmet">{t("Ek hizmet", "Extra service")}</option>
             <option value="diğer">{t("Diğer", "Other")}</option>
           </select>
-          <select
+          <DateRangePicker
+            label={t("Fatura tarihi aralığı", "Invoice date range")}
             value={range}
-            onChange={(e) => {
-              const id = e.target.value;
+            custom={invStart && invEnd ? { start: invStart, end: invEnd } : null}
+            options={[{ id: "all", label: t("Fatura tarihi: tümü", "Invoice date: all"), range: null }, ...presetOptions(["7d", "30d", "90d", "month", "last_month", "ytd"], t)]}
+            onChange={(id, r) => {
               setRange(id);
-              const r = RANGES.find((x) => x.id === id);
-              if (r?.get) {
-                const [from, to] = r.get();
-                setInvStart(from);
-                setInvEnd(to);
-              }
+              setInvStart(r?.start ?? "");
+              setInvEnd(r?.end ?? "");
               setPage(0);
             }}
-            className={input}
-            title={t("Fatura tarihi aralığı", "Invoice date range")}
-          >
-            {RANGES.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.id === "all" ? t("Fatura tarihi: tümü", "Invoice date: all") : t(...r.label)}
-              </option>
-            ))}
-          </select>
-          {range === "custom" && (
-            <span className="flex items-center gap-1">
-              <input type="date" value={invStart} onChange={(e) => onFilter(setInvStart)(e.target.value)} className={input} aria-label={t("Başlangıç", "Start")} />
-              <span>–</span>
-              <input type="date" value={invEnd} onChange={(e) => onFilter(setInvEnd)(e.target.value)} className={input} aria-label={t("Bitiş", "End")} />
-            </span>
-          )}
+          />
           <select value={sort} onChange={(e) => onFilter(setSort)(e.target.value)} className={input}>
             <option value="inv_date">{t("Fatura tarihine göre", "By invoice date")}</option>
             <option value="order_date">{t("Sipariş tarihine göre", "By order date")}</option>

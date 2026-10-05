@@ -12,6 +12,7 @@ import { PageSpinner } from "@/components/ui/Spinner";
 import { api, User } from "@/lib/api";
 import { useT } from "@/lib/i18n-client";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
+import { usePresence } from "@/lib/usePresence";
 
 /** Yönetim paneli bölümleri. Yeni bir yönetim sayfası buraya eklenir; sayfa kendi içeriğini AdminShell içinde çizer.
  * `icon`: 24x24 SVG yolu. */
@@ -42,6 +43,7 @@ export default function AdminShell({ current, title, children }: { current: Admi
   const { user, error } = useAuthAndShop();
   const { t, lang } = useT();
   const [menuOpen, setMenuOpen] = useState(false);
+  usePresence(current, !!user?.is_admin);
 
   // Kullanıcı yüklenemediyse yöneticilik doğrulanamaz: 404. (Mağaza listesi hatası yöneticiyi engellemez.)
   if (user ? !user.is_admin : error) return <StatusPage code={404} lang={lang} />;

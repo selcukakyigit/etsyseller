@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.admin import system
 from app.admin.schemas import ModelUsageOut, OverviewOut
 from app.assistant.models import AssistantUsage
+from app.auth.access import ONLINE_WINDOW, UserAccess
 from app.auth.models import User
 from app.billing.models import CreditLedger
 from app.contact.models import ContactMessage
@@ -50,6 +51,14 @@ def _usage_by_model(db: Session, since: dt.datetime) -> list[ModelUsageOut]:
     return [ModelUsageOut(provider=p, model=m, requests=int(n), input_tokens=int(i), output_tokens=int(o)) for p, m, n, i, o in rows]
 
 
+def _seen_since(db: Session, since: dt.datetime) -> int:
+    try:
+        return _count(db, select(func.count(UserAccess.user_id)).where(UserAccess.last_seen_at >= since))
+    except SQLAlchemyError:
+        db.rollback()
+        return 0
+
+
 def _users_since(db: Session, since: dt.datetime) -> int:
     return _count(db, select(func.count(User.id)).where(User.created_at >= since))
 
@@ -78,4 +87,6 @@ def get_overview(db: Session) -> OverviewOut:
         open_messages=_count(db, select(func.count(ContactMessage.id)).where(ContactMessage.handled.is_(False))),
         etsy_calls_today=etsy["calls_today"],
         etsy_daily_limit=etsy["daily_limit"],
+        online_now=_seen_since(db, now - ONLINE_WINDOW),
+        active_24h=_seen_since(db, now - dt.timedelta(hours=24)),
     )

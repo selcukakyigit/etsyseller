@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import AdminShell from "@/components/admin/AdminShell";
+import OnlineUsers from "@/components/admin/OnlineUsers";
 import { EmptyState, Section, StatCard, UsageBar, useFormat } from "@/components/admin/ui";
 import { useApiData } from "@/lib/useApiData";
 import { BlockSpinner } from "@/components/ui/Spinner";
@@ -27,7 +28,7 @@ function Overview() {
   return (
     <div className="space-y-6">
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <StatCard
           label={t("Kullanıcılar", "Users")}
           value={f.num(data.users_total)}
@@ -46,10 +47,19 @@ function Overview() {
             `${f.num(data.ai_input_tokens_30d)} input · ${f.num(data.ai_output_tokens_30d)} output tokens`,
           )}
         />
+        <Link href="/admin/users" className="block rounded-xl transition hover:opacity-90">
+          <StatCard
+            label={t("Şu an çevrimiçi", "Online now")}
+            value={f.num(data.online_now)}
+            hint={t(`Son 24 saatte ${f.num(data.active_24h)} aktif`, `${f.num(data.active_24h)} active in the last 24 hours`)}
+          />
+        </Link>
         <Link href="/admin/messages" className="block rounded-xl transition hover:opacity-90">
           <StatCard label={t("Açık mesajlar", "Open messages")} value={f.num(data.open_messages)} hint={t("İletişim formu", "Contact form")} />
         </Link>
       </div>
+
+      <OnlineUsers />
 
       <Section title={t("Etsy günlük kota", "Etsy daily quota")}>
         <div className="space-y-2">

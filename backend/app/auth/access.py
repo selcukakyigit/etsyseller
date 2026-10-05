@@ -21,8 +21,11 @@ log = logging.getLogger(__name__)
 
 STATUSES = ("active", "suspended", "blocked")
 ROLES = ("user", "admin")
-# Son aktif zamanı her istekte değil, en fazla bu aralıkla yazılır.
-TOUCH_EVERY = dt.timedelta(minutes=5)
+# Son aktif zamanı her istekte değil, en fazla bu aralıkla yazılır. Ön yüz sekme görünürken dakikada bir /api/auth/ping
+# atar; son ONLINE_WINDOW içinde görülen kullanıcı "çevrimiçi" sayılır.
+TOUCH_EVERY = dt.timedelta(seconds=60)
+ONLINE_WINDOW = dt.timedelta(minutes=2)
+PATH_MAX = 200
 # Durumu ne olursa olsun erişilebilen uç noktalar: ön yüz kullanıcının durumunu buradan öğrenip bilgi ekranı gösterir.
 STATUS_EXEMPT_PATHS = ("/api/auth/me",)
 
@@ -38,7 +41,9 @@ class UserAccess(Base):
     role: Mapped[str] = mapped_column(String(12), default="user", server_default="user")
     status_reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
     status_changed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
-    last_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    last_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    # En son bulunulan sayfa (yalnızca yol): yönetim panelindeki çevrimiçi listesi için.
+    last_path: Mapped[str | None] = mapped_column(String(PATH_MAX), nullable=True)
 
 
 def env_admin(user: User) -> bool:
@@ -93,3 +98,22 @@ def check_and_touch(db: Session, user: User, path: str) -> None:
     except SQLAlchemyError:
         db.rollback()
         log.warning("Erişim kontrolü yapılamadı (user=%s); istek engellenmedi", user.id, exc_info=True)
+
+
+def ping(db: Session, user: User, path: str) -> None:
+    """Ön yüzün "buradayım" sinyali: sayfa değiştiyse ya da son kayıttan TOUCH_EVERY geçtiyse yazar."""
+    path = (path or "").split("?", 1)[0][:PATH_MAX] or None
+    try:
+        row = ensure(db, user.id)
+        now = dt.datetime.utcnow()
+        if row.last_path != path or row.last_seen_at is None or now - row.last_seen_at > TOUCH_EVERY / 2:
+            row.last_path = path
+            row.last_seen_at = now
+            db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        log.warning("Ping kaydedilemedi (user=%s)", user.id, exc_info=True)
+
+
+def is_online(row: UserAccess | None) -> bool:
+    return row is not None and row.last_seen_at is not None and dt.datetime.utcnow() - row.last_seen_at <= ONLINE_WINDOW

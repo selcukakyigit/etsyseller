@@ -8,6 +8,7 @@ import BottomNav from "@/components/layout/BottomNav";
 import { BOTTOM_NAV_SPACE } from "@/components/layout/constants";
 import Topbar from "@/components/Topbar";
 import { useT } from "@/lib/i18n-client";
+import { usePresence } from "@/lib/usePresence";
 
 export default function AppShell({
   user,
@@ -30,6 +31,7 @@ export default function AppShell({
   const openMenu = useCallback(() => setMenuOpen(true), []);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   const shell = { user, shops: shops ?? null, activeShop, onSwitchShop, current };
+  usePresence(current, !!user);
   // Sidebar/Topbar `user` gelene kadar (kısa bir ağ isteği) hiç render edilmiyordu — sayfa önce tam genişlikte
   // açılıp bir anda kenar çubuğu ve üst bar belirince içerik yana/aşağı kayıyordu ("UI zıplaması"). İkisi de artık
   // her zaman render ediliyor; eksik veri gerektiren kısımları (kullanıcı adı, aktif mağaza) kendi içlerinde bekliyor.

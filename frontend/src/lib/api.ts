@@ -809,6 +809,8 @@ export type AdminOverview = {
   open_messages: number;
   etsy_calls_today: number;
   etsy_daily_limit: number;
+  online_now: number;
+  active_24h: number;
 };
 
 export type AdminUserShop = { id: number; shop_name: string; connected: boolean; is_demo: boolean; revoked: boolean; listings_synced_at: string | null };
@@ -824,6 +826,9 @@ export type AdminUser = {
   last_seen_at: string | null;
   status: AdminUserStatus;
   status_reason: string | null;
+  /** Son 2 dakikada görüldü (sekme açıkken dakikada bir ping atılır). */
+  online: boolean;
+  last_path: string | null;
   role: "user" | "admin";
   /** Sunucu ayarındaki (ADMIN_EMAILS) yönetici: rolü ve durumu panelden değişmez. */
   env_admin: boolean;
@@ -844,9 +849,12 @@ export type AdminUserQuery = {
   joined_from: string;
   joined_to: string;
   sort: "newest" | "oldest" | "last_seen";
+  online: boolean;
   offset: number;
   limit?: number;
 };
+
+export type AdminOnlineUser = { id: number; email: string; name: string | null; avatar_url: string | null; last_seen_at: string | null; last_path: string | null };
 
 export type AdminUserDetail = {
   user: AdminUser;
@@ -1453,6 +1461,20 @@ export const api = {
   },
   auth: {
     me: () => request<User>("/api/auth/me"),
+    /** "Buradayım" sinyali (yönetim panelindeki çevrimiçi listesi). Bilerek request() kullanmaz: ağ koptuğunda dakikada bir
+     * hata bildirimi çıkmasın; her hata sessizce yutulur. */
+    ping: async (path: string) => {
+      try {
+        await fetch(`${API_URL}/api/auth/ping`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(await authHeader()) },
+          body: JSON.stringify({ path }),
+          keepalive: true,
+        });
+      } catch {
+        // çevrimdışı ya da sunucu yeniden başlıyor: bir sonraki sinyal dener
+      }
+    },
     consent: (version: string) => request<User>("/api/auth/consent", { method: "POST", body: JSON.stringify({ version }) }),
     logout: async () => {
       clearSessionCache();
@@ -1493,9 +1515,11 @@ export const api = {
       if (query.plan) params.set("plan", query.plan);
       if (query.joined_from) params.set("joined_from", query.joined_from);
       if (query.joined_to) params.set("joined_to", query.joined_to);
+      if (query.online) params.set("online", "true");
       return request<{ items: AdminUser[]; total: number }>(`/api/admin/users?${params}`);
     },
     user: (id: number) => request<AdminUserDetail>(`/api/admin/users/${id}`),
+    online: () => request<AdminOnlineUser[]>("/api/admin/online"),
     userCredits: (id: number, amount: number, bucket: "plan" | "purchased", note: string) =>
       request<{ ok: boolean }>(`/api/admin/users/${id}/credits`, { method: "POST", body: JSON.stringify({ amount, bucket, note }) }),
     userAddNote: (id: number, text: string) => request<{ ok: boolean }>(`/api/admin/users/${id}/notes`, { method: "POST", body: JSON.stringify({ text }) }),

@@ -14,6 +14,8 @@ import { tNow, useT } from "@/lib/i18n-client";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { Popover, menuBox, menuItem } from "@/components/ui/Popover";
 import { useStoredState } from "@/lib/useStoredState";
+import DateRangePicker, { CUSTOM, RangeOption, presetOptions } from "@/components/ui/DateRangePicker";
+import { presetRange, yearRange } from "@/lib/dateRanges";
 
 const regionNames: Record<string, Intl.DisplayNames> = {};
 const countryOf = (code: string) => {
@@ -23,21 +25,7 @@ const countryOf = (code: string) => {
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 function rangeFor(period: string): { start: string; end: string } {
-  const now = new Date();
-  const y = now.getFullYear();
-  if (period === "today") return { start: iso(now), end: iso(now) };
-  if (period === "yesterday") {
-    const d = iso(new Date(now.getTime() - 864e5));
-    return { start: d, end: d };
-  }
-  if (period === "ytd") return { start: iso(new Date(y, 0, 1)), end: iso(now) };
-  if (period === "last12") return { start: iso(new Date(y - 1, now.getMonth() + 1, 1)), end: iso(now) };
-  if (period === "7d") return { start: iso(new Date(now.getTime() - 6 * 864e5)), end: iso(now) };
-  if (period === "30d") return { start: iso(new Date(now.getTime() - 29 * 864e5)), end: iso(now) };
-  if (period === "90d") return { start: iso(new Date(now.getTime() - 89 * 864e5)), end: iso(now) };
-  if (period === "month") return { start: iso(new Date(y, now.getMonth(), 1)), end: iso(now) };
-  const yr = Number(period);
-  return { start: iso(new Date(yr, 0, 1)), end: iso(new Date(yr, 11, 31)) };
+  return presetRange(period) ?? yearRange(Number(period));
 }
 
 const TABS = ["overview", "products", "orders", "invoices"] as const;
@@ -221,6 +209,13 @@ export default function FinancePage() {
     return out;
   }, [displayReport?.first_year]);
 
+  // Dönem seçenekleri: hazır dönemler, geçmiş yıllar ve tüm zamanlar (aralığı ilk siparişten bugüne, `range` hesaplar).
+  const periodOptions: RangeOption[] = [
+    ...presetOptions(["today", "yesterday", "month", "last_month", "7d", "30d", "90d", "ytd", "last12"], t),
+    ...years.map((y) => ({ id: y, label: y, range: yearRange(Number(y)) })),
+    { id: "all", label: t("Tüm zamanlar", "All time"), range: null },
+  ];
+
   const yearOptions: number[] = [];
   for (let y = baseYear; y >= (displayReport?.first_year ?? baseYear - 1); y--) yearOptions.push(y);
   const cmpLabel = String(baseYear - 1);
@@ -308,23 +303,20 @@ export default function FinancePage() {
           </Popover>
         </div>
         <div className="mb-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
-            <select value={period} onChange={(e) => setPeriod(e.target.value)} className={`${select} min-w-0`}>
-              <option value="today">{t("Bugün", "Today")}</option>
-              <option value="yesterday">{t("Dün", "Yesterday")}</option>
-              <option value="ytd">{t("Bu yıl", "This year")}</option>
-              <option value="month">{t("Bu ay", "This month")}</option>
-              <option value="7d">{t("Son 7 gün", "Last 7 days")}</option>
-              <option value="30d">{t("Son 30 gün", "Last 30 days")}</option>
-              <option value="90d">{t("Son 90 gün", "Last 90 days")}</option>
-              <option value="last12">{t("Son 12 ay", "Last 12 months")}</option>
-              {years.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-              <option value="all">{t("Tüm zamanlar", "All time")}</option>
-              <option value="custom">{t("Özel aralık…", "Custom range…")}</option>
-            </select>
+            <DateRangePicker
+              label={t("Dönem", "Period")}
+              value={period}
+              custom={{ start: customStart, end: customEnd }}
+              options={periodOptions}
+              onChange={(id, r) => {
+                setPeriod(id);
+                if (id === CUSTOM && r) {
+                  setCustomStart(r.start);
+                  setCustomEnd(r.end);
+                }
+              }}
+              className="col-span-2 w-full sm:w-auto"
+            />
             <select value={country} onChange={(e) => setCountry(e.target.value)} className={`${select} min-w-0`}>
               <option value="">{t("Tüm ülkeler", "All countries")}</option>
               {(report?.available_countries ?? []).map((c) => (
@@ -333,26 +325,6 @@ export default function FinancePage() {
                 </option>
               ))}
             </select>
-            {period === "custom" && (
-              <div className="col-span-2 flex items-center gap-1.5">
-                <input
-                  type="date"
-                  value={customStart}
-                  max={customEnd}
-                  onChange={(e) => setCustomStart(e.target.value)}
-                  className={`${select} min-w-0 flex-1`}
-                />
-                <span className="text-sm text-neutral-500">–</span>
-                <input
-                  type="date"
-                  value={customEnd}
-                  min={customStart}
-                  max={iso(new Date())}
-                  onChange={(e) => setCustomEnd(e.target.value)}
-                  className={`${select} min-w-0 flex-1`}
-                />
-              </div>
-            )}
         </div>
         <div className="-mx-4 flex gap-1 overflow-x-auto whitespace-nowrap border-b border-neutral-200 px-4 [scrollbar-width:none] dark:border-neutral-800 sm:mx-0 sm:px-0">
           {(

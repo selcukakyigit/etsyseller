@@ -23,6 +23,8 @@ class OverviewOut(BaseModel):
     open_messages: int
     etsy_calls_today: int
     etsy_daily_limit: int
+    online_now: int
+    active_24h: int
 
 
 class UserShopOut(BaseModel):
@@ -43,6 +45,8 @@ class AdminUserOut(BaseModel):
     last_seen_at: str | None
     status: str  # active | suspended | blocked
     status_reason: str | None
+    online: bool  # son auth/access.ONLINE_WINDOW içinde görüldü
+    last_path: str | None
     role: str  # user | admin
     env_admin: bool  # ADMIN_EMAILS'ten gelen yönetici: rolü/durumu panelden değişmez
     workspace_id: int | None
@@ -377,6 +381,16 @@ class AuditOut(BaseModel):
     target: str
     detail: str
     created_at: str | None
+
+
+
+class OnlineUserOut(BaseModel):
+    id: int
+    email: str
+    name: str | None
+    avatar_url: str | None
+    last_seen_at: str | None
+    last_path: str | None
 
 
 UserDetailOut.model_rebuild()
