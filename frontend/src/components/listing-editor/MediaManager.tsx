@@ -88,6 +88,12 @@ export default function MediaManager({
   const [genOpen, setGenOpen] = useState(false); // "Oluştur" — sıfırdan (ya da bir referanstan) yeni görsel seti
   const [genPrompt, setGenPrompt] = useState("");
   const [genRefFile, setGenRefFile] = useState<File | null>(null);
+  // Ya yeni bir dosya (genRefFile) ya da listedeki fotoğraflardan biri referans olur; biri seçilince diğeri temizlenir.
+  const [genRefImage, setGenRefImage] = useState<ListingImage | null>(null);
+  const pickGenFile = (file: File | null) => {
+    setGenRefFile(file);
+    if (file) setGenRefImage(null);
+  };
   const [genKeepRef, setGenKeepRef] = useState(false); // referans yalnızca yapay zekâya verilir; listeye eklemek isteğe bağlı
   const [genQty, setGenQty] = useState(1);
   const [genBusy, setGenBusy] = useState(false);
@@ -117,7 +123,10 @@ export default function MediaManager({
     function onPaste(e: ClipboardEvent) {
       const item = Array.from(e.clipboardData?.items ?? []).find((it) => it.type.startsWith("image/"));
       const file = item?.getAsFile();
-      if (file) setGenRefFile(file);
+      if (file) {
+        setGenRefFile(file);
+        setGenRefImage(null);
+      }
     }
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
@@ -408,7 +417,13 @@ export default function MediaManager({
         setGenNow(startedAt);
         setGenShots((prev) => prev.map((s, idx) => (idx === i ? { ...s, status: "running", startedAt } : s)));
         try {
-          const up = await api.listings.generateImage(shopId, listingId, shots[i].prompt, referenceFileId);
+          const up = await api.listings.generateImage(
+            shopId,
+            listingId,
+            shots[i].prompt,
+            referenceFileId,
+            genRefImage ? { id: genRefImage.listing_image_id, draftFileId: genRefImage.draft_file_id } : undefined,
+          );
           onImagesChange(withRanks([...orderedRef.current, imageEntry(up.file_id, null)]));
           setGenShots((prev) => prev.map((s, idx) => (idx === i ? { ...s, status: "done" } : s)));
         } catch (e) {
@@ -428,6 +443,7 @@ export default function MediaManager({
     setGenOpen(false);
     setGenPrompt("");
     setGenRefFile(null);
+    setGenRefImage(null);
     setGenKeepRef(false);
     setGenShots([]);
     setGenError(null);
@@ -920,7 +936,7 @@ export default function MediaManager({
                 onDrop={(e) => {
                   e.preventDefault();
                   const file = Array.from(e.dataTransfer.files).find((f) => f.type.startsWith("image/"));
-                  if (file) setGenRefFile(file);
+                  if (file) pickGenFile(file);
                 }}
                 className="mb-3 flex cursor-pointer items-center gap-3 rounded-lg border-2 border-dashed border-neutral-300 p-3 hover:border-neutral-400 dark:border-neutral-700 dark:hover:border-neutral-500"
               >
@@ -946,9 +962,40 @@ export default function MediaManager({
                   type="file"
                   accept="image/*"
                   className="hidden"
-                  onChange={(e) => setGenRefFile(e.target.files?.[0] ?? null)}
+                  onChange={(e) => pickGenFile(e.target.files?.[0] ?? null)}
                 />
               </div>
+
+              {ordered.length > 0 && (
+                <div className="mb-3">
+                  <p className="mb-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                    {t("…ya da bu listing'in fotoğraflarından birini seç:", "…or pick one of this listing's photos:")}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {ordered.map((img) => {
+                      const on = genRefImage?.listing_image_id === img.listing_image_id;
+                      return (
+                        <button
+                          key={img.listing_image_id}
+                          type="button"
+                          onClick={() => {
+                            setGenRefImage(on ? null : img);
+                            setGenRefFile(null);
+                          }}
+                          aria-pressed={on}
+                          title={t("Ürün referansı olarak kullan", "Use as product reference")}
+                          className={`overflow-hidden rounded-lg border-2 transition ${
+                            on ? "border-[#D97757] ring-2 ring-[#D97757]/30" : "border-transparent hover:border-neutral-300 dark:hover:border-neutral-600"
+                          }`}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={img.url_170x135} alt="" className="h-14 w-14 object-cover" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <label className="mb-1 block text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("Kaç fotoğraf üretilsin?", "How many photos?")}</label>
               <input

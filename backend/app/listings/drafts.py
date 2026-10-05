@@ -291,14 +291,24 @@ def regenerate_image(
 
 
 def generate_image_from_prompt(
-    db: Session, shop: Shop, listing_id: int, prompt: str, reference_draft_file_id: str | None = None
+    db: Session,
+    shop: Shop,
+    listing_id: int,
+    prompt: str,
+    reference_draft_file_id: str | None = None,
+    reference_image_id: int | None = None,
+    reference_image_draft_file_id: str | None = None,
 ) -> dict:
     """Kaynak fotoğraf olmadan, yalnızca metin talimatından yeni bir taslak fotoğrafı üretir — "AI ile oluştur"
-    kutucuğu, özellikle sıfırdan (henüz hiç fotoğrafı olmayan) bir listing için kullanılır."""
+    kutucuğu, özellikle sıfırdan (henüz hiç fotoğrafı olmayan) bir listing için kullanılır. Ürün referansı ya yeni
+    yüklenen bir dosyadır (`reference_draft_file_id`) ya da listing'in kendi fotoğraflarından biri (`reference_image_id`;
+    henüz Etsy'ye yüklenmemiş taslak fotoğrafsa dosyası `reference_image_draft_file_id`)."""
     from app.ai import image_gen
 
     reference = None
-    if reference_draft_file_id:
+    if reference_image_id is not None:
+        reference = _source_image_bytes(db, shop, listing_id, reference_image_id, reference_image_draft_file_id)
+    elif reference_draft_file_id:
         ref = get_file(db, shop, listing_id, reference_draft_file_id)
         if ref is not None:
             reference = (blobstore.read(ref.path), ref.content_type)

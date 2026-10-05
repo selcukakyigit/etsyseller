@@ -1859,12 +1859,24 @@ export const api = {
         }
       ),
     // AI ile oluştur: kaynak fotoğraf olmadan, yalnızca yazılan talimattan yeni bir taslak fotoğrafı üretir.
-    generateImage: (shopId: number, listingId: number, prompt: string, referenceDraftFileId?: string) =>
+    // Referans: yeni yüklenen dosya (`referenceDraftFileId`) ya da listing'in kendi fotoğrafı (`referenceImage`).
+    generateImage: (
+      shopId: number,
+      listingId: number,
+      prompt: string,
+      referenceDraftFileId?: string,
+      referenceImage?: { id: number; draftFileId?: string | null },
+    ) =>
       request<{ file_id: string; kind: string; filename: string }>(
         `/api/shops/${shopId}/listings/${listingId}/draft/images/generate`,
         {
           method: "POST",
-          body: JSON.stringify({ prompt, reference_draft_file_id: referenceDraftFileId || undefined }),
+          body: JSON.stringify({
+            prompt,
+            reference_draft_file_id: referenceDraftFileId || undefined,
+            reference_image_id: referenceImage?.id,
+            reference_image_draft_file_id: referenceImage?.draftFileId || undefined,
+          }),
         }
       ),
     reorderImages: (shopId: number, listingId: number, imageIds: number[]) =>
