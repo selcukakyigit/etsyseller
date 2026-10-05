@@ -36,13 +36,17 @@ export default function PublishBar({ id, job }: { id: number; job: PublishJob })
     );
   }
 
-  const shown = job.phase === "done" ? 100 : Math.round(pct);
+  const shown = job.phase === "done" ? 100 : job.phase === "queued" ? 0 : Math.round(pct);
   return (
     <div className="border-t border-neutral-100 px-3 py-2 dark:border-neutral-800" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={shown}>
       <div className="relative h-5 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
         <div className="h-full rounded-full bg-[#D97757]/70 transition-[width] duration-200 ease-out" style={{ width: `${shown}%` }} />
         <span className="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-neutral-900 dark:text-neutral-50">
-          {job.phase === "done" ? t("Yayınlandı ✓", "Published ✓") : `${t("Etsy'de yayınlanıyor…", "Publishing to Etsy…")} %${shown}`}
+          {job.phase === "done"
+            ? t("Yayınlandı ✓", "Published ✓")
+            : job.phase === "queued"
+              ? t("Yayın sırasında bekliyor…", "Waiting to publish…")
+              : `${t("Etsy'de yayınlanıyor…", "Publishing to Etsy…")} %${shown}`}
         </span>
       </div>
     </div>

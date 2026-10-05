@@ -7,8 +7,9 @@ import { useEffect, useRef, useState } from "react";
  * görünmez işaretçi ekrana yaklaşınca bir parça daha. `resetKey` değişince (filtre, arama, sıralama, görünüm) başa döner.
  * Dönen `sentinelRef`, listenin hemen altına konan boş bir öğeye verilir.
  */
-export function useIncrementalList<T>(items: T[], pageSize: number, resetKey: string) {
-  const [count, setCount] = useState(pageSize);
+export function useIncrementalList<T>(items: T[], pageSize: number, resetKey: string, initialCount?: number) {
+  // `initialCount`: geri dönüşte kaldığı yere kaydırabilmek için önceki ziyarette yüklenmiş kart sayısıyla başla.
+  const [count, setCount] = useState(Math.max(pageSize, initialCount ?? 0));
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   // Liste kriteri değişince başa dön. Render sırasında durum ayarlama: efekt+gecikme yerine tek geçişte uygulanır.

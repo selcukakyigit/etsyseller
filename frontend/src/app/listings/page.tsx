@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, BulkChanges, FadedInfo, FadedListings, Listing, RanksSummary, ShopAttention } from "@/lib/api";
 import { onRanksChanged } from "@/lib/syncEvents";
@@ -28,6 +28,9 @@ import { changedCount } from "@/lib/filters";
 
 type PublishOutcome = { id: number; title: string; ok: boolean; error?: string; updated?: string[]; warnings?: string[] };
 
+/** Sayfaya geri dönünce (ya da yenileyince) aynı yerden devam etmek için: kaydırma konumu ve yüklenmiş kart sayısı. */
+const SCROLL_KEY = "listings.scroll";
+
 const SYNC_POLL_INTERVAL_MS = 3000;
 const EMPTY_REFERENCE: Reference = { sections: [], shipping: [], returns: [], partners: [] };
 const DEFAULT_FILTERS: Filters = { ...EMPTY_FILTERS, status: "active" };
@@ -49,7 +52,6 @@ export default function Home() {
   const [view, setView] = useStoredState<"grid" | "list">("listings.view", "grid", ["grid", "list"]);
   const [cachedReference, setReference] = useCached<Reference>(cacheShopId !== undefined ? `listing-reference:${cacheShopId}` : null);
   const reference = cachedReference ?? EMPTY_REFERENCE;
-  const [publishingIds, setPublishingIds] = useState<Set<number>>(new Set());
   const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
   const jobs = usePublishJobs();
   const [bulk, setBulk] = useState<{ total: number; results: PublishOutcome[]; running: boolean } | null>(null);
@@ -370,6 +372,23 @@ export default function Home() {
   const trackedIds = useMemo(() => new Set(Object.keys(ranks?.listings ?? {}).map(Number)), [ranks]);
   const fadedIds = useMemo(() => new Set((listings ?? []).filter((l) => fadedOf(l)).map((l) => l.listing_id)), [listings, fadedOf]);
 
+  const isPublishing = (id: number) => {
+    const phase = jobs.get(id)?.phase;
+    return phase === "queued" || phase === "running";
+  };
+  // "Son düzenlenen" sıralaması için en son dokunulma anı (saniye): Etsy'deki son değişiklik, yerelde kaydedilen sürüm,
+  // Ulagg'dan son yayın ya da yayına basıldığı an — böylece yayınlanan listing çubuk dolmadan en üste çıkar.
+  const touchedAt = useCallback(
+    (l: Listing) =>
+      Math.max(
+        l.last_modified_timestamp ?? 0,
+        l.updated_timestamp ?? 0,
+        l.local_updated_at ? Date.parse(/[zZ]|[+-]\d\d:\d\d$/.test(l.local_updated_at) ? l.local_updated_at : `${l.local_updated_at}Z`) / 1000 : 0,
+        (jobs.get(l.listing_id)?.queuedAt ?? 0) / 1000,
+      ),
+    [jobs],
+  );
+
   const draftListings = (listings ?? []).filter((l) => l.has_local);
   const visibleListings = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -382,7 +401,7 @@ export default function Home() {
     );
     const cmp: Record<string, (a: Listing, b: Listing) => number> = {
       ending: (a, b) => (b.ending_timestamp ?? 0) - (a.ending_timestamp ?? 0),
-      modified: (a, b) => (b.last_modified_timestamp ?? 0) - (a.last_modified_timestamp ?? 0),
+      modified: (a, b) => touchedAt(b) - touchedAt(a),
       views: (a, b) => (b.views ?? 0) - (a.views ?? 0),
       favorites: (a, b) => (b.favorites ?? 0) - (a.favorites ?? 0),
       price_asc: (a, b) => (a.price_min ?? 0) - (b.price_min ?? 0),
@@ -390,13 +409,61 @@ export default function Home() {
       title: (a, b) => a.title.localeCompare(b.title),
     };
     return [...searched].sort(cmp[sort] ?? cmp.ending);
-  }, [listings, filters, query, sort, decliningIds, fadedIds, trackedIds]);
+  }, [listings, filters, query, sort, decliningIds, fadedIds, trackedIds, touchedAt]);
   // Yüzlerce kartı bir anda çizmek sayfayı kasıyor: 12 ile başla (xl ekranda 3 sıra), kaydırdıkça 12 daha ekle.
+  const listKey = `${view}|${query}|${sort}|${JSON.stringify(filters)}`;
+  // Geri dönüşte/yenilemede kaldığı yer: aynı liste ölçütündeyse önceki kart sayısıyla açılır ve oraya kaydırılır.
+  const [savedScroll] = useState<{ key: string; y: number; count: number } | null>(() => {
+    try {
+      const raw = typeof window !== "undefined" ? sessionStorage.getItem(SCROLL_KEY) : null;
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
   const { shown, hasMore, sentinelRef } = useIncrementalList(
     visibleListings,
     view === "grid" ? 12 : 8,
-    `${view}|${query}|${sort}|${JSON.stringify(filters)}`,
+    listKey,
+    savedScroll?.key === listKey ? savedScroll.count : undefined,
   );
+  const shownCount = shown.length;
+  const scrollState = useRef({ key: listKey, count: shownCount });
+  useEffect(() => {
+    scrollState.current = { key: listKey, count: shownCount };
+  }, [listKey, shownCount]);
+  useEffect(() => {
+    // Konum kaydırırken anında tutulur: çıkış anında Next sayfayı çoktan en üste almış olabilir.
+    let lastY = window.scrollY;
+    const save = () => {
+      try {
+        sessionStorage.setItem(SCROLL_KEY, JSON.stringify({ ...scrollState.current, y: lastY }));
+      } catch {
+        // depolama kapalıysa konum hatırlanmaz
+      }
+    };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onScroll = () => {
+      lastY = window.scrollY;
+      clearTimeout(timer);
+      timer = setTimeout(save, 150);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("pagehide", save);
+    return () => {
+      clearTimeout(timer);
+      save(); // sayfadan çıkarken (ör. Düzenle'ye geçerken) son konum
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("pagehide", save);
+    };
+  }, []);
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current || !savedScroll || savedScroll.key !== listKey || shownCount === 0) return;
+    restored.current = true;
+    // Next sayfa geçişinde en üste kaydırır; kartlar çizildikten sonra kaldığı yere dön.
+    requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, savedScroll.y)));
+  }, [savedScroll, listKey, shownCount]);
   const selectedDrafts = draftListings.filter((l) => selected.has(l.listing_id));
   const selectedListings = (listings ?? []).filter((l) => selected.has(l.listing_id));
   const allRenewable = selectedListings.length > 0 && selectedListings.every((l) => l.state === "expired" || l.state === "sold_out");
@@ -411,37 +478,26 @@ export default function Home() {
     });
   }
 
-  /** Taslakları sırayla Etsy'de yayınlar (Etsy oran sınırı nedeniyle paralel değil). */
+  /**
+   * Taslakları Etsy'de yayınlar. İşler modül düzeyindeki sıraya girer (bkz. lib/publishJobs): sayfadan çıkılsa da
+   * sırayla yayınlanmaya devam eder, kartlarda ilerleme görünür. Bu sayfa açık kaldıkça özet penceresi güncellenir.
+   */
   async function runPublish(items: Listing[], showProgress: boolean) {
     if (!activeShop) return;
+    const shopId = activeShop.id;
     setRowErrors({});
     if (showProgress) setBulk({ total: items.length, results: [], running: true });
     const results: PublishOutcome[] = [];
-    for (const item of items) {
-      setPublishingIds((prev) => new Set(prev).add(item.listing_id));
-      let outcome: PublishOutcome;
-      try {
-        const res = await api.listings.publishLocal(activeShop.id, item.listing_id);
-        outcome = {
-          id: item.listing_id,
-          title: item.title,
-          ok: res.ok,
-          error: res.error ?? undefined,
-          updated: res.steps.filter((st) => st.changed).map((st) => st.name),
-          warnings: res.warnings,
-        };
-      } catch (e) {
-        outcome = { id: item.listing_id, title: item.title, ok: false, error: e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error") };
-      }
-      results.push(outcome);
-      setPublishingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(item.listing_id);
-        return next;
-      });
-      if (!outcome.ok) setRowErrors((prev) => ({ ...prev, [item.listing_id]: outcome.error ?? t("Yayınlanamadı", "Could not publish") }));
-      if (showProgress) setBulk({ total: items.length, results: [...results], running: true });
-    }
+    await Promise.all(
+      items.map((item) =>
+        startPublish(shopId, item.listing_id).then((o) => {
+          const outcome: PublishOutcome = { id: item.listing_id, title: item.title, ...o };
+          results.push(outcome);
+          if (!outcome.ok) setRowErrors((prev) => ({ ...prev, [item.listing_id]: outcome.error ?? t("Yayınlanamadı", "Could not publish") }));
+          if (showProgress) setBulk({ total: items.length, results: [...results], running: true });
+        }),
+      ),
+    );
     if (showProgress) setBulk({ total: items.length, results, running: false });
     setSelected((prev) => {
       const next = new Set(prev);
@@ -663,7 +719,7 @@ export default function Home() {
                         selected={selected.has(listing.listing_id)}
                         onSelectChange={(on) => toggleSelected(listing.listing_id, on)}
                         onAction={(a) => handleAction(a, listing)}
-                        publishing={publishingIds.has(listing.listing_id) || jobs.get(listing.listing_id)?.phase === "running"}
+                        publishing={isPublishing(listing.listing_id)}
                         publishError={rowErrors[listing.listing_id]}
                         job={jobs.get(listing.listing_id)}
                         faded={fadedOf(listing)}
@@ -682,7 +738,7 @@ export default function Home() {
                         selected={selected.has(listing.listing_id)}
                         onSelectChange={(on) => toggleSelected(listing.listing_id, on)}
                         onPublish={() => publishOne(listing)}
-                        publishing={publishingIds.has(listing.listing_id) || jobs.get(listing.listing_id)?.phase === "running"}
+                        publishing={isPublishing(listing.listing_id)}
                         publishError={rowErrors[listing.listing_id]}
                         job={jobs.get(listing.listing_id)}
                         faded={fadedOf(listing)}
