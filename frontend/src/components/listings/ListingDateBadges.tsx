@@ -1,5 +1,7 @@
 "use client";
 
+import type { FadedInfo } from "@/lib/api";
+import { useState } from "react";
 import { useT } from "@/lib/i18n-client";
 
 const RECENT_DAYS = 30;
@@ -12,9 +14,10 @@ type Kind = "updated" | "renewed";
  */
 export function ListingDateBadge({ kind, timestamp }: { kind: Kind; timestamp?: number | null }) {
   const { t, locale } = useT();
+  const [now] = useState(() => Date.now());
   if (!timestamp) return null;
   const date = new Date(timestamp * 1000);
-  const days = Math.max(0, Math.floor((Date.now() - date.getTime()) / 86_400_000));
+  const days = Math.max(0, Math.floor((now - date.getTime()) / 86_400_000));
   const full = date.toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" });
   const icon = kind === "updated" ? "✎" : "↻";
   const title =
@@ -57,5 +60,26 @@ export default function ListingDateBadges({ updated, renewed }: { updated?: numb
       <ListingDateBadge kind="updated" timestamp={updated} />
       <ListingDateBadge kind="renewed" timestamp={renewed} />
     </>
+  );
+}
+
+/** Sönmüş listing: eskiden satan ama uzun süredir satmayan. Gri rozet; üzerine gelince son satış ve toplam satış. */
+export function FadedBadge({ info }: { info?: FadedInfo | null }) {
+  const { t, locale } = useT();
+  if (!info) return null;
+  const years = Math.floor(info.days / 365);
+  const months = Math.max(3, Math.floor(info.days / 30));
+  const since =
+    years >= 1
+      ? t(`${years} yıldır satış yok`, `No sales for ${years} year${years > 1 ? "s" : ""}`)
+      : t(`${months} aydır satış yok`, `No sales for ${months} months`);
+  const last = new Date(`${info.last_sale}T00:00:00`).toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" });
+  return (
+    <span
+      title={t(`Son satış: ${last} · toplam ${info.units} satış`, `Last sale: ${last} · ${info.units} sales in total`)}
+      className="rounded-full bg-neutral-100 px-2 py-0.5 font-medium text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300"
+    >
+      ◌ {t("Sönmüş", "Faded")} · {since}
+    </span>
   );
 }

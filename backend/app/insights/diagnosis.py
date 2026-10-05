@@ -667,3 +667,35 @@ def attention(db: Session, shop: Shop, today: dt.date | None = None, limit: int 
     result = {"items": items, "declining_ids": [lid for lid, _, _ in declining], "declining_count": len(declining)}
     _attention_cache.set(key, result)
     return result
+
+
+# ------------------------------------------------------------------ sönmüş listing'ler
+
+FADED_MIN_UNITS = 3  # "eskiden satıyordu" sayılması için ömür boyu en az bu kadar satış
+FADED_GAP_DAYS = 90  # son satıştan bu yana en az bu kadar gün geçmiş olmalı
+
+_faded_cache = ResultCache(max_items=50)
+
+
+def faded(db: Session, shop: Shop, today: dt.date | None = None) -> dict:
+    """Eskiden satan (ömür boyu ≥ FADED_MIN_UNITS) ama FADED_GAP_DAYS gündür hiç satmayan listing'ler: listing kimliği ->
+    son satış günü, geçen gün, toplam satış. Durum (aktif mi) ön yüzde süzülür; liste zaten o bilgiyi taşır.
+    Görüntülenme geçmişi (günlük kayıtlar) yeterince birikince ölçüte görüntülenme düşüşü de eklenebilir."""
+    today = today or dt.date.today()
+    key = (shop.id, today.isoformat(), performance._orders_version(db, shop))
+    cached = _faded_cache.get(key)
+    if cached is not None:
+        return cached
+    _faded_cache.drop_shop(shop.id)
+    out: dict[int, dict] = {}
+    for lid, rows in sales.index(db, shop).items():
+        if not rows or lid is None:
+            continue
+        last = rows[-1][0]
+        gap = (today - last).days
+        units = sum(u for _, u, _ in rows)
+        if gap >= FADED_GAP_DAYS and units >= FADED_MIN_UNITS:
+            out[lid] = {"last_sale": last.isoformat(), "days": gap, "units": units}
+    result = {"listings": out}
+    _faded_cache.set(key, result)
+    return result

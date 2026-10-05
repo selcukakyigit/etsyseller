@@ -329,6 +329,17 @@ export interface AttentionItem {
   action: { key: string; text: string };
   season: ListingDiagnosis["season"];
 }
+/** Sönmüş listing: eskiden satan ama 90+ gündür satmayan (bkz. backend insights/diagnosis.faded). */
+export interface FadedInfo {
+  last_sale: string; // YYYY-MM-DD
+  days: number;
+  units: number;
+}
+
+export interface FadedListings {
+  listings: Record<string, FadedInfo>;
+}
+
 export interface ShopAttention {
   items: AttentionItem[];
   declining_ids: number[];
@@ -1450,6 +1461,7 @@ export const api = {
   insights: {
     diagnosis: (shopId: number, listingId: number) => request<ListingDiagnosis>(`/api/shops/${shopId}/insights/listings/${listingId}/diagnosis`),
     attention: (shopId: number) => request<ShopAttention>(`/api/shops/${shopId}/insights/attention`),
+    faded: (shopId: number) => request<FadedListings>(`/api/shops/${shopId}/insights/faded`),
     changes: (shopId: number) => request<ChangesSummary>(`/api/shops/${shopId}/insights/changes`),
     ranks: (shopId: number, listingId: number) => request<ListingRanks>(`/api/shops/${shopId}/insights/listings/${listingId}/ranks`),
     addKeyword: (shopId: number, listingId: number, keyword: string) =>

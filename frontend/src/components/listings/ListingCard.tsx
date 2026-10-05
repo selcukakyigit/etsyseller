@@ -2,11 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Listing } from "@/lib/api";
+import { FadedInfo, Listing } from "@/lib/api";
 import { PublishJob } from "@/lib/publishJobs";
 import PublishBar from "@/components/listings/PublishBar";
 import { useT } from "@/lib/i18n-client";
-import ListingDateBadges from "./ListingDateBadges";
+import ListingDateBadges, { FadedBadge } from "./ListingDateBadges";
 
 export type CardAction = "preview" | "stats" | "copy" | "activate" | "deactivate" | "renew" | "section" | "delete" | "publish";
 
@@ -28,8 +28,11 @@ export default function ListingCard({
   publishing,
   publishError,
   job,
+  faded,
 }: {
   listing: Listing;
+  /** Sönmüş (eskiden satan, uzun süredir satmayan) aktif listing ise bilgisi. */
+  faded?: FadedInfo;
   selected: boolean;
   onSelectChange: (on: boolean) => void;
   onAction: (action: CardAction) => void;
@@ -107,8 +110,9 @@ export default function ListingCard({
           </p>
         )}
         {price && <p className="text-[#1a7f4b] dark:text-green-400">{price}</p>}
-        {(listing.updated_timestamp || listing.renewed_timestamp) && (
+        {(faded || listing.updated_timestamp || listing.renewed_timestamp) && (
           <p className="flex flex-wrap gap-1 text-xs">
+            <FadedBadge info={faded} />
             <ListingDateBadges updated={listing.updated_timestamp} renewed={listing.renewed_timestamp} />
           </p>
         )}

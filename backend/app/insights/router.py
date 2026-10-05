@@ -20,6 +20,12 @@ def attention(shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db
     return diagnosis.attention(db, shop)
 
 
+@router.get("/faded")
+def faded(shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    """Sönmüş listing'ler: eskiden satan ama 90 gündür satmayanlar (liste rozeti ve "Sönmüş" filtresi için)."""
+    return diagnosis.faded(db, shop)
+
+
 @router.get("/changes")
 def changes_summary(shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
     """Son 90 günde yayınlanan değişikliklerin sonuç dağılımı (iyileşti/değişmedi/kötüleşti/bekliyor) ve en yenileri."""

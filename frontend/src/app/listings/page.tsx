@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, BulkChanges, Listing, ShopAttention } from "@/lib/api";
+import { api, BulkChanges, FadedInfo, FadedListings, Listing, ShopAttention } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import { useIncrementalList } from "@/lib/useIncrementalList";
 import AppShell from "@/components/AppShell";
@@ -327,10 +327,32 @@ export default function Home() {
   }, [activeShop, wantsTrend, setAttention]);
   const decliningIds = useMemo(() => new Set(attention?.declining_ids ?? []), [attention]);
 
+  // Sönmüş listing'ler (eskiden satan, 90+ gündür satmayan): rozet her satırda gösterildiği için hep yüklenir; hafif istek.
+  const [faded, setFaded] = useCached<FadedListings>(activeShop ? `faded:${activeShop.id}` : null);
+  useEffect(() => {
+    if (!activeShop) return;
+    let cancelled = false;
+    api.insights
+      .faded(activeShop.id)
+      .then((r) => {
+        if (!cancelled) setFaded(r);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [activeShop, setFaded]);
+  // Yalnızca aktif listing'ler sönmüş sayılır (pasif/süresi dolmuş zaten satamaz).
+  const fadedOf = useCallback(
+    (l: Listing): FadedInfo | undefined => (l.state === "active" ? faded?.listings[String(l.listing_id)] : undefined),
+    [faded],
+  );
+  const fadedIds = useMemo(() => new Set((listings ?? []).filter((l) => fadedOf(l)).map((l) => l.listing_id)), [listings, fadedOf]);
+
   const draftListings = (listings ?? []).filter((l) => l.has_local);
   const visibleListings = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const searched = applyFilters(listings ?? [], filters, decliningIds).filter(
+    const searched = applyFilters(listings ?? [], filters, decliningIds, fadedIds).filter(
       (l) =>
         !q ||
         l.title.toLowerCase().includes(q) ||
@@ -347,7 +369,7 @@ export default function Home() {
       title: (a, b) => a.title.localeCompare(b.title),
     };
     return [...searched].sort(cmp[sort] ?? cmp.ending);
-  }, [listings, filters, query, sort, decliningIds]);
+  }, [listings, filters, query, sort, decliningIds, fadedIds]);
   // Yüzlerce kartı bir anda çizmek sayfayı kasıyor: 12 ile başla (xl ekranda 3 sıra), kaydırdıkça 12 daha ekle.
   const { shown, hasMore, sentinelRef } = useIncrementalList(
     visibleListings,
@@ -470,6 +492,7 @@ export default function Home() {
         shopId={activeShop.id}
         onSectionsChanged={loadReference}
         decliningCount={attention?.declining_count}
+        fadedCount={faded ? fadedIds.size : undefined}
       />
     ) : null,
   });
@@ -621,6 +644,7 @@ export default function Home() {
                         publishing={publishingIds.has(listing.listing_id) || jobs.get(listing.listing_id)?.phase === "running"}
                         publishError={rowErrors[listing.listing_id]}
                         job={jobs.get(listing.listing_id)}
+                        faded={fadedOf(listing)}
                       />
                     ))}
                   </div>
@@ -637,6 +661,7 @@ export default function Home() {
                         publishing={publishingIds.has(listing.listing_id) || jobs.get(listing.listing_id)?.phase === "running"}
                         publishError={rowErrors[listing.listing_id]}
                         job={jobs.get(listing.listing_id)}
+                        faded={fadedOf(listing)}
                       />
                     ))}
                   </div>

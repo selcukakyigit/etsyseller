@@ -2,14 +2,14 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { api, KeywordPoolItem, Listing } from "@/lib/api";
+import { api, FadedInfo, KeywordPoolItem, Listing } from "@/lib/api";
 import ListingAnalysisPanel from "@/components/listings/analysis/ListingAnalysisPanel";
 import { toast } from "@/lib/toast";
 import { PublishJob } from "@/lib/publishJobs";
 import PublishBar from "@/components/listings/PublishBar";
 import { competitionFill, normalizedScore, poolRanges } from "@/lib/keywordScore";
 import { useT } from "@/lib/i18n-client";
-import ListingDateBadges from "@/components/listings/ListingDateBadges";
+import ListingDateBadges, { FadedBadge } from "@/components/listings/ListingDateBadges";
 
 // Marketplace Insights dönüşüm bandı: [Türkçe, İngilizce]
 const CONVERSION: Record<NonNullable<KeywordPoolItem["etsy_conversion"]>, [string, string]> = {
@@ -127,9 +127,12 @@ export default function ListingRow({
   publishing,
   job,
   publishError,
+  faded,
 }: {
   shopId: number;
   listing: Listing;
+  /** Sönmüş (eskiden satan, uzun süredir satmayan) aktif listing ise bilgisi. */
+  faded?: FadedInfo;
   /** Preview/test escape hatch: pass pre-built history instead of hitting the API. */
   /** Toplu işlem için seçim; verilmezse onay kutusu gösterilmez. */
   selected?: boolean;
@@ -259,6 +262,7 @@ export default function ListingRow({
                   `${num(listing.views)} views · ${num(listing.favorites)} favorites · ${listing.tags.length} tags`,
                 )}
               </span>
+              <FadedBadge info={faded} />
               <ListingDateBadges updated={listing.updated_timestamp} renewed={listing.renewed_timestamp} />
             </div>
           </div>

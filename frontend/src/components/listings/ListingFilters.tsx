@@ -16,7 +16,7 @@ export type Filters = {
   partner: string;
   video: "all" | "with" | "without";
   tag: string;
-  trend: "all" | "declining";
+  trend: "all" | "declining" | "faded";
 };
 
 export const EMPTY_FILTERS: Filters = {
@@ -46,10 +46,14 @@ const STATUSES: [string, string, string][] = [
   ["inactive", "Pasif", "Inactive"],
 ];
 
-/** `declining`: satışı düşen listing'lerin kimlikleri (bkz. api.insights.attention); yoksa "Düşüşte" filtresi boş sonuç verir. */
-export function applyFilters(listings: Listing[], f: Filters, declining?: Set<number>): Listing[] {
+/**
+ * `declining`: satışı düşen listing'lerin kimlikleri (bkz. api.insights.attention); `faded`: sönmüş aktif listing'lerin
+ * kimlikleri (bkz. api.insights.faded). Yoksa ilgili filtre boş sonuç verir.
+ */
+export function applyFilters(listings: Listing[], f: Filters, declining?: Set<number>, faded?: Set<number>): Listing[] {
   return listings.filter((l) => {
     if (f.trend === "declining" && !declining?.has(l.listing_id)) return false;
+    if (f.trend === "faded" && !faded?.has(l.listing_id)) return false;
     if (!l.is_new && f.status !== "all" && (l.state ?? "active") !== f.status) return false;
     if (f.local === "unpublished" && !l.has_local) return false;
     if (f.local === "draft" && !l.has_draft) return false;
@@ -108,6 +112,7 @@ export default function ListingFilters({
   shopId,
   onSectionsChanged,
   decliningCount,
+  fadedCount,
 }: {
   listings: Listing[];
   filters: Filters;
@@ -118,6 +123,8 @@ export default function ListingFilters({
   onSectionsChanged: () => void;
   /** Satışı düşen listing sayısı (teşhis hesaplanınca); yoksa "Düşüşte" seçeneği sayısız görünür. */
   decliningCount?: number;
+  /** Sönmüş aktif listing sayısı; yüklenmediyse sayısız görünür. */
+  fadedCount?: number;
 }) {
   const set = (patch: Partial<Filters>) => onChange({ ...filters, ...patch });
   const { t } = useT();
@@ -169,6 +176,11 @@ export default function ListingFilters({
         </Radio>
         <Radio checked={filters.trend === "declining"} onChange={() => set({ trend: "declining" })} count={decliningCount}>
           {t("Düşüşte (son 12 ay)", "Declining (last 12 months)")}
+        </Radio>
+        <Radio checked={filters.trend === "faded"} onChange={() => set({ trend: "faded" })} count={fadedCount}>
+          <span title={t("Eskiden satan (en az 3 satış) ama 90 gündür hiç satmayan aktif listing'ler", "Active listings that used to sell (3+ sales) but have had no sales for 90 days")}>
+            {t("Sönmüş (90+ gün satışsız)", "Faded (no sales 90+ days)")}
+          </span>
         </Radio>
 
         <span className={label}>{t("Yerel değişiklikler", "Local changes")}</span>
