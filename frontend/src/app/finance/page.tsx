@@ -12,6 +12,7 @@ import { onSyncDone } from "@/lib/syncEvents";
 import TopOrders from "@/components/finance/TopOrders";
 import { tNow, useT } from "@/lib/i18n-client";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { Popover, menuBox, menuItem } from "@/components/ui/Popover";
 import { useStoredState } from "@/lib/useStoredState";
 
 const regionNames: Record<string, Intl.DisplayNames> = {};
@@ -263,10 +264,51 @@ export default function FinancePage() {
         </div>
 
         <div className="z-[9] -mx-4 lg:sticky lg:top-[49px] sm:-mx-6 bg-neutral-50 px-4 sm:px-6 pb-3 pt-3 dark:bg-neutral-950">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="mb-2.5 flex items-center justify-between gap-3">
           <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t("Finans", "Finance")}</h1>
-          <div className="flex flex-wrap items-center gap-2">
-            <select value={period} onChange={(e) => setPeriod(e.target.value)} className={select}>
+          <Popover
+            label={t("Excel'e aktar", "Export to Excel")}
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-[#D97757] px-3.5 text-sm font-medium text-white hover:bg-[#C6613F] disabled:opacity-50"
+            button={exporting ? t("Hazırlanıyor…", "Preparing…") : <>{t("Excel", "Excel")} ▾</>}
+          >
+            {(close) => (
+              <div role="menu" className={`${menuBox} w-64`}>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={exporting || !displayReport}
+                  onClick={() => {
+                    close();
+                    void exportExcel(false);
+                  }}
+                  className={`${menuItem} disabled:opacity-50`}
+                >
+                  <span>
+                    <span className="block">{t(`Bu sekme: ${tabLabel}`, `This tab: ${tabLabel}`)}</span>
+                    <span className="block text-[11px] text-neutral-400 dark:text-neutral-500">{t("Dönem, ülke ve filtrelerle", "With the period, country and filters")}</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={exporting || !displayReport}
+                  onClick={() => {
+                    close();
+                    void exportExcel(true);
+                  }}
+                  className={`${menuItem} disabled:opacity-50`}
+                >
+                  <span>
+                    <span className="block">{t("Tümünü aktar", "Export all")}</span>
+                    <span className="block text-[11px] text-neutral-400 dark:text-neutral-500">{t("Özet, müşteriler, ülkeler, ürünler, siparişler", "Summary, customers, countries, products, orders")}</span>
+                  </span>
+                </button>
+              </div>
+            )}
+          </Popover>
+        </div>
+        <div className="mb-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+            <select value={period} onChange={(e) => setPeriod(e.target.value)} className={`${select} min-w-0`}>
               <option value="today">{t("Bugün", "Today")}</option>
               <option value="yesterday">{t("Dün", "Yesterday")}</option>
               <option value="ytd">{t("Bu yıl", "This year")}</option>
@@ -283,14 +325,22 @@ export default function FinancePage() {
               <option value="all">{t("Tüm zamanlar", "All time")}</option>
               <option value="custom">{t("Özel aralık…", "Custom range…")}</option>
             </select>
+            <select value={country} onChange={(e) => setCountry(e.target.value)} className={`${select} min-w-0`}>
+              <option value="">{t("Tüm ülkeler", "All countries")}</option>
+              {(report?.available_countries ?? []).map((c) => (
+                <option key={c} value={c}>
+                  {countryOf(c)}
+                </option>
+              ))}
+            </select>
             {period === "custom" && (
-              <div className="flex items-center gap-1.5">
+              <div className="col-span-2 flex items-center gap-1.5">
                 <input
                   type="date"
                   value={customStart}
                   max={customEnd}
                   onChange={(e) => setCustomStart(e.target.value)}
-                  className={select}
+                  className={`${select} min-w-0 flex-1`}
                 />
                 <span className="text-sm text-neutral-500">–</span>
                 <input
@@ -299,39 +349,12 @@ export default function FinancePage() {
                   min={customStart}
                   max={iso(new Date())}
                   onChange={(e) => setCustomEnd(e.target.value)}
-                  className={select}
+                  className={`${select} min-w-0 flex-1`}
                 />
               </div>
             )}
-            <select value={country} onChange={(e) => setCountry(e.target.value)} className={select}>
-              <option value="">{t("Tüm ülkeler", "All countries")}</option>
-              {(report?.available_countries ?? []).map((c) => (
-                <option key={c} value={c}>
-                  {countryOf(c)}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              disabled={exporting || !displayReport}
-              onClick={() => exportExcel(false)}
-              title={t("Bu sekmedeki dönem, ülke ve filtrelerle", "With this tab's period, country and filters")}
-              className="rounded-lg bg-[#D97757] px-3 py-2 text-sm font-medium text-white hover:bg-[#C6613F] disabled:opacity-50"
-            >
-              {exporting ? t("Hazırlanıyor…", "Preparing…") : `Excel: ${tabLabel}`}
-            </button>
-            <button
-              type="button"
-              disabled={exporting || !displayReport}
-              onClick={() => exportExcel(true)}
-              title={t("Tüm sayfalar (özet, müşteriler, ülkeler, ürünler, siparişler), dönem ve ülke filtresiyle", "All sheets (summary, customers, countries, products, orders) with the period and country filter")}
-              className="rounded-lg border border-neutral-300 px-3 py-2 text-sm font-medium hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
-            >
-              {t("Tümünü aktar", "Export all")}
-            </button>
-          </div>
         </div>
-        <div className="flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
+        <div className="-mx-4 flex gap-1 overflow-x-auto whitespace-nowrap border-b border-neutral-200 px-4 [scrollbar-width:none] dark:border-neutral-800 sm:mx-0 sm:px-0">
           {(
             [
               ["overview", t("Genel bakış", "Overview")],

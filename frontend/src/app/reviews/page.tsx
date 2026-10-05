@@ -198,7 +198,8 @@ function ReviewsPageInner() {
       <div className="mx-auto max-w-3xl space-y-6 px-4 sm:px-6 py-6 sm:py-8">
         {/* Başlık + üst sayfalama + istatistik kartları: hepsi tek blok olarak sabit — kaydırınca liste
             altından geçer, sayfa değiştirince de bu blok yerinden oynamaz. */}
-        <div className="sticky top-[49px] z-10 -mx-4 sm:-mx-6 bg-neutral-50 px-4 sm:px-6 pb-4 dark:bg-neutral-950">
+        {/* Yalnızca geniş ekranda sabit: telefonda kartlar alt alta dizilince blok ekrandan uzun oluyor ve listeyi kapatıyordu. */}
+        <div className="-mx-4 bg-neutral-50 px-4 pb-4 dark:bg-neutral-950 sm:-mx-6 sm:px-6 lg:sticky lg:top-[49px] lg:z-10">
           <div className="pt-2">
             <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t("Yorumlar", "Reviews")}</h1>
             {total !== null && average !== null && (

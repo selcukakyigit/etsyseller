@@ -18,6 +18,7 @@ import { useCached } from "@/lib/pageCache";
 import { useStoredState } from "@/lib/useStoredState";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { useResponsiveFilters } from "@/components/ui/ResponsiveFilters";
+import { ChoiceMenu, SearchIcon, SortIcon } from "@/components/ui/Popover";
 
 const TABS: [Tab, string, string][] = [
   ["toship", "Gönderilecek", "To ship"],
@@ -26,6 +27,12 @@ const TABS: [Tab, string, string][] = [
   ["all", "Tümü", "All"],
 ];
 const TAB_VALUES = TABS.map(([v]) => v) as readonly Tab[];
+const SORTS: [string, string, string][] = [
+  ["shipby", "Gönderim tarihi", "Ship-by date"],
+  ["newest", "En yeni", "Newest"],
+  ["oldest", "En eski", "Oldest"],
+  ["total", "Tutar", "Total"],
+];
 
 const localToday = () => {
   const d = new Date();
@@ -230,9 +237,43 @@ export default function OrdersPage() {
     children: <OrderFilterPanel destinations={data?.destinations ?? []} filters={filters} onChange={changeFilters} />,
   });
 
+  const sortLabel = SORTS.find(([k]) => k === sort) ?? SORTS[0];
+  // Filtre, sıralama ve sayfa başına adet: geniş ekranda aramanın yanında, telefonda seçim satırının sağında.
+  const controls = (
+    <>
+      {filterUI.button}
+      <ChoiceMenu
+        label={t("Sırala", "Sort")}
+        value={sort}
+        onChange={(v) => {
+          setSort(v);
+          setPage(0);
+        }}
+        options={SORTS.map(([value, tr, en]) => ({ value, label: t(tr, en) }))}
+        button={
+          <>
+            <SortIcon />
+            <span className="hidden md:inline">{t(sortLabel[1], sortLabel[2])}</span>
+          </>
+        }
+      />
+      <ChoiceMenu
+        label={t("Sayfa başına", "Per page")}
+        value={perPage}
+        onChange={(n) => {
+          setPerPage(n);
+          setPage(0);
+        }}
+        options={[25, 50, 100].map((n) => ({ value: n, label: t(`Sayfada ${n} sipariş`, `${n} orders per page`) }))}
+        width="w-52"
+        button={<span className="tabular-nums">{perPage}</span>}
+      />
+    </>
+  );
+
   return (
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/orders">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6 pb-8 pt-0">
+      <div className="mx-auto max-w-6xl px-3 pb-8 pt-0 sm:px-6">
         <div>
           {!user && !bootError && <PageSpinner />}
         </div>
@@ -264,22 +305,24 @@ export default function OrdersPage() {
               </p>
             )}
 
-            <div ref={stickyRef} className="z-[9] lg:sticky lg:top-[49px] -mx-4 sm:-mx-6 bg-neutral-50 px-4 sm:px-6 pb-3 pt-3 dark:bg-neutral-950">
-            <div className="mb-3 flex flex-wrap items-center gap-3">
-              <h1 className="mr-auto text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t("Siparişler", "Orders")}</h1>
-              <div className="relative w-full sm:w-80">
+            <div ref={stickyRef} className="z-[9] -mx-3 bg-neutral-50 px-3 pb-3 pt-3 dark:bg-neutral-950 sm:-mx-6 sm:px-6 lg:sticky lg:top-[49px]">
+            <h1 className="mb-2.5 text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t("Siparişler", "Orders")}</h1>
+            <div className="flex items-center gap-2">
+              <div className="relative min-w-0 flex-1">
                 <input
                   value={queryInput}
                   onChange={(e) => setQueryInput(e.target.value)}
                   placeholder={t("Alıcı, sipariş no, ürün, kişiselleştirme ya da SKU ara", "Search buyer, order number, item, personalization or SKU")}
-                  className="w-full rounded-full border border-neutral-300 bg-white py-2 pl-4 pr-10 text-sm outline-none focus:border-[#D97757] dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+                  enterKeyHint="search"
+                  className="h-9 w-full rounded-full border border-neutral-300 bg-white pl-9 pr-3 text-sm text-neutral-900 outline-none placeholder:text-neutral-400 focus:border-[#D97757] dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:placeholder:text-neutral-500"
                 />
-                <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-neutral-400">⌕</span>
+                <SearchIcon className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
               </div>
+              <div className="hidden shrink-0 items-center gap-2 sm:flex">{controls}</div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="flex cursor-pointer items-center gap-2 text-sm text-neutral-700 dark:text-neutral-200">
+            <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+              <label className="flex cursor-pointer items-center gap-2 text-neutral-700 dark:text-neutral-200">
                 <input
                   type="checkbox"
                   checked={allVisibleSelected}
@@ -295,63 +338,33 @@ export default function OrdersPage() {
                 {selected.size > 0 ? t(`${selected.size} seçili`, `${selected.size} selected`) : t("Bu sayfayı seç", "Select this page")}
               </label>
               {selected.size > 0 && (
-                <button onClick={() => setSelected(new Map())} className="text-xs text-neutral-500 hover:underline">
-                  {t("Seçimi temizle", "Clear selection")}
-                </button>
-              )}
-              <div ref={menuRef} className="relative">
-                <button
-                  onClick={() => setMenuOpen((v) => !v)}
-                  disabled={selected.size === 0}
-                  className="rounded-full border border-neutral-300 px-4 py-1.5 text-sm font-medium text-neutral-800 hover:bg-neutral-50 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800"
-                >
-                  {t("Diğer işlemler", "More actions")} ▾
-                </button>
-                {menuOpen && (
-                  <div className="absolute left-0 top-full z-20 mt-1 w-64 overflow-hidden rounded-lg border border-neutral-200 bg-white py-1 text-sm shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
-                    <button onClick={copyAddresses} className="block w-full px-3 py-2 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800">
-                      {t("Seçili adresleri kopyala", "Copy selected addresses")}
+                <>
+                  <div ref={menuRef} className="relative">
+                    <button
+                      onClick={() => setMenuOpen((v) => !v)}
+                      className="inline-flex h-8 items-center rounded-full border border-neutral-300 px-3 text-sm font-medium text-neutral-800 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800"
+                    >
+                      {t("İşlemler", "Actions")} ▾
                     </button>
-                    <button onClick={printGiftCards} className="block w-full px-3 py-2 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800">
-                      {t("Hediye kartlarını yazdır", "Print gift cards")} ({selectedOrders.filter((o) => o.is_gift).length})
-                    </button>
+                    {menuOpen && (
+                      <div className="absolute left-0 top-full z-20 mt-1 w-64 overflow-hidden rounded-lg border border-neutral-200 bg-white py-1 text-sm shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+                        <button onClick={copyAddresses} className="block w-full px-3 py-2 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800">
+                          {t("Seçili adresleri kopyala", "Copy selected addresses")}
+                        </button>
+                        <button onClick={printGiftCards} className="block w-full px-3 py-2 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800">
+                          {t("Hediye kartlarını yazdır", "Print gift cards")} ({selectedOrders.filter((o) => o.is_gift).length})
+                        </button>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-              {filterUI.button}
-              <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
-                <select
-                  value={sort}
-                  onChange={(e) => {
-                    setSort(e.target.value);
-                    setPage(0);
-                  }}
-                  aria-label={t("Sırala", "Sort")}
-                  className="min-w-0 flex-1 rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
-                >
-                  <option value="shipby">{t("Sırala: gönderim tarihi", "Sort: ship-by date")}</option>
-                  <option value="newest">{t("Sırala: en yeni", "Sort: newest")}</option>
-                  <option value="oldest">{t("Sırala: en eski", "Sort: oldest")}</option>
-                  <option value="total">{t("Sırala: tutar", "Sort: total")}</option>
-                </select>
-                <select
-                  value={perPage}
-                  onChange={(e) => {
-                    setPerPage(Number(e.target.value));
-                    setPage(0);
-                  }}
-                  aria-label={t("Sayfa başına", "Per page")}
-                  className="min-w-0 flex-1 rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
-                >
-                  {[25, 50, 100].map((n) => (
-                    <option key={n} value={n}>
-                      {t(`Sayfada ${n} sipariş`, `${n} orders per page`)}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                  <button onClick={() => setSelected(new Map())} className="text-xs text-neutral-500 hover:underline dark:text-neutral-400">
+                    {t("Temizle", "Clear")}
+                  </button>
+                </>
+              )}
+              <div className="ml-auto flex shrink-0 items-center gap-2 sm:hidden">{controls}</div>
             </div>
-            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 border-b border-neutral-200 dark:border-neutral-800">
+            <div className="-mx-3 mt-3 flex gap-x-5 overflow-x-auto whitespace-nowrap border-b border-neutral-200 px-3 [scrollbar-width:none] dark:border-neutral-800 sm:mx-0 sm:flex-wrap sm:px-0">
               {TABS.map(([key, tr, en]) => (
                 <button
                   key={key}
