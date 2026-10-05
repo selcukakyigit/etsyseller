@@ -8,6 +8,7 @@ from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
+from app.billing.service import renew_manual_plans
 from app.jobs.daily_stats import capture_daily_stats
 from app.jobs.demand_trends import refresh_demand
 from app.jobs.finance_sync import sync_all_shops as sync_finance
@@ -117,6 +118,12 @@ def start_scheduler() -> None:
         refresh_demand,
         trigger=CronTrigger(day_of_week="mon", hour=6, minute=30),
         id="demand_trends",
+        replace_existing=True,
+    )
+    _scheduler.add_job(
+        renew_manual_plans,
+        trigger=IntervalTrigger(hours=1),
+        id="manual_plans",
         replace_existing=True,
     )
     _scheduler.start()

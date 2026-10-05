@@ -190,6 +190,19 @@ const ACTIONS: Record<string, [string, string]> = {
   "product.create": ["Ürün eklendi", "Product added"],
   "product.update": ["Ürün güncellendi", "Product updated"],
   "product.delete": ["Ürün silindi", "Product deleted"],
+  "user.credits": ["Kullanıcı kredisi düzeltildi", "User credits adjusted"],
+  "user.note": ["Kullanıcıya not eklendi", "User note added"],
+  "user.note_delete": ["Kullanıcı notu silindi", "User note deleted"],
+  "user.plan": ["Kullanıcıya plan atandı", "Plan assigned to user"],
+  "user.plan_end": ["Kullanıcının planı bitirildi", "User plan ended"],
+  "user.password_reset": ["Şifre sıfırlama gönderildi", "Password reset sent"],
+  "user.role": ["Kullanıcı rolü değişti", "User role changed"],
+  "user.status": ["Kullanıcı durumu değişti", "User status changed"],
+  "user.delete": ["Kullanıcı silindi", "User deleted"],
+  "user.bulk.credits": ["Toplu kredi", "Bulk credits"],
+  "user.bulk.suspend": ["Toplu askıya alma", "Bulk suspend"],
+  "user.bulk.block": ["Toplu engelleme", "Bulk block"],
+  "user.bulk.activate": ["Toplu etkinleştirme", "Bulk activate"],
 };
 
 function AuditLog() {

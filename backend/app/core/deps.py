@@ -4,6 +4,7 @@ from fastapi import Cookie, Depends, Header, HTTPException, Request
 from jwt import PyJWKClient
 from sqlalchemy.orm import Session
 
+from app.auth import access
 from app.auth.disposable import MESSAGE as DISPOSABLE_MESSAGE, is_disposable
 from app.auth.models import User
 from app.auth.workspaces import create_personal_workspace
@@ -95,9 +96,6 @@ def get_current_user(
         if picture and user.picture_url != picture:
             user.picture_url = picture
             db.commit()
+    # Askıdaki/engelli hesap 403 alır (yalnızca /api/auth/me açık kalır); son aktif zamanı burada güncellenir.
+    access.check_and_touch(db, user, request.url.path)
     return user
-
-
-def is_admin(user: User) -> bool:
-    admins = {e.strip().lower() for e in settings.admin_emails.split(",") if e.strip()}
-    return user.email.lower() in admins

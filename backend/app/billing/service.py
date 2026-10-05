@@ -4,6 +4,7 @@ silinirken aboneliklerin iptali. HTTP çağrıları lemon.py'de, bakiye hareketl
 Olaylar sırasız ve tekrarlı gelebilir. Kredi yüklemeleri Lemon'daki sipariş/fatura numarasıyla (`ref`) tekilleşir.
 Abonelik ödemesi, abonelik kaydından önce gelirse hata verilir; Lemon olayı sonra yeniden gönderir."""
 import datetime as dt
+import secrets
 import json
 import logging
 
@@ -183,3 +184,84 @@ def summary(payload: dict) -> str:
         kept["first_order_item"] = {k: attrs["first_order_item"].get(k) for k in ("variant_id", "product_id", "price")}
     out = {"event_name": meta.get("event_name"), "custom_data": meta.get("custom_data"), "type": data.get("type"), "id": data.get("id"), "attributes": kept}
     return json.dumps(out, ensure_ascii=False, default=str)
+
+
+# ---- Elle verilen planlar (Lemon'suz: hediye, destek, ortaklık). Lemon aboneliğinin yerine geçer; kimliği "manual:" ile
+# başlar. Dönem yenilemesini webhook değil `renew_manual_plans` işi yapar.
+
+MANUAL_PREFIX = "manual:"
+
+
+def add_months(value: dt.datetime, months: int) -> dt.datetime:
+    """Takvim ayı ekler; ayın son günü taşarsa ayın son gününe çeker (31 Ocak + 1 ay = 28/29 Şubat)."""
+    month_index = value.month - 1 + months
+    year, month = value.year + month_index // 12, month_index % 12 + 1
+    days_in_month = (dt.date(year + (month // 12), month % 12 + 1, 1) - dt.timedelta(days=1)).day
+    return value.replace(year=year, month=month, day=min(value.day, days_in_month))
+
+
+def _period_months(product: BillingProduct) -> int:
+    return 12 if product.interval == "year" else 1
+
+
+def assign_manual_plan(db: Session, workspace_id: int, product: BillingProduct, months: int) -> Subscription:
+    """Planı `months` ay için verir ve ilk dönem kredisini hemen yükler. Canlı bir Lemon aboneliği varsa reddedilir
+    (çift kredi olmasın); önceki elle verilmiş plan bitirilir."""
+    if product.kind != "plan":
+        raise EventError("Yalnızca plan atanabilir.")
+    current = live_subscription(db, workspace_id)
+    if current is not None and not current.lemon_subscription_id.startswith(MANUAL_PREFIX):
+        raise EventError("Bu kullanıcının ücretli bir aboneliği var.")
+    now = dt.datetime.utcnow()
+    if current is not None:
+        current.status = "expired"
+        current.ends_at = now
+        current.updated_at = now
+    row = Subscription(
+        workspace_id=workspace_id, lemon_subscription_id=f"{MANUAL_PREFIX}{workspace_id}:{secrets.token_hex(6)}", product_id=product.id,
+        variant_id=product.variant_id, status="active", renews_at=add_months(now, _period_months(product)), ends_at=add_months(now, months),
+        created_at=now, updated_at=now,
+    )
+    db.add(row)
+    db.commit()
+    credits.reset_plan(db, workspace_id, product.credits, ref=f"{row.lemon_subscription_id}:start", note=f"Manual plan: {product.name_en}")
+    return row
+
+
+def end_manual_plan(db: Session, row: Subscription) -> None:
+    """Elle verilen planı hemen bitirir ve plan kredisini sıfırlar."""
+    now = dt.datetime.utcnow()
+    row.status = "expired"
+    row.ends_at = now
+    row.updated_at = now
+    db.commit()
+    credits.clear_plan(db, row.workspace_id, ref=f"expired:{row.lemon_subscription_id}", note="Manual plan ended")
+
+
+def renew_manual_plans() -> None:
+    """Saatlik iş: dönemi gelen elle verilmiş planların kredisini yeniler, süresi dolanları bitirir."""
+    from app.core.db import SessionLocal
+
+    db = SessionLocal()
+    try:
+        now = dt.datetime.utcnow()
+        rows = db.scalars(
+            select(Subscription).where(
+                Subscription.lemon_subscription_id.like(f"{MANUAL_PREFIX}%"), Subscription.status == "active", Subscription.renews_at <= now,
+            )
+        ).all()
+        for row in rows:
+            if row.ends_at is not None and row.ends_at <= now:
+                end_manual_plan(db, row)
+                continue
+            product = db.get(BillingProduct, row.product_id) if row.product_id else None
+            if product is None:
+                log.error("Elle verilen planın ürünü yok (abonelik %s); bitiriliyor", row.id)
+                end_manual_plan(db, row)
+                continue
+            credits.reset_plan(db, row.workspace_id, product.credits, ref=f"{row.lemon_subscription_id}:{row.renews_at:%Y%m%d}", note=f"Manual plan renewal: {product.name_en}")
+            row.renews_at = add_months(row.renews_at, _period_months(product))
+            row.updated_at = now
+            db.commit()
+    finally:
+        db.close()

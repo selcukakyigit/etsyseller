@@ -16,8 +16,19 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false);
 
   // E-postadaki bağlantı oturumu kurar (PASSWORD_RECOVERY); oturum varsa yeni şifre formu açılır.
+  // Yöneticinin gönderdiği bağlantı ?token_hash=…&type=recovery taşır: jeton burada doğrulanır, böylece bağlantı hangi
+  // tarayıcıda açılırsa açılsın çalışır (kullanıcının kendi isteğindeki PKCE akışı yalnızca aynı tarayıcıda çalışır).
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setReady(!!data.session));
+    const params = new URLSearchParams(window.location.search);
+    const tokenHash = params.get("token_hash");
+    if (tokenHash && params.get("type") === "recovery") {
+      window.history.replaceState(null, "", window.location.pathname);
+      supabase.auth.verifyOtp({ token_hash: tokenHash, type: "recovery" }).then(({ error }) => {
+        if (error) setError(error.message);
+        else setReady(true);
+      });
+    }
+    supabase.auth.getSession().then(({ data }) => data.session && setReady(true));
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") setReady(true);
     });

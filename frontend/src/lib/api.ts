@@ -11,6 +11,8 @@ export type User = {
   name: string | null;
   avatar_url: string | null;
   is_admin: boolean;
+  /** Aktif değilse (askıda / engelli) diğer uç noktalar 403 döner; ön yüz /account-status ekranını gösterir. */
+  status?: "active" | "suspended" | "blocked";
   /** Güncel hukuki metin sürümü kabul edilmediyse true — kullanıcı /accept-terms ekranına yönlendirilir. */
   needs_consent: boolean;
 };
@@ -811,16 +813,52 @@ export type AdminOverview = {
 
 export type AdminUserShop = { id: number; shop_name: string; connected: boolean; is_demo: boolean; revoked: boolean; listings_synced_at: string | null };
 
+export type AdminUserStatus = "active" | "suspended" | "blocked";
+
 export type AdminUser = {
   id: number;
   email: string;
   name: string | null;
   avatar_url: string | null;
   created_at: string | null;
+  last_seen_at: string | null;
+  status: AdminUserStatus;
+  status_reason: string | null;
+  role: "user" | "admin";
+  /** Sunucu ayarındaki (ADMIN_EMAILS) yönetici: rolü ve durumu panelden değişmez. */
+  env_admin: boolean;
+  workspace_id: number | null;
+  /** Canlı aboneliğin plan adı; null = ücretsiz. */
+  plan: string | null;
+  plan_manual: boolean;
+  credits: number;
   ai_enabled: boolean;
   ai_requests_30d: number;
   shops: AdminUserShop[];
 };
+
+export type AdminUserQuery = {
+  q: string;
+  status: "" | AdminUserStatus;
+  plan: string;
+  joined_from: string;
+  joined_to: string;
+  sort: "newest" | "oldest" | "last_seen";
+  offset: number;
+  limit?: number;
+};
+
+export type AdminUserDetail = {
+  user: AdminUser;
+  balance_plan: number;
+  balance_purchased: number;
+  subscriptions: { id: number; product: string | null; status: string; manual: boolean; renews_at: string | null; ends_at: string | null }[];
+  ledger: { id: number; kind: string; task: string | null; model: string | null; credits: number; delta: number; note: string; created_at: string | null }[];
+  notes: { id: number; author_email: string; text: string; created_at: string | null }[];
+  audit: AdminAudit[];
+};
+
+export type AdminBulkAction = "credits" | "suspend" | "activate" | "block";
 
 export type AdminMessage = {
   id: number;
@@ -1449,8 +1487,33 @@ export const api = {
   },
   admin: {
     overview: () => request<AdminOverview>("/api/admin/overview"),
-    users: (q: string, offset: number, limit = 50) =>
-      request<{ items: AdminUser[]; total: number }>(`/api/admin/users?${new URLSearchParams({ q, offset: String(offset), limit: String(limit) })}`),
+    users: (query: AdminUserQuery) => {
+      const params = new URLSearchParams({ q: query.q, sort: query.sort, offset: String(query.offset), limit: String(query.limit ?? 50) });
+      if (query.status) params.set("status", query.status);
+      if (query.plan) params.set("plan", query.plan);
+      if (query.joined_from) params.set("joined_from", query.joined_from);
+      if (query.joined_to) params.set("joined_to", query.joined_to);
+      return request<{ items: AdminUser[]; total: number }>(`/api/admin/users?${params}`);
+    },
+    user: (id: number) => request<AdminUserDetail>(`/api/admin/users/${id}`),
+    userCredits: (id: number, amount: number, bucket: "plan" | "purchased", note: string) =>
+      request<{ ok: boolean }>(`/api/admin/users/${id}/credits`, { method: "POST", body: JSON.stringify({ amount, bucket, note }) }),
+    userAddNote: (id: number, text: string) => request<{ ok: boolean }>(`/api/admin/users/${id}/notes`, { method: "POST", body: JSON.stringify({ text }) }),
+    userDeleteNote: (id: number, noteId: number) => request<{ ok: boolean }>(`/api/admin/users/${id}/notes/${noteId}`, { method: "DELETE" }),
+    userAssignPlan: (id: number, productId: number, months: number) =>
+      request<{ ok: boolean }>(`/api/admin/users/${id}/plan`, { method: "POST", body: JSON.stringify({ product_id: productId, months }) }),
+    userEndPlan: (id: number) => request<{ ok: boolean }>(`/api/admin/users/${id}/plan`, { method: "DELETE" }),
+    userPasswordReset: (id: number) => request<{ ok: boolean }>(`/api/admin/users/${id}/password-reset`, { method: "POST" }),
+    userRole: (id: number, role: "user" | "admin") => request<{ ok: boolean }>(`/api/admin/users/${id}/role`, { method: "PUT", body: JSON.stringify({ role }) }),
+    userStatus: (id: number, status: AdminUserStatus, reason: string) =>
+      request<{ ok: boolean }>(`/api/admin/users/${id}/status`, { method: "PUT", body: JSON.stringify({ status, reason }) }),
+    userDelete: (id: number, confirmEmail: string) =>
+      request<{ ok: boolean }>(`/api/admin/users/${id}`, { method: "DELETE", body: JSON.stringify({ confirm_email: confirmEmail }) }),
+    usersBulk: (userIds: number[], action: AdminBulkAction, opts: { amount?: number; bucket?: "plan" | "purchased"; reason?: string } = {}) =>
+      request<{ user_id: number; ok: boolean; error: string | null }[]>("/api/admin/users/bulk", {
+        method: "POST",
+        body: JSON.stringify({ user_ids: userIds, action, amount: opts.amount ?? null, bucket: opts.bucket ?? "purchased", reason: opts.reason ?? "" }),
+      }),
     messages: (status: "open" | "all") => request<AdminMessage[]>(`/api/admin/messages?status=${status}`),
     setMessageHandled: (id: number, handled: boolean) =>
       request<AdminMessage>(`/api/admin/messages/${id}`, { method: "PATCH", body: JSON.stringify({ handled }) }),

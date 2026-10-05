@@ -1,14 +1,16 @@
+import datetime as dt
 from typing import Callable, Literal, TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.admin import ai_models, audit, billing, credits, messages, overview, system, users
+from app.admin import ai_models, audit, billing, credits, messages, overview, system, user_actions, users
 from app.admin.deps import AdminError, admin_only
 from app.admin.schemas import (
-    AdjustIn, AiModelIn, AiModelOut, AttachmentUrlOut, AuditOut, BillingOverviewOut, CatalogOut, CreditSettingsIn,
-    CreditSettingsOut, KeyIn, KeyTestIn, MessageOut, MessageUpdateIn, OverviewOut, ProductIn, ProductOut, SystemOut, TaskIn,
-    TestOut, UsageReportOut, UsersPageOut, WorkspaceCreditsPageOut,
+    AdjustIn, AiModelIn, AiModelOut, AssignPlanIn, AttachmentUrlOut, AuditOut, BillingOverviewOut, BulkIn, BulkResultOut,
+    CatalogOut, CreditSettingsIn, CreditSettingsOut, DeleteUserIn, KeyIn, KeyTestIn, MessageOut, MessageUpdateIn, NoteIn,
+    OverviewOut, ProductIn, ProductOut, RoleIn, StatusIn, SystemOut, TaskIn, TestOut, UsageReportOut, UserCreditsIn,
+    UserDetailOut, UsersPageOut, WorkspaceCreditsPageOut,
 )
 from app.auth.models import User
 from app.core.db import get_db
@@ -38,11 +40,95 @@ def get_overview(db: Session = Depends(get_db)):
 @router.get("/users", response_model=UsersPageOut)
 def list_users(
     q: str = Query("", max_length=200),
+    status: Literal["", "active", "suspended", "blocked"] = "",
+    plan: str = Query("", max_length=20, pattern=r"^(|free|paid|[0-9]+)$"),
+    joined_from: dt.date | None = None,
+    joined_to: dt.date | None = None,
+    sort: Literal["newest", "oldest", "last_seen"] = "newest",
     limit: int = Query(50, ge=1, le=users.MAX_PAGE),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ):
-    return users.list_users(db, q=q, limit=limit, offset=offset)
+    return users.list_users(db, q=q, status=status, plan=plan, joined_from=joined_from, joined_to=joined_to, sort=sort, limit=limit, offset=offset)
+
+
+@router.get("/users/{user_id}", response_model=UserDetailOut)
+def user_detail(user_id: int, db: Session = Depends(get_db)):
+    return _run(users.get_detail, db, user_id)
+
+
+@router.post("/users/bulk", response_model=list[BulkResultOut])
+def bulk_users(payload: BulkIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    if payload.action == "credits" and not payload.amount:
+        raise HTTPException(422, "Miktar 0 olamaz.")
+    results = user_actions.bulk(db, admin, payload.user_ids, payload.action, payload.amount, payload.bucket, payload.reason)
+    for r in results:
+        if r.ok:
+            audit.record(db, admin, f"user.bulk.{payload.action}", f"user:{r.user_id}", f"{payload.amount or ''} {payload.reason}".strip())
+    return results
+
+
+@router.post("/users/{user_id}/credits")
+def user_credits(user_id: int, payload: UserCreditsIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    _run(user_actions.add_credits, db, admin, user_id, payload.amount, payload.bucket, payload.note)
+    audit.record(db, admin, "user.credits", f"user:{user_id}", f"{payload.amount:+d} {payload.bucket} {payload.note}".strip())
+    return {"ok": True}
+
+
+@router.post("/users/{user_id}/notes")
+def user_add_note(user_id: int, payload: NoteIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    _run(user_actions.add_note, db, admin, user_id, payload.text)
+    audit.record(db, admin, "user.note", f"user:{user_id}")
+    return {"ok": True}
+
+
+@router.delete("/users/{user_id}/notes/{note_id}")
+def user_delete_note(user_id: int, note_id: int, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    _run(user_actions.delete_note, db, user_id, note_id)
+    audit.record(db, admin, "user.note_delete", f"user:{user_id}")
+    return {"ok": True}
+
+
+@router.post("/users/{user_id}/plan")
+def user_assign_plan(user_id: int, payload: AssignPlanIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    _run(user_actions.assign_plan, db, user_id, payload.product_id, payload.months)
+    audit.record(db, admin, "user.plan", f"user:{user_id}", f"product={payload.product_id} months={payload.months}")
+    return {"ok": True}
+
+
+@router.delete("/users/{user_id}/plan")
+def user_end_plan(user_id: int, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    _run(user_actions.end_plan, db, user_id)
+    audit.record(db, admin, "user.plan_end", f"user:{user_id}")
+    return {"ok": True}
+
+
+@router.post("/users/{user_id}/password-reset")
+def user_password_reset(user_id: int, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    _run(user_actions.send_password_reset, db, user_id)
+    audit.record(db, admin, "user.password_reset", f"user:{user_id}")
+    return {"ok": True}
+
+
+@router.put("/users/{user_id}/role")
+def user_role(user_id: int, payload: RoleIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    _run(user_actions.set_role, db, admin, user_id, payload.role)
+    audit.record(db, admin, "user.role", f"user:{user_id}", payload.role)
+    return {"ok": True}
+
+
+@router.put("/users/{user_id}/status")
+def user_status(user_id: int, payload: StatusIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    _run(user_actions.set_status, db, admin, user_id, payload.status, payload.reason)
+    audit.record(db, admin, "user.status", f"user:{user_id}", f"{payload.status} {payload.reason}".strip())
+    return {"ok": True}
+
+
+@router.delete("/users/{user_id}")
+def user_delete(user_id: int, payload: DeleteUserIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    email = _run(user_actions.delete_user, db, admin, user_id, payload.confirm_email)
+    audit.record(db, admin, "user.delete", f"user:{user_id}", email)
+    return {"ok": True}
 
 
 @router.get("/messages", response_model=list[MessageOut])

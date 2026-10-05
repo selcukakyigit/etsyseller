@@ -75,6 +75,11 @@ export function useAuthAndShop() {
             return;
           }
         }
+        // Askıdaki/engelli hesap: diğer uç noktalar 403 döner; bilgi ekranına gidilir.
+        if (u.status && u.status !== "active") {
+          router.replace("/account-status");
+          return;
+        }
         if (sessionCache.user && JSON.stringify(sessionCache.user) === JSON.stringify(u)) return;
         sessionCache.user = u;
         setUser(u);

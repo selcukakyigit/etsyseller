@@ -40,6 +40,15 @@ class AdminUserOut(BaseModel):
     name: str | None
     avatar_url: str | None
     created_at: str | None
+    last_seen_at: str | None
+    status: str  # active | suspended | blocked
+    status_reason: str | None
+    role: str  # user | admin
+    env_admin: bool  # ADMIN_EMAILS'ten gelen yönetici: rolü/durumu panelden değişmez
+    workspace_id: int | None
+    plan: str | None  # canlı aboneliğin plan adı; yoksa ücretsiz
+    plan_manual: bool
+    credits: int
     ai_enabled: bool
     ai_requests_30d: int
     shops: list[UserShopOut]
@@ -48,6 +57,85 @@ class AdminUserOut(BaseModel):
 class UsersPageOut(BaseModel):
     items: list[AdminUserOut]
     total: int
+
+
+class LedgerRowOut(BaseModel):
+    id: int
+    kind: str
+    task: str | None
+    model: str | None
+    credits: int
+    delta: int
+    note: str
+    created_at: str | None
+
+
+class NoteOut(BaseModel):
+    id: int
+    author_email: str
+    text: str
+    created_at: str | None
+
+
+class UserSubscriptionOut(BaseModel):
+    id: int
+    product: str | None
+    status: str
+    manual: bool
+    renews_at: str | None
+    ends_at: str | None
+
+
+class UserDetailOut(BaseModel):
+    user: AdminUserOut
+    balance_plan: int
+    balance_purchased: int
+    subscriptions: list[UserSubscriptionOut]
+    ledger: list[LedgerRowOut]
+    notes: list[NoteOut]
+    audit: list["AuditOut"]
+
+
+class UserCreditsIn(BaseModel):
+    amount: int = Field(ge=-1_000_000, le=1_000_000)
+    bucket: str = Field(default="purchased", pattern="^(plan|purchased)$")
+    note: str = Field(default="", max_length=300)
+
+
+class NoteIn(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)
+
+
+class AssignPlanIn(BaseModel):
+    product_id: int
+    months: int = Field(ge=1, le=36)
+
+
+class RoleIn(BaseModel):
+    role: str = Field(pattern="^(user|admin)$")
+
+
+class StatusIn(BaseModel):
+    status: str = Field(pattern="^(active|suspended|blocked)$")
+    reason: str = Field(default="", max_length=300)
+
+
+class DeleteUserIn(BaseModel):
+    confirm_email: str = Field(min_length=3, max_length=255)
+
+
+class BulkIn(BaseModel):
+    user_ids: list[int] = Field(min_length=1, max_length=200)
+    action: str = Field(pattern="^(credits|suspend|activate|block)$")
+    amount: int | None = Field(default=None, ge=-1_000_000, le=1_000_000)
+    bucket: str = Field(default="purchased", pattern="^(plan|purchased)$")
+    reason: str = Field(default="", max_length=300)
+
+
+class BulkResultOut(BaseModel):
+    user_id: int
+    ok: bool
+    error: str | None
 
 
 class AttachmentOut(BaseModel):
@@ -289,3 +377,6 @@ class AuditOut(BaseModel):
     target: str
     detail: str
     created_at: str | None
+
+
+UserDetailOut.model_rebuild()

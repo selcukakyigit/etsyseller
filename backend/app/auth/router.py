@@ -6,7 +6,8 @@ from app.auth.models import User, UserConsent
 from app.auth.schemas import ConsentIn, UserOut
 from app.core.config import settings
 from app.core.db import get_db
-from app.core.deps import get_current_user, is_admin
+from app.auth import access
+from app.core.deps import get_current_user
 from app.core.net import client_ip
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -23,7 +24,8 @@ def user_out(db: Session, user: User) -> UserOut:
         email=user.email,
         name=user.name,
         avatar_url=user.avatar_url,
-        is_admin=is_admin(user),
+        is_admin=access.is_admin(db, user),
+        status=access.status_of(db, user),
         consent_version=version,
         needs_consent=version != settings.legal_version,
     )
