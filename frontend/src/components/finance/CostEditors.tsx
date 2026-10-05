@@ -11,6 +11,7 @@ import FulfillmentTimes from "@/components/orders/FulfillmentTimes";
 import { tNow as t } from "@/lib/i18n";
 import { useCached } from "@/lib/pageCache";
 import { BlockSpinner } from "@/components/ui/Spinner";
+import EtsyLink from "@/components/ui/EtsyLink";
 
 const card = "rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900";
 const inputBase = "w-20 rounded border px-2 py-1 text-right text-sm focus:border-[#D97757] focus:outline-none";
@@ -384,6 +385,7 @@ export function ProductCosts({
                         </span>
                       </span>
                     </button>
+                    <EtsyLink listingId={p.listing_id} className="ml-5 text-[11px]" />
                   </td>
                   <td className="py-2 pr-3 text-right">{p.units}</td>
                   <td className="py-2 pr-3 text-right">{money2.format(p.sales)}</td>

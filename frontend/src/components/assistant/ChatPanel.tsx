@@ -1,12 +1,13 @@
 "use client";
 
-import { ClipboardEvent, DragEvent, Fragment, KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
+import { ChangeEvent, ClipboardEvent, DragEvent, Fragment, KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import { api, API_URL, AssistantProviders, ChatMessageOut, ChatSessionInfo } from "@/lib/api";
 import Card from "./Cards";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import UlaggMark from "@/components/brand/UlaggMark";
 import { useT } from "@/lib/i18n-client";
 import { Spinner } from "@/components/ui/Spinner";
+import { ArrowUpIcon, CameraIcon, ImageIcon, PaperclipIcon, PlusIcon } from "@/components/icons";
 
 const SUGGESTIONS: [string, string][] = [
   ["Bu ayın kâr-zarar durumu nedir?", "What is this month's profit and loss?"],
@@ -15,6 +16,13 @@ const SUGGESTIONS: [string, string][] = [
   ["Geçen yıla göre satışlarımız nasıl?", "How are sales compared to last year?"],
   ["Bu resimlerden yeni bir listing taslağı oluştur", "Create a new listing draft from these images"],
 ];
+
+// Başlıktaki üç düğme (Geçmiş, Yeni sohbet, sağlayıcı) aynı boyda.
+const pill =
+  "inline-flex h-7 items-center whitespace-nowrap rounded-lg border border-neutral-200 px-2.5 text-xs text-neutral-800 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800";
+
+/** "OpenAI (gpt-4o)" → "OpenAI": düğmede yalnızca sağlayıcı adı, model menüde görünür. */
+const shortLabel = (label: string) => label.split(" (")[0];
 
 const localToday = () => {
   const d = new Date();
@@ -93,6 +101,12 @@ export default function ChatPanel({
   const [requestId, setRequestId] = useState<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const photoInput = useRef<HTMLInputElement>(null);
+  const cameraInput = useRef<HTMLInputElement>(null);
+  const textArea = useRef<HTMLTextAreaElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [touch, setTouch] = useState(false); // dokunmatik cihazda menüde "Kamera" da görünür
+  const [providerOpen, setProviderOpen] = useState(false);
   const [confirm, confirmElement] = useConfirm();
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -159,6 +173,20 @@ export default function ChatPanel({
       }
     }
   }
+
+  function onPick(e: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = ""; // aynı dosya yeniden seçilebilsin
+    if (files.length) void addFiles(files);
+  }
+
+  // Mesaj kutusu yazdıkça büyür (en fazla 160 px), gönderince tek satıra döner.
+  useEffect(() => {
+    const el = textArea.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [input]);
 
   function onPaste(e: ClipboardEvent<HTMLTextAreaElement>) {
     const files = Array.from(e.clipboardData.files);
@@ -305,23 +333,53 @@ export default function ChatPanel({
             <UlaggMark size={18} />
             <span className="hidden sm:inline">Ulagg</span>
           </span>
-          <button type="button" onClick={() => setHistoryOpen((v) => !v)} className="whitespace-nowrap rounded-lg border border-neutral-200 px-2.5 py-1 text-xs hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">
+          <button type="button" onClick={() => setHistoryOpen((v) => !v)} className={pill}>
             {historyOpen ? t("Geçmişi gizle", "Hide history") : `${t("Geçmiş", "History")} (${sessions.length})`}
           </button>
         </div>
         <div className="flex min-w-0 items-center gap-2">
-          <button type="button" onClick={newChat} className="whitespace-nowrap rounded-lg border border-neutral-200 px-2.5 py-1 text-xs hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">
+          <button type="button" onClick={newChat} className={pill}>
             {t("Yeni sohbet", "New chat")}
           </button>
+          {/* Yerel <select> yerine: mobilde form alanları 16px'e zorlandığı (globals.css) için diğer düğmelerden büyük kalıyordu. */}
           {providers && (
-            <select value={provider} onChange={(e) => setProvider(e.target.value)} className="min-w-0 max-w-[7.5rem] rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs sm:max-w-[14rem] dark:border-neutral-700 dark:bg-neutral-900" title={t("Yapay zekâ sağlayıcısı", "AI provider")}>
-              {providers.providers.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label}
-                  {p.ready ? "" : t(" (anahtar yok)", " (no key)")}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <button type="button" onClick={() => setProviderOpen((v) => !v)} aria-haspopup="listbox" aria-expanded={providerOpen} title={t("Yapay zekâ sağlayıcısı", "AI provider")} className={`${pill} gap-1`}>
+                {shortLabel(providers.providers.find((p) => p.id === provider)?.label ?? provider)}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={`h-3 w-3 transition ${providerOpen ? "rotate-180" : ""}`} aria-hidden>
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+              {providerOpen && (
+                <>
+                  <button type="button" aria-hidden tabIndex={-1} className="fixed inset-0 z-10 cursor-default" onClick={() => setProviderOpen(false)} />
+                  <div role="listbox" className="absolute right-0 top-full z-20 mt-1.5 w-60 overflow-hidden rounded-xl border border-neutral-200 bg-white py-1 shadow-xl dark:border-neutral-700 dark:bg-neutral-900">
+                    {providers.providers.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        role="option"
+                        aria-selected={p.id === provider}
+                        onClick={() => {
+                          setProvider(p.id);
+                          setProviderOpen(false);
+                        }}
+                        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs text-neutral-800 hover:bg-neutral-100 dark:text-neutral-100 dark:hover:bg-neutral-800"
+                      >
+                        <span className="min-w-0">
+                          <span className="block font-medium">{shortLabel(p.label)}</span>
+                          <span className="block truncate text-[11px] text-neutral-500 dark:text-neutral-400">
+                            {p.label}
+                            {p.ready ? "" : t(" · anahtar yok", " · no key")}
+                          </span>
+                        </span>
+                        {p.id === provider && <span className="text-[#D97757]">✓</span>}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -405,27 +463,76 @@ export default function ChatPanel({
             )}
           </div>
         )}
-        <div className="flex items-end gap-2">
-          <input ref={fileInput} type="file" accept={`image/*,${DOC_EXT.join(",")}`} multiple hidden onChange={(e) => e.target.files && void addFiles(Array.from(e.target.files))} />
-          <button type="button" onClick={() => fileInput.current?.click()} title={t("Resim ya da fatura ekle (en fazla 15 MB)", "Add an image or invoice (up to 15 MB)")} className="rounded-xl border border-neutral-200 px-3 py-2 text-lg leading-none hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">
-            📎
+        {/* Kamera / fotoğraflar / dosyalar ayrı seçicilerle açılır; "capture" telefonda doğrudan kamerayı açar. */}
+        <input ref={cameraInput} type="file" accept="image/*" capture="environment" hidden onChange={onPick} />
+        <input ref={photoInput} type="file" accept="image/*" multiple hidden onChange={onPick} />
+        <input ref={fileInput} type="file" accept={DOC_EXT.join(",")} multiple hidden onChange={onPick} />
+        <div className="relative flex items-end gap-1.5 rounded-3xl border border-neutral-200 bg-neutral-50 p-1.5 transition-colors focus-within:border-neutral-300 dark:border-neutral-700 dark:bg-neutral-800/70 dark:focus-within:border-neutral-600">
+          <button
+            type="button"
+            onClick={() => {
+              setTouch(window.matchMedia("(pointer: coarse)").matches);
+              setMenuOpen((v) => !v);
+            }}
+            aria-label={t("Ekle", "Add")}
+            aria-expanded={menuOpen}
+            title={t("Resim ya da dosya ekle (en fazla 15 MB)", "Add an image or file (up to 15 MB)")}
+            className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-neutral-600 transition hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-700 ${menuOpen ? "rotate-45 bg-neutral-200 dark:bg-neutral-700" : ""}`}
+          >
+            <PlusIcon />
           </button>
+          {menuOpen && (
+            <>
+              <button type="button" aria-hidden tabIndex={-1} className="fixed inset-0 z-10 cursor-default" onClick={() => setMenuOpen(false)} />
+              <div role="menu" className="absolute bottom-full left-0 z-20 mb-2 w-52 overflow-hidden rounded-2xl border border-neutral-200 bg-white py-1.5 shadow-xl dark:border-neutral-700 dark:bg-neutral-900">
+                {(
+                  [
+                    ...(touch ? [[cameraInput, CameraIcon, t("Kamera", "Camera")] as const] : []),
+                    [photoInput, ImageIcon, t("Fotoğraflar", "Photos")] as const,
+                    [fileInput, PaperclipIcon, t("Dosyalar", "Files")] as const,
+                  ] as const
+                ).map(([ref, Icon, label]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      ref.current?.click();
+                    }}
+                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-neutral-800 hover:bg-neutral-100 dark:text-neutral-100 dark:hover:bg-neutral-800"
+                  >
+                    <Icon className="text-neutral-500 dark:text-neutral-400" />
+                    {label}
+                  </button>
+                ))}
+                <p className="border-t border-neutral-100 px-4 pb-1 pt-2 text-[11px] leading-snug text-neutral-400 dark:border-neutral-800 dark:text-neutral-500">
+                  {t("PDF, Excel/CSV, HTML · en fazla 15 MB", "PDF, Excel/CSV, HTML · up to 15 MB")}
+                </p>
+              </div>
+            </>
+          )}
           <textarea
+            ref={textArea}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKey}
             onPaste={onPaste}
-            rows={2}
-            placeholder={t("Ulagg'a sor ya da yaptır… (Enter gönderir, Shift+Enter satır atlar)", "Ask Ulagg or have it do something… (Enter sends, Shift+Enter adds a line)")}
-            className="min-w-0 max-h-40 min-h-[2.75rem] flex-1 resize-none rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-[#D97757] focus:outline-none dark:border-neutral-700 dark:bg-neutral-900"
+            rows={1}
+            enterKeyHint="send"
+            placeholder={t("Ulagg'a sor ya da yaptır…", "Ask Ulagg or have it do something…")}
+            title={t("Enter gönderir, Shift+Enter satır atlar", "Enter sends, Shift+Enter adds a line")}
+            className="max-h-40 min-w-0 flex-1 resize-none bg-transparent px-1 py-2 text-base leading-5 text-neutral-900 sm:text-sm placeholder:text-neutral-400 focus:outline-none dark:text-neutral-100 dark:placeholder:text-neutral-500"
           />
           <button
             type="button"
             onClick={() => void send()}
             disabled={busy || uploading > 0 || (!input.trim() && pending.length === 0) || !!noKey}
-            className="rounded-xl bg-[#D97757] px-4 py-2 text-sm font-semibold text-white hover:bg-[#C6613F] disabled:opacity-40"
+            aria-label={t("Gönder", "Send")}
+            title={t("Gönder", "Send")}
+            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[#D97757] text-white transition hover:bg-[#C6613F] disabled:bg-neutral-200 disabled:text-neutral-400 dark:disabled:bg-neutral-700 dark:disabled:text-neutral-500"
           >
-            {t("Gönder", "Send")}
+            {busy ? <Spinner size={16} /> : <ArrowUpIcon />}
           </button>
         </div>
       </div>

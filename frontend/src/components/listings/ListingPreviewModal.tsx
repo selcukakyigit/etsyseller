@@ -5,6 +5,7 @@ import { ReactNode, useEffect, useMemo, useState } from "react";
 import { api, WorkingCopy } from "@/lib/api";
 import { useT } from "@/lib/i18n-client";
 import { BlockSpinner } from "@/components/ui/Spinner";
+import EtsyLink from "@/components/ui/EtsyLink";
 
 type Loaded = { id: number; data: WorkingCopy; local: boolean } | { id: number; error: string };
 
@@ -148,7 +149,8 @@ export default function ListingPreviewModal({ shopId, listingId, shopName, onClo
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <EtsyLink listingId={listingId} long className="text-sm" />
             <Link href={`/listings/${listingId}/edit`} className="rounded-lg bg-[#D97757] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#C6613F]">
               {t("Düzenle", "Edit")}
             </Link>

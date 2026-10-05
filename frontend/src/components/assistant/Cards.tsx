@@ -7,6 +7,7 @@ import ListingPreviewModal from "@/components/listings/ListingPreviewModal";
 import InvoiceReviewCard from "./InvoiceReviewCard";
 import EtsyDataReviewCard from "./EtsyDataReviewCard";
 import { useT } from "@/lib/i18n-client";
+import EtsyLink from "@/components/ui/EtsyLink";
 
 const box = "mt-2 overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900";
 const head = "border-b border-neutral-100 bg-neutral-50 px-4 py-2 text-sm font-semibold text-neutral-800 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100";
@@ -113,7 +114,10 @@ export default function Card({ card, shopId }: { card: ChatCard; shopId: number 
                 <div className="h-9 w-9 flex-shrink-0 rounded bg-neutral-100 dark:bg-neutral-800" />
               )}
               <div className="min-w-0 flex-1">
-                <div className="truncate font-medium">{p.title}</div>
+                <div className="flex items-baseline gap-2">
+                  <span className="truncate font-medium">{p.title}</span>
+                  <EtsyLink listingId={p.listing_id} />
+                </div>
                 <div className="text-neutral-500">{t(`${p.units} adet · satış`, `${p.units} units · sales`)} {fmt(card.currency, p.sales)}</div>
                 {p.prev_units !== undefined && (
                   <div className="text-neutral-400">
@@ -181,7 +185,10 @@ export default function Card({ card, shopId }: { card: ChatCard; shopId: number 
             {card.rows.map((r) => (
               <div key={r.listing_id} className="flex items-center gap-3 px-4 py-2 text-xs">
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium">{r.title}</div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="truncate font-medium">{r.title}</span>
+                    <EtsyLink listingId={r.listing_id} />
+                  </div>
                   <div className="text-neutral-500">
                     {t(`son 180 gün ${r.units_recent} adet · önceki 180 gün ${r.units_previous} adet · ${r.views} görüntülenme`, `last 180 days ${r.units_recent} units · previous 180 days ${r.units_previous} units · ${r.views} views`)}
                   </div>
@@ -243,7 +250,10 @@ export default function Card({ card, shopId }: { card: ChatCard; shopId: number 
           {card.rows.map((p) => (
             <div key={p.listing_id} className="flex items-center gap-3 px-4 py-2 text-xs">
               <div className="min-w-0 flex-1">
-                <div className="truncate font-medium">{p.title}</div>
+                <div className="flex items-baseline gap-2">
+                  <span className="truncate font-medium">{p.title}</span>
+                  <EtsyLink listingId={p.listing_id} />
+                </div>
                 <div className="text-neutral-500">
                   {p.prev_units} → {p.units} {t("adet", "units")} · {fmt(card.currency, p.prev_sales)} → {fmt(card.currency, p.sales)}
                 </div>

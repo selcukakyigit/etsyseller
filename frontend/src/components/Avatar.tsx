@@ -38,7 +38,11 @@ export default function Avatar({
       />
     );
   }
-  const seed = hash(user?.email ?? String(user?.id ?? "0"));
+  // Kullanıcı henüz yüklenmediyse rastgele bir hayvan ikonu (başka birinin profili gibi görünür) yerine boş yer tutucu.
+  if (!user) {
+    return <div aria-hidden style={style} className={`rounded-full flex-shrink-0 animate-pulse bg-neutral-200 dark:bg-neutral-800 ${className}`} />;
+  }
+  const seed = hash(user.email ?? String(user.id));
   return (
     <div
       aria-hidden

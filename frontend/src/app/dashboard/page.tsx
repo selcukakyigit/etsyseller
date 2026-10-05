@@ -56,13 +56,6 @@ export default function DashboardPage() {
             </div>
 
             <ChatPanel shopId={shopId} onSent={reload} heightClass="h-[calc(100vh-15rem)] min-h-[26rem] lg:h-[calc(100vh-11rem)]" />
-
-            <p className="px-1 text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
-              {t(
-                "Ulagg Etsy'ye kendiliğinden bir şey göndermez. Oluşturduğu listing taslağını açıp kontrol ettikten sonra \"Etsy'de yayınla\" ile sen yayınlarsın.",
-                "Ulagg never sends anything to Etsy by itself. Open the listing draft it creates, check it, then publish it yourself with \"Publish to Etsy\".",
-              )}
-            </p>
           </div>
         )}
       </div>
