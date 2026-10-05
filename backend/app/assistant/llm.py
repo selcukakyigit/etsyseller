@@ -1,27 +1,59 @@
 """Sağlayıcıdan bağımsız araç kullanan (tool-use) sohbet döngüsü: OpenAI ve Claude (Anthropic).
 
 `run_agent`, modele araçları sunar; model bir araç çağırırsa `execute(name, args)` ile çalıştırıp sonucu geri verir ve
-model nihai metni yazana kadar (en fazla MAX_ROUNDS tur) devam eder."""
+model nihai metni yazana kadar (en fazla MAX_ROUNDS tur) devam eder.
+
+İstem önbelleği (prompt caching): istem `static` (araçlar + sabit kurallar, her istekte aynı) ve `dynamic` (mağaza
+bilgisi) olarak gelir; sabit kısım başta durur. OpenAI aynı başlangıcı kendiliğinden önbelleğe alır. Claude'da sabit
+kısmın sonuna ve her turda son mesaja işaret konur: bir istek içindeki araç turları da bir öncekinin önbelleğinden okur.
+Her turun token kullanımı `Usage`'da toplanır (maliyet izleme)."""
 import base64
 import json
 import logging
+from dataclasses import dataclass, field
 from typing import Callable
 
 from app.ai.client import get_anthropic_client, get_openai_client
 from app.core.config import settings
+from app.core.i18n import tr
 
 log = logging.getLogger(__name__)
 
 MAX_ROUNDS = 9
 MAX_TOKENS = 2500
+_CACHE = {"type": "ephemeral"}
 
 
 class AssistantError(Exception):
     """Kullanıcıya gösterilecek anlaşılır hata (anahtar yok, sağlayıcı hatası vb.)."""
 
 
+@dataclass
+class Usage:
+    """Bir isteğin tüm turlarının toplamı. input_tokens önbellekten okunanlar dahil toplam girdidir."""
+
+    provider: str
+    model: str
+    rounds: int = 0
+    input_tokens: int = 0
+    cached_tokens: int = 0
+    cache_write_tokens: int = 0
+    output_tokens: int = 0
+    tools: list[str] = field(default_factory=list)
+
+
+@dataclass
+class AgentResult:
+    text: str
+    usage: Usage
+
+
 def provider_ready(provider: str) -> bool:
     return bool(settings.anthropic_api_key if provider == "anthropic" else settings.openai_api_key)
+
+
+def model_name(provider: str) -> str:
+    return settings.anthropic_model if provider == "anthropic" else settings.openai_model
 
 
 def available_providers() -> list[dict]:
@@ -29,6 +61,17 @@ def available_providers() -> list[dict]:
         {"id": "openai", "label": f"OpenAI ({settings.openai_model})", "ready": provider_ready("openai")},
         {"id": "anthropic", "label": f"Claude ({settings.anthropic_model})", "ready": provider_ready("anthropic")},
     ]
+
+
+def missing_key_message() -> str:
+    return tr(
+        "Seçili yapay zekâ sağlayıcısının API anahtarı tanımlı değil. Ayarlar > API anahtarları bölümünden ekleyin ya da diğer sağlayıcıyı seçin.",
+        "The selected AI provider has no API key. Add one under Settings > API keys, or pick the other provider.",
+    )
+
+
+def _too_many_steps() -> str:
+    return tr("Çok fazla adım gerekti; isteği daha küçük parçalara bölüp tekrar dener misin?", "This needed too many steps; could you split the request into smaller parts and try again?")
 
 
 def _image(i: dict) -> tuple[str, str]:
@@ -42,30 +85,31 @@ def _image(i: dict) -> tuple[str, str]:
 
 def run_agent(
     provider: str,
-    system: str,
+    static: str,
+    dynamic: str,
     history: list[dict],
     user_text: str,
     images: list[dict],
     tools: list[dict],
     execute: Callable[[str, dict], dict],
-) -> str:
-    """history: [{"role": "user"|"assistant", "content": str}]. images: [{"path", "content_type"}] (yalnızca bu mesajın resimleri).
-    Döner: asistanın nihai metni."""
+) -> AgentResult:
+    """history: [{"role": "user"|"assistant", "content": str}]. images: [{"path", "content_type"}] (yalnızca bu mesajın resimleri)."""
     if not provider_ready(provider):
-        name = "Claude (Anthropic)" if provider == "anthropic" else "OpenAI"
-        raise AssistantError(f"{name} API anahtarı tanımlı değil. Ayarlar > API anahtarları bölümünden ekleyin ya da diğer sağlayıcıyı seçin.")
+        raise AssistantError(missing_key_message())
+    usage = Usage(provider=provider, model=model_name(provider))
     try:
-        if provider == "anthropic":
-            return _run_anthropic(system, history, user_text, images, tools, execute)
-        return _run_openai(system, history, user_text, images, tools, execute)
+        run = _run_anthropic if provider == "anthropic" else _run_openai
+        text = run(static, dynamic, history, user_text, images, tools, execute, usage)
     except AssistantError:
         raise
     except Exception as exc:  # noqa: BLE001
         log.exception("Asistan sağlayıcı hatası (%s)", provider)
-        raise AssistantError(f"Yapay zekâ sağlayıcısı hata verdi: {str(exc)[:300]}") from exc
+        raise AssistantError(tr(f"Yapay zekâ sağlayıcısı hata verdi: {str(exc)[:300]}", f"The AI provider returned an error: {str(exc)[:300]}")) from exc
+    return AgentResult(text, usage)
 
 
-def _tool_result(execute: Callable[[str, dict], dict], name: str, args: dict) -> str:
+def _tool_result(execute: Callable[[str, dict], dict], name: str, args: dict, usage: Usage) -> str:
+    usage.tools.append(name)
     try:
         return json.dumps(execute(name, args), ensure_ascii=False, default=str)
     except Exception as exc:  # noqa: BLE001 — model hatayı görüp kendini düzeltebilsin
@@ -75,17 +119,20 @@ def _tool_result(execute: Callable[[str, dict], dict], name: str, args: dict) ->
 
 # ------------------------------------------------------------------ OpenAI
 
-def _run_openai(system, history, user_text, images, tools, execute) -> str:
+
+def _run_openai(static, dynamic, history, user_text, images, tools, execute, usage: Usage) -> str:
     client = get_openai_client()
     content: list[dict] | str = user_text
     if images:
         content = [{"type": "text", "text": user_text}] + [
             {"type": "image_url", "image_url": {"url": "data:{};base64,{}".format(*_image(i))}} for i in images
         ]
-    messages = [{"role": "system", "content": system}, *history, {"role": "user", "content": content}]
+    # Sabit kısım başta: OpenAI aynı başlangıcı (araçlar + sistem isteminin başı) kendiliğinden önbelleğe alır.
+    messages = [{"role": "system", "content": f"{static}\n\n{dynamic}"}, *history, {"role": "user", "content": content}]
     oa_tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in tools]
     for _ in range(MAX_ROUNDS):
-        resp = client.chat.completions.create(model=settings.openai_model, messages=messages, tools=oa_tools, max_tokens=MAX_TOKENS)
+        resp = client.chat.completions.create(model=usage.model, messages=messages, tools=oa_tools, max_tokens=MAX_TOKENS)
+        _add_openai_usage(usage, resp)
         msg = resp.choices[0].message
         if not msg.tool_calls:
             return (msg.content or "").strip()
@@ -99,21 +146,48 @@ def _run_openai(system, history, user_text, images, tools, execute) -> str:
                 args = json.loads(c.function.arguments or "{}")
             except json.JSONDecodeError:
                 args = {}
-            messages.append({"role": "tool", "tool_call_id": c.id, "content": _tool_result(execute, c.function.name, args)})
-    return "Çok fazla adım gerekti; isteği daha küçük parçalara bölüp tekrar dener misin?"
+            messages.append({"role": "tool", "tool_call_id": c.id, "content": _tool_result(execute, c.function.name, args, usage)})
+    return _too_many_steps()
+
+
+def _add_openai_usage(usage: Usage, resp) -> None:
+    usage.rounds += 1
+    u = getattr(resp, "usage", None)
+    if u is None:
+        return
+    usage.input_tokens += u.prompt_tokens or 0
+    usage.output_tokens += u.completion_tokens or 0
+    details = getattr(u, "prompt_tokens_details", None)
+    usage.cached_tokens += (getattr(details, "cached_tokens", 0) or 0) if details else 0
 
 
 # ------------------------------------------------------------------ Claude
 
-def _run_anthropic(system, history, user_text, images, tools, execute) -> str:
+
+def _mark_last_message(messages: list[dict]) -> None:
+    """Önbellek işaretini son mesajın son bloğuna taşır (Claude en fazla 4 işaret kabul eder; eskiler kaldırılır)."""
+    for m in messages:
+        if isinstance(m["content"], list):
+            for block in m["content"]:
+                block.pop("cache_control", None)
+    last = messages[-1]
+    if isinstance(last["content"], str):
+        last["content"] = [{"type": "text", "text": last["content"]}]
+    last["content"][-1]["cache_control"] = _CACHE
+
+
+def _run_anthropic(static, dynamic, history, user_text, images, tools, execute, usage: Usage) -> str:
     client = get_anthropic_client()
+    system = [{"type": "text", "text": static, "cache_control": _CACHE}, {"type": "text", "text": dynamic}]
     blocks: list[dict] = [
         {"type": "image", "source": dict(zip(("type", "media_type", "data"), ("base64", *_image(i))))} for i in images
     ]
     blocks.append({"type": "text", "text": user_text})
-    messages = [*history, {"role": "user", "content": blocks}]
+    messages = [*({"role": h["role"], "content": h["content"]} for h in history), {"role": "user", "content": blocks}]
     for _ in range(MAX_ROUNDS):
-        resp = client.messages.create(model=settings.anthropic_model, max_tokens=MAX_TOKENS, system=system, messages=messages, tools=tools)
+        _mark_last_message(messages)
+        resp = client.messages.create(model=usage.model, max_tokens=MAX_TOKENS, system=system, messages=messages, tools=tools)
+        _add_anthropic_usage(usage, resp)
         if resp.stop_reason != "tool_use":
             return "".join(b.text for b in resp.content if b.type == "text").strip()
         assistant_blocks = []
@@ -123,7 +197,20 @@ def _run_anthropic(system, history, user_text, images, tools, execute) -> str:
                 assistant_blocks.append({"type": "text", "text": b.text})
             elif b.type == "tool_use":
                 assistant_blocks.append({"type": "tool_use", "id": b.id, "name": b.name, "input": b.input})
-                results.append({"type": "tool_result", "tool_use_id": b.id, "content": _tool_result(execute, b.name, b.input or {})})
+                results.append({"type": "tool_result", "tool_use_id": b.id, "content": _tool_result(execute, b.name, b.input or {}, usage)})
         messages.append({"role": "assistant", "content": assistant_blocks})
         messages.append({"role": "user", "content": results})
-    return "Çok fazla adım gerekti; isteği daha küçük parçalara bölüp tekrar dener misin?"
+    return _too_many_steps()
+
+
+def _add_anthropic_usage(usage: Usage, resp) -> None:
+    usage.rounds += 1
+    u = getattr(resp, "usage", None)
+    if u is None:
+        return
+    read = getattr(u, "cache_read_input_tokens", 0) or 0
+    write = getattr(u, "cache_creation_input_tokens", 0) or 0
+    usage.input_tokens += (u.input_tokens or 0) + read + write
+    usage.cached_tokens += read
+    usage.cache_write_tokens += write
+    usage.output_tokens += u.output_tokens or 0

@@ -40,6 +40,8 @@ EN_MESSAGES: dict[str, str] = {
     "İşlemi onaylamanız gerekiyor": "You need to confirm this action",
     "Gemini API anahtarı tanımlı değil. Ayarlar > API anahtarları bölümünden ekleyin.": "No Gemini API key is set. Add one under Settings > API keys.",
     "Sohbet bulunamadı": "Chat not found",
+    "Not bulunamadı": "Note not found",
+    "Bu dosyanın saklama süresi doldu": "This file's retention period has ended",
     "Oturum geçersiz veya süresi dolmuş": "Your session is invalid or has expired",
     "Yeni hedef için teslimat günleri (en az / en fazla) gerekli.": "Delivery days (min / max) are required for a new destination.",
     "Kimlik servisine ulaşılamadı": "Could not reach the sign-in service",

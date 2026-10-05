@@ -30,11 +30,14 @@ class ChatMessage(Base):
     content: Mapped[str] = mapped_column(Text, default="")
     image_ids_json: Mapped[str] = mapped_column(Text, default="[]")
     cards_json: Mapped[str] = mapped_column(Text, default="[]")
+    # Asistan mesajında: bu turda çağrılan araçların kısa özeti (bkz. context.summarize_tool_call). Kullanıcıya gösterilmez;
+    # sonraki turlarda modele geçmişle birlikte verilir ki konuşulan listing/sipariş kimliklerini ve rakamları unutmasın.
+    tool_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
 
 class ChatImage(Base):
-    """Sohbete yüklenen resim (yeni listing taslağına eklenmek üzere)."""
+    """Sohbete yüklenen resim ya da belge. Saklama süresi dolunca dosya silinir, `path` boşalır (bkz. cleanup.py)."""
 
     __tablename__ = "chat_images"
 
@@ -45,6 +48,41 @@ class ChatImage(Base):
     content_type: Mapped[str] = mapped_column(String(80))
     path: Mapped[str] = mapped_column(String(500))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+
+class AssistantMemory(Base):
+    """Mağaza notu: asistanın sohbetler arasında hatırladığı kalıcı tercih ya da mağaza bilgisi (ör. "başlıklarda marka adı
+    kullanılmaz"). Mağazaya bağlıdır, mağazanın tüm kullanıcıları görür; Ayarlar > Yapay Zekâ'dan görülüp silinir."""
+
+    __tablename__ = "assistant_memories"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
+    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # notu ekleyen ya da sohbetinde kaydedilen kullanıcı
+    text: Mapped[str] = mapped_column(String(300))
+    source: Mapped[str] = mapped_column(String(12), default="assistant")  # assistant | user
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+
+class AssistantUsage(Base):
+    """Bir sohbet isteğinin yapay zekâ kullanımı (tüm araç turları toplamı). Maliyeti mağaza bazında izlemek ve ileride plan
+    sınırları için. Etsy verisi içermez; bu yüzden "bağlantıyı kes"te silinmez, hesap silinince silinir."""
+
+    __tablename__ = "assistant_usage"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
+    user_id: Mapped[int] = mapped_column(Integer)
+    session_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    provider: Mapped[str] = mapped_column(String(20))
+    model: Mapped[str] = mapped_column(String(80))
+    rounds: Mapped[int] = mapped_column(Integer, default=0)
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)  # önbellekten okunanlar dahil toplam girdi
+    cached_tokens: Mapped[int] = mapped_column(Integer, default=0)  # önbellekten (indirimli) okunan girdi
+    cache_write_tokens: Mapped[int] = mapped_column(Integer, default=0)  # önbelleğe yazılan girdi (yalnızca Claude)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    tools: Mapped[str] = mapped_column(String(500), default="")  # çağrılan araçlar, virgülle
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
 
 
 class AdReport(Base):

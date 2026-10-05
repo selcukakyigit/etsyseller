@@ -5,6 +5,7 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import SettingsSubpage from "@/components/SettingsSubpage";
+import AssistantNotes from "@/components/settings/AssistantNotes";
 import { useT } from "@/lib/i18n-client";
 
 export default function AiSettingsPage() {
@@ -74,6 +75,8 @@ export default function AiSettingsPage() {
           </p>
         </section>
       )}
+
+      {user && enabled && activeShop && <AssistantNotes shopId={activeShop.id} />}
     </SettingsSubpage>
   );
 }

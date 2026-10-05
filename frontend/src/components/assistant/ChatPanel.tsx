@@ -74,6 +74,20 @@ function FileChip({ name, size = "h-14 w-14" }: { name: string; size?: string })
   );
 }
 
+/** Saklama süresi dolup silinmiş ek (90 gün, bkz. backend assistant/cleanup.py). */
+function ExpiredChip({ name }: { name: string }) {
+  const { t } = useT();
+  return (
+    <div
+      title={t(`${name}: saklama süresi dolduğu için silindi`, `${name}: deleted after the retention period`)}
+      className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-neutral-300 px-1 text-center text-neutral-400 dark:border-neutral-700 dark:text-neutral-500"
+    >
+      <span className="text-base leading-none">⌛</span>
+      <span className="text-[10px] leading-tight">{t("Süresi doldu", "Expired")}</span>
+    </div>
+  );
+}
+
 export default function ChatPanel({
   shopId,
   onSent,
@@ -410,7 +424,9 @@ export default function ChatPanel({
               {m.images.length > 0 && (
                 <div className={`mb-1 flex flex-wrap gap-1.5 ${m.role === "user" ? "justify-end" : ""}`}>
                   {m.images.map((i) =>
-                    i.content_type && !i.content_type.startsWith("image/") ? (
+                    i.expired ? (
+                      <ExpiredChip key={i.id} name={i.filename ?? t("dosya", "file")} />
+                    ) : i.content_type && !i.content_type.startsWith("image/") ? (
                       <FileChip key={i.id} name={i.filename ?? "dosya"} size="h-20 w-20" />
                     ) : (
                       // eslint-disable-next-line @next/next/no-img-element

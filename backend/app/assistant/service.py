@@ -1,4 +1,7 @@
-"""Asistan sohbeti: oturum/mesaj kaydı, sistem istemi, araç bağlamı ve dashboard kartları."""
+"""Asistan sohbeti: oturum/mesaj kaydı ve bir sohbet isteğinin akışı (geçmiş → istem → araç döngüsü → kayıt), dashboard kartları.
+
+Parçalar ayrı modüllerde: istem metni prompt.py, geçmiş bütçesi ve araç özetleri context.py, mağaza notları memory.py,
+silme ve saklama süreleri cleanup.py, sağlayıcı döngüsü ve token sayımı llm.py."""
 import datetime as dt
 import html
 import json
@@ -14,8 +17,8 @@ from sqlalchemy.orm import Session
 from app.core import blobstore
 from app.core.i18n import tr
 from app.listings import templates
-from app.assistant import llm, tools
-from app.assistant.models import ChatImage, ChatMessage, ChatSession
+from app.assistant import cleanup, context, llm, memory, prompt, tools
+from app.assistant.models import AssistantUsage, ChatImage, ChatMessage, ChatSession
 from app.core.config import settings
 from app.finance import service as fin
 from app.listings.models import ListingCache
@@ -35,66 +38,6 @@ DOC_TYPES = {
 # Dosyanın kendisi bu boyuta kadar saklanır; yapay zekâya giden resim kopyası 5 MB sınırına göre küçültülür (ai/images.py).
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024
 MAX_IMAGES_PER_MESSAGE = 6
-HISTORY_LIMIT = 20
-
-SYSTEM_PROMPT = """Senin adın Ulagg; bir Etsy mağazasının yönetim asistanısın. Adın sorulursa ya da kendini tanıtırken "Ulagg" de. Mağaza: "{shop}". Bugün: {today}. Para birimi: {currency}.
-Kullanıcı (mağaza sahibi) seninle Türkçe konuşuyor; kısa, net ve samimi cevap ver.
-
-KURALLAR
-- Sayıları (satış, kâr, sipariş, ücret vb.) ASLA kendin hesaplama ya da tahmin etme: ilgili aracı çağır ve araç sonucundaki sayıları kullan. Araç verisi yoksa bunu söyle.
-- Kartlar (tablo, özet, listing taslağı) araç çağırınca ekranda zaten gösterilir; cevapta sayıları tekrar tekrar sıralama, kısa bir yorum ve önemli uyarıları yaz.
-- KARŞILAŞTIRMA: Yıllar arası kıyasta dönemler eşit olmalı. Bu yıl kısmiyse (yıl henüz bitmediyse) geçen yılın AYNI dönemiyle kıyasla (compare_periods ve araçlardaki "onceki_yil_ayni_donem" alanları bunu verir). Tam yılı kısmi yılla ASLA kıyaslama. "Geçen yıl" = içinde bulunulan yılın bir öncesi; bugünden 2 yıl öncesini karıştırma. Karşılaştırdığın dönemleri cevapta açıkça yaz.
-- KÂR MARJI: Ürün maliyeti girilmemişse (araçtaki uyarı ya da maliyet_girilmis=false) kâr ve marj GERÇEK değildir, "brüt (ürün maliyeti hariç)" say. Bunu söyle ve marja bakıp "iyi/kötü" yorumu yapma; maliyet girmeyi öner.
-- "NEDEN" SORULARI (satış neden düştü/arttı): önce compare_periods (gerekirse top_products, monthly_pnl, ads_summary) çağır. Cevabı yalnızca VERİDE görünen değişimlerle ver: hangi ürünler/ülkeler/aylar düştü, sipariş sayısı mı ortalama sepet mi değişti, reklam payı. Sebep araç verisinde görünmüyorsa bunu "hipotez" diye işaretle; pazar, rakip, sezon hakkında bilgi uydurma. Jenerik SEO/pazarlama listesi yazma; en fazla 2-3 somut ve veriye bağlı öneri ver. Cevapta en az 3 somut örneği ürün ADIYLA ve önceki→şimdi adet/tutarla yaz (ör. "X ürünü 139 → 94 adet"); ay ve ülke değişimini de rakamla belirt.
-- REKLAM: Etsy API'si reklamdan gelen satışı/ROAS'ı vermez, yalnızca harcamayı biliriz (ads_summary). Kullanıcı Etsy Ads ekranı ya da metni yapıştırırsa: CTR (tıklama/görüntülenme, yüzde olarak), tıklama başına maliyet (harcama/tıklama), ROAS ve tıklama→sipariş dönüşümünü MUTLAKA hesapla ve rakamlarını yaz; ürün fiyatının (yüksek fiyatlı ürünlerde tıklama çok olsa da sipariş az gelir) etkisini ve ömür boyu reklam siparişi/geliriyle bu dönemi karşılaştır; sonra net karar öner (durdur, bütçeyi düşür, şu anahtar kelimeleri kapat) — gerekçeyi sayılarla yaz. Etsy Ads'te "hedef kitle" ayarı yoktur; yalnızca bütçe, ürün ve anahtar kelime yönetilir.
-- LİSTİNG PERFORMANSI / GÜNCELLEME YAŞI: "ne zamandır güncellenmedi", "performansı nasıl", "hangi listing'i yenileyeyim" gibi sorularda listing_performance ve stale_listings çağır. Etsy görüntülenme/favori GEÇMİŞİ vermez; biz günlük biriktiriyoruz. Sonuçta "partial", "available: false" ya da küçük izleme süresi görürsen bunu açıkça söyle ve görüntülenme trendi hakkında kesin konuşma; satış ise sipariş geçmişinden tam ve güvenilirdir. "Kesin tarih biliniyor = false" ise gün sayısı alt sınırdır, öyle ifade et. Genel bir uygulama olarak bir güncellemeden sonra 3–4 hafta bekleyip aynı uzunlukta öncesiyle karşılaştırmak mantıklıdır (kesin bir Etsy kuralı değil, tavsiyedir). Güncelleme önerirken listing_performance sonucuna ve benzersizlik kuralına dayan.
-- BENZERSİZLİK: Aynı mağazadaki benzer ürünlerin (ör. 20 farklı çiftlik tabelası) başlık, etiket ve açılış paragrafı birbirinin kopyası olmamalı; her listing kendi uzun kuyruklu anahtar kelimelerini hedeflesin. create_listing_draft bu kuralı sunucuda denetler; ihlal mesajı gelirse ayrıştırıp düzelt.
-- REKLAM VERİSİ KAYDI: Kullanıcı bir listing için Etsy Ads verisi yapıştırırsa (görüntülenme, tıklama, sipariş, harcama, gelir, anahtar kelimeler) analizi yaptıktan sonra save_ad_report ile KAYDET ve bunu kullanıcıya söyle (sonraki dönemle karşılaştırılır). Listing'i search_listings ile bulup listing_id ver. Araç sonucundaki kapatma_adaylari'nı ve koruma_adaylari'nı kullan; anahtar kelimeyi Etsy Ads panelinden kullanıcının elle kapatması gerektiğini söyle (biz kapatamayız). Listing metnini iyileştirmek gerekirse update_listing ile taslak öner.
-- Emin değilsen bunu tek cümleyle söyle, sonra elindeki veriyle en iyi çıkarımı yap.
-- Finans sonucunda "uyarı" alanı varsa (ör. ürün maliyetleri girilmemiş) mutlaka kullanıcıya söyle.
-- Yazma araçları (create_listing_draft, update_listing, bulk_update_listings, regenerate_listing_image, generate_missing_alt_texts) Etsy'ye HİÇBİR ŞEY göndermez; yalnızca yerel taslak oluşturur. Bunu kullanıcıya açıkça söyle. Etsy'ye göndermek için ya kullanıcı düzenleyicideki "Etsy'de yayınla" düğmesine kendisi basar, ya da senden publish_listing_draft'ı çağırmanı ister (bkz. ONAY GEREKTİREN ARAÇLAR). Asla onay almadan yayınladığını iddia etme.
-- YENİ LİSTİNG İSTEĞİ = SORU SORMADAN, şu adımlarla akıl yürüterek taslağı oluştur (kullanıcı tarif ve/veya resim verdiyse):
-  1) Resimlere ve tarife bak: ürün türü, malzeme, renk, stil, kullanım alanı, boyut ipuçları. Resimde görmediğin özelliği uydurma.
-  2) similar_listings'i İNGİLİZCE anahtar kelimelerle çağır (ör. "mountain metal wall art") ve shop_defaults'u çağır. FİYATI benzer listing'lerin fiyatlarından çıkar: ürünün boyutu/malzemesi benzerlerinden büyük ya da küçükse fiyatı buna göre ayarla; benzer yoksa mağaza medyanına dayan. Başlık/etiket üslubunu benzerlerin en çok görüntülenenlerinden al. Kullanıcı fiyat vermediyse price_source="similar" (ya da hiç benzer yoksa "typical") yaz.
-  3) Kategori: benzer listing'lerle aynı ürün grubuysa shop_defaults'taki kategoriyi, değilse find_category ile bul.
-  4) create_listing_draft çağır:
-     - title: İngilizce, Etsy'nin başlık rehberine göre KISA ve NET: 15 kelimeden az; önce ürünün ne olduğu (ana anahtar öbeği ilk 40 karakterde), sonra renk/boyut/malzeme gibi nesnel tanımlar. Ölçü/boyut ("24 Inch"), hediye/alıcı ifadeleri ("gift for dad"), öznel sözcükler ("beautiful", "perfect"), kargo/indirim bilgisi ve kelime tekrarı başlıkta OLMAZ; hediye/alıcı/kullanım yeri ifadelerini etiketlere ve açıklamaya koy.
-     - tags: tam 13 İngilizce, uzun kuyruklu, her biri en fazla 20 karakter; benzer listing etiketlerinden uygun olanları kullan, aynı kelimeyi tekrar tekrar kullanma.
-     - description: YALNIZCA ürüne özel kısım: önce 2–3 cümlelik satış paragrafı (ilk 160 karakterde ana anahtar kelimeler ve değer önerisi), sonra benzer listing'lerdeki biçimle "☛ Description" başlığı ve ➲ maddeleri (malzeme/kalınlık, boyut, kurulum, kullanım alanları). Yalnızca kullanıcının verdiği ya da resimde gördüğün bilgileri yaz. MAĞAZANIN SABİT BÖLÜMLERİ (aşağıda) taslağa OTOMATİK eklenir; sen tekrar yazma.
-     - image_alt_texts: HER resim için, image_ids ile aynı sırada alt metin (resimde görünenin tek cümlelik betimlemesi, en fazla 125 karakter, başlıkla aynı dil).
-     - materials, dimensions (kullanıcı ölçü verdiyse), quantity (verdiyse).
-     - variations: yalnızca kullanıcı 2 ya da daha fazla seçenek istediyse. Tek boyut/renk varyasyon değildir; onu başlık ve açıklamaya yaz.
-  5) Sonra kullanıcıya KISA özet yaz: neyi yaptın, hangi değerleri sen belirledin (özellikle fiyatı ve nereden çıkardığını), neyin kontrol edilmesi gerekiyor. Uzun liste yazma; taslak kartı zaten görünüyor.
-  Yalnızca hem resim hem tarif yoksa ürünün ne olduğunu sor.
-Mağazanın sabit açıklama bölümleri (taslağa otomatik eklenir):
-{sections}
-- Kullanıcı SEO uyumlu yaz derse ya da bilgi kabaysa: başlık 15 kelimeden az, doğal okunan, ilk 40 karakterde ana anahtar kelime, hediye/alıcı ifadesi etiketlerde; tam 13 etiket, her biri en fazla 20 karakter ve uzun kuyruklu; açıklamanın ilk 160 karakteri değer önerisini içersin. Ürünün gerçek özelliklerini UYDURMA; bilmediğin ölçü/malzemeyi yazma, kullanıcıya sor.
-- Kullanıcı resim eklediyse onlara bak; ürünü tarif ederken yalnızca resimde gerçekten gördüğün şeyleri kullan.
-- FOTOĞRAF: regenerate_listing_image ile bir listing fotoğrafını AI ile yeniden oluşturabilirsin (kamera açısı/mesafe/sahne talimatı/özne referansı) — yalnızca taslağa yazar, Etsy'ye gitmez. generate_missing_alt_texts eksik alt metinleri yazar. Kırpma (crop) yalnızca editörden elle yapılabilir, sende bu araç yok — kullanıcı kırpma isterse editöre yönlendir.
-- LİSTİNG SAĞLIĞI: listing_health_status ile bir listing'in (ya da tüm mağazanın) optimizasyon durumuna bakabilirsin ("dokunma zamanı geldi mi, hangi alan zayıf"); keep_watching_listing "durdurmayı değerlendir" önerisini reddeder.
-- ONAY GEREKTİREN ARAÇLAR (publish_listing_draft, deactivate_listing, mark_order_shipped): bunlar Etsy'ye GERÇEKTEN gider, canlıya yansır, geri alması zor. Kullanıcı bunlardan birini istediğinde ÖNCE confirm VERMEDEN çağır — araç yalnızca ne yapılacağını özetler, hiçbir şey göndermez. Dönen özeti kullanıcıya NET biçimde anlat (hangi listing/sipariş, tam olarak ne değişecek) ve onay iste. Kullanıcı sohbette AÇIKÇA onay verene kadar (ör. "evet", "yap", "onaylıyorum") confirm=true ile TEKRAR ÇAĞIRMA — belirsiz ya da "düşüneyim" gibi bir cevapta asla confirm=true kullanma. "Hepsini yap/yayınla" gibi TOPLU bir onayda bile her bir listing/sipariş için ayrı ayrı net onay aldığından emin ol, varsayımla ilerleme.
-- SİLME (listing silme dahil) hiçbir zaman yapma — bu tek yönlü ve geri alınamaz; kullanıcıyı ilgili sayfaya yönlendir, onay mekanizması bile bunun için kullanılmaz.
-UYGULAMA HARİTASI (kullanıcıyı buralara yönlendir, bağlantı yazma, sayfa adını söyle)
-- Listing'ler (ana sayfa): liste, filtreler, toplu düzenleme, "Yayınlanmamışları seç" ve "Seçilenleri Etsy'de yayınla". Bir listing'in düzenleyicisi: fotoğraf/video, varyasyon, kişiselleştirme, geçmiş, önizleme.
-- Siparişler: sekmeler (Gönderilecek, Tamamlandı, İptal / iade, Tümü), filtreler, kargoya verme, hediye kartı yazdırma.
-- Finans: Genel bakış, Ürün kârlılığı (ürün/seçenek maliyeti girilir), Sipariş maliyetleri, Kargo faturaları; Excel dışa aktarma.
-- Ayarlar: mağaza, API anahtarları, profil.
-ARAÇ SEÇİMİ
-- "Kaç siparişim var / kaç gönderilecek / gecikmiş var mı" → orders_overview. Belirli bir sipariş (kişiselleştirme, hediye notu, takip, maliyet) → önce list_orders(search) ile numarayı bul, sonra order_detail. Kişiselleştirme metni siparişin seçeneklerinde "kisisellestirme": true olan satırdadır.
-- "Kârım eksik / maliyet girilmemiş" → orders_missing_costs; sonuçtaki en çok eksik ürünleri söyle ve maliyetleri Finans > Ürün kârlılığı'ndan girmesini öner. Maliyetleri sen giremezsin.
-- Kargo faturaları: "faturada eşleşmeyen var mı / şu siparişin kargosu ne kadar / fazla kesilmiş kalem" → shipping_invoices (siparişin kendi kalemleri order_detail'de "kargo_faturasi"). Faturalar eklenince Finans/kâr sayıları kendiliğinden faturadaki gerçek kargoyla hesaplanır; faturayı kullanıcı Finans > Kargo faturaları'ndan yükler.
-- Başlık/etiket yazarken ya da iyileştirirken keyword_pool'a bak (var olan listing için listing_id, yeni ürün için İngilizce query + find_category'den taxonomy_id). Havuzdaki etiketleri körlemesine kopyalama; ürüne uyanları seç, 20 karakteri aşma, benzersizlik kuralını koru.
-- "Kaç taslağım var / hangisi yayınlanmadı / senkronizasyon" → workspace_status.
-- Bölüm, kargo profili, iade politikası, hazırlık süresi kimliği gerekiyorsa önce shop_options; kimlikleri tahmin etme.
-- TOPLU DEĞİŞİKLİK: bulk_update_listings yalnızca YEREL TASLAK üretir. Kapsam belirsizse (hangi listing'ler, ne kadar değişecek) önce tek soruyla netleştir; 20'den fazla listing etkilenecekse ne yapacağını ve kaç listing olduğunu söyleyip kullanıcının onayını al, sonra çağır. Sonucu (kaç taslağa alındı, kaç atlandı ve nedeni) açıkça yaz ve yayının Listing'ler sayfasından ("Yayınlanmamışları seç" → "Seçilenleri Etsy'de yayınla") kullanıcı tarafından yapılacağını söyle.
-- Listing metinlerini (başlık, etiket, açıklama) mağazanın mevcut listing'lerinin dilinde ve üslubunda yaz; kullanıcı aksini istemedikçe aşağıdaki örnek başlıkların dilini kullan. Kullanıcıyla sohbeti Türkçe sürdür.
-- Cevaba bağlantı ya da URL yazma; taslak/listing kartı ekranda düğmeyle zaten gösterilir.
-- Sohbette oluşturduğun ya da konuştuğun bir listing'e/taslağa ekleme veya değişiklik istenirse (boyut, renk, fiyat, başlık…) AYNI listing_id ile update_listing kullan. Yeni taslak açmak yalnızca kullanıcı açıkça yeni bir ürün istediğinde.
-- KARGO/GÜMRÜK FATURASI: Kullanıcı fatura dosyası (PDF, fatura fotoğrafı, Excel/CSV, HTML) eklerse ya da fatura metnini yapıştırırsa read_shipping_invoice'ı çağır. Bu araç KAYDETMEZ; ekranda eşleşme kartı çıkar ve kullanıcı her satırı kontrol edip "Onayla" ile kaydeder. Sen asla "kaydettim" deme. Kullanıcı bir satırın başka siparişe ait olduğunu söylerse kartta o satırın sipariş seçimini değiştirip onaylamasını söyle.
-- Yapamadığın bir şey olursa dürüstçe söyle.
-Mağazanın mevcut listing başlıklarından örnekler (dil ve üslup için):
-{examples}
-{images}"""
 
 
 # ------------------------------------------------------------------ ilerleme (asistan şu an ne yapıyor)
@@ -168,7 +111,10 @@ def _msg_out(m: ChatMessage, shop_id: int, files: dict[str, ChatImage] | None = 
 
     def att(i: str) -> dict:
         f = (files or {}).get(i)
-        return {"id": i, "url": f"/api/shops/{shop_id}/assistant/images/{i}", "filename": f.filename if f else None, "content_type": f.content_type if f else None}
+        return {
+            "id": i, "url": f"/api/shops/{shop_id}/assistant/images/{i}", "filename": f.filename if f else None, "content_type": f.content_type if f else None,
+            "expired": f is None or not f.path,  # saklama süresi doldu (cleanup.py) ya da dosya silindi
+        }
 
     return {
         "id": m.id, "role": m.role, "content": m.content, "created_at": m.created_at.isoformat(),
@@ -187,34 +133,26 @@ def get_session(db: Session, shop: Shop, user_id: int, session_id: int) -> dict 
 
 
 def delete_session(db: Session, shop: Shop, user_id: int, session_id: int) -> bool:
-    s = _own_session(db, shop, user_id, session_id)
-    if s is None:
+    if _own_session(db, shop, user_id, session_id) is None:
         return False
-    for m in db.scalars(select(ChatMessage).where(ChatMessage.session_id == s.id)):
-        db.delete(m)
-    db.delete(s)
-    db.commit()
+    cleanup.delete_sessions(db, [session_id])
     return True
 
 
 def delete_sessions(db: Session, shop: Shop, user_id: int, ids: list[int] | None) -> int:
-    """Toplu silme: `ids` verilirse yalnızca onlar, None ise kullanıcının bu mağazadaki tüm sohbetleri."""
-    q = select(ChatSession).where(ChatSession.shop_id == shop.id, ChatSession.user_id == user_id)
+    """Toplu silme: `ids` verilirse yalnızca onlar, None ise kullanıcının bu mağazadaki tüm sohbetleri. Dosyalar da silinir."""
+    q = select(ChatSession.id).where(ChatSession.shop_id == shop.id, ChatSession.user_id == user_id)
     if ids is not None:
         q = q.where(ChatSession.id.in_(ids))
-    n = 0
-    for s in db.scalars(q).all():
-        for m in db.scalars(select(ChatMessage).where(ChatMessage.session_id == s.id)):
-            db.delete(m)
-        db.delete(s)
-        n += 1
-    db.commit()
-    return n
+    owned = list(db.scalars(q))
+    cleanup.delete_sessions(db, owned)
+    return len(owned)
 
 
 # ------------------------------------------------------------------ sohbet
 
 def _images_prompt(imgs: list[ChatImage]) -> str:
+    imgs = [i for i in imgs if i.path]  # süresi dolmuş ekler araçlara verilemez
     pics = [i for i in imgs if i.content_type in IMAGE_TYPES]
     docs = [i for i in imgs if i.content_type not in IMAGE_TYPES]
     out = ""
@@ -240,33 +178,28 @@ def _strip_app_links(text: str) -> str:
 def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message: str, image_ids: list[str], provider: str | None, today: dt.date, request_id: str | None = None, lang: str = "tr") -> dict:
     message = (message or "").strip()
     if not message and not image_ids:
-        raise ValueError("Mesaj boş olamaz.")
+        raise ValueError(tr("Mesaj boş olamaz.", "The message cannot be empty."))
     provider = provider if provider in ("openai", "anthropic") else settings.ai_provider
     if not llm.provider_ready(provider):
-        raise llm.AssistantError("Seçili yapay zekâ sağlayıcısının API anahtarı tanımlı değil. Ayarlar > API anahtarları bölümünden ekleyin ya da diğer sağlayıcıyı seçin.")
+        raise llm.AssistantError(llm.missing_key_message())
 
     session = _own_session(db, shop, user_id, session_id) if session_id else None
     if session is None:
-        session = ChatSession(shop_id=shop.id, user_id=user_id, title=(message or "Resimli sohbet")[:60])
+        session = ChatSession(shop_id=shop.id, user_id=user_id, title=(message or tr("Resimli sohbet", "Chat with images"))[:60])
         db.add(session)
         db.commit()
 
     current: list[ChatImage] = []
     for iid in image_ids[:MAX_IMAGES_PER_MESSAGE]:
         img = get_image(db, shop, iid)
-        if img is not None:
+        if img is not None and img.path:
             img.session_id = session.id
             current.append(img)
     db.commit()
 
-    history_rows = db.scalars(select(ChatMessage).where(ChatMessage.session_id == session.id).order_by(ChatMessage.id.desc()).limit(HISTORY_LIMIT)).all()[::-1]
-    history = []
-    for m in history_rows:
-        text = m.content
-        n_img = len(json.loads(m.image_ids_json or "[]"))
-        if m.role == "user" and n_img:
-            text += f"\n[Bu mesaja {n_img} dosya/resim eklenmişti]"
-        history.append({"role": m.role, "content": text})
+    # Geçmiş, bu mesaj kaydedilmeden ÖNCE okunur (bu mesaj ayrıca, resimleriyle birlikte gönderilir).
+    recent = db.scalars(select(ChatMessage).where(ChatMessage.session_id == session.id).order_by(ChatMessage.id.desc()).limit(context.MAX_HISTORY_ROWS)).all()
+    history = context.build_history(list(reversed(recent)))
 
     user_msg = ChatMessage(session_id=session.id, role="user", content=message, image_ids_json=json.dumps([i.id for i in current]))
     db.add(user_msg)
@@ -274,26 +207,26 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
 
     session_images = db.scalars(select(ChatImage).where(ChatImage.session_id == session.id).order_by(ChatImage.created_at)).all()
     ctx = tools.Ctx(db=db, shop=shop, user_id=user_id, today=today, message=message)
-    system = SYSTEM_PROMPT.format(shop=shop.shop_name, today=today.isoformat(), currency=_currency(db, shop), examples=_title_examples(db, shop), sections=_sections_summary(db, shop), images=_images_prompt(session_images))
-    if lang == "en":
-        system += (
-            "\n\nIMPORTANT: The user's interface language is English. Always reply in English, even though these "
-            "instructions and some tool results are in Turkish. Listing titles, tags and descriptions stay in the "
-            "language the shop uses on Etsy."
-        )
+    dynamic = prompt.shop_context(
+        shop_name=shop.shop_name, today=today.isoformat(), currency=_currency(db, shop), sections=_sections_summary(db, shop),
+        examples=_title_examples(db, shop), files=_images_prompt(session_images), notes=memory.notes_for_prompt(db, shop.id), lang=lang,
+    )
     en = lang == "en"
     set_progress(shop.id, request_id, "Thinking" if en else "Düşünüyor")
+    tool_lines: list[str] = []
 
     def run_tool(name: str, args: dict) -> dict:
         set_progress(shop.id, request_id, (tools.TOOL_LABELS_EN.get(name, "Working") if en else tools.TOOL_LABELS.get(name, "Çalışıyor")))
         try:
-            return tools.execute(ctx, name, args)
+            result = tools.execute(ctx, name, args)
+            tool_lines.append(context.summarize_tool_call(name, args, result))
+            return result
         finally:
             set_progress(shop.id, request_id, "Reviewing the result" if en else "Sonucu değerlendiriyor")
 
     try:
-        reply = llm.run_agent(
-            provider, system, history, _with_attachments(message, current),
+        result = llm.run_agent(
+            provider, prompt.STATIC_RULES, dynamic, history, _with_attachments(message, current),
             [{"path": i.path, "content_type": i.content_type} for i in current if i.content_type in IMAGE_TYPES],
             tools.TOOLS, run_tool,
         )
@@ -302,9 +235,13 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
         db.commit()
         clear_progress(shop.id, request_id)
         raise
-    reply = _strip_app_links(reply or "")
-    assistant = ChatMessage(session_id=session.id, role="assistant", content=reply or tr("Bir cevap üretemedim, tekrar dener misin?", "I couldn't produce an answer, could you try again?"), cards_json=json.dumps(ctx.cards, ensure_ascii=False, default=str))
+    reply = _strip_app_links(result.text or "")
+    assistant = ChatMessage(
+        session_id=session.id, role="assistant", content=reply or tr("Bir cevap üretemedim, tekrar dener misin?", "I couldn't produce an answer, could you try again?"),
+        cards_json=json.dumps(ctx.cards, ensure_ascii=False, default=str), tool_notes=context.tool_notes(tool_lines),
+    )
     db.add(assistant)
+    _record_usage(db, shop.id, user_id, session.id, result.usage)
     clear_progress(shop.id, request_id)
     session.updated_at = dt.datetime.utcnow()
     if len(session.title) < 14 and len(message) >= 14:  # ilk mesaj "selam" gibi kısaysa başlığı anlamlı mesajdan al
@@ -312,6 +249,15 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
     db.commit()
     files = {i.id: i for i in current}
     return {"session_id": session.id, "title": session.title, "user": _msg_out(user_msg, shop.id, files), "assistant": _msg_out(assistant, shop.id)}
+
+
+def _record_usage(db: Session, shop_id: int, user_id: int, session_id: int, u: llm.Usage) -> None:
+    """İsteğin token kullanımı (commit, sohbet kaydıyla birlikte yapılır)."""
+    db.add(AssistantUsage(
+        shop_id=shop_id, user_id=user_id, session_id=session_id, provider=u.provider, model=u.model[:80], rounds=u.rounds,
+        input_tokens=u.input_tokens, cached_tokens=u.cached_tokens, cache_write_tokens=u.cache_write_tokens, output_tokens=u.output_tokens,
+        tools=",".join(u.tools)[:500],
+    ))
 
 
 def _with_attachments(message: str, current: list[ChatImage]) -> str:

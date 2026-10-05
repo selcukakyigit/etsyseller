@@ -1206,8 +1206,16 @@ export interface ChatMessageOut {
   content: string;
   created_at: string;
   /** Eklenen resimler ve belgeler (fatura PDF'i vb.); `content_type` resim değilse dosya simgesiyle gösterilir. */
-  images: { id: string; url: string; filename?: string | null; content_type?: string | null }[];
+  images: { id: string; url: string; filename?: string | null; content_type?: string | null; expired?: boolean }[];
   cards: ChatCard[];
+}
+
+/** Asistanın sohbetler arasında hatırladığı mağaza notu (Ayarlar > Yapay Zekâ). */
+export interface AssistantNote {
+  id: number;
+  text: string;
+  source: "assistant" | "user";
+  created_at: string;
 }
 export interface ChatReply {
   session_id: number;
@@ -1624,6 +1632,11 @@ export const api = {
       return requestForm<{ id: string; filename: string; url: string; content_type: string }>(`/api/shops/${shopId}/assistant/images`, fd);
     },
     dashboard: (shopId: number, today: string) => request<DashboardData>(`/api/shops/${shopId}/assistant/dashboard?today=${today}`),
+    notes: (shopId: number) => request<{ notes: AssistantNote[]; max: number }>(`/api/shops/${shopId}/assistant/memory`),
+    addNote: (shopId: number, text: string) =>
+      request<AssistantNote>(`/api/shops/${shopId}/assistant/memory`, { method: "POST", body: JSON.stringify({ text }) }),
+    deleteNote: (shopId: number, id: number) => request<{ ok: boolean }>(`/api/shops/${shopId}/assistant/memory/${id}`, { method: "DELETE" }),
+    clearNotes: (shopId: number) => request<{ deleted: number }>(`/api/shops/${shopId}/assistant/memory`, { method: "DELETE" }),
   },
   finance: {
     /** Gerçek kur verisi bulunan, dolayısıyla mağaza para birimi olarak seçilebilecek kodlar. */

@@ -17,6 +17,7 @@ from app.core.i18n import tr
 from sqlalchemy.orm import Session
 
 from app.ai import quality
+from app.assistant import memory
 from app.assistant.models import AdReport, ChatImage
 from app.finance import invoices
 from app.finance import service as fin
@@ -1593,6 +1594,12 @@ EXECUTORS = {
     "list_description_templates": list_description_templates, "save_description_template": save_description_template,
     "delete_description_templates": delete_description_templates,
 }
+
+# Ayrı modüllerdeki araçlar. Sıra sabit kalmalı: araç listesi istem önbelleğinin (prompt caching) parçasıdır.
+TOOLS += memory.TOOLS
+EXECUTORS.update(memory.EXECUTORS)
+TOOL_LABELS.update(memory.LABELS)
+TOOL_LABELS_EN.update(memory.LABELS_EN)
 
 
 def execute(ctx: Ctx, name: str, args: dict) -> dict:

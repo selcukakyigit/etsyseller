@@ -156,7 +156,11 @@ export function PrivacyEn() {
 
       <H2>7. Retention and deletion</H2>
       <P>
-        We keep data for as long as needed to provide the service. When you disconnect Etsy, data received from Etsy is deleted.
+        We keep data for as long as needed to provide the service. When you disconnect Etsy, data received from Etsy is deleted;
+        this includes assistant chats. Files attached to the assistant (images, PDF, Excel) are deleted automatically after 90
+        days, and chats that are not opened for 12 months are deleted entirely. What the assistant &quot;remembers&quot; (lasting
+        preferences you told it) is kept with your shop; you can view and delete it under Settings, AI. Assistant usage amounts
+        (token counts) are kept for cost tracking while your account is open and contain no content.
         Contact form messages and their attachments are deleted automatically after 12 months. We keep your sign-up consent
         record (policy version, time, IP address) while your account is open, as legal proof. You can delete your account
         under Settings, Account and data; your personal data is then deleted or anonymized, except records we must keep by law.

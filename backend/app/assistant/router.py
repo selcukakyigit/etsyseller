@@ -6,7 +6,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.assistant import llm, service
+from app.assistant import llm, memory, service
 from app.auth.models import User
 from app.core import blobstore
 from app.core.config import settings
@@ -100,6 +100,8 @@ def image(image_id: str, shop: Shop = Depends(get_owned_shop), db: Session = Dep
     img = service.get_image(db, shop, image_id)
     if img is None:
         raise HTTPException(404, "Resim bulunamadı")
+    if not img.path:
+        raise HTTPException(410, "Bu dosyanın saklama süresi doldu")
     try:
         content = blobstore.read(img.path)
     except FileNotFoundError:
@@ -109,6 +111,42 @@ def image(image_id: str, shop: Shop = Depends(get_owned_shop), db: Session = Dep
         # Belgeler (PDF, HTML, Excel) tarayıcıda açılmaz, indirilir: yüklenen bir HTML'in API alanında çalışmasını önler.
         headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(img.filename)}"
     return Response(content, media_type=img.content_type, headers=headers)
+
+
+# ------------------------------------------------------------------ mağaza notları (Ayarlar > Yapay Zekâ)
+
+
+class NoteIn(BaseModel):
+    text: str = Field(min_length=1, max_length=memory.MAX_CHARS)
+
+
+def _note_out(n) -> dict:
+    return {"id": n.id, "text": n.text, "source": n.source, "created_at": n.created_at.isoformat()}
+
+
+@router.get("/memory")
+def list_notes(shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    return {"notes": [_note_out(n) for n in memory.list_notes(db, shop.id)], "max": memory.MAX_NOTES}
+
+
+@router.post("/memory")
+def add_note(body: NoteIn, shop: Shop = Depends(get_owned_shop), user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    try:
+        return _note_out(memory.add_note(db, shop.id, user.id, body.text, "user"))
+    except memory.NoteError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.delete("/memory/{note_id}")
+def delete_note(note_id: int, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    if not memory.delete_note(db, shop.id, note_id):
+        raise HTTPException(404, "Not bulunamadı")
+    return {"ok": True}
+
+
+@router.delete("/memory")
+def clear_notes(shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    return {"deleted": memory.clear_notes(db, shop.id)}
 
 
 @router.get("/dashboard")

@@ -39,6 +39,7 @@ from app.assistant.router import router as assistant_router
 from app.contact.router import router as contact_router
 from app.finance.router import router as finance_router
 from app.finance.invoices_router import router as finance_invoices_router
+from app.core.db_guard import warn_unlocked_tables
 from app.jobs.scheduler import start_scheduler, stop_scheduler
 from app.keywords.router import router as keywords_router
 from app.listings.router import router as listings_router
@@ -53,6 +54,7 @@ from app.webhooks.router import router as webhooks_router
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    warn_unlocked_tables()
     start_scheduler()
     yield
     stop_scheduler()
