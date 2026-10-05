@@ -41,6 +41,7 @@ from app.admin.router import router as admin_router
 from app.account.service import AVATAR_DIR
 from app.auth.router import router as auth_router
 from app.assistant.router import router as assistant_router
+from app.banners.router import router as banners_router
 from app.billing.router import router as billing_router
 from app.billing.webhooks import router as billing_webhooks_router
 from app.contact.router import router as contact_router
@@ -149,3 +150,4 @@ app.include_router(webhooks_router)
 app.include_router(admin_router)
 app.include_router(billing_router)
 app.include_router(billing_webhooks_router)
+app.include_router(banners_router)

@@ -1,6 +1,6 @@
 """Saklama süresi dolan kayıtların silinmesi. Gizlilik Politikası / KVKK metnindeki taahhüdün uygulaması:
 iletişim formu mesajları ve ekleri 12 ay sonra silinir. Bildirimler 90 gün sonra silinir. Asistan sohbet ekleri 90 gün,
-hiç açılmayan sohbetler 12 ay sonra silinir (assistant/cleanup.py).
+hiç açılmayan sohbetler 12 ay sonra silinir (assistant/cleanup.py). Banner görselleri 30 gün sonra silinir.
 Etsy API Şartları (veri gerektiğinden uzun saklanmaz): satıcı Ulagg'ı Etsy'den kaldırdıysa ve REVOKED_GRACE içinde yeniden
 bağlanmadıysa mağazanın Etsy'den gelen verisi, "bağlantıyı kes" ile aynı şekilde silinir (shops/disconnect.py)."""
 import datetime as dt
@@ -9,6 +9,7 @@ import logging
 from sqlalchemy import select
 
 from app.assistant.cleanup import purge_expired as purge_assistant_data
+from app.banners.service import purge_expired as purge_banners
 from app.contact.models import ContactMessage
 from app.contact.router import BUCKET
 from app.core import storage
@@ -43,11 +44,12 @@ def purge_expired_records() -> None:
             logger.info("Saklama süresi dolan %s iletişim mesajı silindi", removed)
         if n := purge_old_notifications(db):
             logger.info("90 günden eski %s bildirim silindi", n)
-        try:
-            purge_assistant_data(db)
-        except Exception:  # sonraki adımı (erişimi kaldırılmış mağazalar) engellemesin
-            logger.exception("Asistan saklama temizliği başarısız")
-            db.rollback()
+        for name, purge in (("Asistan", purge_assistant_data), ("Banner", purge_banners)):
+            try:
+                purge(db)
+            except Exception:  # sonraki adımı (erişimi kaldırılmış mağazalar) engellemesin
+                logger.exception("%s saklama temizliği başarısız", name)
+                db.rollback()
         revoked = db.scalars(
             select(Shop).join(OAuthToken, OAuthToken.shop_id == Shop.id).where(Shop.access_revoked_at < dt.datetime.utcnow() - REVOKED_GRACE)
         ).all()

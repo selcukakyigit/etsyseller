@@ -17,6 +17,7 @@ export const SHOP_NAV: NavItem[] = [
   { href: "/reviews", tr: "Yorumlar", en: "Reviews" },
   { href: "/shipping", tr: "Kargo ayarları", en: "Shipping settings" },
   { href: "/templates", tr: "Açıklama şablonları", en: "Description templates" },
+  { href: "/banners", tr: "Banner oluşturucu", en: "Banner maker" },
 ];
 
 export const SETTINGS_NAV: NavItem = { href: "/settings", tr: "Ayarlar", en: "Settings" };

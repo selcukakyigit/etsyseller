@@ -88,6 +88,7 @@ export default async function KvkkPage() {
         <li>İletişim formu mesajları ve ekleri: 12 ay sonra otomatik silinir.</li>
         <li>Asistan sohbetleri: Etsy bağlantısı kesildiğinde silinir; sohbete eklenen dosyalar 90 gün, 12 ay boyunca açılmayan sohbetler 12 ay sonra otomatik silinir.</li>
         <li>Asistanın mağaza notları (&quot;hatırladıkları&quot;): siz silene kadar ya da hesap silinene kadar; Ayarlar &gt; Yapay Zekâ&apos;dan yönetilir.</li>
+        <li>Banner oluşturucuda üretilen görseller: 30 gün sonra otomatik silinir.</li>
         <li>Asistan kullanım miktarı (token sayısı, içerik içermez): maliyet takibi için hesabınız açık olduğu sürece.</li>
         <li>Kayıt onayı kayıtları (metin sürümü, zaman, IP adresi): yasal ispat için hesabınız açık olduğu sürece; hesap silindiğinde silinir.</li>
         <li>Sunucu ve altyapı günlükleri: barındırma sağlayıcılarının kendi, kısa saklama süreleriyle sınırlıdır.</li>

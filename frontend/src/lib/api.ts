@@ -1390,6 +1390,28 @@ export interface ChatMessageOut {
   cards: ChatCard[];
 }
 
+/** Banner oluşturucu (Mağaza > Banner oluşturucu). Görsel `url` çerezle yüklenir; `?download=1` dosya olarak indirir. */
+export type BannerStyle = "carousel" | "big" | "mini" | "collage";
+export interface BannerImage {
+  id: string;
+  style: BannerStyle;
+  slot: number;
+  width: number;
+  height: number;
+  url: string;
+  created_at: string;
+}
+export interface BannerGenerateIn {
+  style: BannerStyle;
+  slot: number;
+  slots: number;
+  listing_ids: number[];
+  season: string | null;
+  scene: string;
+  headline: string;
+  subline: string;
+}
+
 /** Asistanın sohbetler arasında hatırladığı mağaza notu (Ayarlar > Yapay Zekâ). */
 export interface AssistantNote {
   id: number;
@@ -1870,6 +1892,13 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ tracking_code: trackingCode || null, carrier_name: carrierName || null }),
       }),
+  },
+  banners: {
+    generate: (shopId: number, body: BannerGenerateIn) =>
+      request<BannerImage>(`/api/shops/${shopId}/banners/generate`, { method: "POST", body: JSON.stringify(body) }),
+    crop: (shopId: number, listingId: number, slot: number) =>
+      request<BannerImage>(`/api/shops/${shopId}/banners/crop`, { method: "POST", body: JSON.stringify({ listing_id: listingId, slot }) }),
+    recent: (shopId: number) => request<BannerImage[]>(`/api/shops/${shopId}/banners/recent`),
   },
   assistant: {
     providers: (shopId: number) => request<AssistantProviders>(`/api/shops/${shopId}/assistant/providers`),

@@ -82,22 +82,22 @@ def _model() -> catalog.ResolvedModel:
         raise ImageGenError(str(exc)) from exc
 
 
-def _run(parts: list) -> tuple[bytes, str]:
+def _run(parts: list, aspect_ratio: str | None = None) -> tuple[bytes, str]:
+    """`aspect_ratio` verilmezse model girdi görselinin oranını korur (listing fotoğrafları); verilirse ("4:1", "8:1",
+    "1:1"…) o oranda üretir. gemini-3.1-flash-image 4:1 ve 8:1'i de kabul ediyor (banner'lar, 2026-10-05'te denendi)."""
     model = _model()
     from app.ai.client import get_google_client
     from google.genai import types
 
     client = get_google_client()
+    # Çözünürlük yükseldikçe fiyat da artar; Yönetim > Modeller'den model başına seçilir (varsayılan 2K — Etsy'nin
+    # önerdiği ≥2000px eşiğini karşılar).
+    image_config = types.ImageConfig(image_size=str(model.options.get("image_size") or "2K"), aspect_ratio=aspect_ratio)
     try:
         response = client.models.generate_content(
             model=model.model_id,
             contents=[types.Content(role="user", parts=parts)],
-            config=types.GenerateContentConfig(
-                response_modalities=["IMAGE"],
-                # Çözünürlük yükseldikçe fiyat da artar; Yönetim > Modeller'den model başına seçilir (varsayılan 2K —
-                # Etsy'nin önerdiği ≥2000px eşiğini karşılar).
-                image_config=types.ImageConfig(image_size=str(model.options.get("image_size") or "2K")),
-            ),
+            config=types.GenerateContentConfig(response_modalities=["IMAGE"], image_config=image_config),
         )
     except Exception as exc:  # noqa: BLE001
         text = str(exc)
@@ -197,6 +197,16 @@ def generate_from_text(prompt: str, reference: tuple[bytes, str] | None = None) 
         )
     parts.append(types.Part.from_text(text=full_prompt))
     return _run(parts)
+
+
+def generate_with_references(prompt: str, references: list[tuple[bytes, str]], aspect_ratio: str) -> tuple[bytes, str]:
+    """Referans görsellerle (ör. mağazanın ürün fotoğrafları) ve istenen oranda yeni bir görsel üretir. Talimatı çağıran
+    hazırlar (bkz. banners/prompts.py); burada yalnızca görseller ve metin modele iletilir."""
+    from google.genai import types
+
+    parts: list = [types.Part.from_bytes(data=data, mime_type=mime) for data, mime in references]
+    parts.append(types.Part.from_text(text=prompt))
+    return _run(parts, aspect_ratio=aspect_ratio)
 
 
 def guess_extension(mime: str) -> str:

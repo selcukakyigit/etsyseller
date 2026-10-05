@@ -22,7 +22,7 @@ from app.shops.models import Shop
 
 UPLOADS = Path(__file__).resolve().parents[2] / "uploads"
 # mağaza başına diskte tutulan klasörler: <uploads>/<ad>/<shop_id>
-SHOP_UPLOAD_FOLDERS = ("drafts", "image-cache", "chat")
+SHOP_UPLOAD_FOLDERS = ("drafts", "image-cache", "chat", "banners")
 # kullanıcıya/mağazaya bağlı ama shop_id taşımayan ya da silinmemesi gereken tablolar
 SKIP_TABLES = {"shops", "users", "oauth_states", "workspaces", "workspace_members", "user_consents"}
 
@@ -41,7 +41,7 @@ def _wipe_shops(db: Session, shop_ids: list[int]) -> None:
     files: list[str] = []
     if shop_ids:
         # Kalıcı depodaki dosyalar (taslak fotoğrafları, asistan resimleri): satırlar silinmeden önce yolları alınır.
-        for name in ("listing_draft_files", "chat_images"):
+        for name in ("listing_draft_files", "chat_images", "banner_images"):
             t = Base.metadata.tables.get(name)
             if t is not None:
                 files += list(db.scalars(select(t.c.path).where(t.c.shop_id.in_(shop_ids))))

@@ -72,7 +72,7 @@ export default async function PrivacyPage() {
       <P>
         Verileri hizmeti sunmak için gerektiği süre saklarız. Etsy bağlantısını kestiğinizde Etsy'den alınan veriler
         silinir; asistan sohbetleri de bu kapsamdadır. Asistana eklenen dosyalar (resim, PDF, Excel) 90 gün sonra, 12 ay
-        boyunca hiç açılmayan sohbetler ise tümüyle otomatik silinir. Asistanın &quot;hatırladıkları&quot; (sizin söylediğiniz
+        boyunca hiç açılmayan sohbetler ise tümüyle otomatik silinir. Banner oluşturucuda üretilen görseller 30 gün sonra silinir. Asistanın &quot;hatırladıkları&quot; (sizin söylediğiniz
         kalıcı tercihler) mağazanızla birlikte saklanır; Ayarlar &gt; Yapay Zekâ&apos;dan görüp silebilirsiniz. Asistanın
         kullanım miktarı (token sayısı) maliyet takibi için hesabınız açık olduğu sürece tutulur ve içerik barındırmaz.
         İletişim formu mesajları ve ekleri 12 ay sonra otomatik silinir. Kayıt onayı kayıtlarını (metin

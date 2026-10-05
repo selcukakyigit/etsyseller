@@ -1,7 +1,7 @@
 """Etsy bağlantısını kesme: erişim belirteçleri ve Etsy'den gelen önbellek verisi silinir.
 
 Silinen: belirteçler, ilan/sipariş/yorum önbellekleri, finans defteri ve ödemeler, istatistik anlık görüntüleri, ilan sağlığı,
-kargo referans önbelleği, sipariş bildirimleri, diskteki ilan görselleri ve asistan sohbetleri (kartlarında Etsy verisi var).
+kargo referans önbelleği, sipariş bildirimleri, diskteki ilan görselleri, asistan sohbetleri (kartlarında Etsy verisi var) ve banner görselleri.
 Kalan: mağaza kaydı (yeniden bağlanınca aynı mağaza gelir), kullanıcının kendi girdiği maliyetler, taslaklar, sürüm geçmişi
 ve asistanın mağaza notları (kullanıcının tercihleri).
 Etsy'nin belirteç iptal uç noktası yoktur; uygulama erişimini Etsy hesabındaki "Apps and services"ten de kaldırabilirsiniz."""
@@ -12,6 +12,7 @@ from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.assistant.cleanup import purge_shop_chats
+from app.banners.service import purge_shop as purge_banners
 from app.core.db import Base
 from app.listings import sync_status
 from app.shops.models import OAuthToken, Shop
@@ -34,6 +35,7 @@ def disconnect_shop(db: Session, shop: Shop) -> None:
     db.commit()
     db.expire(shop)
     purge_shop_chats(db, shop.id)  # sohbet kartlarında sipariş/alıcı bilgisi var
+    purge_banners(db, shop.id)  # ilan fotoğraflarından türetilen görseller
 
     sync_status.mark_done(shop.id)  # sürmekte olan senkron bayrağını temizle
     from app.finance import service as finance_service  # bellekteki rapor önbelleği
