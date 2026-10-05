@@ -320,6 +320,12 @@ def shop_summary(db: Session, shop: Shop, today: dt.date | None = None) -> dict:
         if cur is None or rank_of(item) < rank_of(cur):
             out[k.listing_id] = {**item, "keywords": (cur or {}).get("keywords", 0)}
         out[k.listing_id]["keywords"] = out[k.listing_id].get("keywords", 0) + 1
+    if out:
+        titles = dict(db.execute(select(ListingCache.listing_id, ListingCache.title).where(
+            ListingCache.shop_id == shop.id, ListingCache.listing_id.in_(list(out))
+        )).all())
+        for lid, item in out.items():
+            item["title"] = html.unescape(titles.get(lid) or "")
     return {"listings": out, "max_listings": MAX_LISTINGS, "max_results": MAX_RESULTS}
 
 

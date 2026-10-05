@@ -383,6 +383,7 @@ export interface TrackedRank {
   measured: string | null; // henüz ölçülmediyse null
   change_7d: number | null; // pozitif = yükseldi
   keywords: number;
+  title: string;
 }
 
 export interface RanksSummary {

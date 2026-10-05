@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { emitRanksChanged } from "@/lib/syncEvents";
-import { api, ListingRanks, RankKeyword } from "@/lib/api";
+import { api, ListingRanks, RankKeyword, RanksSummary } from "@/lib/api";
 import { useCached } from "@/lib/pageCache";
 import { useT } from "@/lib/i18n-client";
 import { countryName } from "@/lib/countries";
@@ -90,6 +90,8 @@ export default function RankTab({ shopId, listingId }: { shopId: number; listing
   if (!data) return <BlockSpinner />;
 
   const full = data.keywords.length >= data.max_keywords;
+  // Mağazanın takip yerleri dolu ve bu listing takipte değil: yer açmak için takiptekiler burada listelenir.
+  const slotsFull = !data.is_tracked && data.tracked_listings >= data.max_listings;
   const money = (n: number, cur: string) => {
     try {
       return new Intl.NumberFormat(locale, { style: "currency", currency: cur || "USD", maximumFractionDigits: 0 }).format(n);
@@ -169,6 +171,14 @@ export default function RankTab({ shopId, listingId }: { shopId: number; listing
         </div>
       )}
 
+      {slotsFull && (
+        <TrackedSlots
+          shopId={shopId}
+          max={data.max_listings}
+          onFreed={() => void run("stop", () => api.insights.ranks(shopId, listingId))}
+        />
+      )}
+
       {!full && (
         <div className="space-y-2">
           <form
@@ -240,6 +250,80 @@ export default function RankTab({ shopId, listingId }: { shopId: number; listing
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Takip yerleri doluyken: takipteki listing'ler ve her birinin yanında "Bırak". Biri bırakılınca `onFreed` çağrılır. */
+function TrackedSlots({ shopId, max, onFreed }: { shopId: number; max: number; onFreed: () => void }) {
+  const { t } = useT();
+  const [summary, setSummary] = useState<RanksSummary | null>(null);
+  const [stopping, setStopping] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.insights
+      .ranksSummary(shopId)
+      .then((r) => {
+        if (!cancelled) setSummary(r);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [shopId]);
+
+  async function stop(listingId: number) {
+    setStopping(listingId);
+    try {
+      await api.insights.stopTracking(shopId, listingId);
+      onFreed();
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : t("İşlem yapılamadı", "Could not complete the action"));
+    } finally {
+      setStopping(null);
+    }
+  }
+
+  const rows = Object.entries(summary?.listings ?? {});
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/60 dark:bg-amber-950/30">
+      <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+        {t(
+          `Takip yerleri dolu (${max}/${max}). Bu listing'i takibe almak için aşağıdan birini bırak.`,
+          `All ${max} tracking slots are in use. Stop tracking one below to track this listing.`,
+        )}
+      </p>
+      {!summary ? (
+        <div className="mt-2">
+          <Spinner size={14} />
+        </div>
+      ) : (
+        <ul className="mt-2 divide-y divide-amber-100 dark:divide-amber-900/40">
+          {rows.map(([id, r]) => (
+            <li key={id} className="flex items-center gap-3 py-1.5 text-sm">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-neutral-900 dark:text-neutral-100" title={r.title}>
+                  {r.title || `#${id}`}
+                </span>
+                <span className="block truncate text-xs text-neutral-500 dark:text-neutral-400">
+                  {r.measured
+                    ? `${r.position ? `#${r.position}` : `${summary.max_results}+`} · ${r.keyword}`
+                    : t("Sıra ölçümü bekliyor", "Ranking pending")}
+                </span>
+              </span>
+              <button
+                type="button"
+                disabled={stopping !== null}
+                onClick={() => void stop(Number(id))}
+                className="shrink-0 rounded-full border border-neutral-300 px-2.5 py-0.5 text-xs text-neutral-700 hover:border-[#D97757] hover:text-[#B4553A] disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-300 dark:hover:text-[#E89A7F]"
+              >
+                {stopping === Number(id) ? t("Bırakılıyor…", "Stopping…") : t("Bırak", "Stop")}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
