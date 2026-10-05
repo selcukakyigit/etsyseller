@@ -72,6 +72,7 @@ class ListingOut(BaseModel):
     should_auto_renew: bool = False
     ending_timestamp: int | None = None
     last_modified_timestamp: int | None = None
+    renewed_timestamp: int | None = None  # son yenileme (Etsy'de "Renew"); hiç yenilenmediyse None
     is_new: bool = False  # henüz Etsy'de olmayan, yalnızca yerelde var olan yeni listing
 
 

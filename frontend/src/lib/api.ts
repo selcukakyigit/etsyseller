@@ -226,6 +226,8 @@ export type Listing = {
   should_auto_renew?: boolean;
   ending_timestamp?: number | null;
   last_modified_timestamp?: number | null;
+  /** Son yenileme (Etsy'de "Renew"); hiç yenilenmediyse null. */
+  renewed_timestamp?: number | null;
   /** Henüz Etsy'de olmayan, yalnızca yerelde var olan yeni listing (negatif geçici kimlik). */
   is_new?: boolean;
 };

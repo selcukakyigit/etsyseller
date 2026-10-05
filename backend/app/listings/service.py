@@ -328,6 +328,11 @@ def _summary(raw: dict, inventory: dict, over: dict) -> dict:
     def pick(key, default=None):
         return over[key] if key in over else raw.get(key, default)
 
+    # Etsy yenilemede creation_timestamp'i bugüne çeker, original_creation_timestamp sabit kalır. Yeni açılan
+    # ilanlarda ikisi bir-iki saniye farklı olabildiğinden bir günden küçük fark yenileme sayılmaz.
+    created, original = raw.get("creation_timestamp"), raw.get("original_creation_timestamp")
+    renewed = created if created and original and created - original > 86400 else None
+
     return {
         "state": raw.get("state"),
         "quantity": quantity,
@@ -345,6 +350,7 @@ def _summary(raw: dict, inventory: dict, over: dict) -> dict:
         "should_auto_renew": bool(pick("should_auto_renew", False)),
         "ending_timestamp": raw.get("ending_timestamp"),
         "last_modified_timestamp": raw.get("last_modified_timestamp"),
+        "renewed_timestamp": renewed,
     }
 
 
