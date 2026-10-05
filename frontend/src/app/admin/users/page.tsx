@@ -94,7 +94,7 @@ function Users() {
             label={t("Kayıt tarihi", "Joined")}
             value={joined}
             custom={query.joined_from && query.joined_to ? { start: query.joined_from, end: query.joined_to } : null}
-            options={[{ id: "all", label: t("Kayıt: tüm zamanlar", "Joined: all time"), range: null }, ...presetOptions(["today", "yesterday", "7d", "30d", "month", "last_month", "ytd"], t)]}
+            options={[{ id: "all", label: t("Tüm zamanlar", "All time"), range: null }, ...presetOptions(["today", "yesterday", "7d", "30d", "month", "last_month", "ytd"], t)]}
             onChange={(id, r) => {
               setJoined(id);
               update({ joined_from: r?.start ?? "", joined_to: r?.end ?? "" });
