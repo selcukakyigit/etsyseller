@@ -101,9 +101,3 @@ def get_current_user(
 def is_admin(user: User) -> bool:
     admins = {e.strip().lower() for e in settings.admin_emails.split(",") if e.strip()}
     return user.email.lower() in admins
-
-
-def require_admin(user: User = Depends(get_current_user)) -> User:
-    if not is_admin(user):
-        raise HTTPException(403, "Bu işlem için yönetici yetkisi gerekir")
-    return user

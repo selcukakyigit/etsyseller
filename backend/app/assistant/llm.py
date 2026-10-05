@@ -13,8 +13,9 @@ import logging
 from dataclasses import dataclass, field
 from typing import Callable
 
+from app.ai import catalog
+from app.ai.catalog import ResolvedModel
 from app.ai.client import get_anthropic_client, get_openai_client
-from app.core.config import settings
 from app.core.i18n import tr
 
 log = logging.getLogger(__name__)
@@ -48,25 +49,38 @@ class AgentResult:
     usage: Usage
 
 
-def provider_ready(provider: str) -> bool:
-    return bool(settings.anthropic_api_key if provider == "anthropic" else settings.openai_api_key)
-
-
-def model_name(provider: str) -> str:
-    return settings.anthropic_model if provider == "anthropic" else settings.openai_model
+def _choice_id(m: ResolvedModel) -> str:
+    """Seçicideki kimlik: katalog modelinin numarası; katalog okunamıyorsa (.env'e düşülmüşse) sağlayıcı adı."""
+    return str(m.id) if m.id is not None else m.provider
 
 
 def available_providers() -> list[dict]:
-    return [
-        {"id": "openai", "label": f"OpenAI ({settings.openai_model})", "ready": provider_ready("openai")},
-        {"id": "anthropic", "label": f"Claude ({settings.anthropic_model})", "ready": provider_ready("anthropic")},
-    ]
+    """Asistandaki model seçicinin seçenekleri: katalogdaki aktif metin modelleri (Yönetim > Modeller)."""
+    return [{"id": _choice_id(m), "label": m.label, "ready": catalog.ready(m)} for m in catalog.choices("llm")]
+
+
+def default_choice() -> str:
+    return _choice_id(catalog.resolve("assistant"))
+
+
+def pick_model(choice: str | None) -> ResolvedModel:
+    """Kullanıcının seçtiği model; seçim geçersizse ya da artık aktif değilse asistan görevinin modeli. Eski istemciler
+    sağlayıcı adı ("openai" / "anthropic") gönderebilir; o sağlayıcının ilk aktif modeli kullanılır."""
+    if choice and choice.isdigit():
+        model = catalog.by_id(int(choice), "llm")
+        if model is not None:
+            return model
+    if choice:
+        model = next((m for m in catalog.choices("llm") if m.provider == choice), None)
+        if model is not None:
+            return model
+    return catalog.resolve("assistant")
 
 
 def missing_key_message() -> str:
     return tr(
-        "Seçili yapay zekâ sağlayıcısının API anahtarı tanımlı değil. Ayarlar > API anahtarları bölümünden ekleyin ya da diğer sağlayıcıyı seçin.",
-        "The selected AI provider has no API key. Add one under Settings > API keys, or pick the other provider.",
+        "Seçili model şu an kullanılamıyor (sağlayıcı anahtarı tanımlı değil). Yukarıdan başka bir model seç.",
+        "The selected model is unavailable right now (no provider key is set). Pick another model above.",
     )
 
 
@@ -84,7 +98,7 @@ def _image(i: dict) -> tuple[str, str]:
 
 
 def run_agent(
-    provider: str,
+    model: ResolvedModel,
     static: str,
     dynamic: str,
     history: list[dict],
@@ -94,16 +108,16 @@ def run_agent(
     execute: Callable[[str, dict], dict],
 ) -> AgentResult:
     """history: [{"role": "user"|"assistant", "content": str}]. images: [{"path", "content_type"}] (yalnızca bu mesajın resimleri)."""
-    if not provider_ready(provider):
+    if not catalog.ready(model):
         raise AssistantError(missing_key_message())
-    usage = Usage(provider=provider, model=model_name(provider))
+    usage = Usage(provider=model.provider, model=model.model_id)
     try:
-        run = _run_anthropic if provider == "anthropic" else _run_openai
+        run = _run_anthropic if model.provider == "anthropic" else _run_openai
         text = run(static, dynamic, history, user_text, images, tools, execute, usage)
     except AssistantError:
         raise
     except Exception as exc:  # noqa: BLE001
-        log.exception("Asistan sağlayıcı hatası (%s)", provider)
+        log.exception("Asistan sağlayıcı hatası (%s/%s)", model.provider, model.model_id)
         raise AssistantError(tr(f"Yapay zekâ sağlayıcısı hata verdi: {str(exc)[:300]}", f"The AI provider returned an error: {str(exc)[:300]}")) from exc
     return AgentResult(text, usage)
 

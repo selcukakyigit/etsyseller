@@ -15,26 +15,6 @@ export type User = {
   needs_consent: boolean;
 };
 
-export type ApiKeys = {
-  etsy_api_key: string;
-  etsy_shared_secret: string;
-  openai_api_key: string;
-  openai_model: string;
-  anthropic_api_key: string;
-  anthropic_model: string;
-  ai_provider: string;
-  google_api_key: string;
-  google_image_model: string;
-  google_image_size: string;
-};
-
-export type ApiKeysUpdate = Partial<ApiKeys>;
-
-export type ApiKeyTestResult = {
-  ok: boolean;
-  message: string;
-};
-
 export type Shop = {
   id: number;
   etsy_shop_id: number;
@@ -809,6 +789,160 @@ export type ReturnPolicy = {
   active_listings_count?: number;
 };
 
+// ---- Yönetim paneli (/api/admin; yalnızca yöneticiye açık, diğerlerine 404) ----
+
+export type AdminModelUsage = { provider: string; model: string; requests: number; input_tokens: number; output_tokens: number };
+
+export type AdminOverview = {
+  users_total: number;
+  users_7d: number;
+  users_30d: number;
+  shops_connected: number;
+  shops_revoked: number;
+  shops_demo: number;
+  ai_requests_30d: number;
+  ai_input_tokens_30d: number;
+  ai_output_tokens_30d: number;
+  ai_by_model: AdminModelUsage[];
+  open_messages: number;
+  etsy_calls_today: number;
+  etsy_daily_limit: number;
+};
+
+export type AdminUserShop = { id: number; shop_name: string; connected: boolean; is_demo: boolean; revoked: boolean; listings_synced_at: string | null };
+
+export type AdminUser = {
+  id: number;
+  email: string;
+  name: string | null;
+  avatar_url: string | null;
+  created_at: string | null;
+  ai_enabled: boolean;
+  ai_requests_30d: number;
+  shops: AdminUserShop[];
+};
+
+export type AdminMessage = {
+  id: number;
+  name: string;
+  email: string;
+  topic: string;
+  message: string;
+  lang: string;
+  handled: boolean;
+  created_at: string | null;
+  attachments: { id: number; filename: string; size: number }[];
+};
+
+export type AdminJob = { id: string; next_run: string | null; last_run: string | null; last_ok: boolean | null; last_error: string | null };
+
+export type AdminShopSync = { id: number; shop_name: string; owner_email: string; listings_synced_at: string | null; revoked: boolean; stale: boolean };
+
+export type AdminSystem = {
+  etsy_calls_today: number;
+  etsy_daily_limit: number;
+  etsy_background_budget: number;
+  scheduler_running: boolean;
+  jobs: AdminJob[];
+  shops: AdminShopSync[];
+};
+
+export type AdminAiModel = {
+  id: number;
+  kind: "llm" | "image" | "video";
+  provider: string;
+  model_id: string;
+  label: string;
+  active: boolean;
+  /** Kodda bu tür için sağlayıcı adaptörü var mı; yoksa göreve atanamaz (ör. video henüz). */
+  supported: boolean;
+  input_usd_per_mtok: number | null;
+  output_usd_per_mtok: number | null;
+  unit_usd: number | null;
+  options: { image_size?: string };
+};
+
+export type AdminAiModelInput = Omit<AdminAiModel, "id" | "supported">;
+
+export type AdminTask = { task: string; kind: string; name_tr: string; name_en: string; model_id: number | null; effective: string };
+
+export type AdminCatalog = {
+  models: AdminAiModel[];
+  tasks: AdminTask[];
+  keys: { provider: string; masked: string; source: "db" | "env" | "" }[];
+  providers: Record<string, string[]>;
+  /** false: katalog tabloları okunamadı, .env kullanılıyor (göç uygulanmamış olabilir). */
+  from_db: boolean;
+};
+
+export type AdminTestResult = { ok: boolean; message: string };
+
+export type AdminCreditSettings = { credits_enabled: boolean; credit_markup: number; credit_usd: number; signup_credits: number };
+
+export type AdminWorkspaceCredit = {
+  workspace_id: number;
+  name: string;
+  owner_email: string | null;
+  plan: number;
+  purchased: number;
+  subscription_status: string | null;
+  used_30d: number;
+};
+
+export type AdminUsageReport = {
+  days: number;
+  rows: { task: string | null; model: string | null; calls: number; cost_usd: number; credits: number }[];
+  total_cost_usd: number;
+  total_credits: number;
+};
+
+export type AdminProduct = {
+  id: number;
+  kind: "plan" | "pack";
+  name_tr: string;
+  name_en: string;
+  variant_id: string;
+  credits: number;
+  price_cents: number;
+  currency: string;
+  interval: "month" | "year" | null;
+  active: boolean;
+  sort: number;
+};
+
+export type AdminProductInput = Omit<AdminProduct, "id">;
+
+export type AdminBilling = {
+  lemon_configured: boolean;
+  webhook_configured: boolean;
+  products: AdminProduct[];
+  subscriptions: { id: number; workspace_id: number; owner_email: string | null; product: string | null; status: string; renews_at: string | null; ends_at: string | null }[];
+  events: { id: number; event_name: string; lemon_id: string | null; workspace_id: number | null; ok: boolean; error: string | null; created_at: string | null }[];
+};
+
+export type AdminAudit = { id: number; email: string; action: string; target: string; detail: string; created_at: string | null };
+
+export type BillingProductOption = {
+  id: number;
+  kind: "plan" | "pack";
+  name: string;
+  credits: number;
+  price_cents: number;
+  currency: string;
+  interval: "month" | "year" | null;
+};
+
+export type BillingSummary = {
+  /** Kredi sistemi açık mı; kapalıyken AI kullanımı bakiyeden düşmez. */
+  enabled: boolean;
+  balance: { plan: number; purchased: number };
+  subscription: { status: string; renews_at: string | null; ends_at: string | null; portal_url: string | null; product: BillingProductOption | null } | null;
+  products: BillingProductOption[];
+  can_buy: boolean;
+};
+
+export type BillingHistoryRow = { id: number; kind: string; task: string | null; credits: number; delta: number; created_at: string | null };
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -1300,11 +1434,6 @@ export const api = {
     setNotificationSettings: (orderEmail: boolean) =>
       request<{ order_email: boolean }>("/api/account/notifications", { method: "PUT", body: JSON.stringify({ order_email: orderEmail }) }),
     setAi: (enabled: boolean) => request<{ enabled: boolean }>("/api/account/ai", { method: "PUT", body: JSON.stringify({ enabled }) }),
-    apiKeys: () => request<ApiKeys>("/api/account/api-keys"),
-    updateApiKeys: (payload: ApiKeysUpdate) =>
-      request<ApiKeys>("/api/account/api-keys", { method: "PUT", body: JSON.stringify(payload) }),
-    testApiKey: (provider: "etsy" | "openai" | "anthropic" | "google") =>
-      request<ApiKeyTestResult>(`/api/account/api-keys/test/${provider}`, { method: "POST" }),
     /** Şifre Supabase'de tutulur: mevcut şifreyle yeniden giriş doğrulanır, sonra yenisi ayarlanır. */
     changePassword: async (email: string, currentPassword: string, newPassword: string) => {
       const check = await supabase.auth.signInWithPassword({ email, password: currentPassword });
@@ -1317,6 +1446,48 @@ export const api = {
       request<{ ok: boolean }>("/api/account/reset-data", { method: "POST", body: JSON.stringify({ email, confirm: true }) }),
     deleteAccount: (email: string) =>
       request<{ ok: boolean }>("/api/account/delete", { method: "POST", body: JSON.stringify({ email, confirm: true }) }),
+  },
+  admin: {
+    overview: () => request<AdminOverview>("/api/admin/overview"),
+    users: (q: string, offset: number, limit = 50) =>
+      request<{ items: AdminUser[]; total: number }>(`/api/admin/users?${new URLSearchParams({ q, offset: String(offset), limit: String(limit) })}`),
+    messages: (status: "open" | "all") => request<AdminMessage[]>(`/api/admin/messages?status=${status}`),
+    setMessageHandled: (id: number, handled: boolean) =>
+      request<AdminMessage>(`/api/admin/messages/${id}`, { method: "PATCH", body: JSON.stringify({ handled }) }),
+    attachmentUrl: (id: number) => request<{ url: string; filename: string }>(`/api/admin/messages/attachments/${id}/url`),
+    system: () => request<AdminSystem>("/api/admin/system"),
+    runJob: (jobId: string) => request<{ ok: boolean }>(`/api/admin/system/jobs/${encodeURIComponent(jobId)}/run`, { method: "POST" }),
+    audit: () => request<AdminAudit[]>("/api/admin/audit"),
+    catalog: () => request<AdminCatalog>("/api/admin/catalog"),
+    createModel: (body: AdminAiModelInput) => request<AdminAiModel>("/api/admin/models", { method: "POST", body: JSON.stringify(body) }),
+    updateModel: (id: number, body: AdminAiModelInput) => request<AdminAiModel>(`/api/admin/models/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+    deleteModel: (id: number) => request<{ ok: boolean }>(`/api/admin/models/${id}`, { method: "DELETE" }),
+    assignTask: (task: string, modelId: number) =>
+      request<{ ok: boolean }>(`/api/admin/tasks/${encodeURIComponent(task)}`, { method: "PUT", body: JSON.stringify({ model_id: modelId }) }),
+    setKey: (provider: string, apiKey: string) =>
+      request<{ ok: boolean }>(`/api/admin/keys/${encodeURIComponent(provider)}`, { method: "PUT", body: JSON.stringify({ api_key: apiKey }) }),
+    clearKey: (provider: string) => request<{ ok: boolean }>(`/api/admin/keys/${encodeURIComponent(provider)}`, { method: "DELETE" }),
+    testKey: (provider: string, apiKey?: string) =>
+      request<AdminTestResult>(`/api/admin/keys/${encodeURIComponent(provider)}/test`, { method: "POST", body: JSON.stringify({ api_key: apiKey || null }) }),
+    testEtsy: () => request<AdminTestResult>("/api/admin/etsy/test", { method: "POST" }),
+    creditSettings: () => request<AdminCreditSettings>("/api/admin/credits/settings"),
+    updateCreditSettings: (body: Partial<AdminCreditSettings>) =>
+      request<AdminCreditSettings>("/api/admin/credits/settings", { method: "PUT", body: JSON.stringify(body) }),
+    creditWorkspaces: (q: string, offset: number, limit = 50) =>
+      request<{ items: AdminWorkspaceCredit[]; total: number }>(`/api/admin/credits/workspaces?${new URLSearchParams({ q, offset: String(offset), limit: String(limit) })}`),
+    adjustCredits: (workspaceId: number, amount: number, bucket: "plan" | "purchased", note: string) =>
+      request<{ ok: boolean }>(`/api/admin/credits/workspaces/${workspaceId}/adjust`, { method: "POST", body: JSON.stringify({ amount, bucket, note }) }),
+    creditUsage: (days = 30) => request<AdminUsageReport>(`/api/admin/credits/usage?days=${days}`),
+    billing: () => request<AdminBilling>("/api/admin/billing"),
+    createProduct: (body: AdminProductInput) => request<AdminProduct>("/api/admin/billing/products", { method: "POST", body: JSON.stringify(body) }),
+    updateProduct: (id: number, body: AdminProductInput) =>
+      request<AdminProduct>(`/api/admin/billing/products/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+    deleteProduct: (id: number) => request<{ ok: boolean }>(`/api/admin/billing/products/${id}`, { method: "DELETE" }),
+  },
+  billing: {
+    summary: () => request<BillingSummary>("/api/billing/summary"),
+    history: () => request<BillingHistoryRow[]>("/api/billing/history"),
+    checkout: (productId: number) => request<{ url: string }>("/api/billing/checkout", { method: "POST", body: JSON.stringify({ product_id: productId }) }),
   },
   shops: {
     list: () => request<Shop[]>("/api/shops"),

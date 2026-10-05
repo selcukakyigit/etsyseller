@@ -17,9 +17,10 @@ from sqlalchemy.orm import Session
 from app.core import blobstore
 from app.core.i18n import tr
 from app.listings import templates
+from app.ai import catalog
 from app.assistant import cleanup, context, llm, memory, prompt, tools
 from app.assistant.models import AssistantUsage, ChatImage, ChatMessage, ChatSession
-from app.core.config import settings
+from app.billing import metering
 from app.finance import service as fin
 from app.listings.models import ListingCache
 from app.orders.models import OrderCache
@@ -179,8 +180,8 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
     message = (message or "").strip()
     if not message and not image_ids:
         raise ValueError(tr("Mesaj boş olamaz.", "The message cannot be empty."))
-    provider = provider if provider in ("openai", "anthropic") else settings.ai_provider
-    if not llm.provider_ready(provider):
+    model = llm.pick_model(provider)
+    if not catalog.ready(model):
         raise llm.AssistantError(llm.missing_key_message())
 
     session = _own_session(db, shop, user_id, session_id) if session_id else None
@@ -226,7 +227,7 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
 
     try:
         result = llm.run_agent(
-            provider, prompt.STATIC_RULES, dynamic, history, _with_attachments(message, current),
+            model, prompt.STATIC_RULES, dynamic, history, _with_attachments(message, current),
             [{"path": i.path, "content_type": i.content_type} for i in current if i.content_type in IMAGE_TYPES],
             tools.TOOLS, run_tool,
         )
@@ -242,6 +243,7 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
     )
     db.add(assistant)
     _record_usage(db, shop.id, user_id, session.id, result.usage)
+    metering.record("assistant", model, result.usage.input_tokens, result.usage.output_tokens)
     clear_progress(shop.id, request_id)
     session.updated_at = dt.datetime.utcnow()
     if len(session.title) < 14 and len(message) >= 14:  # ilk mesaj "selam" gibi kısaysa başlığı anlamlı mesajdan al

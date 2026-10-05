@@ -7,7 +7,8 @@
 """
 import mimetypes
 
-from app.core.config import settings
+from app.ai import catalog
+from app.billing import metering
 
 """Prompt mimarisi: katmanlar birbiriyle çelişmesin diye ayrı tutulur.
   1. IDENTITY_LOCK  — her zaman: ürünün KİMLİĞİ (ne olduğu) değişmez.
@@ -73,26 +74,29 @@ class ImageGenError(Exception):
     pass
 
 
-def _provider_ready() -> None:
-    if not settings.google_api_key:
-        raise ImageGenError("Gemini API anahtarı tanımlı değil. Ayarlar > API anahtarları bölümünden ekleyin.")
+def _model() -> catalog.ResolvedModel:
+    """Katalogdaki "image" görevinin modeli. Şimdilik yalnızca Google (Gemini görsel modelleri) destekleniyor."""
+    try:
+        return catalog.resolve_ready("image")
+    except catalog.NotConfigured as exc:
+        raise ImageGenError(str(exc)) from exc
 
 
 def _run(parts: list) -> tuple[bytes, str]:
-    _provider_ready()
+    model = _model()
     from app.ai.client import get_google_client
     from google.genai import types
 
     client = get_google_client()
     try:
         response = client.models.generate_content(
-            model=settings.google_image_model,
+            model=model.model_id,
             contents=[types.Content(role="user", parts=parts)],
             config=types.GenerateContentConfig(
                 response_modalities=["IMAGE"],
-                # Çözünürlük yükseldikçe fiyat da artar; Ayarlar'dan seçilebilir (varsayılan 2K — Etsy'nin
-                # önerdiği ≥2000px eşiğini karşılar).
-                image_config=types.ImageConfig(image_size=settings.google_image_size),
+                # Çözünürlük yükseldikçe fiyat da artar; Yönetim > Modeller'den model başına seçilir (varsayılan 2K —
+                # Etsy'nin önerdiği ≥2000px eşiğini karşılar).
+                image_config=types.ImageConfig(image_size=str(model.options.get("image_size") or "2K")),
             ),
         )
     except Exception as exc:  # noqa: BLE001
@@ -109,6 +113,8 @@ def _run(parts: list) -> tuple[bytes, str]:
         for part in candidate.content.parts or []:
             if part.inline_data and part.inline_data.data:
                 mime = part.inline_data.mime_type or "image/png"
+                # Yalnızca görsel dönen çağrı ücretlendirilir (Google da görsel başına ücret alır).
+                metering.record("image", model, units=1)
                 return part.inline_data.data, mime
             if part.text:
                 texts.append(part.text.strip())

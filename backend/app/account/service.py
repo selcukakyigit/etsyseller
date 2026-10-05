@@ -6,8 +6,6 @@ from PIL import Image, UnidentifiedImageError
 from sqlalchemy.orm import Session
 
 from app.auth.models import User
-from app.core.config import settings
-from app.core.env_store import mask_secret, set_env_values
 
 AVATAR_DIR = Path(__file__).resolve().parent.parent.parent / "uploads" / "avatars"
 AVATAR_DIR.mkdir(parents=True, exist_ok=True)
@@ -53,65 +51,3 @@ def save_avatar(db: Session, user: User, filename: str, content: bytes) -> User:
     user.avatar_filename = new_filename
     db.commit()
     return user
-
-
-def get_api_keys() -> dict:
-    return {
-        "etsy_api_key": mask_secret(settings.etsy_api_key),
-        "etsy_shared_secret": mask_secret(settings.etsy_shared_secret),
-        "openai_api_key": mask_secret(settings.openai_api_key),
-        "openai_model": settings.openai_model,
-        "anthropic_api_key": mask_secret(settings.anthropic_api_key),
-        "anthropic_model": settings.anthropic_model,
-        "ai_provider": settings.ai_provider,
-        "google_api_key": mask_secret(settings.google_api_key),
-        "google_image_model": settings.google_image_model,
-        "google_image_size": settings.google_image_size,
-    }
-
-
-def update_api_keys(values: dict[str, str]) -> dict:
-    non_blank = {key: value for key, value in values.items() if value}
-    if non_blank:
-        set_env_values(non_blank)
-    return get_api_keys()
-
-
-def test_etsy_connection() -> dict:
-    from app.taxonomy import service as taxonomy_service
-
-    try:
-        taxonomy_service.get_seller_taxonomy_nodes()
-        return {"ok": True, "message": "Etsy bağlantısı başarılı"}
-    except Exception as exc:
-        return {"ok": False, "message": str(exc)}
-
-
-def test_openai_connection() -> dict:
-    from app.ai.client import get_openai_client
-
-    try:
-        get_openai_client().models.list()
-        return {"ok": True, "message": "OpenAI bağlantısı başarılı"}
-    except Exception as exc:
-        return {"ok": False, "message": str(exc)}
-
-
-def test_anthropic_connection() -> dict:
-    from app.ai.client import get_anthropic_client
-
-    try:
-        get_anthropic_client().models.list(limit=1)
-        return {"ok": True, "message": "Claude bağlantısı başarılı"}
-    except Exception as exc:
-        return {"ok": False, "message": str(exc)}
-
-
-def test_google_connection() -> dict:
-    from app.ai.client import get_google_client
-
-    try:
-        get_google_client().models.list(config={"page_size": 1})
-        return {"ok": True, "message": "Gemini bağlantısı başarılı"}
-    except Exception as exc:
-        return {"ok": False, "message": str(exc)}

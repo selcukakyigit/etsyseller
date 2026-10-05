@@ -71,11 +71,11 @@ def extract_pdf_or_image(content: bytes, content_type: str) -> dict:
     import base64
 
     from app.ai.client import get_anthropic_client, get_openai_client
-    from app.ai.vision import VisionError, _provider
-    from app.core.config import settings
+    from app.ai.vision import VisionError, text_model
+    from app.billing import metering
 
     try:
-        provider = _provider()
+        model = text_model("document")
     except VisionError as exc:
         raise InvoiceError(str(exc)) from exc
 
@@ -84,11 +84,11 @@ def extract_pdf_or_image(content: bytes, content_type: str) -> dict:
     content, content_type = for_llm(content, content_type)  # büyük fotoğraf/tarama 5 MB sınırına sığsın
     b64 = base64.b64encode(content).decode()
     try:
-        if provider == "anthropic":
+        if model.provider == "anthropic":
             media_type = content_type if content_type in ("image/png", "image/jpeg", "image/webp", "image/gif") else "application/pdf"
             doc_type = "image" if media_type.startswith("image/") else "document"
             resp = get_anthropic_client().messages.create(
-                model=settings.anthropic_model,
+                model=model.model_id,
                 max_tokens=2000,
                 messages=[{"role": "user", "content": [
                     {"type": doc_type, "source": {"type": "base64", "media_type": media_type, "data": b64}},
@@ -102,11 +102,12 @@ def extract_pdf_or_image(content: bytes, content_type: str) -> dict:
             else:
                 part = {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{b64}"}}
             resp = get_openai_client().chat.completions.create(
-                model=settings.openai_model,
+                model=model.model_id,
                 messages=[{"role": "user", "content": [{"type": "text", "text": EXTRACT_PROMPT}, part]}],
                 max_tokens=2000,
             )
             raw = resp.choices[0].message.content or ""
+        metering.record_response("document", model, resp)
     except Exception as exc:  # noqa: BLE001
         raise InvoiceError(f"Yapay zekâ faturayı okuyamadı: {str(exc)[:200]}") from exc
     return _extract_json(raw)
@@ -115,21 +116,22 @@ def extract_pdf_or_image(content: bytes, content_type: str) -> dict:
 def _extract_from_text(text: str) -> dict:
     """Metin (PDF metin katmanı / HTML) -> aynı çıkarım promptu. Görüntü değil yalnızca metin gittiği için ucuzdur."""
     from app.ai.client import get_anthropic_client, get_openai_client
-    from app.ai.vision import VisionError, _provider
-    from app.core.config import settings
+    from app.ai.vision import VisionError, text_model
+    from app.billing import metering
 
     try:
-        provider = _provider()
+        model = text_model("document")
     except VisionError as exc:
         raise InvoiceError(str(exc)) from exc
     prompt = EXTRACT_PROMPT + "\n\nFatura metni:\n" + text[:12000]
     try:
-        if provider == "anthropic":
-            resp = get_anthropic_client().messages.create(model=settings.anthropic_model, max_tokens=2000, messages=[{"role": "user", "content": prompt}])
+        if model.provider == "anthropic":
+            resp = get_anthropic_client().messages.create(model=model.model_id, max_tokens=2000, messages=[{"role": "user", "content": prompt}])
             raw = "".join(b.text for b in resp.content if b.type == "text")
         else:
-            resp = get_openai_client().chat.completions.create(model=settings.openai_model, messages=[{"role": "user", "content": prompt}], max_tokens=2000)
+            resp = get_openai_client().chat.completions.create(model=model.model_id, messages=[{"role": "user", "content": prompt}], max_tokens=2000)
             raw = resp.choices[0].message.content or ""
+        metering.record_response("document", model, resp)
     except Exception as exc:  # noqa: BLE001
         raise InvoiceError(f"Yapay zekâ faturayı okuyamadı: {str(exc)[:200]}") from exc
     return _extract_json(raw)

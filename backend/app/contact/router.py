@@ -6,7 +6,6 @@ from collections import defaultdict, deque
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import EmailStr, TypeAdapter, ValidationError
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.models import User
@@ -15,7 +14,6 @@ from app.core import storage
 from app.core.net import client_ip
 from app.core.config import settings
 from app.core.db import get_db
-from app.core.deps import require_admin
 from app.emails.renderer import render
 from app.emails.sender import send_email
 
@@ -181,24 +179,3 @@ async def submit(
     background.add_task(_notify, row.id, row.name, row.email, row.topic, row.message, [(fn, d) for fn, _, d in prepared], stored)
     return {"ok": True}
 
-
-@router.get("/messages")
-def list_messages(_: User = Depends(require_admin), db: Session = Depends(get_db)):
-    rows = db.scalars(select(ContactMessage).order_by(ContactMessage.id.desc()).limit(200)).all()
-    return [
-        {
-            "id": r.id, "name": r.name, "email": r.email, "topic": r.topic, "message": r.message,
-            "handled": r.handled, "created_at": r.created_at.isoformat(),
-            "attachments": [{"id": a.id, "filename": a.filename, "size": a.size} for a in r.attachments],
-        }
-        for r in rows
-    ]
-
-
-@router.get("/attachments/{attachment_id}/url")
-def attachment_url(attachment_id: int, _: User = Depends(require_admin), db: Session = Depends(get_db)):
-    """Yöneticiye 5 dakika geçerli, imzalı indirme adresi verir."""
-    att = db.get(ContactAttachment, attachment_id)
-    if att is None:
-        raise HTTPException(404, "Ek bulunamadı")
-    return {"url": storage.signed_url(BUCKET, att.storage_path), "filename": att.filename}

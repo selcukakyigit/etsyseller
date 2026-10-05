@@ -21,5 +21,8 @@ export const SHOP_NAV: NavItem[] = [
 
 export const SETTINGS_NAV: NavItem = { href: "/settings", tr: "Ayarlar", en: "Settings" };
 
+// Yalnızca yöneticilere görünür (User.is_admin); sunucu da yönetici olmayana 404 döner.
+export const ADMIN_NAV: NavItem = { href: "/admin", tr: "Yönetim", en: "Admin" };
+
 /** Alt sekme çubuğunda (mobil) doğrudan görünen sayfalar (en fazla 4 + "Menü"); Analiz ve geri kalanı çekmecede. */
 export const BOTTOM_TABS: NavItem[] = MAIN_NAV.filter((i) => i.href !== "/analysis");

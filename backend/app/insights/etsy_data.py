@@ -12,7 +12,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.images import for_llm
-from app.core.config import settings
 from app.core.i18n import tr
 from app.insights.models import EtsyKeywordData, TrackedKeyword
 from app.shops.models import Shop
@@ -48,29 +47,31 @@ class EtsyDataError(ValueError):
 
 def _ai(content_text: str | None, image: tuple[bytes, str] | None) -> dict:
     from app.ai.client import get_anthropic_client, get_openai_client
-    from app.ai.vision import VisionError, _provider
+    from app.ai.vision import VisionError, text_model
+    from app.billing import metering
 
     try:
-        provider = _provider()
+        model = text_model("document")
     except VisionError as exc:
         raise EtsyDataError(str(exc)) from exc
     prompt = PROMPT.replace("{today}", dt.date.today().isoformat()) + (f"\n\nTable text:\n{content_text[:MAX_TEXT]}" if content_text else "")
     try:
-        if provider == "anthropic":
+        if model.provider == "anthropic":
             parts: list[dict] = []
             if image:
                 data, ctype = for_llm(*image)
                 parts.append({"type": "image", "source": {"type": "base64", "media_type": ctype, "data": base64.b64encode(data).decode()}})
             parts.append({"type": "text", "text": prompt})
-            resp = get_anthropic_client().messages.create(model=settings.anthropic_model, max_tokens=4000, messages=[{"role": "user", "content": parts}])
+            resp = get_anthropic_client().messages.create(model=model.model_id, max_tokens=4000, messages=[{"role": "user", "content": parts}])
             raw = "".join(b.text for b in resp.content if b.type == "text")
         else:
             parts = [{"type": "text", "text": prompt}]
             if image:
                 data, ctype = for_llm(*image)
                 parts.append({"type": "image_url", "image_url": {"url": f"data:{ctype};base64,{base64.b64encode(data).decode()}"}})
-            resp = get_openai_client().chat.completions.create(model=settings.openai_model, messages=[{"role": "user", "content": parts}], max_tokens=4000)
+            resp = get_openai_client().chat.completions.create(model=model.model_id, messages=[{"role": "user", "content": parts}], max_tokens=4000)
             raw = resp.choices[0].message.content or ""
+        metering.record_response("document", model, resp)
     except Exception as exc:  # noqa: BLE001
         raise EtsyDataError(tr(f"Yapay zekâ veriyi okuyamadı: {str(exc)[:200]}", f"The AI could not read the data: {str(exc)[:200]}")) from exc
     m = re.search(r"\{.*\}", raw, re.DOTALL)

@@ -14,7 +14,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-5"
 
-    # Which provider generate_seo_suggestion() actually calls — "openai" or "anthropic".
+    # Aşağıdaki AI modeli/anahtarı değerleri yalnızca yedektir: asıl kaynak Yönetim > Modeller (veritabanı, bkz.
+    # ai/catalog.py). Katalog boşken bunlarla doldurulur; veritabanı okunamazsa bunlara düşülür.
+    # Metin görevlerinin varsayılan sağlayıcısı — "openai" or "anthropic".
     ai_provider: str = "openai"
 
     # Google AI Studio key — used only for image regeneration ("nano banana" image model).
@@ -50,8 +52,14 @@ class Settings(BaseSettings):
     # /docs, /redoc, /openapi.json yalnızca yerelde açık (üretimde uç nokta haritası saldırgana verilmez).
     expose_docs: bool = False
 
-    # Virgülle ayrılmış e-postalar: global API anahtarları ekranını yalnızca bunlar görebilir/değiştirebilir.
+    # Virgülle ayrılmış e-postalar: yönetim paneline (/admin) yalnızca bunlar girebilir.
     admin_emails: str = ""
+
+    # Lemon Squeezy (ödeme). API anahtarı ve mağaza no. ödeme sayfası açmak, webhook sırrı gelen olayları doğrulamak için.
+    # Boşsa satın alma düğmeleri görünmez, /webhooks/lemonsqueezy 503 döner.
+    lemonsqueezy_api_key: str = ""
+    lemonsqueezy_store_id: str = ""
+    lemonsqueezy_webhook_secret: str = ""
 
     # Kayıtta kabul edilen hukuki metin sürümü (frontend src/lib/legal.ts içindeki LEGAL_VERSION ile aynı olmalı).
     legal_version: str = "2026-10-02"

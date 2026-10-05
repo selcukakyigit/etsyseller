@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFil
 from sqlalchemy.orm import Session
 
 from app.account import danger, service
-from app.account.schemas import ApiKeysOut, ApiKeysUpdateIn, ApiKeyTestOut, DangerIn, ProfileUpdateIn
+from app.account.schemas import DangerIn, ProfileUpdateIn
 from pydantic import BaseModel
 
 from app.auth.models import User
@@ -10,7 +10,7 @@ from app.auth.workspaces import primary_workspace
 from app.auth.router import user_out
 from app.auth.schemas import UserOut
 from app.core.db import get_db
-from app.core.deps import get_current_user, require_admin
+from app.core.deps import get_current_user
 from app.core.i18n import get_lang
 from app.core.uploads import read_limited
 
@@ -73,32 +73,6 @@ def set_notification_settings(payload: NotificationSettingsIn, user: User = Depe
     user.email_lang = get_lang()
     db.commit()
     return {"order_email": user.notify_order_email}
-
-
-@router.get("/api-keys", response_model=ApiKeysOut)
-def api_keys(user: User = Depends(require_admin)):
-    return service.get_api_keys()
-
-
-@router.put("/api-keys", response_model=ApiKeysOut)
-def update_api_keys(payload: ApiKeysUpdateIn, user: User = Depends(require_admin)):
-    return service.update_api_keys(payload.model_dump(exclude_none=True))
-
-
-TEST_FUNCS = {
-    "etsy": service.test_etsy_connection,
-    "openai": service.test_openai_connection,
-    "anthropic": service.test_anthropic_connection,
-    "google": service.test_google_connection,
-}
-
-
-@router.post("/api-keys/test/{provider}", response_model=ApiKeyTestOut)
-def test_api_key(provider: str, user: User = Depends(require_admin)):
-    test_func = TEST_FUNCS.get(provider)
-    if test_func is None:
-        raise HTTPException(404, f"Bilinmeyen sağlayıcı: {provider}")
-    return test_func()
 
 
 def _checked(payload: DangerIn, user: User) -> None:

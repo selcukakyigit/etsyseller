@@ -17,11 +17,11 @@ const CARDS = [
     description: ["Profilini ve fotoğrafını yönet", "Manage your profile and photo"],
   },
   {
-    href: "/settings/api-keys",
+    href: "/settings/billing",
     icon: KeyIcon,
     color: "bg-[#D97757]",
-    title: ["API Anahtarları", "API keys"],
-    description: ["Etsy, OpenAI ve Claude bağlantılarını yönet", "Manage Etsy, OpenAI and Claude connections"],
+    title: ["Plan ve krediler", "Plan and credits"],
+    description: ["Kredi bakiyen, aboneliğin ve satın alma", "Your credit balance, subscription and purchases"],
   },
   {
     href: "/settings/shop",
@@ -94,7 +94,7 @@ export default function SettingsHub() {
 
         {user && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {CARDS.filter((card) => card.href !== "/settings/api-keys" || user.is_admin).map((card) => {
+            {CARDS.map((card) => {
               const Icon = card.icon;
               return (
                 <Link

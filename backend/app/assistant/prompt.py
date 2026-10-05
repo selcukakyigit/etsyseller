@@ -47,7 +47,7 @@ UYGULAMA HARİTASI (kullanıcıyı buralara yönlendir, bağlantı yazma, sayfa 
 - Listing'ler (ana sayfa): liste, filtreler, toplu düzenleme, "Yayınlanmamışları seç" ve "Seçilenleri Etsy'de yayınla". Bir listing'in düzenleyicisi: fotoğraf/video, varyasyon, kişiselleştirme, geçmiş, önizleme.
 - Siparişler: sekmeler (Gönderilecek, Tamamlandı, İptal / iade, Tümü), filtreler, kargoya verme, hediye kartı yazdırma.
 - Finans: Genel bakış, Ürün kârlılığı (ürün/seçenek maliyeti girilir), Sipariş maliyetleri, Kargo faturaları; Excel dışa aktarma.
-- Ayarlar: mağaza, API anahtarları, profil.
+- Ayarlar: mağaza, plan ve krediler, profil.
 ARAÇ SEÇİMİ
 - "Kaç siparişim var / kaç gönderilecek / gecikmiş var mı" → orders_overview. Belirli bir sipariş (kişiselleştirme, hediye notu, takip, maliyet) → önce list_orders(search) ile numarayı bul, sonra order_detail. Kişiselleştirme metni siparişin seçeneklerinde "kisisellestirme": true olan satırdadır.
 - "Kârım eksik / maliyet girilmemiş" → orders_missing_costs; sonuçtaki en çok eksik ürünleri söyle ve maliyetlerini sor.

@@ -1,12 +1,14 @@
-"""Görselden alt metin üretimi (OpenAI ya da Claude; hangisinin anahtarı varsa, önce ayarlardaki sağlayıcı)."""
+"""Görselden alt metin üretimi. Model katalogdaki "vision" görevinden gelir (bkz. ai/catalog.py)."""
 import base64
 import json
 import re
 
+from app.ai import catalog
+from app.ai.catalog import ResolvedModel
 from app.ai.client import get_anthropic_client, get_openai_client
 from app.ai.images import for_llm
+from app.billing import metering
 from app.core import blobstore
-from app.core.config import settings
 
 ALT_MAX = 125  # ekran okuyucular için önerilen uzunluk; Etsy sınırı 500
 
@@ -15,12 +17,12 @@ class VisionError(Exception):
     pass
 
 
-def _provider() -> str:
-    order = [settings.ai_provider, "anthropic" if settings.ai_provider == "openai" else "openai"]
-    for p in order:
-        if (settings.anthropic_api_key if p == "anthropic" else settings.openai_api_key):
-            return p
-    raise VisionError("Yapay zekâ API anahtarı tanımlı değil. Ayarlar > API anahtarları bölümünden ekleyin.")
+def text_model(task: str) -> ResolvedModel:
+    """Görevin metin modeli (anahtarı olan); yoksa kullanıcıya gösterilecek VisionError. Fatura/tablo okuma da kullanır."""
+    try:
+        return catalog.resolve_ready(task)
+    except catalog.NotConfigured as exc:
+        raise VisionError(str(exc)) from exc
 
 
 def _clip(text: str) -> str:
@@ -47,18 +49,19 @@ def generate_alt_texts(items: list[dict], title: str) -> list[str]:
     for i in items:
         data, ctype = for_llm(blobstore.read(i["path"]), i["content_type"])
         blobs.append((ctype, base64.b64encode(data).decode()))
-    provider = _provider()
+    model = text_model("vision")
     try:
-        if provider == "anthropic":
+        if model.provider == "anthropic":
             content = [{"type": "image", "source": {"type": "base64", "media_type": m, "data": d}} for m, d in blobs] + [{"type": "text", "text": prompt}]
-            resp = get_anthropic_client().messages.create(model=settings.anthropic_model, max_tokens=1200, messages=[{"role": "user", "content": content}])
+            resp = get_anthropic_client().messages.create(model=model.model_id, max_tokens=1200, messages=[{"role": "user", "content": content}])
             raw = "".join(b.text for b in resp.content if b.type == "text")
         else:
             content = [{"type": "text", "text": prompt}] + [{"type": "image_url", "image_url": {"url": f"data:{m};base64,{d}"}} for m, d in blobs]
             resp = get_openai_client().chat.completions.create(
-                model=settings.openai_model, messages=[{"role": "user", "content": content}], max_tokens=1200
+                model=model.model_id, messages=[{"role": "user", "content": content}], max_tokens=1200
             )
             raw = resp.choices[0].message.content or ""
+        metering.record_response("vision", model, resp)
     except Exception as exc:  # noqa: BLE001
         raise VisionError(f"Yapay zekâ sağlayıcısı hata verdi: {str(exc)[:200]}") from exc
     match = re.search(r"\{.*\}", raw, re.S)

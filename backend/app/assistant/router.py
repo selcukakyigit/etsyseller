@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 from app.assistant import llm, memory, service
 from app.auth.models import User
 from app.core import blobstore
-from app.core.config import settings
 from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.shops.deps import get_owned_shop, require_ai_enabled
@@ -30,7 +29,7 @@ class ChatIn(BaseModel):
 
 @router.get("/providers")
 def providers(shop: Shop = Depends(get_owned_shop)):
-    return {"default": settings.ai_provider, "providers": llm.available_providers()}
+    return {"default": llm.default_choice(), "providers": llm.available_providers()}
 
 
 @router.post("/chat", dependencies=[Depends(require_ai_enabled)])

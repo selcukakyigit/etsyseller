@@ -1,9 +1,10 @@
 import json
 import re
 
-from app.ai import quality
+from app.ai import catalog, quality
+from app.ai.catalog import ResolvedModel
 from app.ai.client import get_anthropic_client, get_openai_client
-from app.core.config import settings
+from app.billing import metering
 
 SYSTEM_PROMPT = """Sen bir Etsy SEO uzmanısın. Sana bir listing'in mevcut başlığı, etiketleri ve \
 açıklaması verilecek. Görevin, Etsy'nin 2026 "Context Update" sonrası arama algoritmasına göre optimize \
@@ -64,25 +65,27 @@ def _extract_json(text: str) -> dict:
     return json.loads(match.group(0) if match else text)
 
 
-def _generate_with_openai(user_content: str) -> dict:
+def _generate_with_openai(model: ResolvedModel, user_content: str) -> dict:
     completion = get_openai_client().chat.completions.create(
-        model=settings.openai_model,
+        model=model.model_id,
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_content},
         ],
     )
+    metering.record_response("seo", model, completion)
     return json.loads(completion.choices[0].message.content or "{}")
 
 
-def _generate_with_anthropic(user_content: str) -> dict:
+def _generate_with_anthropic(model: ResolvedModel, user_content: str) -> dict:
     message = get_anthropic_client().messages.create(
-        model=settings.anthropic_model,
+        model=model.model_id,
         max_tokens=2048,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_content}],
     )
+    metering.record_response("seo", model, message)
     text = "".join(block.text for block in message.content if block.type == "text")
     return _extract_json(text or "{}")
 
@@ -124,9 +127,11 @@ MAX_RETRIES = 2  # kalite/benzersizlik ihlalinde modele geri bildirimle en fazla
 
 
 def _call(user_content: str) -> dict:
-    if settings.ai_provider == "anthropic":
-        return _generate_with_anthropic(user_content)
-    return _generate_with_openai(user_content)
+    """Her deneme ayrı bir AI çağrısıdır ve ayrı ölçülür. Model katalogdaki "seo" görevinden gelir."""
+    model = catalog.resolve_ready("seo")
+    if model.provider == "anthropic":
+        return _generate_with_anthropic(model, user_content)
+    return _generate_with_openai(model, user_content)
 
 
 def _others_block(title: str, tags: list[str], others: list[dict]) -> str:

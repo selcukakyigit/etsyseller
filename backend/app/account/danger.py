@@ -8,11 +8,13 @@ from pathlib import Path
 
 import httpx
 from sqlalchemy import delete, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.account.service import AVATAR_DIR
 from app.auth.models import User, Workspace, WorkspaceMember
 from app.auth.workspaces import workspace_ids
+from app.billing import service as billing_service
 from app.core import blobstore
 from app.core.config import settings
 from app.core.db import Base
@@ -94,6 +96,11 @@ def delete_account(db: Session, user: User) -> None:
     owned_workspaces = list(
         db.scalars(select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == user.id, WorkspaceMember.role == "owner"))
     )
+    # Önce abonelikler iptal edilir: iptal edilemezse hiçbir şey silinmez, silinmiş hesaptan ödeme alınmaya devam edilmez.
+    try:
+        billing_service.cancel_for_workspaces(db, owned_workspaces)
+    except SQLAlchemyError:  # ödeme tabloları henüz yoksa abonelik de yoktur
+        db.rollback()
     reset_data(db, user)
     # Kimlik kaydı, yerel kullanıcı satırı silinmeden önce kaldırılır: Supabase hata verirse kullanıcı satırı durur ve
     # işlem tekrar denenebilir (giriş açık kalıp verisi silinmiş yarım durum tutarlı biçimde yeniden denenir).

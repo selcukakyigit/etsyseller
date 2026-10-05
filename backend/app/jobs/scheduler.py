@@ -1,6 +1,7 @@
 import datetime as dt
 import logging
 
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED, JobExecutionEvent
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
@@ -23,8 +24,41 @@ logger = logging.getLogger(__name__)
 # En fazla 2 iş aynı anda çalışsın: hepsi aynı anda başlarsa bellek 512 MB sınırını aşıp servisi yeniden başlatabiliyor.
 _scheduler = BackgroundScheduler(timezone="UTC", executors={"default": ThreadPoolExecutor(2)})
 
+INITIAL_RUN_SUFFIX = "_initial_run"
+MANUAL_RUN_SUFFIX = "_manual_run"
+_ONE_OFF_SUFFIXES = (INITIAL_RUN_SUFFIX, MANUAL_RUN_SUFFIX)
+# İş kimliği -> son çalışmanın sonucu (yönetim panelindeki Sistem sayfası için). Bellek içidir; işler ayrı bir worker'a
+# taşınınca ortak bir depoya yazılmalı (bkz. admin/system.py).
+_last_runs: dict[str, dict] = {}
+
+
+def _base_id(job_id: str) -> str:
+    for suffix in _ONE_OFF_SUFFIXES:
+        job_id = job_id.removesuffix(suffix)
+    return job_id
+
+
+def _record_run(event: JobExecutionEvent) -> None:
+    job_id = _base_id(event.job_id)
+    error = None if event.exception is None else f"{type(event.exception).__name__}: {event.exception}"[:300]
+    _last_runs[job_id] = {"last_run": dt.datetime.now(dt.timezone.utc), "last_ok": error is None, "last_error": error}
+
+
+def is_running() -> bool:
+    return _scheduler.running
+
+
+def job_status() -> list[dict]:
+    """Her zamanlanmış işin bir sonraki ve son çalışması. Tek seferlik çalışmalar (açılışta ya da panelden elle) asıl işin
+    kaydına yazılır."""
+    next_runs = {j.id: j.next_run_time for j in _scheduler.get_jobs() if _base_id(j.id) == j.id} if _scheduler.running else {}
+    last_runs = _last_runs.copy()  # iş iş parçacıkları aynı anda yazabilir; kopya üzerinden okunur
+    empty = {"last_run": None, "last_ok": None, "last_error": None}
+    return [{"id": job_id, "next_run": next_runs.get(job_id), **last_runs.get(job_id, empty)} for job_id in sorted(set(next_runs) | set(last_runs))]
+
 
 def start_scheduler() -> None:
+    _scheduler.add_listener(_record_run, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
     _scheduler.add_job(
         capture_daily_stats,
         trigger=CronTrigger(hour=3, minute=0),
@@ -109,6 +143,18 @@ def start_scheduler() -> None:
         "Scheduler started: daily_stats 03:00, listing_health 03:15 UTC; order_sync every 2h, "
         "listing_refresh/shop_profile/reviews every 4h, finance_sync every 4h (all also run once shortly after start)."
     )
+
+
+def run_now(job_id: str) -> bool:
+    """Zamanlanmış bir işi hemen bir kez çalıştırır (yönetim paneli). İş yoksa ya da zaten elle başlatılmış ve henüz
+    başlamamışsa False. Aynı anda en fazla 2 iş çalıştığı için sırada bekleyebilir."""
+    if not _scheduler.running or _base_id(job_id) != job_id:
+        return False
+    job = _scheduler.get_job(job_id)
+    if job is None or _scheduler.get_job(job_id + MANUAL_RUN_SUFFIX) is not None:
+        return False
+    _scheduler.add_job(job.func, trigger=DateTrigger(run_date=dt.datetime.now(dt.timezone.utc)), id=job_id + MANUAL_RUN_SUFFIX)
+    return True
 
 
 def stop_scheduler() -> None:

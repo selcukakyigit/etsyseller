@@ -6,7 +6,7 @@ import { api, Shop, User } from "@/lib/api";
 import Avatar from "@/components/Avatar";
 import { useT } from "@/lib/i18n-client";
 import { useStoredState } from "@/lib/useStoredState";
-import { MAIN_NAV, SETTINGS_NAV, SHOP_NAV } from "./navItems";
+import { ADMIN_NAV, MAIN_NAV, SETTINGS_NAV, SHOP_NAV } from "./navItems";
 
 export type ShellProps = {
   user: User | null;
@@ -76,6 +76,12 @@ export default function SidebarNav({ user, shops, activeShop, onSwitchShop, curr
         <Link href={SETTINGS_NAV.href} onClick={onNavigate} className={linkClass(current === SETTINGS_NAV.href)}>
           {t(SETTINGS_NAV.tr, SETTINGS_NAV.en)}
         </Link>
+
+        {user?.is_admin && (
+          <Link href={ADMIN_NAV.href} onClick={onNavigate} className={linkClass(current === ADMIN_NAV.href)}>
+            {t(ADMIN_NAV.tr, ADMIN_NAV.en)}
+          </Link>
+        )}
       </nav>
 
       <div className="space-y-3 border-t border-neutral-100 px-3 py-4 dark:border-neutral-800">

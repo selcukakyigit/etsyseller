@@ -16,6 +16,7 @@ MIN_INTERVAL_SECONDS = 0.01  # ~100/s, well under the 150 QPS commercial limit
 # Commercial Access anahtarı günde 100.000 istek verir. Sayaç bellek içidir (yeniden
 # başlatmada sıfırlanır, yaklaşık bir ölçüdür): amaç, zamanlanmış yenilemelerin kullanıcının etkileşimli kullanımına
 # ayrılan payı yememesi.
+DAILY_LIMIT = 100_000
 DAILY_BUDGET_FOR_BACKGROUND = 70_000
 _day = ""
 _calls = 0

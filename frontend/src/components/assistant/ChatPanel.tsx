@@ -452,7 +452,7 @@ export default function ChatPanel({
 
       {(error || noKey) && (
         <div className="mx-4 mb-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950 dark:text-red-300">
-          {error ?? t("Seçili yapay zekâ sağlayıcısının API anahtarı tanımlı değil. Ayarlar > API anahtarları bölümünden ekleyin ya da yukarıdan diğer sağlayıcıyı seçin.", "The selected AI provider has no API key. Add one under Settings > API keys, or pick the other provider above.")}
+          {error ?? t("Seçili model şu an kullanılamıyor. Yukarıdan başka bir model seç.", "The selected model is unavailable right now. Pick another model above.")}
         </div>
       )}
 

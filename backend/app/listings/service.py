@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, defer
 
 from app.ai import quality, seo
+from app.ai.catalog import NotConfigured
 from app.insights import diagnosis
 from app.listings import performance
 from app.etsy import images as etsy_images
@@ -481,6 +482,8 @@ def create_suggestion(
 
     try:
         suggestion = seo.generate_seo_suggestion(listing, keyword_pool=keyword_pool, others=quality.shop_others(db, shop.id, exclude_id=listing_id), diagnosis_brief=brief, variations=quality.variation_values(inventory), fact_source=fact_source)
+    except NotConfigured as exc:
+        raise SuggestionError(str(exc)) from exc
     except (ValueError, json.JSONDecodeError) as exc:
         raise SuggestionError(f"SEO önerisi üretilemedi: {exc}") from exc
 
