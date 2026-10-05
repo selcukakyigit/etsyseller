@@ -481,7 +481,7 @@ export default function PersonalizationEditor({
             {t("+ Alan ekle", "+ Add field")}
           </button>
           {menuOpen && (
-            <div className="absolute left-0 top-full z-40 mt-2 max-h-80 w-80 overflow-y-auto rounded-xl border border-neutral-200 bg-white py-2 shadow-xl dark:border-neutral-700 dark:bg-neutral-900">
+            <div className="absolute left-0 top-full z-40 mt-2 max-h-80 w-80 max-w-[calc(100vw-3rem)] overflow-y-auto rounded-xl border border-neutral-200 bg-white py-2 shadow-xl dark:border-neutral-700 dark:bg-neutral-900">
               {reusable.length > 0 && (
                 <>
                   <p className="px-4 pb-1 pt-1 text-[11px] font-medium text-neutral-500">{t("Daha önce kullanılanlar", "Used before")}</p>

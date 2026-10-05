@@ -6,6 +6,7 @@ import { useRegenProgress } from "@/lib/useRegenProgress";
 import { tNow as t } from "@/lib/i18n";
 import { useCached } from "@/lib/pageCache";
 import { BlockSpinner } from "@/components/ui/Spinner";
+import { CameraIcon } from "@/components/icons";
 
 const card = "rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900";
 const input = "rounded-lg border border-neutral-300 bg-white px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900";
@@ -203,16 +204,36 @@ export default function ShippingInvoices({
             "PDF, JPG/PNG, Excel (xlsx/xls), CSV or HTML. Each shipment on the invoice is matched to an order by tracking number / recipient name, and the amount is added to that order's items. You can upload several invoices for one shipment (e.g. customs + freight); they are added up. Files are not stored, only the extracted amounts.",
           )}
         </p>
+        {/* Dokunmatik cihazda (telefon/tablet): faturanın fotoğrafını doğrudan arka kamerayla çek. */}
+        <label
+          aria-disabled={!!progress}
+          className="mb-2 hidden cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#D97757] px-4 py-3.5 text-sm font-semibold text-white hover:bg-[#C6613F] aria-disabled:opacity-50 pointer-coarse:flex"
+        >
+          <CameraIcon />
+          {t("Faturanın fotoğrafını çek", "Take a photo of the invoice")}
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            disabled={!!progress}
+            onChange={(e) => {
+              if (e.target.files) void handleFiles(e.target.files);
+              e.target.value = "";
+            }}
+          />
+        </label>
         <label
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => {
             e.preventDefault();
             if (!progress) void handleFiles(e.dataTransfer.files);
           }}
-          className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-neutral-300 p-8 text-center text-sm text-neutral-500 hover:border-neutral-400 dark:border-neutral-700"
+          className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-neutral-300 p-8 text-center text-sm text-neutral-500 hover:border-neutral-400 dark:border-neutral-700 dark:hover:border-neutral-600 pointer-coarse:p-5"
         >
           <span className="text-2xl">🧾</span>
-          <span className="font-medium text-neutral-700 dark:text-neutral-200">{t("Faturaları buraya bırak ya da tıkla", "Drop invoices here or click")}</span>
+          <span className="font-medium text-neutral-700 dark:text-neutral-200 pointer-coarse:hidden">{t("Faturaları buraya bırak ya da tıkla", "Drop invoices here or click")}</span>
+          <span className="hidden font-medium text-neutral-700 dark:text-neutral-200 pointer-coarse:inline">{t("ya da dosya seç (PDF, Excel, resim)", "or choose a file (PDF, Excel, image)")}</span>
           <input
             type="file"
             multiple

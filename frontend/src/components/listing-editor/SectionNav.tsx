@@ -28,7 +28,8 @@ export default function SectionNav({
       aria-label={t("Bölümler", "Sections")}
       // top-[49px]: AppShell'in Topbar'ı (bkz. Topbar.tsx) kendisi de sticky top-0 ve 49px yükseklikte —
       // bu da top-0 olsaydı ikisi aynı noktaya yapışıp üst üste binerdi (Topbar görünmez olurdu).
-      className="sticky top-[49px] z-20 -mx-2 flex flex-wrap items-center gap-1.5 rounded-xl bg-neutral-50/90 px-2 py-2 backdrop-blur dark:bg-neutral-950/90"
+      // Telefonda tek satır ve yatay kayar: kırılınca 3 satır olup ekranın üstünü kaplıyordu.
+      className="sticky top-[49px] z-20 -mx-3 flex items-center gap-1.5 overflow-x-auto whitespace-nowrap bg-neutral-50/90 px-3 py-2 backdrop-blur [scrollbar-width:none] dark:bg-neutral-950/90 sm:-mx-2 sm:flex-wrap sm:rounded-xl sm:px-2"
     >
       {EDIT_SECTIONS.map(([id, tr, en]) => (
         <button

@@ -33,7 +33,7 @@ const tile = "relative aspect-square overflow-hidden rounded-xl border border-ne
 const addTile =
   "flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-neutral-300 text-center text-neutral-600 transition hover:border-neutral-400 dark:border-neutral-700 dark:text-neutral-300 dark:hover:border-neutral-500";
 const iconBtn =
-  "flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-sm shadow opacity-0 transition group-hover:opacity-100 focus:opacity-100 dark:bg-neutral-900/90";
+  "flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-sm shadow opacity-0 transition group-hover:opacity-100 focus:opacity-100 pointer-coarse:opacity-100 dark:bg-neutral-900/90";
 
 // Henüz Etsy'ye yüklenmemiş taslak öğelerin id'si negatiftir (Etsy id'leri hep pozitif).
 const draftId = () => -(Date.now() * 1000 + Math.floor(Math.random() * 1000));
@@ -478,7 +478,7 @@ export default function MediaManager({
           </div>
         </div>
       )}
-      <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3 lg:grid-cols-6">
         {ordered.map((img, i) => (
           <div
             key={img.listing_image_id}
@@ -522,6 +522,17 @@ export default function MediaManager({
               <span className="absolute right-1.5 top-1.5 rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-800">
                 {t("Öne çıkan", "Featured")}
               </span>
+            )}
+            {/* Dokunmatik ekranda sürükle-bırak çalışmaz: sıralama bu iki düğmeyle yapılır (geniş ekranda gizli). */}
+            {i > 0 && !busy && (
+              <div className="absolute right-1.5 top-1.5 hidden gap-1.5 pointer-coarse:flex">
+                <button type="button" onClick={() => move(i, i - 1)} aria-label={t("Bir öne al", "Move earlier")} title={t("Bir öne al", "Move earlier")} className={iconBtn}>
+                  ◀
+                </button>
+                <button type="button" onClick={() => move(i, 0)} aria-label={t("Öne çıkan fotoğraf yap", "Make featured photo")} title={t("Öne çıkan yap", "Make featured")} className={iconBtn}>
+                  ★
+                </button>
+              </div>
             )}
             {isDraft(img.listing_image_id) && (
               <span className="absolute left-7 top-1.5 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">

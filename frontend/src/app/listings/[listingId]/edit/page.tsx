@@ -28,6 +28,7 @@ import PersonalizationEditor from "@/components/listing-editor/PersonalizationEd
 import StringListEditor from "@/components/listing-editor/StringListEditor";
 import TagsEditor from "@/components/listing-editor/TagsEditor";
 import { useT } from "@/lib/i18n-client";
+import { Popover, menuItem } from "@/components/ui/Popover";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { ABOVE_BOTTOM_NAV } from "@/components/layout/constants";
 
@@ -244,7 +245,7 @@ export default function ListingEditPage() {
 
   return (
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/listings">
-      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
+      <div className="mx-auto max-w-5xl px-3 py-4 sm:px-6 sm:py-8">
         <button
           onClick={() => router.push("/listings")}
           className="text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 transition mb-4"
@@ -658,13 +659,48 @@ export default function ListingEditPage() {
               </div>
             )}
 
-            <div className={`sticky z-30 flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 bg-white p-3 shadow-lg dark:border-neutral-800 dark:bg-neutral-900 sm:gap-3 ${ABOVE_BOTTOM_NAV}`}>
-              <span className="w-full text-xs text-neutral-600 dark:text-neutral-300 sm:w-auto sm:flex-1 sm:text-sm">{statusLabel}</span>
+            {/* Telefonda: durum tek satır, altında [⋯] [Kaydet] [Etsy'de yayınla]; taslak kaydet ve değişiklikleri at ⋯ menüsünde. */}
+            <div className={`sticky z-30 flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 bg-white p-2.5 shadow-lg dark:border-neutral-800 dark:bg-neutral-900 sm:gap-3 sm:p-3 ${ABOVE_BOTTOM_NAV}`}>
+              <span className="w-full truncate px-0.5 text-xs text-neutral-600 dark:text-neutral-300 sm:w-auto sm:flex-1 sm:text-sm">{statusLabel}</span>
+              <div className="sm:hidden">
+                <Popover label={t("Diğer", "More")} button={<span className="text-base leading-none">⋯</span>}>
+                  {(close) => (
+                    <div role="menu" className="absolute bottom-full left-0 z-40 mb-2 w-56 overflow-hidden rounded-xl border border-neutral-200 bg-white py-1 text-sm shadow-xl dark:border-neutral-700 dark:bg-neutral-900">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          close();
+                          wc.saveDraft();
+                        }}
+                        disabled={!wc.unsaved || wc.draftCurrent || wc.publishing || wc.saveState === "saving"}
+                        className={`${menuItem} disabled:opacity-40`}
+                      >
+                        {wc.draftCurrent ? t("Taslak kaydedildi ✓", "Draft saved ✓") : t("Taslak kaydet", "Save draft")}
+                      </button>
+                      {(wc.unsaved || wc.hasLocal || wc.hasDraft) && (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            close();
+                            void handleDiscard();
+                          }}
+                          disabled={wc.publishing}
+                          className={`${menuItem} text-red-600 disabled:opacity-40 dark:text-red-400`}
+                        >
+                          {isNew ? t("Listing'i sil", "Delete listing") : t("Değişiklikleri at", "Discard changes")}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </Popover>
+              </div>
               {(wc.unsaved || wc.hasLocal || wc.hasDraft) && (
                 <button
                   onClick={handleDiscard}
                   disabled={wc.publishing}
-                  className="rounded-lg px-3 py-2 text-sm font-medium text-neutral-700 hover:underline disabled:opacity-50 dark:text-neutral-200"
+                  className="hidden rounded-lg px-3 py-2 text-sm font-medium text-neutral-700 hover:underline disabled:opacity-50 dark:text-neutral-200 sm:inline-block"
                 >
                   {isNew ? t("Listing'i sil", "Delete listing") : t("Değişiklikleri at", "Discard changes")}
                 </button>
@@ -673,7 +709,7 @@ export default function ListingEditPage() {
                 onClick={wc.saveDraft}
                 disabled={!wc.unsaved || wc.draftCurrent || wc.publishing || wc.saveState === "saving"}
                 title={t("Ara kayıt alır; liste sayfası değişmez, editörü tekrar açınca kaldığın yerden devam edersin", "Saves your progress; the list page does not change, and you continue where you left off next time")}
-                className="flex-1 whitespace-nowrap rounded-lg border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-800 transition hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800 sm:flex-none sm:px-4"
+                className="hidden whitespace-nowrap rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-800 transition hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800 sm:inline-block"
               >
                 {wc.draftCurrent ? t("Taslak kaydedildi ✓", "Draft saved ✓") : t("Taslak kaydet", "Save draft")}
               </button>
@@ -681,14 +717,14 @@ export default function ListingEditPage() {
                 onClick={wc.saveLocal}
                 disabled={!wc.unsaved || wc.publishing || wc.saveState === "saving"}
                 title={t("Değişiklikleri yerel listing'e kaydeder; liste sayfası güncellenir, Etsy'ye gönderilmez", "Saves changes to the local listing; the list page updates, nothing is sent to Etsy")}
-                className="flex-1 whitespace-nowrap rounded-lg border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-800 transition hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800 sm:flex-none sm:px-4"
+                className="h-9 whitespace-nowrap rounded-lg border border-neutral-300 px-4 text-sm font-medium text-neutral-800 transition hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800 sm:h-auto sm:py-2"
               >
                 {wc.saveState === "saving" ? t("Kaydediliyor…", "Saving…") : t("Kaydet", "Save")}
               </button>
               <button
                 onClick={handlePublish}
                 disabled={(!wc.unsaved && !wc.hasLocal) || wc.publishing || wc.saveState === "saving"}
-                className="w-full whitespace-nowrap rounded-lg bg-[#D97757] px-4 py-2 text-sm font-medium text-white shadow transition hover:bg-[#C6613F] disabled:opacity-50 sm:w-auto"
+                className="h-9 min-w-0 flex-1 whitespace-nowrap rounded-lg bg-[#D97757] px-4 text-sm font-medium text-white shadow transition hover:bg-[#C6613F] disabled:opacity-50 sm:h-auto sm:flex-none sm:py-2"
               >
                 {wc.publishing ? t("Yayınlanıyor…", "Publishing…") : t("Etsy'de yayınla", "Publish to Etsy")}
               </button>

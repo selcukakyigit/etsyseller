@@ -53,7 +53,7 @@ export default function SectionCard({
         onClick={onToggle}
         aria-expanded={open}
         aria-controls={`${id}-body`}
-        className="flex w-full items-center gap-3 rounded-2xl px-5 py-4 text-left"
+        className="flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-left sm:px-5 sm:py-4"
       >
         <div className="min-w-0 flex-1">
           <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">{title}</h2>
@@ -71,7 +71,7 @@ export default function SectionCard({
       <div
         id={`${id}-body`}
         hidden={!open}
-        className={`space-y-8 border-t border-neutral-100 px-5 py-5 dark:border-neutral-800 ${hideInnerTitle ? "[&>section>h2:first-child]:hidden" : ""} [&>section]:rounded-none [&>section]:border-0 [&>section]:bg-transparent [&>section]:p-0 [&>section]:shadow-none dark:[&>section]:bg-transparent`}
+        className={`space-y-8 border-t border-neutral-100 px-4 py-4 dark:border-neutral-800 sm:px-5 sm:py-5 ${hideInnerTitle ? "[&>section>h2:first-child]:hidden" : ""} [&>section]:rounded-none [&>section]:border-0 [&>section]:bg-transparent [&>section]:p-0 [&>section]:shadow-none dark:[&>section]:bg-transparent`}
       >
         {children}
       </div>
