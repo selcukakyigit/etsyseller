@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { api, API_URL, BannerImage, BannerStyle, Listing } from "@/lib/api";
+import { api, API_URL, BannerImage, BannerStyle, Listing, ShopSection } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import AppShell from "@/components/AppShell";
 import ListingPicker from "@/components/banners/ListingPicker";
@@ -57,6 +57,7 @@ export default function BannersPage() {
   const shopId = activeShop?.id;
   const [listings, setListings] = useCached<Listing[]>(shopId !== undefined ? `listings:${shopId}` : null);
   const [recent, setRecent] = useCached<BannerImage[]>(shopId !== undefined ? `banners:${shopId}` : null);
+  const [sections, setSections] = useCached<ShopSection[]>(shopId !== undefined ? `sections:${shopId}` : null);
 
   const [style, setStyle] = useState<BannerStyle>("carousel");
   const [count, setCount] = useState(3);
@@ -78,7 +79,8 @@ export default function BannersPage() {
   useEffect(() => {
     if (shopId === undefined) return;
     api.listings.list(shopId).then(setListings).catch(() => undefined);
-  }, [shopId, setListings]);
+    api.shops.sections(shopId).then(setSections).catch(() => undefined); // bölüm süzgeci; alınamazsa süzgeçsiz devam
+  }, [shopId, setListings, setSections]);
 
   const loadRecent = useCallback(() => {
     if (shopId === undefined) return;
@@ -371,6 +373,7 @@ export default function BannersPage() {
       {pickerOpen && listings && (
         <ListingPicker
           listings={listings}
+          sections={sections ?? []}
           initial={picked}
           max={MAX_LISTINGS}
           onClose={() => setPickerOpen(false)}
