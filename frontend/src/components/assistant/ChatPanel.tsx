@@ -1,7 +1,7 @@
 "use client";
 
 import { ChangeEvent, ClipboardEvent, DragEvent, Fragment, KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
-import { api, API_URL, AssistantProviders, ChatMessageOut, ChatSessionInfo } from "@/lib/api";
+import { api, API_URL, ChatMessageOut, ChatSessionInfo } from "@/lib/api";
 import Card from "./Cards";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import UlaggMark from "@/components/brand/UlaggMark";
@@ -17,12 +17,9 @@ const SUGGESTIONS: [string, string][] = [
   ["Bu resimlerden yeni bir listing taslağı oluştur", "Create a new listing draft from these images"],
 ];
 
-// Başlıktaki üç düğme (Geçmiş, Yeni sohbet, sağlayıcı) aynı boyda.
+// Başlıktaki iki düğme (Geçmiş, Yeni sohbet) aynı boyda.
 const pill =
   "inline-flex h-7 items-center whitespace-nowrap rounded-lg border border-neutral-200 px-2.5 text-xs text-neutral-800 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800";
-
-/** "OpenAI (gpt-4o)" → "OpenAI": düğmede yalnızca sağlayıcı adı, model menüde görünür. */
-const shortLabel = (label: string) => label.split(" (")[0];
 
 const localToday = () => {
   const d = new Date();
@@ -102,8 +99,6 @@ export default function ChatPanel({
   const [messages, setMessages] = useState<ChatMessageOut[]>([]);
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [sessions, setSessions] = useState<ChatSessionInfo[]>([]);
-  const [providers, setProviders] = useState<AssistantProviders | null>(null);
-  const [provider, setProvider] = useState("");
   const [input, setInput] = useState("");
   const [pending, setPending] = useState<Pending[]>([]);
   const [uploading, setUploading] = useState(0);
@@ -120,7 +115,6 @@ export default function ChatPanel({
   const textArea = useRef<HTMLTextAreaElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [touch, setTouch] = useState(false); // dokunmatik cihazda menüde "Kamera" da görünür
-  const [providerOpen, setProviderOpen] = useState(false);
   const [confirm, confirmElement] = useConfirm();
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -132,13 +126,6 @@ export default function ChatPanel({
   }, [shopId]);
 
   useEffect(() => {
-    api.assistant
-      .providers(shopId)
-      .then((p) => {
-        setProviders(p);
-        setProvider((cur) => cur || p.default);
-      })
-      .catch(() => undefined);
     refreshSessions();
   }, [shopId, refreshSessions]);
 
@@ -234,7 +221,7 @@ export default function ChatPanel({
     setInput("");
     setPending([]);
     try {
-      const reply = await api.assistant.chat(shopId, { message, session_id: sessionId, image_ids: imgs.map((i) => i.id), provider: provider || undefined, today: localToday(), request_id: rid, lang });
+      const reply = await api.assistant.chat(shopId, { message, session_id: sessionId, image_ids: imgs.map((i) => i.id), today: localToday(), request_id: rid, lang });
       setSessionId(reply.session_id);
       setMessages((m) => [...m.filter((x) => x.id !== temp.id), { ...reply.user, images: temp.images }, reply.assistant]);
       refreshSessions();
@@ -328,7 +315,6 @@ export default function ChatPanel({
   }
 
   const img = (url: string) => (url.startsWith("blob:") || url.startsWith("http") ? url : `${API_URL}${url}`);
-  const noKey = providers && !providers.providers.find((p) => p.id === provider)?.ready;
 
   return (
     <div
@@ -355,46 +341,6 @@ export default function ChatPanel({
           <button type="button" onClick={newChat} className={pill}>
             {t("Yeni sohbet", "New chat")}
           </button>
-          {/* Yerel <select> yerine: mobilde form alanları 16px'e zorlandığı (globals.css) için diğer düğmelerden büyük kalıyordu. */}
-          {providers && (
-            <div className="relative">
-              <button type="button" onClick={() => setProviderOpen((v) => !v)} aria-haspopup="listbox" aria-expanded={providerOpen} title={t("Yapay zekâ sağlayıcısı", "AI provider")} className={`${pill} gap-1`}>
-                {shortLabel(providers.providers.find((p) => p.id === provider)?.label ?? provider)}
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={`h-3 w-3 transition ${providerOpen ? "rotate-180" : ""}`} aria-hidden>
-                  <path d="M6 9l6 6 6-6" />
-                </svg>
-              </button>
-              {providerOpen && (
-                <>
-                  <button type="button" aria-hidden tabIndex={-1} className="fixed inset-0 z-10 cursor-default" onClick={() => setProviderOpen(false)} />
-                  <div role="listbox" className="absolute right-0 top-full z-20 mt-1.5 w-60 overflow-hidden rounded-xl border border-neutral-200 bg-white py-1 shadow-xl dark:border-neutral-700 dark:bg-neutral-900">
-                    {providers.providers.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        role="option"
-                        aria-selected={p.id === provider}
-                        onClick={() => {
-                          setProvider(p.id);
-                          setProviderOpen(false);
-                        }}
-                        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs text-neutral-800 hover:bg-neutral-100 dark:text-neutral-100 dark:hover:bg-neutral-800"
-                      >
-                        <span className="min-w-0">
-                          <span className="block font-medium">{shortLabel(p.label)}</span>
-                          <span className="block truncate text-[11px] text-neutral-500 dark:text-neutral-400">
-                            {p.label}
-                            {p.ready ? "" : t(" · anahtar yok", " · no key")}
-                          </span>
-                        </span>
-                        {p.id === provider && <span className="text-[#D97757]">✓</span>}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
         </div>
       </div>
 
@@ -411,7 +357,7 @@ export default function ChatPanel({
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               {SUGGESTIONS.map(([tr, en]) => t(tr, en)).map((s) => (
-                <button key={s} type="button" onClick={() => void send(s)} disabled={!!noKey} className="rounded-full border border-neutral-200 px-3 py-1.5 text-xs hover:border-[#D97757] hover:text-[#D97757] disabled:opacity-40 dark:border-neutral-700">
+                <button key={s} type="button" onClick={() => void send(s)} className="rounded-full border border-neutral-200 px-3 py-1.5 text-xs hover:border-[#D97757] hover:text-[#D97757] disabled:opacity-40 dark:border-neutral-700">
                   {s}
                 </button>
               ))}
@@ -450,10 +396,8 @@ export default function ChatPanel({
         <div ref={bottom} />
       </div>
 
-      {(error || noKey) && (
-        <div className="mx-4 mb-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950 dark:text-red-300">
-          {error ?? t("Seçili model şu an kullanılamıyor. Yukarıdan başka bir model seç.", "The selected model is unavailable right now. Pick another model above.")}
-        </div>
+      {error && (
+        <div className="mx-4 mb-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950 dark:text-red-300">{error}</div>
       )}
 
       <div className="border-t border-neutral-100 p-3 dark:border-neutral-800">
@@ -543,7 +487,7 @@ export default function ChatPanel({
           <button
             type="button"
             onClick={() => void send()}
-            disabled={busy || uploading > 0 || (!input.trim() && pending.length === 0) || !!noKey}
+            disabled={busy || uploading > 0 || (!input.trim() && pending.length === 0)}
             aria-label={t("Gönder", "Send")}
             title={t("Gönder", "Send")}
             className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[#D97757] text-white transition hover:bg-[#C6613F] disabled:bg-neutral-200 disabled:text-neutral-400 dark:disabled:bg-neutral-700 dark:disabled:text-neutral-500"

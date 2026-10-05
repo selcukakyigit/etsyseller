@@ -176,11 +176,11 @@ def _strip_app_links(text: str) -> str:
     return _BARE_EDIT_URL.sub("", _EDIT_LINK.sub(r"\1", text)).strip()
 
 
-def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message: str, image_ids: list[str], provider: str | None, today: dt.date, request_id: str | None = None, lang: str = "tr") -> dict:
+def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message: str, image_ids: list[str], today: dt.date, request_id: str | None = None, lang: str = "tr") -> dict:
     message = (message or "").strip()
     if not message and not image_ids:
         raise ValueError(tr("Mesaj boş olamaz.", "The message cannot be empty."))
-    model = llm.pick_model(provider)
+    model = llm.assistant_model()
     if not catalog.ready(model):
         raise llm.AssistantError(llm.missing_key_message())
 

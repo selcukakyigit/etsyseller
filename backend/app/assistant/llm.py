@@ -49,38 +49,15 @@ class AgentResult:
     usage: Usage
 
 
-def _choice_id(m: ResolvedModel) -> str:
-    """Seçicideki kimlik: katalog modelinin numarası; katalog okunamıyorsa (.env'e düşülmüşse) sağlayıcı adı."""
-    return str(m.id) if m.id is not None else m.provider
-
-
-def available_providers() -> list[dict]:
-    """Asistandaki model seçicinin seçenekleri: katalogdaki aktif metin modelleri (Yönetim > Modeller)."""
-    return [{"id": _choice_id(m), "label": m.label, "ready": catalog.ready(m)} for m in catalog.choices("llm")]
-
-
-def default_choice() -> str:
-    return _choice_id(catalog.resolve("assistant"))
-
-
-def pick_model(choice: str | None) -> ResolvedModel:
-    """Kullanıcının seçtiği model; seçim geçersizse ya da artık aktif değilse asistan görevinin modeli. Eski istemciler
-    sağlayıcı adı ("openai" / "anthropic") gönderebilir; o sağlayıcının ilk aktif modeli kullanılır."""
-    if choice and choice.isdigit():
-        model = catalog.by_id(int(choice), "llm")
-        if model is not None:
-            return model
-    if choice:
-        model = next((m for m in catalog.choices("llm") if m.provider == choice), None)
-        if model is not None:
-            return model
+def assistant_model() -> ResolvedModel:
+    """Asistanın modeli: Yönetim > Modeller'de "asistan" görevine atanan model. Kullanıcı model seçmez."""
     return catalog.resolve("assistant")
 
 
 def missing_key_message() -> str:
     return tr(
-        "Seçili model şu an kullanılamıyor (sağlayıcı anahtarı tanımlı değil). Yukarıdan başka bir model seç.",
-        "The selected model is unavailable right now (no provider key is set). Pick another model above.",
+        "Asistan şu an kullanılamıyor (yapay zekâ sağlayıcısı ayarlı değil). Biraz sonra tekrar dene.",
+        "The assistant is unavailable right now (no AI provider is configured). Please try again later.",
     )
 
 
