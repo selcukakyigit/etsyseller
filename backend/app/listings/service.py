@@ -4,7 +4,7 @@ import json
 import logging
 import threading
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, defer
 
 from app.ai import quality, seo
@@ -22,7 +22,7 @@ from app.etsy.client import EtsyClient
 from app.listings import image_cache
 from app.keywords import service as keyword_service
 from app.keywords import trends as keyword_trends
-from app.listings.models import ListingCache, ListingDraft, ListingLocal, ListingStatSnapshot, ListingVersion
+from app.listings.models import ListingCache, ListingChange, ListingDraft, ListingLocal, ListingStatSnapshot, ListingVersion
 from app.listings.schemas import (
     ImageOrderIn,
     InventoryUpdateIn,
@@ -356,7 +356,7 @@ def _summary(raw: dict, inventory: dict, over: dict) -> dict:
 
 # Liste kartlarının hesaplanmış hâli: yüzlerce ilanın ham JSON'unu her açılışta çözmek (~1 sn) yerine, kaynak tablolar
 # değişmedikçe bellekten döner. Geçerliliği tabloların parmak iziyle anlaşılır (bkz. core/fingerprint.py).
-_LIST_SOURCES = ("listing_cache", "listing_versions", "listing_drafts", "listing_locals")
+_LIST_SOURCES = ("listing_cache", "listing_versions", "listing_drafts", "listing_locals", "listing_changes")
 _list_cache = ResultCache(max_items=20)
 
 
@@ -392,9 +392,19 @@ def _build_listings(db: Session, shop: Shop) -> list[ListingOut]:
         for d in db.scalars(select(ListingLocal).where(ListingLocal.shop_id == shop.id)).all()
     }
 
+    # Ulagg'dan Etsy'ye yapılan son yayın (Etsy'de yapılan değişiklikler, source="etsy", sayılmaz).
+    updated_at = dict(
+        db.execute(
+            select(ListingChange.listing_id, func.max(ListingChange.published_at))
+            .where(ListingChange.shop_id == shop.id, ListingChange.source.in_(("ai", "manual")))
+            .group_by(ListingChange.listing_id)
+        ).all()
+    )
+
     out = []
     for row in rows:
         raw = json.loads(row.raw_json)
+        published = updated_at.get(row.listing_id)
 
         # Kaydedilmiş yerel sürüm varsa liste Etsy'deki değil onun hâlini gösterir (taslak listeyi değiştirmez).
         draft_row = draft_rows.get(row.listing_id)
@@ -418,6 +428,7 @@ def _build_listings(db: Session, shop: Shop) -> list[ListingOut]:
                 draft_updated_at=draft_row.updated_at.isoformat() if draft_row else None,
                 has_local=local_row is not None,
                 local_updated_at=local_row.updated_at.isoformat() if local_row else None,
+                updated_timestamp=int(published.replace(tzinfo=dt.timezone.utc).timestamp()) if published else None,
                 **_summary(raw, json.loads(row.inventory_json or "{}"), draft),
             )
         )

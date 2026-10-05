@@ -9,7 +9,7 @@ import { PublishJob } from "@/lib/publishJobs";
 import PublishBar from "@/components/listings/PublishBar";
 import { competitionFill, normalizedScore, poolRanges } from "@/lib/keywordScore";
 import { useT } from "@/lib/i18n-client";
-import RenewedBadge from "@/components/listings/RenewedBadge";
+import ListingDateBadges from "@/components/listings/ListingDateBadges";
 
 // Marketplace Insights dönüşüm bandı: [Türkçe, İngilizce]
 const CONVERSION: Record<NonNullable<KeywordPoolItem["etsy_conversion"]>, [string, string]> = {
@@ -259,7 +259,7 @@ export default function ListingRow({
                   `${num(listing.views)} views · ${num(listing.favorites)} favorites · ${listing.tags.length} tags`,
                 )}
               </span>
-              <RenewedBadge timestamp={listing.renewed_timestamp} />
+              <ListingDateBadges updated={listing.updated_timestamp} renewed={listing.renewed_timestamp} />
             </div>
           </div>
         </div>

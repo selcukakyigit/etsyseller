@@ -6,7 +6,7 @@ import { Listing } from "@/lib/api";
 import { PublishJob } from "@/lib/publishJobs";
 import PublishBar from "@/components/listings/PublishBar";
 import { useT } from "@/lib/i18n-client";
-import RenewedBadge from "./RenewedBadge";
+import ListingDateBadges from "./ListingDateBadges";
 
 export type CardAction = "preview" | "stats" | "copy" | "activate" | "deactivate" | "renew" | "section" | "delete" | "publish";
 
@@ -107,9 +107,9 @@ export default function ListingCard({
           </p>
         )}
         {price && <p className="text-[#1a7f4b] dark:text-green-400">{price}</p>}
-        {listing.renewed_timestamp && (
-          <p className="text-xs">
-            <RenewedBadge timestamp={listing.renewed_timestamp} />
+        {(listing.updated_timestamp || listing.renewed_timestamp) && (
+          <p className="flex flex-wrap gap-1 text-xs">
+            <ListingDateBadges updated={listing.updated_timestamp} renewed={listing.renewed_timestamp} />
           </p>
         )}
         {renews && <p className="hidden sm:block">{listing.should_auto_renew ? t("Otomatik yenilenir", "Auto-renews") : t("Sona erer", "Expires")} {renews}</p>}

@@ -228,6 +228,8 @@ export type Listing = {
   last_modified_timestamp?: number | null;
   /** Son yenileme (Etsy'de "Renew"); hiç yenilenmediyse null. */
   renewed_timestamp?: number | null;
+  /** Ulagg'dan Etsy'ye son yayın; hiç yoksa null. */
+  updated_timestamp?: number | null;
   /** Henüz Etsy'de olmayan, yalnızca yerelde var olan yeni listing (negatif geçici kimlik). */
   is_new?: boolean;
 };
