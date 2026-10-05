@@ -28,7 +28,8 @@ from app.shops.models import Shop
 
 log = logging.getLogger(__name__)
 
-MAX_LISTINGS = 10
+MAX_LISTINGS = 25
+AUTO_LISTINGS = 10  # otomatik seçim en fazla bu kadar yer doldurur; kalanı kullanıcının
 MAX_KEYWORDS = 3
 MAX_RESULTS = 200
 PAGE = 100
@@ -125,11 +126,12 @@ def suggest_keywords(db: Session, shop: Shop, listing_id: int) -> list[str]:
 
 
 def auto_select(db: Session, shop: Shop, today: dt.date | None = None) -> int:
-    """Boş takip yerlerini doldurur: en çok düşen 5 ve en çok satan 5 listing, her birine 3 aday arama. Kullanıcı bir
+    """Boş takip yerlerinin ilk AUTO_LISTINGS tanesini doldurur: en çok düşen 5 ve en çok satan 5 listing, her birine 3
+    aday arama; kalan yerler kullanıcının kendi seçimine kalır. Kullanıcı bir
     takibi bilerek bıraktıysa (kapatılmış satır varsa) yerine otomatik yenisi konmaz; seçim artık kullanıcınındır."""
     stopped = db.scalar(select(func.count()).select_from(TrackedKeyword).where(TrackedKeyword.shop_id == shop.id, TrackedKeyword.active.is_(False)))
     already = set(tracked_listing_ids(db, shop))
-    if stopped or len(already) >= MAX_LISTINGS:
+    if stopped or len(already) >= AUTO_LISTINGS:
         return 0
     today = today or dt.date.today()
     idx = sales.index(db, shop)
@@ -147,12 +149,12 @@ def auto_select(db: Session, shop: Shop, today: dt.date | None = None) -> int:
     decliners = sorted((s for s in stats if s[2] >= 8 and s[1] < s[2] * 0.7), key=lambda s: s[1] - s[2])[:5]
     chosen = list(already) + [s[0] for s in decliners if s[0] not in already]
     for lid, _, _ in sorted(stats, key=lambda s: -s[1]):
-        if len(chosen) >= MAX_LISTINGS:
+        if len(chosen) >= AUTO_LISTINGS:
             break
         if lid not in chosen:
             chosen.append(lid)
     added = 0
-    for lid in chosen[:MAX_LISTINGS]:
+    for lid in chosen[:AUTO_LISTINGS]:
         if lid in already:
             continue
         for kw in suggest_keywords(db, shop, lid)[:MAX_KEYWORDS]:

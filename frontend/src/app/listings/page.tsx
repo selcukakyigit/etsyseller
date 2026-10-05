@@ -348,7 +348,7 @@ export default function Home() {
     (l: Listing): FadedInfo | undefined => (l.state === "active" ? faded?.listings[String(l.listing_id)] : undefined),
     [faded],
   );
-  // Sıra takibindeki listing'ler: rozet ve "Takipte" filtresi için (en fazla 10 kayıt; hafif istek).
+  // Sıra takibindeki listing'ler: rozet ve "Takipte" filtresi için (en fazla 25 kayıt; hafif istek).
   const [ranks, setRanks] = useCached<RanksSummary>(activeShop ? `ranks:${activeShop.id}` : null);
   useEffect(() => {
     if (!activeShop) return;
