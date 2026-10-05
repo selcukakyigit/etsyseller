@@ -13,6 +13,7 @@ import { EMPTY_ORDER_FILTERS, OrderFilters, Tab, addressText, copyText, groupByS
 import { changedCount } from "@/lib/filters";
 import { onSyncDone } from "@/lib/syncEvents";
 import { useUrlTab } from "@/lib/useUrlTab";
+import { ORDER_FOCUS_EVENT, OrderFocus, orderFocusFromUrl } from "@/lib/orderFocus";
 import { useT } from "@/lib/i18n-client";
 import { useCached } from "@/lib/pageCache";
 import { useStoredState } from "@/lib/useStoredState";
@@ -75,6 +76,43 @@ export default function OrdersPage() {
   const queryKey = JSON.stringify([shopId, tab, query, filters, sort, page, perPage]);
   // Bu sorgunun verisi henüz yoksa (yeni sekme/filtre) bir öncekini soluk göster; ekran boşalıp zıplamasın.
   const [data, setData, dataIsCurrent] = useCached<OrdersPageData>(shopId !== undefined ? `orders:${queryKey}` : null, { keepPrevious: true });
+
+  // Bildirimden gelindiyse: ilgili sekme + sipariş numarasıyla arama (sipariş kaç sayfa geride olursa olsun bulunur)
+  // ve kartın vurgusu. Sayfa açıkken gelen tıklamalar olayla, ilk açılış adresten okunur.
+  const [focusId, setFocusId] = useState<number | null>(null);
+  const applyFocus = useCallback(
+    (f: OrderFocus) => {
+      if (f.receipt) {
+        if (f.tab && (TAB_VALUES as readonly string[]).includes(f.tab)) setTab(f.tab as Tab);
+        setQueryInput(String(f.receipt));
+        setQuery(String(f.receipt));
+        setPage(0);
+        setFocusId(f.receipt);
+      } else if (f.shipBy) {
+        setTab("toship");
+        setQueryInput("");
+        setQuery("");
+        setPage(0);
+        setFilters({ ...EMPTY_ORDER_FILTERS, shipBy: f.shipBy as OrderFilters["shipBy"] });
+      }
+      // Adres temizlenir: yenileyince ya da geri gelince aynı vurgu tekrar çıkmasın.
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("receipt") || url.searchParams.has("shipby")) {
+        url.searchParams.delete("receipt");
+        url.searchParams.delete("shipby");
+        window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
+      }
+    },
+    [setTab],
+  );
+  useEffect(() => {
+    // Adres yalnızca tarayıcıda okunabilir; ilk açılışta bir kez uygulanır.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    applyFocus(orderFocusFromUrl());
+    const onFocus = (e: Event) => applyFocus((e as CustomEvent<OrderFocus>).detail);
+    window.addEventListener(ORDER_FOCUS_EVENT, onFocus);
+    return () => window.removeEventListener(ORDER_FOCUS_EVENT, onFocus);
+  }, [applyFocus]);
 
   // Arama kutusu: yazmayı bitirince (350 ms) sunucuya gider.
   useEffect(() => {
@@ -179,6 +217,21 @@ export default function OrdersPage() {
 
   const loading = loadedKey !== queryKey && !dataIsCurrent;
   const items = data?.items ?? [];
+
+  // Vurgulanan sipariş tahmin edilen sekmede yoksa (ör. o arada kargolandı) "Tümü"ne geç; bulununca vurgu birkaç saniye sonra söner.
+  const focusFound = focusId !== null && items.some((o) => o.receipt_id === focusId);
+  useEffect(() => {
+    if (focusId === null || loading || loadedKey !== queryKey) return;
+    if (!focusFound) {
+      // Sonuç sunucudan gelince karar verilebilir; sekme değişimi yeni bir sorgu başlatır.
+      if (tab !== "all") setTab("all");
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      else setFocusId(null);
+      return;
+    }
+    const timer = setTimeout(() => setFocusId(null), 4000);
+    return () => clearTimeout(timer);
+  }, [focusId, focusFound, loading, loadedKey, queryKey, tab, setTab]);
   const total = data?.total ?? 0;
   const counts = data?.counts ?? { toship: 0, completed: 0, canceled: 0, all: 0 };
   const pages = Math.max(1, Math.ceil(total / perPage));
@@ -432,6 +485,7 @@ export default function OrdersPage() {
                         onSelect={(on) => toggle(order, on)}
                         onShip={() => setShipFor(order)}
                         onGift={() => setGiftFor(order)}
+                        highlighted={order.receipt_id === focusId}
                       />
                     ))}
                   </section>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Order } from "@/lib/api";
 import { addressText, copyText, fmtDate, shipBucket, shipByLabel } from "./orderUtils";
 import { useT } from "@/lib/i18n-client";
@@ -44,8 +44,11 @@ export default function OrderCard({
   onSelect,
   onShip,
   onGift,
+  highlighted,
 }: {
   order: Order;
+  /** Bildirimden gelindi: kart görünüme kaydırılır ve birkaç saniye parlayan konturla vurgulanır. */
+  highlighted?: boolean;
   selected: boolean;
   onSelect: (on: boolean) => void;
   onShip: () => void;
@@ -55,6 +58,10 @@ export default function OrderCard({
   const [addrOpen, setAddrOpen] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const bucket = shipBucket(order);
+  const cardRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (highlighted) cardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlighted]);
   const urgent = !order.is_shipped && !order.is_canceled && (bucket === "overdue" || bucket === "today");
 
   async function copy(text: string, key: string) {
@@ -66,9 +73,10 @@ export default function OrderCard({
 
   return (
     <article
-      className={`rounded-xl border bg-white p-5 dark:bg-neutral-900 ${
-        selected ? "border-[#D97757]" : "border-neutral-200 dark:border-neutral-800"
-      }`}
+      ref={cardRef}
+      className={`rounded-xl border bg-white p-5 transition-shadow duration-700 dark:bg-neutral-900 ${
+        selected || highlighted ? "border-[#D97757]" : "border-neutral-200 dark:border-neutral-800"
+      } ${highlighted ? "shadow-[0_0_0_3px_rgba(217,119,87,0.45),0_0_24px_4px_rgba(217,119,87,0.35)]" : ""}`}
     >
       <div className="flex flex-col gap-5 lg:flex-row">
         <input

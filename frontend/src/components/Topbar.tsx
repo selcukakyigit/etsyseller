@@ -9,6 +9,7 @@ import { useT } from "@/lib/i18n-client";
 import { BellIcon, MenuIcon, SyncIcon } from "@/components/icons";
 import Logo from "@/components/Logo";
 import { emitSyncDone } from "@/lib/syncEvents";
+import { emitOrderFocus, focusForNotification, OrderFocus, orderFocusHref } from "@/lib/orderFocus";
 
 /** Üst bar. `onMenu`: mobilde (lg altı) ☰ düğmesi menü çekmecesini açar. */
 export default function Topbar({ activeShop, onMenu }: { activeShop: Shop | null; onMenu?: () => void }) {
@@ -54,6 +55,12 @@ export default function Topbar({ activeShop, onMenu }: { activeShop: Shop | null
       api.notifications.markRead(activeShop.id).catch(() => {});
     }
   }
+
+  /** Bildirimden sipariş sayfasına: ilgili sekme + sipariş vurgusu (sayfa zaten açıksa olayla haber verilir). */
+  const goToOrders = (f: OrderFocus) => () => {
+    setNotifOpen(false);
+    emitOrderFocus(f);
+  };
 
   function eventText(n: AppNotification): string {
     const d = n.data;
@@ -224,8 +231,8 @@ export default function Topbar({ activeShop, onMenu }: { activeShop: Shop | null
             )}
             {insights && insights.overdue > 0 && (
               <Link
-                href="/orders"
-                onClick={() => setNotifOpen(false)}
+                href={orderFocusHref({ shipBy: "overdue" })}
+                onClick={goToOrders({ shipBy: "overdue" })}
                 className="block text-sm text-neutral-700 dark:text-neutral-200 hover:underline"
               >
                 {t(`${insights.overdue} sipariş kargo süresi geçmiş`, `${insights.overdue} orders past their ship-by date`)}
@@ -233,8 +240,8 @@ export default function Topbar({ activeShop, onMenu }: { activeShop: Shop | null
             )}
             {insights && insights.needs_shipping_today > 0 && (
               <Link
-                href="/orders"
-                onClick={() => setNotifOpen(false)}
+                href={orderFocusHref({ shipBy: "today" })}
+                onClick={goToOrders({ shipBy: "today" })}
                 className="block text-sm text-neutral-700 dark:text-neutral-200 hover:underline"
               >
                 {t(`${insights.needs_shipping_today} sipariş bugün kargoya verilmeli`, `${insights.needs_shipping_today} orders must ship today`)}
@@ -245,8 +252,8 @@ export default function Topbar({ activeShop, onMenu }: { activeShop: Shop | null
                 {events.map((n) => (
                   <li key={n.id}>
                     <Link
-                      href="/orders"
-                      onClick={() => setNotifOpen(false)}
+                      href={orderFocusHref(focusForNotification(n))}
+                      onClick={goToOrders(focusForNotification(n))}
                       className={`flex gap-2 rounded-lg px-2 py-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 ${n.read ? "" : "bg-[#D97757]/5 dark:bg-[#D97757]/10"}`}
                     >
                       <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${KIND_DOT[n.kind]}`} />
