@@ -21,8 +21,8 @@ export default function DashboardPage() {
 
   return (
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/dashboard">
-      <div className="mx-auto max-w-[96rem] px-4 py-4 sm:px-6 sm:py-6">
-        <div className="min-h-[20px]">{!user && !bootError && <PageSpinner />}</div>
+      <div className="mx-auto max-w-[96rem] px-3 py-2 sm:px-6 sm:py-6">
+        {!user && !bootError && <PageSpinner />}
         {(bootError || error) && <p className="mb-4 text-sm text-red-600 dark:text-red-400">{bootError ?? error}</p>}
 
         {user && shops !== null && !activeShop && (
@@ -37,7 +37,7 @@ export default function DashboardPage() {
         )}
 
         {shopId !== undefined && (
-          <div className="space-y-3">
+          <div className="space-y-2 sm:space-y-3">
             {/* Tek satır özet: bugün + gönderilecek; geri kalan her şey Analiz'de. */}
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-neutral-200 bg-white px-2 py-1.5 text-sm dark:border-neutral-800 dark:bg-neutral-900">
               <div className={chip}>
@@ -55,7 +55,7 @@ export default function DashboardPage() {
               </Link>
             </div>
 
-            <ChatPanel shopId={shopId} onSent={reload} heightClass="h-[calc(100vh-15rem)] min-h-[26rem] lg:h-[calc(100vh-11rem)]" />
+            <ChatPanel shopId={shopId} onSent={reload} heightClass="h-[calc(100dvh-10.75rem-env(safe-area-inset-bottom))] min-h-[24rem] sm:h-[calc(100dvh-13rem)] lg:h-[calc(100vh-11rem)]" />
           </div>
         )}
       </div>

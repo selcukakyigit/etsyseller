@@ -532,7 +532,7 @@ export default function ChatPanel({
             title={t("Gönder", "Send")}
             className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[#D97757] text-white transition hover:bg-[#C6613F] disabled:bg-neutral-200 disabled:text-neutral-400 dark:disabled:bg-neutral-700 dark:disabled:text-neutral-500"
           >
-            {busy ? <Spinner size={16} /> : <ArrowUpIcon />}
+            {busy ? <UlaggMark animated size={20} /> : <ArrowUpIcon />}
           </button>
         </div>
       </div>
