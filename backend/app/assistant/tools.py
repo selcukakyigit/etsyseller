@@ -17,7 +17,7 @@ from app.core.i18n import tr
 from sqlalchemy.orm import Session
 
 from app.ai import quality
-from app.assistant import memory
+from app.assistant import toolsets
 from app.assistant.models import AdReport, ChatImage
 from app.finance import invoices
 from app.finance import service as fin
@@ -1143,7 +1143,7 @@ def orders_missing_costs(ctx: Ctx, a: dict) -> dict:
         "donem": [start.isoformat(), end.isoformat()], "toplam_siparis": len(data["orders"]), "maliyeti_eksik": len(miss), "para_birimi": data["currency"],
         "en_cok_eksik_urunler": [{"urun": t, "siparis_kalemi": n} for t, n in titles.most_common(10)],
         "siparisler": [{"siparis_no": x["receipt_id"], "tarih": x["date"], "alici": x["buyer"], "tutar": _r(x["total"])} for x in miss[:limit]],
-        "not": "Maliyetleri Finans > Ürün kârlılığı'ndan (ürün/seçenek) ya da Sipariş maliyetleri'nden (tek sipariş) kullanıcı girer.",
+        "not": "Ürün/seçenek maliyetini kullanıcı söylerse set_product_cost ile sen kaydedebilirsin; tek siparişin özel maliyeti Finans > Sipariş maliyetleri'nden girilir.",
     }
 
 
@@ -1595,11 +1595,12 @@ EXECUTORS = {
     "delete_description_templates": delete_description_templates,
 }
 
-# Ayrı modüllerdeki araçlar. Sıra sabit kalmalı: araç listesi istem önbelleğinin (prompt caching) parçasıdır.
-TOOLS += memory.TOOLS
-EXECUTORS.update(memory.EXECUTORS)
-TOOL_LABELS.update(memory.LABELS)
-TOOL_LABELS_EN.update(memory.LABELS_EN)
+# Ayrı modüllerdeki araçlar (bkz. toolsets/__init__.py). Sıra sabit kalmalı: araç listesi istem önbelleğinin parçasıdır.
+for _mod in toolsets.MODULES:
+    TOOLS += _mod.TOOLS
+    EXECUTORS.update(_mod.EXECUTORS)
+    TOOL_LABELS.update(_mod.LABELS)
+    TOOL_LABELS_EN.update(_mod.LABELS_EN)
 
 
 def execute(ctx: Ctx, name: str, args: dict) -> dict:
