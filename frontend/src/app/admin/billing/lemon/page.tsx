@@ -1,5 +1,5 @@
 import BillingPage from "@/components/admin/billing/BillingPage";
 
 export default function Page() {
-  return <BillingPage section="subscriptions" />;
+  return <BillingPage section="lemon" />;
 }

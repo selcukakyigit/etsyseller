@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { ButtonHTMLAttributes, ReactNode } from "react";
 import { Spinner } from "@/components/ui/Spinner";
 import { useT } from "@/lib/i18n-client";
@@ -15,6 +16,34 @@ export function Section({ title, action, children }: { title: string; action?: R
       </div>
       <div className="p-4">{children}</div>
     </section>
+  );
+}
+
+/** Sayfa içi sekmeler; her sekme ayrı bir adrestir (paylaşılabilir, geri tuşuyla dönülebilir). */
+export function PageTabs({ tabs, current }: { tabs: readonly { href: string; tr: string; en: string }[]; current: string }) {
+  const { t } = useT();
+  return (
+    <nav aria-label={t("Sekmeler", "Tabs")} className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+      <div className="flex w-max gap-1 border-b border-neutral-200 dark:border-neutral-800">
+        {tabs.map((tab) => {
+          const active = tab.href === current;
+          return (
+            <Link
+              key={tab.href}
+              href={tab.href}
+              aria-current={active ? "page" : undefined}
+              className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition ${
+                active
+                  ? "border-[#D97757] text-neutral-900 dark:text-neutral-100"
+                  : "border-transparent text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200"
+              }`}
+            >
+              {t(tab.tr, tab.en)}
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
   );
 }
 

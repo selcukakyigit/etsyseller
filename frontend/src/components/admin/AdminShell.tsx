@@ -14,19 +14,44 @@ import { useT } from "@/lib/i18n-client";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import { usePresence } from "@/lib/usePresence";
 
+type NavLink = { href: string; tr: string; en: string };
+type NavItem = NavLink & { icon: string; children?: readonly NavLink[] };
+
 /** Yönetim paneli bölümleri. Yeni bir yönetim sayfası buraya eklenir; sayfa kendi içeriğini AdminShell içinde çizer.
- * `icon`: 24x24 SVG yolu. */
+ * `icon`: 24x24 SVG yolu. `children` olan bölüm menüde açılır bir gruptur; kendi sayfası yoktur, alt sayfaları vardır. */
 const TABS = [
   { href: "/admin", tr: "Genel bakış", en: "Overview", icon: "M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" },
   { href: "/admin/users", tr: "Kullanıcılar", en: "Users", icon: "M16 11a4 4 0 10-8 0 4 4 0 008 0zM4 21a8 8 0 0116 0" },
-  { href: "/admin/models", tr: "Modeller", en: "Models", icon: "M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2zm0 0v18M4 6.5l8 4.5 8-4.5" },
+  {
+    href: "/admin/models",
+    tr: "Modeller",
+    en: "Models",
+    icon: "M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2zm0 0v18M4 6.5l8 4.5 8-4.5",
+    children: [
+      { href: "/admin/models/keys", tr: "Sağlayıcı anahtarları", en: "Provider keys" },
+      { href: "/admin/models/tasks", tr: "Görevler", en: "Tasks" },
+      { href: "/admin/models/catalog", tr: "Model kataloğu", en: "Model catalog" },
+    ],
+  },
   { href: "/admin/credits", tr: "Krediler", en: "Credits", icon: "M12 3a9 9 0 100 18 9 9 0 000-18zm0 4v10m-3-7.5c0-1 1.3-1.5 3-1.5s3 .7 3 2-1.3 1.7-3 2-3 .8-3 2 1.3 2 3 2 3-.5 3-1.5" },
   { href: "/admin/billing", tr: "Satış", en: "Sales", icon: "M3 7h18v10H3V7zm0 4h18M7 15h3" },
   { href: "/admin/messages", tr: "Mesajlar", en: "Messages", icon: "M4 5h16v11H8l-4 4V5z" },
   { href: "/admin/system", tr: "Sistem", en: "System", icon: "M12 15a3 3 0 100-6 3 3 0 000 6zm7.4-3a7.4 7.4 0 00-.1-1.2l2-1.6-2-3.4-2.4 1a7.5 7.5 0 00-2-1.2L14.5 3h-5l-.4 2.6a7.5 7.5 0 00-2 1.2l-2.4-1-2 3.4 2 1.6a7.4 7.4 0 000 2.4l-2 1.6 2 3.4 2.4-1a7.5 7.5 0 002 1.2l.4 2.6h5l.4-2.6a7.5 7.5 0 002-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z" },
-] as const;
+] as const satisfies readonly NavItem[];
 
-export type AdminTab = (typeof TABS)[number]["href"];
+type Tab = (typeof TABS)[number];
+type ChildHref<T> = T extends { children: readonly (infer C)[] } ? (C extends { href: infer H } ? H : never) : never;
+/** Bir sayfanın menüdeki yeri: bölüm ya da grubun alt sayfası. */
+export type AdminTab = Exclude<Tab, { children: unknown }>["href"] | ChildHref<Tab>;
+
+function findLink(href: string): NavLink | undefined {
+  for (const tab of TABS as readonly NavItem[]) {
+    if (tab.href === href) return tab;
+    const child = tab.children?.find((c) => c.href === href);
+    if (child) return child;
+  }
+  return undefined;
+}
 
 function Icon({ d, className = "h-5 w-5" }: { d: string; className?: string }) {
   return (
@@ -49,7 +74,7 @@ export default function AdminShell({ current, title, children }: { current: Admi
   if (user ? !user.is_admin : error) return <StatusPage code={404} lang={lang} />;
   if (!user) return <PageSpinner />;
 
-  const tab = TABS.find((x) => x.href === current);
+  const tab = findLink(current);
   const heading = title ?? (tab ? t(tab.tr, tab.en) : t("Yönetim", "Admin"));
 
   return (
@@ -108,25 +133,24 @@ function AdminNav({ current, onNavigate }: { current: AdminTab; onNavigate?: () 
         </span>
       </div>
       <nav aria-label={t("Yönetim bölümleri", "Admin sections")} className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
-        {TABS.map((tab) => {
-          const active = current === tab.href;
-          return (
+        {(TABS as readonly NavItem[]).map((tab) =>
+          tab.children ? (
+            <NavGroup key={tab.href} tab={tab} items={tab.children} current={current} onNavigate={onNavigate} />
+          ) : (
             <Link
               key={tab.href}
               href={tab.href}
               onClick={onNavigate}
-              aria-current={active ? "page" : undefined}
+              aria-current={current === tab.href ? "page" : undefined}
               className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                active
-                  ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
-                  : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                current === tab.href ? NAV_ACTIVE : NAV_IDLE
               }`}
             >
               <Icon d={tab.icon} />
               {t(tab.tr, tab.en)}
             </Link>
-          );
-        })}
+          ),
+        )}
       </nav>
       <div className="border-t border-neutral-100 p-3 dark:border-neutral-800">
         <Link
@@ -139,6 +163,48 @@ function AdminNav({ current, onNavigate }: { current: AdminTab; onNavigate?: () 
         </Link>
       </div>
     </>
+  );
+}
+
+const NAV_ACTIVE = "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900";
+const NAV_IDLE = "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800";
+
+/** Açılır menü grubu. Alt sayfalarından birindeyken açık başlar; başlığa tıklamak yalnızca açıp kapatır. */
+function NavGroup({ tab, items, current, onNavigate }: { tab: NavItem; items: readonly NavLink[]; current: AdminTab; onNavigate?: () => void }) {
+  const { t } = useT();
+  const inside = items.some((c) => c.href === current);
+  const [open, setOpen] = useState(inside);
+  const listId = `nav-${tab.href.replaceAll("/", "-")}`;
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={listId}
+        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${NAV_IDLE} ${inside ? "text-neutral-900 dark:text-neutral-100" : ""}`}
+      >
+        <Icon d={tab.icon} />
+        <span className="flex-1 text-left">{t(tab.tr, tab.en)}</span>
+        <Icon d="M6 9l6 6 6-6" className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div id={listId} className="ml-[1.375rem] mt-0.5 space-y-0.5 border-l border-neutral-200 pl-3 dark:border-neutral-800">
+          {items.map((c) => (
+            <Link
+              key={c.href}
+              href={c.href}
+              onClick={onNavigate}
+              aria-current={current === c.href ? "page" : undefined}
+              className={`block rounded-lg px-3 py-1.5 text-sm font-medium transition ${current === c.href ? NAV_ACTIVE : NAV_IDLE}`}
+            >
+              {t(c.tr, c.en)}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
