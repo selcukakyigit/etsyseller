@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     google_api_key: str = ""
     google_image_model: str = "gemini-3.1-flash-image-preview"
     google_image_size: str = "2K"  # "1K" | "2K" | "4K" — yükseldikçe fiyat da artar
+    replicate_api_token: str = ""  # video modelleri (Replicate); panelden de girilebilir
 
     frontend_url: str = "http://localhost:3000"
     # API'nin tarayıcıdan görünen adresi (yerel taslak görsellerinin mutlak URL'leri için).

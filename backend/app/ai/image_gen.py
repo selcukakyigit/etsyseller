@@ -90,9 +90,11 @@ def _run(parts: list, aspect_ratio: str | None = None) -> tuple[bytes, str]:
     from google.genai import types
 
     client = get_google_client()
-    # Çözünürlük yükseldikçe fiyat da artar; Yönetim > Modeller'den model başına seçilir (varsayılan 2K — Etsy'nin
-    # önerdiği ≥2000px eşiğini karşılar).
-    image_config = types.ImageConfig(image_size=str(model.options.get("image_size") or "2K"), aspect_ratio=aspect_ratio)
+    # Çözünürlük modelin varsayılan seçeneğinden gelir (Yönetim > Modeller); fiyatı da o seçenek belirler. Seçenek
+    # yoksa 2K — Etsy'nin önerdiği ≥2000px eşiğini karşılar.
+    variant = model.variant()
+    image_size = str((variant.params if variant else {}).get("image_size") or "2K")
+    image_config = types.ImageConfig(image_size=image_size, aspect_ratio=aspect_ratio)
     try:
         response = client.models.generate_content(
             model=model.model_id,
@@ -114,7 +116,7 @@ def _run(parts: list, aspect_ratio: str | None = None) -> tuple[bytes, str]:
             if part.inline_data and part.inline_data.data:
                 mime = part.inline_data.mime_type or "image/png"
                 # Yalnızca görsel dönen çağrı ücretlendirilir (Google da görsel başına ücret alır).
-                metering.record("image", model, units=1)
+                metering.record_units("image", model, variant)
                 return part.inline_data.data, mime
             if part.text:
                 texts.append(part.text.strip())

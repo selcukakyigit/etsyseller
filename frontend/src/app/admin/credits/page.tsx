@@ -145,9 +145,12 @@ function Usage() {
               {data.rows.map((r) => {
                 const name = r.task ? TASK_NAMES[r.task] : undefined;
                 return (
-                  <tr key={`${r.task}/${r.model}`} className="text-neutral-800 dark:text-neutral-200">
+                  <tr key={`${r.task}/${r.model}/${r.variant}`} className="text-neutral-800 dark:text-neutral-200">
                     <td className="py-2">{name ? t(name[0], name[1]) : r.task ?? "—"}</td>
-                    <td className="py-2 font-mono text-xs">{r.model ?? "—"}</td>
+                    <td className="py-2 font-mono text-xs">
+                      {r.model ?? "—"}
+                      {r.variant && <span className="text-neutral-400 dark:text-neutral-500"> · {r.variant}</span>}
+                    </td>
                     <td className="py-2 text-right tabular-nums">{f.num(r.calls)}</td>
                     <td className="py-2 text-right tabular-nums">{r.cost_usd.toFixed(2)}</td>
                     <td className="py-2 text-right tabular-nums">{f.num(r.credits)}</td>

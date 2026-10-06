@@ -9,7 +9,7 @@ from app.admin.schemas import (
     CreditSettingsIn, CreditSettingsOut, UsageReportOut, UsageRowOut, WorkspaceCreditOut, WorkspaceCreditsPageOut,
 )
 from app.auth.models import User, Workspace, WorkspaceMember
-from app.billing import credits
+from app.billing import credits, settings as credit_settings
 from app.billing.models import CreditBalance, CreditLedger, Subscription
 from app.billing.service import LIVE_STATUSES
 from app.core import app_settings
@@ -18,7 +18,7 @@ MAX_PAGE = 100
 
 
 def get_settings() -> CreditSettingsOut:
-    return CreditSettingsOut(**{k: credits.setting(k) for k in credits.DEFAULTS})
+    return CreditSettingsOut(**{k: credit_settings.setting(k) for k in credit_settings.DEFAULTS})
 
 
 def update_settings(db: Session, data: CreditSettingsIn) -> CreditSettingsOut:
@@ -85,20 +85,21 @@ def adjust(db: Session, workspace_id: int, amount: int, bucket: str, note: str, 
 
 
 def usage_report(db: Session, days: int = 30) -> UsageReportOut:
-    """Görev ve modele göre AI çağrısı sayısı, sağlayıcı maliyeti (USD) ve fiyatlanan kredi. Kredi sistemi kapalıyken de
+    """Görev, model ve seçeneğe göre AI çağrısı sayısı, sağlayıcı maliyeti (USD) ve fiyatlanan kredi. Kredi sistemi kapalıyken de
     ölçülür; çarpanı ve kredi değerini ayarlamak için buna bakılır."""
     since = dt.datetime.utcnow() - dt.timedelta(days=days)
     rows = db.execute(
         select(
             CreditLedger.task,
             CreditLedger.model,
+            CreditLedger.variant,
             func.count(CreditLedger.id),
             func.coalesce(func.sum(CreditLedger.cost_usd), 0),
             func.coalesce(func.sum(CreditLedger.credits), 0),
         )
         .where(CreditLedger.kind == "usage", CreditLedger.created_at >= since)
-        .group_by(CreditLedger.task, CreditLedger.model)
+        .group_by(CreditLedger.task, CreditLedger.model, CreditLedger.variant)
         .order_by(func.coalesce(func.sum(CreditLedger.cost_usd), 0).desc())
     ).all()
-    out = [UsageRowOut(task=t, model=m, calls=int(n), cost_usd=round(float(c), 4), credits=int(k)) for t, m, n, c, k in rows]
+    out = [UsageRowOut(task=t, model=m, variant=v, calls=int(n), cost_usd=round(float(c), 4), credits=int(k)) for t, m, v, n, c, k in rows]
     return UsageReportOut(days=days, rows=out, total_cost_usd=round(sum(r.cost_usd for r in out), 4), total_credits=sum(r.credits for r in out))

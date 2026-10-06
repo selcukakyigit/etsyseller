@@ -924,6 +924,24 @@ export type AdminSystem = {
   shops: AdminShopSync[];
 };
 
+/** Görsel/video modelinin fiyatlanan seçeneği. Maliyet ve kredi birim başınadır (görsel ya da video saniyesi). */
+export type AdminAiVariant = {
+  key: string;
+  label_tr: string;
+  label_en: string;
+  cost_usd: number;
+  /** Yöneticinin sabitlediği birim kredisi; null ise maliyetten otomatik. */
+  credits: number | null;
+  /** Sağlayıcı API'sine olduğu gibi giden parametreler, ör. { resolution: "720p", draft: false }. */
+  params: Record<string, string | number | boolean>;
+  is_default: boolean;
+  active: boolean;
+};
+
+export type AdminAiVariantOut = AdminAiVariant & { unit_credits: number; auto_credits: number };
+
+export type AdminAiModelOptions = { durations?: number[]; default_duration?: number };
+
 export type AdminAiModel = {
   id: number;
   kind: "llm" | "image" | "video";
@@ -935,11 +953,14 @@ export type AdminAiModel = {
   supported: boolean;
   input_usd_per_mtok: number | null;
   output_usd_per_mtok: number | null;
-  unit_usd: number | null;
-  options: { image_size?: string };
+  options: AdminAiModelOptions;
+  variants: AdminAiVariantOut[];
 };
 
-export type AdminAiModelInput = Omit<AdminAiModel, "id" | "supported">;
+export type AdminAiModelInput = Omit<AdminAiModel, "id" | "supported" | "variants"> & { variants: AdminAiVariant[] };
+
+/** Seçenek kredisini panelde canlı hesaplamak için (backend billing/pricing.py ile aynı kural). */
+export type AdminPricing = { credit_usd: number; credit_markup: number; units: Record<string, "image" | "second"> };
 
 export type AdminTask = { task: string; kind: string; name_tr: string; name_en: string; model_id: number | null; effective: string };
 
@@ -948,6 +969,7 @@ export type AdminCatalog = {
   tasks: AdminTask[];
   keys: { provider: string; masked: string; source: "db" | "env" | "" }[];
   providers: Record<string, string[]>;
+  pricing: AdminPricing;
   /** false: katalog tabloları okunamadı, .env kullanılıyor (göç uygulanmamış olabilir). */
   from_db: boolean;
 };
@@ -968,7 +990,7 @@ export type AdminWorkspaceCredit = {
 
 export type AdminUsageReport = {
   days: number;
-  rows: { task: string | null; model: string | null; calls: number; cost_usd: number; credits: number }[];
+  rows: { task: string | null; model: string | null; variant: string | null; calls: number; cost_usd: number; credits: number }[];
   total_cost_usd: number;
   total_credits: number;
 };

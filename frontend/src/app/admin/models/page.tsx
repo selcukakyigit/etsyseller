@@ -2,21 +2,15 @@
 
 import { useState } from "react";
 import AdminShell from "@/components/admin/AdminShell";
-import { Badge, Button, EmptyState, Field, Section, Toggle, errorText, inputClass } from "@/components/admin/ui";
+import ModelForm from "@/components/admin/models/ModelForm";
+import VariantTable from "@/components/admin/models/VariantTable";
+import { KINDS, Kind, PROVIDER_NAMES } from "@/components/admin/models/catalog";
+import { Badge, Button, EmptyState, Section, errorText, inputClass } from "@/components/admin/ui";
 import { useApiData } from "@/lib/useApiData";
 import { BlockSpinner } from "@/components/ui/Spinner";
-import { AdminAiModel, AdminAiModelInput, AdminCatalog, api } from "@/lib/api";
+import { AdminAiModel, AdminCatalog, api } from "@/lib/api";
 import { useT } from "@/lib/i18n-client";
 import { toast } from "@/lib/toast";
-
-const KINDS: { id: AdminAiModel["kind"]; tr: string; en: string }[] = [
-  { id: "llm", tr: "Metin (LLM)", en: "Text (LLM)" },
-  { id: "image", tr: "Görsel", en: "Image" },
-  { id: "video", tr: "Video", en: "Video" },
-];
-const PROVIDERS = ["anthropic", "openai", "google"];
-const PROVIDER_NAMES: Record<string, string> = { anthropic: "Anthropic (Claude)", openai: "OpenAI", google: "Google (Gemini)" };
-const IMAGE_SIZES = ["1K", "2K", "4K"];
 
 export default function AdminModelsPage() {
   return (
@@ -107,19 +101,17 @@ function Tasks({ data, onChanged }: { data: AdminCatalog; onChanged: () => void 
   );
 }
 
-function priceText(m: AdminAiModel, t: (tr: string, en: string) => string): string {
-  if (m.kind === "llm") {
-    if (m.input_usd_per_mtok === null && m.output_usd_per_mtok === null) return t("Fiyat girilmemiş", "No price set");
-    return t(`$${m.input_usd_per_mtok ?? 0} girdi · $${m.output_usd_per_mtok ?? 0} çıktı / 1M token`, `$${m.input_usd_per_mtok ?? 0} in · $${m.output_usd_per_mtok ?? 0} out / 1M tokens`);
-  }
-  if (m.unit_usd === null) return t("Fiyat girilmemiş", "No price set");
-  return m.kind === "image" ? t(`$${m.unit_usd} / görsel`, `$${m.unit_usd} / image`) : t(`$${m.unit_usd} / saniye`, `$${m.unit_usd} / second`);
+function llmPriceText(m: AdminAiModel, t: (tr: string, en: string) => string): string {
+  if (m.input_usd_per_mtok === null && m.output_usd_per_mtok === null) return t("Fiyat girilmemiş", "No price set");
+  return t(`$${m.input_usd_per_mtok ?? 0} girdi · $${m.output_usd_per_mtok ?? 0} çıktı / 1M token`, `$${m.input_usd_per_mtok ?? 0} in · $${m.output_usd_per_mtok ?? 0} out / 1M tokens`);
 }
 
 function Catalog({ data, onChanged }: { data: AdminCatalog; onChanged: () => void }) {
   const { t } = useT();
+  const [kind, setKind] = useState<Kind>("image");
   const [editing, setEditing] = useState<AdminAiModel | "new" | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const models = data.models.filter((m) => m.kind === kind);
 
   async function remove(m: AdminAiModel) {
     if (!window.confirm(t(`“${m.label}” katalogdan silinsin mi?`, `Remove “${m.label}” from the catalog?`))) return;
@@ -145,10 +137,38 @@ function Catalog({ data, onChanged }: { data: AdminCatalog; onChanged: () => voi
         )
       }
     >
+      <div role="tablist" className="mb-4 inline-flex rounded-lg border border-neutral-200 p-0.5 dark:border-neutral-800">
+        {KINDS.map((k) => {
+          const count = data.models.filter((m) => m.kind === k.id).length;
+          const selected = k.id === kind;
+          return (
+            <button
+              key={k.id}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              onClick={() => {
+                setKind(k.id);
+                setEditing(null);
+              }}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                selected
+                  ? "bg-[#D97757] text-white"
+                  : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+              }`}
+            >
+              {t(k.tr, k.en)} <span className={selected ? "text-white/80" : "text-neutral-400 dark:text-neutral-500"}>{count}</span>
+            </button>
+          );
+        })}
+      </div>
       {editing !== null && (
         <ModelForm
+          key={editing === "new" ? `new-${kind}` : editing.id}
           initial={editing === "new" ? null : editing}
+          defaultKind={kind}
           supported={data.providers}
+          pricing={data.pricing}
           onCancel={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -156,173 +176,53 @@ function Catalog({ data, onChanged }: { data: AdminCatalog; onChanged: () => voi
           }}
         />
       )}
-      {KINDS.map((kind) => {
-        const models = data.models.filter((m) => m.kind === kind.id);
-        return (
-          <div key={kind.id} className="mt-4 first:mt-0">
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">{t(kind.tr, kind.en)}</h3>
-            {models.length === 0 ? (
-              <EmptyState>{t("Bu türde model yok.", "No models of this type.")}</EmptyState>
-            ) : (
-              <ul className="divide-y divide-neutral-100 rounded-lg border border-neutral-100 dark:divide-neutral-800 dark:border-neutral-800">
-                {models.map((m) => (
-                  <li key={m.id} className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
-                      <p className="flex flex-wrap items-center gap-1.5 text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                        {m.label}
-                        {!m.active && <Badge tone="muted">{t("pasif", "inactive")}</Badge>}
-                        {!m.supported && <Badge tone="warn">{t("henüz bağlı değil", "not wired yet")}</Badge>}
-                      </p>
-                      <p className="truncate font-mono text-xs text-neutral-500 dark:text-neutral-400">
-                        {m.provider}/{m.model_id}
-                        {m.options.image_size ? ` · ${m.options.image_size}` : ""}
-                      </p>
-                      <p className="text-xs text-neutral-400 dark:text-neutral-500">{priceText(m, t)}</p>
-                    </div>
-                    <div className="flex flex-shrink-0 gap-2">
-                      <Button onClick={() => setEditing(m)}>{t("Düzenle", "Edit")}</Button>
-                      <Button tone="danger" busy={deleting === m.id} onClick={() => void remove(m)}>
-                        {t("Sil", "Delete")}
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        );
-      })}
+      {models.length === 0 ? (
+        <EmptyState>{t("Bu türde model yok.", "No models of this type.")}</EmptyState>
+      ) : (
+        <ul className="divide-y divide-neutral-100 rounded-lg border border-neutral-100 dark:divide-neutral-800 dark:border-neutral-800">
+          {models.map((m) => (
+            <li key={m.id} className="px-3 py-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <p className="flex flex-wrap items-center gap-1.5 text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                    {m.label}
+                    {!m.active && <Badge tone="muted">{t("pasif", "inactive")}</Badge>}
+                    {!m.supported && <Badge tone="warn">{t("henüz bağlı değil", "not wired yet")}</Badge>}
+                  </p>
+                  <p className="truncate font-mono text-xs text-neutral-500 dark:text-neutral-400">
+                    {m.provider}/{m.model_id}
+                  </p>
+                  {m.kind === "llm" && <p className="text-xs text-neutral-400 dark:text-neutral-500">{llmPriceText(m, t)}</p>}
+                  {m.kind === "video" && m.options.durations && (
+                    <p className="text-xs text-neutral-400 dark:text-neutral-500">
+                      {t("Süreler", "Durations")}: {m.options.durations.map((d) => (d === m.options.default_duration ? `[${d}]` : d)).join(", ")} {t("sn", "sec")}
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-shrink-0 gap-2">
+                  <Button onClick={() => setEditing(m)}>{t("Düzenle", "Edit")}</Button>
+                  <Button tone="danger" busy={deleting === m.id} onClick={() => void remove(m)}>
+                    {t("Sil", "Delete")}
+                  </Button>
+                </div>
+              </div>
+              {m.kind !== "llm" && <VariantTable model={m} pricing={data.pricing} />}
+            </li>
+          ))}
+        </ul>
+      )}
       <p className="mt-4 text-xs text-neutral-400 dark:text-neutral-500">
-        {t(
-          "Fiyatlar sağlayıcının USD liste fiyatıdır; kredi hesabı ve maliyet raporu bunlardan yapılır. Fiyatı girilmemiş modelin her çağrısı en az ücreti (1 kredi) öder.",
-          "Prices are the provider's USD list prices; credits and the cost report are calculated from them. A model without a price charges the minimum (1 credit) per call.",
-        )}
+        {kind === "llm"
+          ? t(
+              "Metin modelleri gerçek token sayısıyla fiyatlanır. Fiyatı girilmemiş modelin her çağrısı en az ücreti (1 kredi) öder.",
+              "Text models are priced by actual token count. A model without a price charges the minimum (1 credit) per call.",
+            )
+          : t(
+              `Görsel ve video seçenekleri sabit fiyatlıdır: kullanıcı üretmeden önce tutarı görür. Otomatik kredi = maliyet × ${data.pricing.credit_markup} ÷ $${data.pricing.credit_usd} (Krediler sayfasından değişir). Çarpan, alınan kredinin maliyete oranıdır; 1,5×'in altı sarı, 1×'in altı (zarar) kırmızı.`,
+              `Image and video options have a fixed price: users see it before generating. Automatic credits = cost × ${data.pricing.credit_markup} ÷ $${data.pricing.credit_usd} (set on the Credits page). The multiplier is what we charge over cost; below 1.5× is amber, below 1× (a loss) is red.`,
+            )}
       </p>
     </Section>
-  );
-}
-
-const num = (v: string): number | null => (v.trim() === "" || Number.isNaN(Number(v)) ? null : Number(v));
-const str = (v: number | null): string => (v === null ? "" : String(v));
-
-function ModelForm({
-  initial,
-  supported,
-  onCancel,
-  onSaved,
-}: {
-  initial: AdminAiModel | null;
-  supported: Record<string, string[]>;
-  onCancel: () => void;
-  onSaved: () => void;
-}) {
-  const { t } = useT();
-  const [kind, setKind] = useState<AdminAiModel["kind"]>(initial?.kind ?? "llm");
-  const [provider, setProvider] = useState(initial?.provider ?? "anthropic");
-  const [modelId, setModelId] = useState(initial?.model_id ?? "");
-  const [label, setLabel] = useState(initial?.label ?? "");
-  const [active, setActive] = useState(initial?.active ?? true);
-  const [inputPrice, setInputPrice] = useState(str(initial?.input_usd_per_mtok ?? null));
-  const [outputPrice, setOutputPrice] = useState(str(initial?.output_usd_per_mtok ?? null));
-  const [unitPrice, setUnitPrice] = useState(str(initial?.unit_usd ?? null));
-  const [imageSize, setImageSize] = useState(initial?.options.image_size ?? "2K");
-  const [saving, setSaving] = useState(false);
-  const wired = (supported[kind] ?? []).includes(provider);
-
-  async function save() {
-    const body: AdminAiModelInput = {
-      kind,
-      provider,
-      model_id: modelId.trim(),
-      label: label.trim() || modelId.trim(),
-      active,
-      input_usd_per_mtok: kind === "llm" ? num(inputPrice) : null,
-      output_usd_per_mtok: kind === "llm" ? num(outputPrice) : null,
-      unit_usd: kind === "llm" ? null : num(unitPrice),
-      options: kind === "image" ? { image_size: imageSize } : {},
-    };
-    setSaving(true);
-    try {
-      if (initial) await api.admin.updateModel(initial.id, body);
-      else await api.admin.createModel(body);
-      toast.success(t("Model kaydedildi", "Model saved"));
-      onSaved();
-    } catch (e) {
-      if (errorText(e)) toast.error(errorText(e));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="mb-4 space-y-3 rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-800 dark:bg-neutral-950">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label={t("Tür", "Type")}>
-          <select value={kind} onChange={(e) => setKind(e.target.value as AdminAiModel["kind"])} className={inputClass}>
-            {KINDS.map((k) => (
-              <option key={k.id} value={k.id}>
-                {t(k.tr, k.en)}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field
-          label={t("Sağlayıcı", "Provider")}
-          hint={!wired ? t("Bu sağlayıcı bu tür için henüz bağlı değil; model kaydedilir ama göreve atanamaz.", "This provider is not wired for this type yet; the model is saved but cannot be assigned to a task.") : undefined}
-        >
-          <select value={provider} onChange={(e) => setProvider(e.target.value)} className={inputClass}>
-            {PROVIDERS.map((p) => (
-              <option key={p} value={p}>
-                {PROVIDER_NAMES[p]}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label={t("Model kimliği (API'deki ad)", "Model ID (name in the API)")}>
-          <input value={modelId} onChange={(e) => setModelId(e.target.value)} placeholder="claude-sonnet-5" className={`${inputClass} font-mono`} spellCheck={false} />
-        </Field>
-        <Field label={t("Görünen ad", "Display name")} hint={t("Asistandaki model seçicide kullanıcılar bunu görür.", "Users see this in the assistant's model picker.")}>
-          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Claude Sonnet 5" className={inputClass} />
-        </Field>
-        {kind === "llm" ? (
-          <>
-            <Field label={t("Girdi fiyatı (USD / 1M token)", "Input price (USD / 1M tokens)")}>
-              <input inputMode="decimal" value={inputPrice} onChange={(e) => setInputPrice(e.target.value)} className={inputClass} />
-            </Field>
-            <Field label={t("Çıktı fiyatı (USD / 1M token)", "Output price (USD / 1M tokens)")}>
-              <input inputMode="decimal" value={outputPrice} onChange={(e) => setOutputPrice(e.target.value)} className={inputClass} />
-            </Field>
-          </>
-        ) : (
-          <Field label={kind === "image" ? t("Görsel başına fiyat (USD)", "Price per image (USD)") : t("Video saniyesi başına fiyat (USD)", "Price per video second (USD)")}>
-            <input inputMode="decimal" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} className={inputClass} />
-          </Field>
-        )}
-        {kind === "image" && (
-          <Field label={t("Çözünürlük", "Resolution")} hint={t("Yükseldikçe fiyat artar; 2K Etsy için yeterli.", "Higher costs more; 2K is enough for Etsy.")}>
-            <select value={imageSize} onChange={(e) => setImageSize(e.target.value)} className={inputClass}>
-              {IMAGE_SIZES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </Field>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <span className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300">
-          <Toggle checked={active} onChange={setActive} label={t("Aktif", "Active")} />
-          {t("Aktif", "Active")}
-        </span>
-        <div className="flex gap-2">
-          <Button onClick={onCancel}>{t("Vazgeç", "Cancel")}</Button>
-          <Button tone="primary" busy={saving} disabled={!modelId.trim()} onClick={() => void save()}>
-            {t("Kaydet", "Save")}
-          </Button>
-        </div>
-      </div>
-    </div>
   );
 }
 

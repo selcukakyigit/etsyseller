@@ -197,6 +197,24 @@ class SystemOut(BaseModel):
 
 # ---- Modeller ve anahtarlar
 
+class AiVariantIn(BaseModel):
+    """Görsel/video modelinin fiyatlanan bir seçeneği. `cost_usd` ve `credits` birim başınadır (görsel ya da saniye)."""
+
+    key: str = Field(min_length=1, max_length=40, pattern=r"^[A-Za-z0-9._-]+$")
+    label_tr: str = Field(min_length=1, max_length=80)
+    label_en: str = Field(min_length=1, max_length=80)
+    cost_usd: float = Field(ge=0, le=100)
+    credits: int | None = Field(default=None, ge=1, le=100_000)  # boş: maliyetten otomatik
+    params: dict = Field(default_factory=dict)
+    is_default: bool = False
+    active: bool = True
+
+
+class AiVariantOut(AiVariantIn):
+    unit_credits: int  # gerçekte düşülen birim kredisi (sabitlenmiş ya da otomatik)
+    auto_credits: int  # maliyetten hesaplanan birim kredisi
+
+
 class AiModelOut(BaseModel):
     id: int
     kind: str
@@ -207,8 +225,8 @@ class AiModelOut(BaseModel):
     supported: bool  # kodda bu tür için sağlayıcı adaptörü var mı (yoksa göreve atanamaz)
     input_usd_per_mtok: float | None
     output_usd_per_mtok: float | None
-    unit_usd: float | None
     options: dict
+    variants: list[AiVariantOut]
 
 
 class AiModelIn(BaseModel):
@@ -219,8 +237,8 @@ class AiModelIn(BaseModel):
     active: bool = True
     input_usd_per_mtok: float | None = Field(default=None, ge=0, le=10_000)
     output_usd_per_mtok: float | None = Field(default=None, ge=0, le=10_000)
-    unit_usd: float | None = Field(default=None, ge=0, le=1_000)
     options: dict = Field(default_factory=dict)
+    variants: list[AiVariantIn] = Field(default_factory=list, max_length=20)
 
 
 class TaskOut(BaseModel):
@@ -238,11 +256,20 @@ class ProviderKeyOut(BaseModel):
     source: str  # db | env | ""
 
 
+class PricingOut(BaseModel):
+    """Panelde seçenek kredisini canlı hesaplamak için (bkz. billing/pricing.py)."""
+
+    credit_usd: float
+    credit_markup: float
+    units: dict[str, str]  # tür -> fiyat birimi (image | second)
+
+
 class CatalogOut(BaseModel):
     models: list[AiModelOut]
     tasks: list[TaskOut]
     keys: list[ProviderKeyOut]
     providers: dict[str, list[str]]  # tür -> desteklenen sağlayıcılar
+    pricing: PricingOut
     from_db: bool  # False: tablolar okunamadı, .env kullanılıyor (göç uygulanmamış olabilir)
 
 
@@ -303,6 +330,7 @@ class AdjustIn(BaseModel):
 class UsageRowOut(BaseModel):
     task: str | None
     model: str | None
+    variant: str | None
     calls: int
     cost_usd: float
     credits: int

@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
-from app.ai.models import AiModel, AiProviderKey, AiTaskModel
+from app.ai.models import AiModel, AiModelVariant, AiProviderKey, AiTaskModel
 from app.core.config import settings
 from app.core.db import SessionLocal
 
@@ -28,9 +28,13 @@ CACHE_SECONDS = 30
 KINDS = ("llm", "image", "video")
 
 # Kodda istemcisi (adaptörü) olan sağlayıcılar. Yeni bir sağlayıcı önce burada ve ai/client.py'de desteklenmeli;
-# katalog, desteklenmeyen sağlayıcıya görev atanmasına izin vermez. Video henüz hiçbir göreve bağlı değil.
+# katalog, desteklenmeyen sağlayıcıya görev atanmasına izin vermez. Video henüz hiçbir göreve bağlı değil; Replicate'in
+# anahtarı şimdiden girilebilir, video modelleri kataloğa eklenip fiyatlandırılabilir.
 SUPPORTED_PROVIDERS: dict[str, tuple[str, ...]] = {"llm": ("anthropic", "openai"), "image": ("google",), "video": ()}
-PROVIDERS = ("anthropic", "openai", "google")
+PROVIDERS = ("anthropic", "openai", "google", "replicate")
+
+# Türün fiyat birimi: görsel/video modelleri seçenek (variant) başına bu birimle fiyatlanır.
+UNITS = {"image": "image", "video": "second"}
 
 # Görev -> (model türü, Türkçe ad, İngilizce ad)
 TASKS: dict[str, tuple[str, str, str]] = {
@@ -40,6 +44,20 @@ TASKS: dict[str, tuple[str, str, str]] = {
     "document": ("llm", "Fatura ve tablo okuma", "Invoice and table reading"),
     "image": ("image", "Görsel üretimi", "Image generation"),
 }
+
+
+@dataclass(frozen=True)
+class Variant:
+    """Görsel/video modelinin fiyatlanan bir seçeneği (bkz. ai/models.py AiModelVariant). `credits` yöneticinin sabitlediği
+    birim kredisidir; None ise maliyetten hesaplanır."""
+
+    key: str
+    label_tr: str
+    label_en: str
+    cost_usd: float
+    credits: int | None = None
+    params: dict = field(default_factory=dict)
+    is_default: bool = False
 
 
 @dataclass(frozen=True)
@@ -53,8 +71,18 @@ class ResolvedModel:
     label: str
     input_usd_per_mtok: float | None = None
     output_usd_per_mtok: float | None = None
-    unit_usd: float | None = None
     options: dict = field(default_factory=dict)
+    variants: tuple[Variant, ...] = ()
+
+    def variant(self, key: str | None = None) -> Variant | None:
+        """İstenen seçenek; yoksa ya da verilmezse varsayılan seçenek, o da yoksa ilki. Seçeneği olmayan modelde None."""
+        if not self.variants:
+            return None
+        return (
+            next((v for v in self.variants if v.key == key), None)
+            or next((v for v in self.variants if v.is_default), None)
+            or self.variants[0]
+        )
 
 
 @dataclass
@@ -73,7 +101,10 @@ def _env_models() -> list[ResolvedModel]:
     return [
         ResolvedModel(None, "llm", "anthropic", settings.anthropic_model, settings.anthropic_model),
         ResolvedModel(None, "llm", "openai", settings.openai_model, settings.openai_model),
-        ResolvedModel(None, "image", "google", settings.google_image_model, settings.google_image_model, options={"image_size": settings.google_image_size}),
+        ResolvedModel(
+            None, "image", "google", settings.google_image_model, settings.google_image_model,
+            variants=(Variant(settings.google_image_size, settings.google_image_size, settings.google_image_size, 0.0, params={"image_size": settings.google_image_size}, is_default=True),),
+        ),
     ]
 
 
@@ -81,15 +112,37 @@ def _env_snapshot() -> _Snapshot:
     return _Snapshot(models=_env_models(), tasks={}, keys={}, from_db=False)
 
 
-def _resolved(row: AiModel) -> ResolvedModel:
+def _json_dict(text: str | None) -> dict:
     try:
-        options = json.loads(row.options_json or "{}")
+        value = json.loads(text or "{}")
     except json.JSONDecodeError:
-        options = {}
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _variant(row: AiModelVariant) -> Variant:
+    return Variant(row.key, row.label_tr, row.label_en, row.cost_usd, row.credits, _json_dict(row.params_json), row.is_default)
+
+
+def _resolved(row: AiModel, variants: list[AiModelVariant]) -> ResolvedModel:
     return ResolvedModel(
-        row.id, row.kind, row.provider, row.model_id, row.label, row.input_usd_per_mtok, row.output_usd_per_mtok, row.unit_usd,
-        options if isinstance(options, dict) else {},
+        row.id, row.kind, row.provider, row.model_id, row.label, row.input_usd_per_mtok, row.output_usd_per_mtok,
+        _json_dict(row.options_json), tuple(_variant(v) for v in variants),
     )
+
+
+def _load_variants(db) -> dict[int, list[AiModelVariant]]:
+    """Aktif seçenekler, model başına sırasıyla. Tablo yoksa (0028 uygulanmamış) boş döner; katalogun geri kalanı çalışır."""
+    try:
+        rows = db.scalars(select(AiModelVariant).where(AiModelVariant.active).order_by(AiModelVariant.sort, AiModelVariant.id)).all()
+    except SQLAlchemyError:
+        db.rollback()
+        log.warning("AI model seçenekleri okunamadı (0028 göçü uygulanmamış olabilir)")
+        return {}
+    by_model: dict[int, list[AiModelVariant]] = {}
+    for v in rows:
+        by_model.setdefault(v.model_id, []).append(v)
+    return by_model
 
 
 def _seed(db) -> None:
@@ -101,6 +154,12 @@ def _seed(db) -> None:
         db.add(row)
         rows[m.provider] = row
     db.flush()
+    for m in _env_models():
+        for i, v in enumerate(m.variants):
+            db.add(AiModelVariant(
+                model_id=rows[m.provider].id, key=v.key, label_tr=v.label_tr, label_en=v.label_en, cost_usd=v.cost_usd,
+                params_json=json.dumps(v.params), is_default=v.is_default, sort=i,
+            ))
     default_llm = rows.get(settings.ai_provider) or rows["openai"]
     for task, (kind, _, _) in TASKS.items():
         db.add(AiTaskModel(task=task, model_id=(rows["google"] if kind == "image" else default_llm).id))
@@ -119,6 +178,7 @@ def _load_from_db() -> _Snapshot:
                 db.rollback()
             rows = db.scalars(select(AiModel).order_by(AiModel.kind, AiModel.provider, AiModel.id)).all()
         tasks = {t.task: t.model_id for t in db.scalars(select(AiTaskModel)).all()}
+        variants = _load_variants(db)
         keys: dict[str, str] = {}
         for k in db.scalars(select(AiProviderKey)).all():
             try:
@@ -126,7 +186,7 @@ def _load_from_db() -> _Snapshot:
             except RuntimeError:  # şifre çözülemedi (TOKEN_ENCRYPTION_KEY değişmiş): .env anahtarına düşülür
                 log.error("AI anahtarı çözülemedi: %s", k.provider)
         # Pasif modeller hiçbir göreve verilmez; panel listesi tabloyu doğrudan okur, bu anlık görüntüyü değil.
-        return _Snapshot(models=[_resolved(r) for r in rows if r.active], tasks=tasks, keys=keys, from_db=True)
+        return _Snapshot(models=[_resolved(r, variants.get(r.id, [])) for r in rows if r.active], tasks=tasks, keys=keys, from_db=True)
     finally:
         db.close()
 
@@ -187,7 +247,10 @@ def api_key(provider: str) -> str:
     key = _snapshot().keys.get(provider)
     if key:
         return key
-    return {"openai": settings.openai_api_key, "anthropic": settings.anthropic_api_key, "google": settings.google_api_key}.get(provider, "")
+    return {
+        "openai": settings.openai_api_key, "anthropic": settings.anthropic_api_key, "google": settings.google_api_key,
+        "replicate": settings.replicate_api_token,
+    }.get(provider, "")
 
 
 def key_source(provider: str) -> str:

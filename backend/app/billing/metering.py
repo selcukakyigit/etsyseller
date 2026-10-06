@@ -12,8 +12,8 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 
-from app.ai.catalog import ResolvedModel
-from app.billing import credits
+from app.ai.catalog import ResolvedModel, Variant
+from app.billing import credits, pricing
 
 log = logging.getLogger(__name__)
 
@@ -58,15 +58,25 @@ def tokens(provider: str, response) -> tuple[int, int]:
     return getattr(u, "prompt_tokens", 0) or 0, getattr(u, "completion_tokens", 0) or 0
 
 
-def record(task: str, model: ResolvedModel, input_tokens: int = 0, output_tokens: int = 0, units: int = 0) -> None:
+def _charge(task: str, model: ResolvedModel, **usage) -> None:
     scope = _scope.get()
     if scope is None:
         log.debug("AI kullanımı bağlamsız, kaydedilmedi (%s)", task)
         return
     try:
-        credits.charge_usage(scope.workspace_id, scope.user_id, task, model, input_tokens, output_tokens, units)
+        credits.charge_usage(scope.workspace_id, scope.user_id, task, model, **usage)
     except Exception:  # noqa: BLE001 — ölçüm hatası kullanıcının cevabını düşürmemeli
         log.exception("AI kullanımı kaydedilemedi (ws=%s, %s)", scope.workspace_id, task)
+
+
+def record(task: str, model: ResolvedModel, input_tokens: int = 0, output_tokens: int = 0) -> None:
+    """Metin modeli çağrısı: token sayısıyla fiyatlanır."""
+    _charge(task, model, p=pricing.for_tokens(model, input_tokens, output_tokens), input_tokens=input_tokens, output_tokens=output_tokens)
+
+
+def record_units(task: str, model: ResolvedModel, variant: Variant | None, units: int = 1) -> None:
+    """Görsel/video üretimi: seçeneğin sabit fiyatıyla, birim (görsel ya da video saniyesi) sayısı kadar."""
+    _charge(task, model, p=pricing.for_units(variant, units), variant=variant.key if variant else None, units=units)
 
 
 def record_response(task: str, model: ResolvedModel, response) -> None:

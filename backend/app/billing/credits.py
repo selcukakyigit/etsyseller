@@ -1,15 +1,10 @@
-"""Kredi motoru: fiyatlama, bakiye, harcama ve yükleme.
-
-Fiyat: işlemin sağlayıcı maliyeti (USD, katalogdaki model fiyatlarından) × kâr çarpanı ÷ bir kredinin USD değeri,
-yukarı yuvarlanır, en az 1 kredi. Model fiyatı girilmemişse maliyet 0 sayılır ve işlem en az ücreti (1 kredi) öder.
+"""Kredi motoru: bakiye, harcama ve yükleme. İşlemin fiyatı billing/pricing.py'de hesaplanır.
 
 Kredi sistemi panelden açılana kadar (`credits_enabled`) kullanım yalnızca kaydedilir (maliyet raporu için), bakiyeden
 düşülmez ve hiçbir istek engellenmez. Açılınca bakiyesi 0 ya da altındaki çalışma alanının AI isteği 402 alır.
 Harcama önce plan kovasından düşer, yetmezse satın alınan kovadan (eşzamanlı isteklerde birkaç kredi eksiye inebilir)."""
 import datetime as dt
 import logging
-import math
-from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -17,45 +12,11 @@ from sqlalchemy.orm import Session
 
 from app.ai.catalog import ResolvedModel
 from app.billing.models import CreditBalance, CreditLedger
-from app.core import app_settings
+from app.billing.pricing import Price
+from app.billing.settings import enabled, setting
 from app.core.db import SessionLocal
 
 log = logging.getLogger(__name__)
-
-# Panelden değişen ayarlar ve varsayılanları.
-DEFAULTS = {
-    "credits_enabled": False,  # kapalıyken yalnızca ölçülür, düşülmez/engellenmez
-    "credit_markup": 3.0,  # sağlayıcı maliyetinin kaç katı kredi olarak alınır
-    "credit_usd": 0.01,  # bir kredinin kullanıcıya satış değeri (USD)
-    "signup_credits": 0,  # yeni (ya da ilk kez bakiyesi oluşan) çalışma alanına bir kerelik hediye
-}
-MIN_CREDITS = 1
-
-
-def setting(key: str):
-    value = app_settings.get(key, DEFAULTS[key])
-    return type(DEFAULTS[key])(value) if value is not None else DEFAULTS[key]
-
-
-def enabled() -> bool:
-    return bool(setting("credits_enabled"))
-
-
-@dataclass(frozen=True)
-class Price:
-    cost_usd: float
-    credits: int
-
-
-def price(model: ResolvedModel, input_tokens: int = 0, output_tokens: int = 0, units: int = 0) -> Price:
-    cost = (
-        input_tokens * (model.input_usd_per_mtok or 0) / 1_000_000
-        + output_tokens * (model.output_usd_per_mtok or 0) / 1_000_000
-        + units * (model.unit_usd or 0)
-    )
-    credit_usd = setting("credit_usd") or DEFAULTS["credit_usd"]
-    credits = math.ceil(round(cost * setting("credit_markup") / credit_usd, 6))
-    return Price(cost_usd=round(cost, 6), credits=max(MIN_CREDITS, credits))
 
 
 def _balance(db: Session, workspace_id: int, lock: bool = False) -> CreditBalance:
@@ -101,14 +62,14 @@ def has_credits(workspace_id: int) -> bool:
 
 
 def charge_usage(
-    workspace_id: int, user_id: int | None, task: str, model: ResolvedModel, input_tokens: int = 0, output_tokens: int = 0, units: int = 0,
-) -> Price:
-    """Bir AI çağrısının bedelini kaydeder (sistem açıksa bakiyeden düşer). Kendi oturumunu açar ve commit eder: çağıranın
-    işlemine karışmaz, ileride ayrı bir worker'dan da aynen çağrılabilir."""
-    p = price(model, input_tokens, output_tokens, units)
+    workspace_id: int, user_id: int | None, task: str, model: ResolvedModel, p: Price, *,
+    variant: str | None = None, input_tokens: int = 0, output_tokens: int = 0, units: int = 0,
+) -> None:
+    """Fiyatı hesaplanmış bir AI çağrısını kaydeder (sistem açıksa bakiyeden düşer). Kendi oturumunu açar ve commit eder:
+    çağıranın işlemine karışmaz, ileride ayrı bir worker'dan da aynen çağrılabilir."""
     common = dict(
         workspace_id=workspace_id, user_id=user_id, kind="usage", credits=p.credits, task=task, model=f"{model.provider}/{model.model_id}"[:120],
-        cost_usd=p.cost_usd, input_tokens=input_tokens or None, output_tokens=output_tokens or None, units=units or None,
+        variant=variant, cost_usd=p.cost_usd, input_tokens=input_tokens or None, output_tokens=output_tokens or None, units=units or None,
     )
     db = SessionLocal()
     try:
@@ -127,7 +88,6 @@ def charge_usage(
         db.commit()
     finally:
         db.close()
-    return p
 
 
 def _ref_used(db: Session, ref: str | None) -> bool:

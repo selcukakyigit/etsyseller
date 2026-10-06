@@ -35,6 +35,7 @@ class CreditLedger(Base):
     credits: Mapped[int] = mapped_column(Integer)
     task: Mapped[str | None] = mapped_column(String(30), nullable=True)
     model: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    variant: Mapped[str | None] = mapped_column(String(40), nullable=True)  # görsel/video seçeneği, ör. "720p"
     cost_usd: Mapped[float | None] = mapped_column(MONEY, nullable=True)
     input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)

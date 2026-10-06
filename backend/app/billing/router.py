@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.models import User
 from app.auth.workspaces import primary_workspace
-from app.billing import credits, lemon, service
+from app.billing import credits, lemon, service, settings as credit_settings
 from app.billing.models import BillingProduct, CreditLedger
 from app.core.config import settings
 from app.core.dates import iso
@@ -42,7 +42,7 @@ def summary(user: User = Depends(get_current_user), db: Session = Depends(get_db
         db.rollback()
         return {"enabled": False, "balance": {"plan": 0, "purchased": 0}, "subscription": None, "products": [], "can_buy": False}
     return {
-        "enabled": credits.enabled(),
+        "enabled": credit_settings.enabled(),
         "balance": {"plan": plan, "purchased": purchased},
         "subscription": None if sub is None else {
             "status": sub.status, "renews_at": iso(sub.renews_at), "ends_at": iso(sub.ends_at), "portal_url": sub.portal_url,
