@@ -7,11 +7,9 @@ class Settings(BaseSettings):
     etsy_redirect_uri: str = "http://localhost:8000/api/shops/connect/callback"
     # Etsy Webhook Portal'daki uç noktanın "Signing Secret"ı (whsec_...). Boşsa /webhooks/etsy 503 döner.
     etsy_webhook_secret: str = ""
-    # Yeni Etsy uygulamasına geçiş süresince ikinci uygulamanın anahtarları ve webhook secret'ı (iki uygulama birlikte
-    # çalışır; eski mağazalar eski anahtarla devam eder).
-    etsy_api_key_new: str = ""
-    etsy_shared_secret_new: str = ""
-    etsy_webhook_secret_new: str = ""
+    # Etsy uygulaması değiştirilirken eski uygulamanın webhook secret'ı: eski uygulama kapatılana kadar onun gönderdiği
+    # bildirimler de kabul edilir. Boş bırakılabilir.
+    etsy_webhook_secret_old: str = ""
 
     openai_api_key: str = ""
     openai_model: str = "gpt-4o"

@@ -117,8 +117,8 @@ def _handle(etsy_shop_id: int, receipt_id: int, event_type: str, emitted_at: dt.
 
 @router.post("/etsy", include_in_schema=False)
 async def etsy_webhook(request: Request, background: BackgroundTasks):
-    # Geçiş süresince iki Etsy uygulaması aynı uç noktaya gönderir; her biri kendi secret'ıyla imzalar.
-    secrets = [s for s in (settings.etsy_webhook_secret, settings.etsy_webhook_secret_new) if s]
+    # Uygulama değişirken eski uygulama da (kapatılana kadar) aynı uç noktaya gönderebilir; her biri kendi secret'ıyla imzalar.
+    secrets = [s for s in (settings.etsy_webhook_secret, settings.etsy_webhook_secret_old) if s]
     if not secrets:
         raise HTTPException(status_code=503, detail="Webhook yapılandırılmamış.")
 
