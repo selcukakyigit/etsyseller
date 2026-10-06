@@ -154,6 +154,17 @@ export default function ShopSettingsPage() {
                     <span className="text-xs font-medium text-green-600 dark:text-green-400 px-2.5 py-1 rounded-full bg-green-50 dark:bg-green-950">
                       {t("Bağlı", "Connected")}
                     </span>
+                    {/* Etsy izinlerini/belirtecini tazeler (yeni izin kapsamı, uygulama değişikliği); veriler silinmez. */}
+                    <a
+                      href={api.shops.connectUrl()}
+                      title={t(
+                        "Etsy'de izni yeniden verir; mağaza verileri olduğu gibi kalır.",
+                        "Grants permission on Etsy again; your shop data stays as it is.",
+                      )}
+                      className="text-xs font-medium px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
+                    >
+                      {t("Bağlantıyı yenile", "Refresh connection")}
+                    </a>
                     <button
                       onClick={() => setDisconnecting({ id: shop.id, name: shop.shop_name })}
                       className="text-xs font-medium px-3 py-1.5 rounded-lg border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition"
