@@ -74,25 +74,25 @@ class ImageGenError(Exception):
     pass
 
 
-def _model() -> catalog.ResolvedModel:
-    """Katalogdaki "image" görevinin modeli. Şimdilik yalnızca Google (Gemini görsel modelleri) destekleniyor."""
+def _choose(model_db_id: int | None, variant_key: str | None) -> tuple[catalog.ResolvedModel, catalog.Variant | None]:
+    """Kullanıcının seçtiği görsel modeli ve seçeneği; seçim yoksa "image" görevinin modeli ve varsayılan seçeneği.
+    Şimdilik yalnızca Google (Gemini görsel modelleri) destekleniyor."""
     try:
-        return catalog.resolve_ready("image")
+        return catalog.resolve_choice("image", model_db_id, variant_key)
     except catalog.NotConfigured as exc:
         raise ImageGenError(str(exc)) from exc
 
 
-def _run(parts: list, aspect_ratio: str | None = None) -> tuple[bytes, str]:
+def _run(parts: list, aspect_ratio: str | None = None, model_db_id: int | None = None, variant_key: str | None = None) -> tuple[bytes, str]:
     """`aspect_ratio` verilmezse model girdi görselinin oranını korur (listing fotoğrafları); verilirse ("4:1", "8:1",
     "1:1"…) o oranda üretir. gemini-3.1-flash-image 4:1 ve 8:1'i de kabul ediyor (banner'lar, 2026-10-05'te denendi)."""
-    model = _model()
+    model, variant = _choose(model_db_id, variant_key)
     from app.ai.client import get_google_client
     from google.genai import types
 
     client = get_google_client()
-    # Çözünürlük modelin varsayılan seçeneğinden gelir (Yönetim > Modeller); fiyatı da o seçenek belirler. Seçenek
-    # yoksa 2K — Etsy'nin önerdiği ≥2000px eşiğini karşılar.
-    variant = model.variant()
+    # Çözünürlük seçilen seçenekten gelir (Yönetim > Modeller); fiyatı da o seçenek belirler. Seçenek yoksa 2K — Etsy'nin
+    # önerdiği ≥2000px eşiğini karşılar.
     image_size = str((variant.params if variant else {}).get("image_size") or "2K")
     image_config = types.ImageConfig(image_size=image_size, aspect_ratio=aspect_ratio)
     try:
@@ -175,10 +175,12 @@ def regenerate_image(
     return _run(parts)
 
 
-def generate_from_text(prompt: str, reference: tuple[bytes, str] | None = None) -> tuple[bytes, str]:
+def generate_from_text(
+    prompt: str, reference: tuple[bytes, str] | None = None, model_db_id: int | None = None, variant_key: str | None = None,
+) -> tuple[bytes, str]:
     """Kaynak fotoğraf olmadan, yalnızca metin talimatından yeni bir görsel üretir — sıfırdan listing
     oluştururken kullanılır. `reference` verilirse (ör. aynı listing'in başka bir fotoğrafı ya da bir
-    stil/model referansı) o görsele bakarak tutarlı üretir."""
+    stil/model referansı) o görsele bakarak tutarlı üretir. Model ve seçenek (çözünürlük) kullanıcının seçimidir."""
     from google.genai import types
 
     full_prompt = (
@@ -198,7 +200,7 @@ def generate_from_text(prompt: str, reference: tuple[bytes, str] | None = None) 
             "isteğe göre farklılaştır. Referansın en-boy oranına yakın kal, aşırı uzun/dar bir kadraj üretme."
         )
     parts.append(types.Part.from_text(text=full_prompt))
-    return _run(parts)
+    return _run(parts, model_db_id=model_db_id, variant_key=variant_key)
 
 
 def generate_with_references(prompt: str, references: list[tuple[bytes, str]], aspect_ratio: str) -> tuple[bytes, str]:

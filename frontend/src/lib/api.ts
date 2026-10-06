@@ -616,6 +616,38 @@ export type ListingProperty = {
   values: string[];
 };
 
+/** Üretim penceresinde seçilebilen bir fiyat seçeneği (çözünürlük, taslak…). `credits` birim başınadır: görselde bir
+ *  görsel, videoda bir saniye. */
+export type GenerationVariant = { key: string; label_tr: string; label_en: string; credits: number; is_default: boolean };
+
+export type GenerationModel = {
+  id: number;
+  label: string;
+  variants: GenerationVariant[];
+  /** Yalnızca video: Etsy'nin kabul ettiği (5–15 sn) ve modelin desteklediği süreler. */
+  durations?: number[];
+  default_duration?: number;
+};
+
+export type GenerationKindOptions = { models: GenerationModel[]; default_model: number | null };
+
+export type GenerationOptions = { credits_enabled: boolean; image: GenerationKindOptions; video: GenerationKindOptions };
+
+/** Ürün referansı: yeni yüklenen dosya ya da listing'in kendi fotoğraflarından biri. */
+export type GenerationReference = { draftFileId?: string; image?: { id: number; draftFileId?: string | null } };
+
+export type GenerationChoice = { modelId: number; variant: string };
+
+function generationBody(reference: GenerationReference, choice?: GenerationChoice) {
+  return {
+    reference_draft_file_id: reference.draftFileId || undefined,
+    reference_image_id: reference.image?.id,
+    reference_image_draft_file_id: reference.image?.draftFileId || undefined,
+    model_id: choice?.modelId,
+    variant: choice?.variant,
+  };
+}
+
 export type ListingVideo = {
   draft_file_id?: string;
   video_id: number;
@@ -1880,26 +1912,25 @@ export const api = {
           }),
         }
       ),
+    // "Oluştur" penceresi: kullanıcıya açık görsel/video modelleri, seçenekleri ve birim kredileri.
+    generationOptions: (shopId: number, listingId: number) =>
+      request<GenerationOptions>(`/api/shops/${shopId}/listings/${listingId}/draft/generate/options`),
     // AI ile oluştur: kaynak fotoğraf olmadan, yalnızca yazılan talimattan yeni bir taslak fotoğrafı üretir.
-    // Referans: yeni yüklenen dosya (`referenceDraftFileId`) ya da listing'in kendi fotoğrafı (`referenceImage`).
-    generateImage: (
-      shopId: number,
-      listingId: number,
-      prompt: string,
-      referenceDraftFileId?: string,
-      referenceImage?: { id: number; draftFileId?: string | null },
-    ) =>
+    generateImage: (shopId: number, listingId: number, prompt: string, reference: GenerationReference, choice?: GenerationChoice) =>
       request<{ file_id: string; kind: string; filename: string }>(
         `/api/shops/${shopId}/listings/${listingId}/draft/images/generate`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            prompt,
-            reference_draft_file_id: referenceDraftFileId || undefined,
-            reference_image_id: referenceImage?.id,
-            reference_image_draft_file_id: referenceImage?.draftFileId || undefined,
-          }),
-        }
+        { method: "POST", body: JSON.stringify({ prompt, ...generationBody(reference, choice) }) }
+      ),
+    // Video uzun sürer: başlatınca bir iş bileti döner, `videoStatus` ile bitene kadar sorulur.
+    startVideo: (shopId: number, listingId: number, prompt: string, duration: number, reference: GenerationReference, choice?: GenerationChoice) =>
+      request<{ job: string; credits: number }>(`/api/shops/${shopId}/listings/${listingId}/draft/videos/generate`, {
+        method: "POST",
+        body: JSON.stringify({ prompt, duration, ...generationBody(reference, choice) }),
+      }),
+    videoStatus: (shopId: number, listingId: number, job: string) =>
+      request<{ status: "running" } | { status: "done"; file_id: string }>(
+        `/api/shops/${shopId}/listings/${listingId}/draft/videos/generate/status`,
+        { method: "POST", body: JSON.stringify({ job }) }
       ),
     reorderImages: (shopId: number, listingId: number, imageIds: number[]) =>
       request<ListingImage[]>(`/api/shops/${shopId}/listings/${listingId}/images/order`, {

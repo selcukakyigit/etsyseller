@@ -45,3 +45,20 @@ class EncryptedText(TypeDecorator):
             return _get_fernet().decrypt(value[len(_PREFIX):].encode()).decode()
         except InvalidToken as exc:
             raise RuntimeError("Belirteç çözülemedi (TOKEN_ENCRYPTION_KEY yanlış ya da değişmiş).") from exc
+
+
+def seal(data: dict) -> str:
+    """Küçük bir veriyi istemciye kurcalanamaz bir bilet olarak verir (şifreli ve imzalı; içinde zaman damgası var)."""
+    import json
+
+    return _get_fernet().encrypt(json.dumps(data, separators=(",", ":")).encode()).decode()
+
+
+def unseal(token: str, max_age_seconds: int) -> dict | None:
+    """`seal` biletini açar. Bozuk, değiştirilmiş ya da `max_age_seconds`'tan eskiyse None."""
+    import json
+
+    try:
+        return json.loads(_get_fernet().decrypt(token.encode(), ttl=max_age_seconds))
+    except (InvalidToken, ValueError):
+        return None

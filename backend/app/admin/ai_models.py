@@ -86,8 +86,12 @@ def get_catalog(db: Session) -> CatalogOut:
         variants = {}
     tasks = []
     for task, (kind, name_tr, name_en) in catalog.TASKS.items():
-        m = catalog.resolve(task)
-        tasks.append(TaskOut(task=task, kind=kind, name_tr=name_tr, name_en=name_en, model_id=assigned.get(task), effective=f"{m.provider}/{m.model_id}"))
+        try:
+            m = catalog.resolve(task)
+            effective = f"{m.provider}/{m.model_id}"
+        except catalog.NotConfigured:  # bu türde hiç model yok (ör. video)
+            effective = "—"
+        tasks.append(TaskOut(task=task, kind=kind, name_tr=name_tr, name_en=name_en, model_id=assigned.get(task), effective=effective))
     keys = [ProviderKeyOut(provider=p, masked=mask(catalog.api_key(p)), source=catalog.key_source(p)) for p in catalog.PROVIDERS]
     return CatalogOut(
         models=[_out(r, variants.get(r.id, [])) for r in rows], tasks=tasks, keys=keys,

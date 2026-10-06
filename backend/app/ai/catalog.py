@@ -28,9 +28,9 @@ CACHE_SECONDS = 30
 KINDS = ("llm", "image", "video")
 
 # Kodda istemcisi (adaptörü) olan sağlayıcılar. Yeni bir sağlayıcı önce burada ve ai/client.py'de desteklenmeli;
-# katalog, desteklenmeyen sağlayıcıya görev atanmasına izin vermez. Video henüz hiçbir göreve bağlı değil; Replicate'in
-# anahtarı şimdiden girilebilir, video modelleri kataloğa eklenip fiyatlandırılabilir.
-SUPPORTED_PROVIDERS: dict[str, tuple[str, ...]] = {"llm": ("anthropic", "openai"), "image": ("google",), "video": ()}
+# katalog, desteklenmeyen sağlayıcıya görev atanmasına izin vermez. Video modelleri Replicate üzerinden çalışır
+# (bkz. ai/video_gen.py).
+SUPPORTED_PROVIDERS: dict[str, tuple[str, ...]] = {"llm": ("anthropic", "openai"), "image": ("google",), "video": ("replicate",)}
 PROVIDERS = ("anthropic", "openai", "google", "replicate")
 
 # Türün fiyat birimi: görsel/video modelleri seçenek (variant) başına bu birimle fiyatlanır.
@@ -43,6 +43,7 @@ TASKS: dict[str, tuple[str, str, str]] = {
     "vision": ("llm", "Fotoğraf alt metni", "Photo alt text"),
     "document": ("llm", "Fatura ve tablo okuma", "Invoice and table reading"),
     "image": ("image", "Görsel üretimi", "Image generation"),
+    "video": ("video", "Video üretimi", "Video generation"),
 }
 
 
@@ -162,7 +163,8 @@ def _seed(db) -> None:
             ))
     default_llm = rows.get(settings.ai_provider) or rows["openai"]
     for task, (kind, _, _) in TASKS.items():
-        db.add(AiTaskModel(task=task, model_id=(rows["google"] if kind == "image" else default_llm).id))
+        if kind == "llm" or kind == "image":  # .env'de video modeli yok; video görevi panelden eklenen modelle çalışır
+            db.add(AiTaskModel(task=task, model_id=(rows["google"] if kind == "image" else default_llm).id))
     db.commit()
     log.info("AI model kataloğu .env değerleriyle dolduruldu")
 
@@ -219,7 +221,7 @@ def is_usable(m: ResolvedModel, kind: str) -> bool:
 
 def resolve(task: str) -> ResolvedModel:
     """Görevin modeli: atanmış ve hâlâ aktif/desteklenen model; yoksa aynı türdeki ilk aktif model (metinde AI_PROVIDER
-    tercih edilir); o da yoksa .env'deki model."""
+    tercih edilir); o da yoksa .env'deki model. .env'de karşılığı olmayan türde (video) hiç model yoksa NotConfigured."""
     kind = TASKS[task][0]
     snap = _snapshot()
     assigned = snap.tasks.get(task)
@@ -230,7 +232,10 @@ def resolve(task: str) -> ResolvedModel:
     candidates.sort(key=lambda m: m.provider != settings.ai_provider)
     if candidates:
         return candidates[0]
-    return next(m for m in _env_models() if m.kind == kind)
+    env = next((m for m in _env_models() if m.kind == kind), None)
+    if env is None:
+        raise NotConfigured(not_configured_message())
+    return env
 
 
 def by_id(model_db_id: int, kind: str) -> ResolvedModel | None:
@@ -275,6 +280,15 @@ def not_configured_message() -> str:
         "Yapay zekâ şu an kullanılamıyor (sağlayıcı anahtarı tanımlı değil). Lütfen daha sonra tekrar dene.",
         "AI is unavailable right now (no provider key is set). Please try again later.",
     )
+
+
+def resolve_choice(task: str, model_db_id: int | None = None, variant_key: str | None = None) -> tuple[ResolvedModel, Variant | None]:
+    """Kullanıcının seçtiği model ve seçenek (ör. üretim penceresindeki seçici). Seçilen model artık yoksa, pasifse ya da
+    anahtarı yoksa görevin modeline; seçenek yoksa modelin varsayılan seçeneğine düşülür."""
+    kind = TASKS[task][0]
+    chosen = by_id(model_db_id, kind) if model_db_id is not None else None
+    model = chosen if chosen is not None and ready(chosen) else resolve_ready(task)
+    return model, model.variant(variant_key)
 
 
 def resolve_ready(task: str) -> ResolvedModel:

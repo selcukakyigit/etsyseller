@@ -48,12 +48,18 @@ def balance(db: Session, workspace_id: int) -> tuple[int, int]:
 
 def has_credits(workspace_id: int) -> bool:
     """Kredi sistemi kapalıysa her zaman True. Okuma hatasında da True (kredi defteri sorunu AI'ı kilitlemesin)."""
+    return can_afford(workspace_id, 1)
+
+
+def can_afford(workspace_id: int, amount: int) -> bool:
+    """Bakiye `amount` krediyi karşılıyor mu (pahalı, önceden fiyatı bilinen işler için; ör. video). Kredi sistemi
+    kapalıysa ya da bakiye okunamazsa True."""
     if not enabled():
         return True
     db = SessionLocal()
     try:
         plan, purchased = balance(db, workspace_id)
-        return plan + purchased > 0
+        return plan + purchased >= amount
     except SQLAlchemyError:
         log.exception("Kredi bakiyesi okunamadı (ws=%s); istek engellenmedi", workspace_id)
         return True

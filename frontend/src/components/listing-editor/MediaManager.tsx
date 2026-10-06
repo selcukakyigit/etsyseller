@@ -9,25 +9,12 @@ import RegenImage from "./RegenImage";
 import CameraCube, { CameraAngle, cameraAnglePrompt } from "./CameraCube";
 import DistancePicker, { Distance, distancePrompt } from "./DistancePicker";
 import VersionDots from "./VersionDots";
+import GenerateModal from "./generate/GenerateModal";
+import { SHOT_PRESETS } from "./generate/shots";
 import { tNow as t } from "@/lib/i18n";
-import { Spinner } from "@/components/ui/Spinner";
 
 const MAX_IMAGES = 20;
 const MAX_VIDEOS = 2;
-
-// Etsy'nin önerdiği ürün fotoğrafı çeşitliliği (kapak/açı/detay/ölçek/yaşam tarzı/uzak-yakın çekim). "Oluştur"
-// modalinde bir adet ürün fotoğrafından, seçilen adette bu çeşitlilikte bir set otomatik üretilir.
-// Komutlar görsel modeline gider ve arayüz dilinden bağımsız olarak İngilizcedir; etiketler iki dillidir.
-const SHOT_PRESETS: { label: [string, string]; prompt: string }[] = [
-  { label: ["Ana fotoğraf (kapak)", "Main photo (cover)"], prompt: "Show the product on a plain, neutral, clean background, straight from the front, centered, balanced and well lit, in sharp focus. This will be the featured cover photo on Etsy." },
-  { label: ["Farklı açı (3/4)", "Different angle (3/4)"], prompt: "Show the same product from a 3/4 angle (slightly from the side); keep the lighting and background consistent." },
-  { label: ["Yakın çekim / detay", "Close-up / detail"], prompt: "Show the product's texture, material and craftsmanship in a very close macro shot." },
-  { label: ["Ölçek referansı", "Scale reference"], prompt: "Show the product held in a hand or next to an everyday object so its real size is clear." },
-  { label: ["Yaşam tarzı (kullanımda)", "Lifestyle (in use)"], prompt: "Show the product in a real setting, in a natural lifestyle scene, being used or displayed." },
-  { label: ["Uzak çekim / geniş kadraj", "Wide shot"], prompt: "Show the product from a distance in a wide frame together with its surroundings." },
-  { label: ["Arka/üst görünüm", "Back / top view"], prompt: "Show the back of the product or a view from above." },
-  { label: ["Alternatif sahne", "Alternative scene"], prompt: "Show the same product on a different surface or decor scene." },
-];
 
 const tile = "relative aspect-square overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800";
 const addTile =
@@ -67,7 +54,6 @@ export default function MediaManager({
 }) {
   const photoInput = useRef<HTMLInputElement>(null);
   const videoInput = useRef<HTMLInputElement>(null);
-  const genFileInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
@@ -85,52 +71,19 @@ export default function MediaManager({
   const [versionsTick, setVersionsTick] = useState(0); // sürüm noktalarını tazelemek için (yeni sürüm üretilince)
   const [videoView, setVideoView] = useState<ListingVideo | null>(null); // videoyu modalda oynat
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [genOpen, setGenOpen] = useState(false); // "Oluştur" — sıfırdan (ya da bir referanstan) yeni görsel seti
-  const [genPrompt, setGenPrompt] = useState("");
-  const [genRefFile, setGenRefFile] = useState<File | null>(null);
-  // Ya yeni bir dosya (genRefFile) ya da listedeki fotoğraflardan biri referans olur; biri seçilince diğeri temizlenir.
-  const [genRefImage, setGenRefImage] = useState<ListingImage | null>(null);
-  const pickGenFile = (file: File | null) => {
-    setGenRefFile(file);
-    if (file) setGenRefImage(null);
-  };
-  const [genKeepRef, setGenKeepRef] = useState(false); // referans yalnızca yapay zekâya verilir; listeye eklemek isteğe bağlı
-  const [genQty, setGenQty] = useState(1);
-  const [genBusy, setGenBusy] = useState(false);
-  const [genError, setGenError] = useState<string | null>(null);
-  const [genShots, setGenShots] = useState<
-    { label: string; prompt: string; status: "pending" | "running" | "done" | "error"; error?: string; startedAt?: number }[]
-  >([]);
-  const [genNow, setGenNow] = useState(0);
-  // Üretim sürerken ilerleme çubuğu akıcı ilerlesin diye saati yarım saniyede bir günceller.
-  useEffect(() => {
-    if (!genBusy) return;
-    const timer = setInterval(() => setGenNow(Date.now()), 500);
-    return () => clearInterval(timer);
-  }, [genBusy]);
+  const [genOpen, setGenOpen] = useState(false); // "Oluştur" penceresi (fotoğraf seti ya da video)
 
   const ordered = [...images].sort((a, b) => a.rank - b.rank);
   const primary = ordered[0];
 
-  // Eşzamanlı yarış durumunu önlemek için (tek seferde tek görsel değişsin): en güncel diziyi
-  // async bir işin tamamlanma anında okumak üzere ref'te tutulur.
+  // Eşzamanlı yarış durumunu önlemek için (tek seferde tek görsel değişsin): en güncel diziler
+  // async bir işin tamamlanma anında okunmak üzere ref'te tutulur (her çizimden sonra güncellenir).
   const orderedRef = useRef(ordered);
-  orderedRef.current = ordered;
-
-  // "Oluştur" modali açıkken Ctrl+V ile resim yapıştırma desteği.
+  const videosRef = useRef(videos);
   useEffect(() => {
-    if (!genOpen) return;
-    function onPaste(e: ClipboardEvent) {
-      const item = Array.from(e.clipboardData?.items ?? []).find((it) => it.type.startsWith("image/"));
-      const file = item?.getAsFile();
-      if (file) {
-        setGenRefFile(file);
-        setGenRefImage(null);
-      }
-    }
-    window.addEventListener("paste", onPaste);
-    return () => window.removeEventListener("paste", onPaste);
-  }, [genOpen]);
+    orderedRef.current = ordered;
+    videosRef.current = videos;
+  });
 
   const regenJobs = useRegenJobs();
   const [bulkRegen, setBulkRegen] = useState(false);
@@ -145,6 +98,15 @@ export default function MediaManager({
     url_570xN: fileUrl(fileId),
     url_fullxfull: fileUrl(fileId),
     alt_text: altText,
+  });
+  const videoEntry = (fileId: string): ListingVideo => ({
+    video_id: draftId(),
+    draft_file_id: fileId,
+    height: 0,
+    width: 0,
+    thumbnail_url: "",
+    video_url: fileUrl(fileId),
+    video_state: "draft",
   });
 
   // Alt metin: Etsy API'si yalnızca fotoğraf YÜKLENİRKEN alt metin kabul eder; bu yüzden yalnızca yeni (taslak) fotoğraflar düzenlenebilir.
@@ -229,18 +191,7 @@ export default function MediaManager({
     setBusy("Video ekleniyor…");
     try {
       const up = await api.listings.uploadDraftFile(shopId, listingId, file, "video", file.name);
-      onVideosChange([
-        ...videos,
-        {
-          video_id: draftId(),
-          draft_file_id: up.file_id,
-          height: 0,
-          width: 0,
-          thumbnail_url: "",
-          video_url: fileUrl(up.file_id),
-          video_state: "draft",
-        },
-      ]);
+      onVideosChange([...videos, videoEntry(up.file_id)]);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("Bilinmeyen hata", "Unknown error"));
     } finally {
@@ -383,70 +334,6 @@ export default function MediaManager({
       else next.add(id);
       return next;
     });
-  }
-
-  // "Oluştur": bir (opsiyonel) ürün fotoğrafından, Etsy'nin önerdiği çeşitlilikte (kapak/açı/detay/ölçek/
-  // yaşam tarzı/uzak-yakın çekim) seçilen adette fotoğraf üretir; her biri bitince listeye tek tek eklenir.
-  // Referans fotoğraf yoksa yalnızca yazılan genel talimattan (sahne hayal ederek) üretir.
-  async function generateShoot() {
-    const remaining = MAX_IMAGES - orderedRef.current.length;
-    const qty = Math.max(1, Math.min(genQty, remaining));
-    setGenBusy(true);
-    setGenError(null);
-    try {
-      let referenceFileId: string | undefined;
-      if (genRefFile) {
-        const up = await api.listings.uploadDraftFile(shopId, listingId, genRefFile, "image", genRefFile.name);
-        referenceFileId = up.file_id;
-        if (genKeepRef) {
-          onImagesChange(withRanks([...orderedRef.current, imageEntry(up.file_id, null)]));
-        }
-      }
-      const note = genPrompt.trim() ? ` Extra note: ${genPrompt.trim()}` : "";
-      const shots = Array.from({ length: qty }, (_, i) => {
-        const preset = SHOT_PRESETS[i % SHOT_PRESETS.length];
-        const cycle = Math.floor(i / SHOT_PRESETS.length);
-        const name = t(...preset.label);
-        const label = cycle > 0 ? `${name} (${cycle + 1})` : name;
-        const prompt = preset.prompt + note + (cycle > 0 ? " Make it a clearly different variation from the earlier ones." : "");
-        return { label, prompt, status: "pending" as const };
-      });
-      setGenShots(shots);
-      for (let i = 0; i < shots.length; i++) {
-        const startedAt = clockNow();
-        setGenNow(startedAt);
-        setGenShots((prev) => prev.map((s, idx) => (idx === i ? { ...s, status: "running", startedAt } : s)));
-        try {
-          const up = await api.listings.generateImage(
-            shopId,
-            listingId,
-            shots[i].prompt,
-            referenceFileId,
-            genRefImage ? { id: genRefImage.listing_image_id, draftFileId: genRefImage.draft_file_id } : undefined,
-          );
-          onImagesChange(withRanks([...orderedRef.current, imageEntry(up.file_id, null)]));
-          setGenShots((prev) => prev.map((s, idx) => (idx === i ? { ...s, status: "done" } : s)));
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : t("Üretilemedi", "Could not generate");
-          setGenShots((prev) => prev.map((s, idx) => (idx === i ? { ...s, status: "error", error: msg } : s)));
-          break; // ilk hatada dur (ör. kota dolu), kalan çekimleri boşuna deneme
-        }
-      }
-    } catch (e) {
-      setGenError(e instanceof Error ? e.message : t("Görsel üretilemedi", "Could not generate the image"));
-    } finally {
-      setGenBusy(false);
-    }
-  }
-
-  function closeGen() {
-    setGenOpen(false);
-    setGenPrompt("");
-    setGenRefFile(null);
-    setGenRefImage(null);
-    setGenKeepRef(false);
-    setGenShots([]);
-    setGenError(null);
   }
 
   return (
@@ -644,18 +531,15 @@ export default function MediaManager({
           </label>
         )}
 
-        {ordered.length < MAX_IMAGES && (
+        {(ordered.length < MAX_IMAGES || videos.length < MAX_VIDEOS) && (
           <button
             type="button"
-            onClick={() => {
-              setGenQty(Math.min(1, MAX_IMAGES - ordered.length));
-              setGenOpen(true);
-            }}
+            onClick={() => setGenOpen(true)}
             className={addTile}
           >
             <span className="text-2xl">🎨</span>
             <span className="text-sm font-semibold">{t("Oluştur", "Generate")}</span>
-            <span className="text-xs text-neutral-400">{t("Sıfırdan görsel üret", "Create images from scratch")}</span>
+            <span className="text-xs text-neutral-400">{t("Fotoğraf ya da video üret", "Generate photos or video")}</span>
           </button>
         )}
       </div>
@@ -906,180 +790,18 @@ export default function MediaManager({
       )}
 
       {genOpen && (
-        <Modal z={120} widthClass="max-w-lg" title={t("Fotoğraf seti oluştur", "Generate a photo set")} onClose={genBusy ? undefined : closeGen} footer={
-          <>
-            <button type="button" onClick={closeGen} disabled={genBusy} className={`${btnGhost} disabled:opacity-40`}>
-              {genShots.length > 0 ? t("Bitir", "Done") : t("Vazgeç", "Cancel")}
-            </button>
-            {genShots.length === 0 && (
-              <button type="button" onClick={() => void generateShoot()} disabled={genBusy} className={btnPrimary}>
-                {genBusy ? t("Oluşturuluyor…", "Generating…") : t(`${genQty} fotoğraf oluştur`, `Generate ${genQty} photos`)}
-              </button>
-            )}
-          </>
-        }>
-          {genShots.length === 0 ? (
-            <>
-              <p className="mb-3 text-xs text-neutral-400 dark:text-neutral-500">
-                {t(
-                  "Bir ürün fotoğrafı ver — Etsy'nin önerdiği çeşitlilikte (kapak, farklı açı, yakın çekim/detay, ölçek referansı, yaşam tarzı, uzak/geniş kadraj…) bir fotoğraf seti otomatik üretilir, her biri bitikçe listeye eklenir. Fotoğraf vermezsen yalnızca yazdığın tarife göre (hayal ederek) üretir.",
-                  "Give a product photo and a set in the variety Etsy recommends (cover, different angle, close-up, scale reference, lifestyle, wide shot…) is generated; each one is added to the list when it is done. Without a photo, images are imagined from your description only.",
-                )}
-              </p>
-
-              <label className="mb-1 block text-xs font-medium text-neutral-500 dark:text-neutral-400">
-                {t("Ürün fotoğrafı (opsiyonel ama önerilir)", "Product photo (optional but recommended)")}
-              </label>
-              <div
-                onClick={() => genFileInput.current?.click()}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  const file = Array.from(e.dataTransfer.files).find((f) => f.type.startsWith("image/"));
-                  if (file) pickGenFile(file);
-                }}
-                className="mb-3 flex cursor-pointer items-center gap-3 rounded-lg border-2 border-dashed border-neutral-300 p-3 hover:border-neutral-400 dark:border-neutral-700 dark:hover:border-neutral-500"
-              >
-                {genRefFile ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={URL.createObjectURL(genRefFile)} alt="" className="h-16 w-16 flex-shrink-0 rounded-lg object-cover" />
-                ) : (
-                  <span className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-xl dark:bg-neutral-800">🖼</span>
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium text-neutral-700 dark:text-neutral-300">
-                    {genRefFile ? genRefFile.name : t("Tıkla, sürükle-bırak ya da yapıştır (Ctrl+V)", "Click, drag and drop or paste (Ctrl+V)")}
-                  </p>
-                  {genRefFile && (
-                    <label className="mt-1 flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400" onClick={(e) => e.stopPropagation()}>
-                      <input type="checkbox" checked={genKeepRef} onChange={(e) => setGenKeepRef(e.target.checked)} />
-                      {t("Bu gerçek fotoğrafı da listeye ekle", "Also add this real photo to the listing")}
-                    </label>
-                  )}
-                </div>
-                <input
-                  ref={genFileInput}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => pickGenFile(e.target.files?.[0] ?? null)}
-                />
-              </div>
-
-              {ordered.length > 0 && (
-                <div className="mb-3">
-                  <p className="mb-1.5 text-xs text-neutral-500 dark:text-neutral-400">
-                    {t("…ya da bu listing'in fotoğraflarından birini seç:", "…or pick one of this listing's photos:")}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {ordered.map((img) => {
-                      const on = genRefImage?.listing_image_id === img.listing_image_id;
-                      return (
-                        <button
-                          key={img.listing_image_id}
-                          type="button"
-                          onClick={() => {
-                            setGenRefImage(on ? null : img);
-                            setGenRefFile(null);
-                          }}
-                          aria-pressed={on}
-                          title={t("Ürün referansı olarak kullan", "Use as product reference")}
-                          className={`overflow-hidden rounded-lg border-2 transition ${
-                            on ? "border-[#D97757] ring-2 ring-[#D97757]/30" : "border-transparent hover:border-neutral-300 dark:hover:border-neutral-600"
-                          }`}
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={img.url_170x135} alt="" className="h-14 w-14 object-cover" />
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              <label className="mb-1 block text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("Kaç fotoğraf üretilsin?", "How many photos?")}</label>
-              <input
-                type="number"
-                min={1}
-                max={MAX_IMAGES - ordered.length}
-                value={genQty}
-                onChange={(e) => setGenQty(Math.max(1, Math.min(MAX_IMAGES - ordered.length, Number(e.target.value) || 1)))}
-                className="mb-3 w-24 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
-              />
-              <p className="mb-3 text-xs text-neutral-400 dark:text-neutral-500">
-                {t(
-                  `${MAX_IMAGES - ordered.length} fotoğraf hakkın kaldı. 8'den fazlasında çekim türleri tekrar edip varyasyon üretilir.`,
-                  `${MAX_IMAGES - ordered.length} photos left. Above 8, shot types repeat as variations.`,
-                )}
-              </p>
-
-              <label className="mb-1 block text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("Ek not (opsiyonel)", "Extra note (optional)")}</label>
-              <textarea
-                value={genPrompt}
-                onChange={(e) => setGenPrompt(e.target.value.slice(0, 2000))}
-                rows={2}
-                placeholder={t("Örn. Ahşap zemin, doğal ışık, minimal dekor", "E.g. Wooden surface, natural light, minimal decor")}
-                className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
-              />
-              {genError && <p className="mt-2 text-xs text-red-600">{genError}</p>}
-            </>
-          ) : (
-            <>
-            <GenProgress shots={genShots} now={genNow} busy={genBusy} />
-            <ul className="space-y-1.5 text-sm">
-              {genShots.map((shot, i) => (
-                <li key={i} className="flex items-center gap-2">
-                  <span>
-                    {shot.status === "pending" && "⏳"}
-                    {shot.status === "running" && <Spinner size={14} />}
-                    {shot.status === "done" && "✅"}
-                    {shot.status === "error" && "❌"}
-                  </span>
-                  <span className={shot.status === "pending" ? "text-neutral-400" : ""}>{shot.label}</span>
-                  {shot.status === "error" && <span className="text-xs text-red-600 dark:text-red-400">— {shot.error}</span>}
-                </li>
-              ))}
-            </ul>
-            </>
-          )}
-        </Modal>
+        <GenerateModal
+          shopId={shopId}
+          listingId={listingId}
+          images={ordered}
+          imageSlots={MAX_IMAGES - ordered.length}
+          videoSlots={MAX_VIDEOS - videos.length}
+          onImageAdded={(fileId) => onImagesChange(withRanks([...orderedRef.current, imageEntry(fileId, null)]))}
+          onReferenceKept={(fileId) => onImagesChange(withRanks([...orderedRef.current, imageEntry(fileId, null)]))}
+          onVideoAdded={(fileId) => onVideosChange([...videosRef.current, videoEntry(fileId)])}
+          onClose={() => setGenOpen(false)}
+        />
       )}
     </section>
-  );
-}
-
-/** Olay işleyicilerinden çağrılan saat (bileşen gövdesinde değil). */
-function clockNow() {
-  return Date.now();
-}
-
-/** Fotoğraf seti üretiminin toplam ilerlemesi. Biten her fotoğraf tam pay sayılır; üretilmekte olanın payı, bir
- * fotoğrafın ortalama ~30 sn sürdüğü varsayımıyla zamanla dolar (%90'da bekler, bitince tamamlanır). */
-function GenProgress({ shots, now, busy }: { shots: { status: string; startedAt?: number }[]; now: number; busy: boolean }) {
-  const total = shots.length;
-  const done = shots.filter((s) => s.status === "done").length;
-  const running = shots.find((s) => s.status === "running");
-  const partial = running?.startedAt ? 0.9 * (1 - Math.exp(-Math.max(0, now - running.startedAt) / 30000)) : 0;
-  const pct = total ? Math.min(100, ((done + partial) / total) * 100) : 0;
-  const failed = shots.some((s) => s.status === "error");
-  return (
-    <div className="mb-4">
-      <div className="mb-1 flex justify-between text-xs text-neutral-500 dark:text-neutral-400">
-        <span>
-          {busy
-            ? t(`Üretiliyor… ${done} / ${total} hazır`, `Generating… ${done} / ${total} ready`)
-            : failed
-              ? t(`${done} / ${total} üretildi, kalanlar durduruldu`, `${done} / ${total} generated, the rest stopped`)
-              : t(`${done} / ${total} fotoğraf hazır, listeye eklendi`, `${done} / ${total} photos ready and added to the listing`)}
-        </span>
-        <span>{Math.round(busy ? pct : (done / Math.max(1, total)) * 100)}%</span>
-      </div>
-      <div className="h-2 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
-        <div
-          className={`h-full rounded-full transition-[width] duration-500 ease-out ${failed && !busy ? "bg-red-500" : "bg-[#D97757]"}`}
-          style={{ width: `${busy ? pct : (done / Math.max(1, total)) * 100}%` }}
-        />
-      </div>
-    </div>
   );
 }

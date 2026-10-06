@@ -308,33 +308,6 @@ def regenerate_draft_image(
         raise HTTPException(400, str(exc)) from exc
 
 
-class GenerateImageIn(BaseModel):
-    prompt: str = Field(min_length=1, max_length=2000)
-    reference_draft_file_id: str | None = None
-    # Listing'in kendi fotoğraflarından biri referans olarak (taslak fotoğrafsa dosyasıyla birlikte)
-    reference_image_id: int | None = None
-    reference_image_draft_file_id: str | None = None
-
-
-@router.post("/{listing_id}/draft/images/generate", dependencies=[Depends(require_ai_enabled)])
-def generate_draft_image(
-    listing_id: int,
-    payload: GenerateImageIn,
-    shop: Shop = Depends(get_owned_shop),
-    db: Session = Depends(get_db),
-):
-    """AI ile oluştur: kaynak fotoğraf olmadan, yalnızca yazılan talimattan yeni bir taslak fotoğrafı üretir."""
-    from app.ai.image_gen import ImageGenError
-
-    try:
-        return drafts.generate_image_from_prompt(
-            db, shop, listing_id, payload.prompt, payload.reference_draft_file_id,
-            payload.reference_image_id, payload.reference_image_draft_file_id,
-        )
-    except ImageGenError as exc:
-        raise HTTPException(502, str(exc)) from exc
-
-
 @router.get("/{listing_id}/draft/files/{file_id}")
 def get_draft_file(
     listing_id: int,

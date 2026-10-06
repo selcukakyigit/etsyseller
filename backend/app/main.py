@@ -50,6 +50,7 @@ from app.finance.invoices_router import router as finance_invoices_router
 from app.core.db_guard import warn_unlocked_tables
 from app.jobs.scheduler import start_scheduler, stop_scheduler
 from app.keywords.router import router as keywords_router
+from app.listings.generation_router import router as listing_generation_router
 from app.listings.router import router as listings_router
 from app.listings.templates_router import router as description_templates_router
 from app.insights.router import router as insights_router
@@ -136,6 +137,7 @@ app.include_router(auth_router)
 app.include_router(account_router)
 app.include_router(shops_router)
 app.include_router(listings_router)
+app.include_router(listing_generation_router)
 app.include_router(description_templates_router)
 app.include_router(insights_router)
 app.include_router(orders_router)

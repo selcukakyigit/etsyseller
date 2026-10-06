@@ -76,7 +76,12 @@ def record(task: str, model: ResolvedModel, input_tokens: int = 0, output_tokens
 
 def record_units(task: str, model: ResolvedModel, variant: Variant | None, units: int = 1) -> None:
     """Görsel/video üretimi: seçeneğin sabit fiyatıyla, birim (görsel ya da video saniyesi) sayısı kadar."""
-    _charge(task, model, p=pricing.for_units(variant, units), variant=variant.key if variant else None, units=units)
+    record_quoted(task, model, variant.key if variant else None, units, pricing.for_units(variant, units))
+
+
+def record_quoted(task: str, model: ResolvedModel, variant_key: str | None, units: int, price: pricing.Price) -> None:
+    """Fiyatı önceden hesaplanıp kullanıcıya gösterilmiş bir üretim (ör. uzun süren video işi): o fiyat düşülür."""
+    _charge(task, model, p=price, variant=variant_key, units=units)
 
 
 def record_response(task: str, model: ResolvedModel, response) -> None:
