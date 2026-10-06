@@ -17,7 +17,9 @@ export function ListingDateBadge({ kind, timestamp }: { kind: Kind; timestamp?: 
   const [now] = useState(() => Date.now());
   if (!timestamp) return null;
   const date = new Date(timestamp * 1000);
-  const days = Math.max(0, Math.floor((now - date.getTime()) / 86_400_000));
+  // Takvim günü farkı (geçen 24 saatlik dilim değil): dün akşamki yayın bu sabah "dün" görünmeli.
+  const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.max(0, Math.round((dayStart(new Date(now)) - dayStart(date)) / 86_400_000));
   const full = date.toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" });
   const icon = kind === "updated" ? "✎" : "↻";
   const title =
