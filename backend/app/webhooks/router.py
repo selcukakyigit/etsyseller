@@ -117,7 +117,9 @@ def _handle(etsy_shop_id: int, receipt_id: int, event_type: str, emitted_at: dt.
 
 @router.post("/etsy", include_in_schema=False)
 async def etsy_webhook(request: Request, background: BackgroundTasks):
-    if not settings.etsy_webhook_secret:
+    # Geçiş süresince iki Etsy uygulaması aynı uç noktaya gönderir; her biri kendi secret'ıyla imzalar.
+    secrets = [s for s in (settings.etsy_webhook_secret, settings.etsy_webhook_secret_new) if s]
+    if not secrets:
         raise HTTPException(status_code=503, detail="Webhook yapılandırılmamış.")
 
     body = await request.body()
@@ -131,7 +133,7 @@ async def etsy_webhook(request: Request, background: BackgroundTasks):
             raise HTTPException(status_code=400, detail="Webhook zaman damgası geçersiz.")
     except ValueError:
         raise HTTPException(status_code=400, detail="Webhook zaman damgası geçersiz.")
-    if not verify_signature(settings.etsy_webhook_secret, msg_id, timestamp, body, signature):
+    if not any(verify_signature(s, msg_id, timestamp, body, signature) for s in secrets):
         raise HTTPException(status_code=401, detail="Webhook imzası geçersiz.")
 
     payload = json.loads(body)
