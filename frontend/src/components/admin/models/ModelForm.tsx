@@ -44,6 +44,7 @@ export default function ModelForm({
   const [active, setActive] = useState(initial?.active ?? true);
   const [inputPrice, setInputPrice] = useState(str(initial?.input_usd_per_mtok ?? null));
   const [outputPrice, setOutputPrice] = useState(str(initial?.output_usd_per_mtok ?? null));
+  const [fixedCredits, setFixedCredits] = useState(str(initial?.fixed_credits ?? null));
   const [durations, setDurations] = useState((initial?.options.durations ?? [5, 10]).join(", "));
   const [defaultDuration, setDefaultDuration] = useState(initial?.options.default_duration ?? 5);
   const [drafts, setDrafts] = useState<VariantDraft[]>(
@@ -70,6 +71,7 @@ export default function ModelForm({
       active,
       input_usd_per_mtok: kind === "llm" ? num(inputPrice) : null,
       output_usd_per_mtok: kind === "llm" ? num(outputPrice) : null,
+      fixed_credits: kind === "llm" ? num(fixedCredits) : null,
       options,
       variants: kind === "llm" ? [] : drafts.map(toVariant),
     };
@@ -129,6 +131,12 @@ export default function ModelForm({
             </Field>
             <Field label={t("Çıktı fiyatı (USD / 1M token)", "Output price (USD / 1M tokens)")}>
               <input inputMode="decimal" value={outputPrice} onChange={(e) => setOutputPrice(e.target.value)} className={inputClass} />
+            </Field>
+            <Field
+              label={t("Sabit kredi / çağrı (isteğe bağlı)", "Fixed credits / call (optional)")}
+              hint={t("Doluysa her çağrının sağlayıcı payı bu olur (ör. 2); boşsa token maliyetinden hesaplanır. Platform payı üstüne eklenir.", "If set, each call's provider share is this (e.g. 2); if empty it is worked out from token cost. The platform fee is added on top.")}
+            >
+              <input inputMode="numeric" value={fixedCredits} onChange={(e) => setFixedCredits(e.target.value.replace(/\D/g, ""))} className={inputClass} />
             </Field>
           </>
         )}

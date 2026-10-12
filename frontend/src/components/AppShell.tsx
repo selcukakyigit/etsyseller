@@ -10,6 +10,7 @@ import { PageSpinner } from "@/components/ui/Spinner";
 import { useShopState } from "@/lib/useShopState";
 import { BOTTOM_NAV_SPACE } from "@/components/layout/constants";
 import Topbar from "@/components/Topbar";
+import CreditRequiredModal from "@/components/billing/CreditRequiredModal";
 import { useT } from "@/lib/i18n-client";
 import { usePresence } from "@/lib/usePresence";
 
@@ -59,6 +60,7 @@ export default function AppShell({
         <main className={`min-h-[calc(100vh-49px)] flex-1 bg-neutral-50 dark:bg-neutral-950 ${BOTTOM_NAV_SPACE}`}>{requiresShop && !!user ? (shopState === "yes" ? children : shopState === "no" ? <ShopRequired /> : <PageSpinner />) : children}</main>
       </div>
       <BottomNav current={current} onMenu={openMenu} hasShop={shopState === "yes"} />
+      <CreditRequiredModal />
     </div>
   );
 }

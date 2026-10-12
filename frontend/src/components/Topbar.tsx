@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { api, AppNotification, OrderInsights, Shop } from "@/lib/api";
 import ThemeToggle from "@/components/ThemeToggle";
+import CreditBadge from "@/components/billing/CreditBadge";
 import LangSwitch from "@/components/LangSwitch";
 import { useT } from "@/lib/i18n-client";
 import { BellIcon, MenuIcon, SyncIcon } from "@/components/icons";
@@ -273,6 +274,7 @@ export default function Topbar({ activeShop, onMenu }: { activeShop: Shop | null
         )}
       </div>
 
+      <CreditBadge />
       <LangSwitch className="mx-1.5" />
       <ThemeToggle />
     </header>

@@ -4,19 +4,13 @@ import { useEffect, useState } from "react";
 import AdminShell from "@/components/admin/AdminShell";
 import { Badge, Button, EmptyState, Field, Section, Toggle, errorText, inputClass, useFormat } from "@/components/admin/ui";
 import { useApiData } from "@/lib/useApiData";
+import UsageBreakdown from "@/components/billing/UsageBreakdown";
 import { BlockSpinner, Spinner } from "@/components/ui/Spinner";
 import { AdminCreditSettings, AdminWorkspaceCredit, api } from "@/lib/api";
 import { useT } from "@/lib/i18n-client";
 import { toast } from "@/lib/toast";
 
 const PAGE_SIZE = 50;
-const TASK_NAMES: Record<string, [string, string]> = {
-  assistant: ["Asistan", "Assistant"],
-  seo: ["SEO önerisi", "SEO suggestion"],
-  vision: ["Alt metin", "Alt text"],
-  document: ["Fatura/tablo okuma", "Invoice/table reading"],
-  image: ["Görsel üretimi", "Image generation"],
-};
 
 export default function AdminCreditsPage() {
   return (
@@ -78,12 +72,15 @@ function Settings() {
         </span>
       }
     >
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-4">
         <Field label={t("Kâr çarpanı", "Markup")} hint={t("Sağlayıcı maliyetinin kaç katı alınır (1–50).", "How many times the provider cost is charged (1–50).")}>
           <input type="number" min={1} max={50} step={0.1} value={form.credit_markup} onChange={(e) => setDraft({ ...form, credit_markup: Number(e.target.value) })} className={inputClass} />
         </Field>
         <Field label={t("1 kredinin değeri (USD)", "Value of 1 credit (USD)")} hint={t("Kullanıcıya satış fiyatı, ör. 0.01.", "Sale price to users, e.g. 0.01.")}>
           <input type="number" min={0.0001} step={0.001} value={form.credit_usd} onChange={(e) => setDraft({ ...form, credit_usd: Number(e.target.value) })} className={inputClass} />
+        </Field>
+        <Field label={t("Platform payı (kredi)", "Platform fee (credits)")} hint={t("Her AI işleminde sağlayıcı payının üstüne eklenen sabit pay; sunucu ve veritabanı giderlerini karşılar.", "A fixed amount added on top of the provider share on every AI action; covers server and database costs.")}>
+          <input type="number" min={0} step={1} value={form.platform_fee} onChange={(e) => setDraft({ ...form, platform_fee: Number(e.target.value) })} className={inputClass} />
         </Field>
         <Field label={t("Hoş geldin kredisi", "Welcome credits")} hint={t("Bakiyesi ilk kez oluşan hesaba bir kez.", "Given once when an account's balance is first created.")}>
           <input type="number" min={0} step={1} value={form.signup_credits} onChange={(e) => setDraft({ ...form, signup_credits: Number(e.target.value) })} className={inputClass} />
@@ -92,8 +89,8 @@ function Settings() {
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-neutral-500 dark:text-neutral-400">
           {t(
-            `Örnek: sağlayıcıya 1 USD'lik işlem = ${exampleCredits} kredi = kullanıcıya ${(exampleCredits * form.credit_usd).toFixed(2)} USD. Her çağrı en az 1 kredi.`,
-            `Example: a 1 USD provider call = ${exampleCredits} credits = ${(exampleCredits * form.credit_usd).toFixed(2)} USD to the user. Each call costs at least 1 credit.`,
+            `Örnek: sağlayıcıya 1 USD'lik işlem = ${exampleCredits} kredi + ${form.platform_fee} platform payı = kullanıcıya ${((exampleCredits + form.platform_fee) * form.credit_usd).toFixed(2)} USD. Her çağrı en az 1 kredi.`,
+            `Example: a 1 USD provider call = ${exampleCredits} credits + ${form.platform_fee} platform fee = ${((exampleCredits + form.platform_fee) * form.credit_usd).toFixed(2)} USD to the user. Each call costs at least 1 credit.`,
           )}
         </p>
         <div className="flex gap-2">
@@ -109,13 +106,12 @@ function Settings() {
 
 function Usage() {
   const { t } = useT();
-  const f = useFormat();
   const [days, setDays] = useState(30);
-  const { data, error } = useApiData(`admin:credit-usage:${days}`, () => api.admin.creditUsage(days));
+  const { data, error } = useApiData(`admin:credit-breakdown:${days}`, () => api.admin.creditBreakdown(days));
 
   return (
     <Section
-      title={t("Maliyet raporu", "Cost report")}
+      title={t("Harcama ve marj", "Spend and margin")}
       action={
         <select value={days} onChange={(e) => setDays(Number(e.target.value))} className={`${inputClass} w-auto py-1`} aria-label={t("Dönem", "Period")}>
           {[7, 30, 90].map((d) => (
@@ -128,52 +124,12 @@ function Usage() {
     >
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
       {!data && !error && <BlockSpinner />}
-      {data && data.rows.length === 0 && <EmptyState>{t("Bu dönemde AI kullanımı yok.", "No AI usage in this period.")}</EmptyState>}
-      {data && data.rows.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-sm">
-            <thead>
-              <tr className="text-left text-xs text-neutral-500 dark:text-neutral-400">
-                <th className="pb-2 font-medium">{t("Görev", "Task")}</th>
-                <th className="pb-2 font-medium">{t("Model", "Model")}</th>
-                <th className="pb-2 text-right font-medium">{t("Çağrı", "Calls")}</th>
-                <th className="pb-2 text-right font-medium">{t("Maliyet (USD)", "Cost (USD)")}</th>
-                <th className="pb-2 text-right font-medium">{t("Kredi", "Credits")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
-              {data.rows.map((r) => {
-                const name = r.task ? TASK_NAMES[r.task] : undefined;
-                return (
-                  <tr key={`${r.task}/${r.model}/${r.variant}`} className="text-neutral-800 dark:text-neutral-200">
-                    <td className="py-2">{name ? t(name[0], name[1]) : r.task ?? "—"}</td>
-                    <td className="py-2 font-mono text-xs">
-                      {r.model ?? "—"}
-                      {r.variant && <span className="text-neutral-400 dark:text-neutral-500"> · {r.variant}</span>}
-                    </td>
-                    <td className="py-2 text-right tabular-nums">{f.num(r.calls)}</td>
-                    <td className="py-2 text-right tabular-nums">{r.cost_usd.toFixed(2)}</td>
-                    <td className="py-2 text-right tabular-nums">{f.num(r.credits)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="border-t border-neutral-200 font-medium text-neutral-900 dark:border-neutral-700 dark:text-neutral-100">
-                <td className="py-2" colSpan={3}>
-                  {t("Toplam", "Total")}
-                </td>
-                <td className="py-2 text-right tabular-nums">{data.total_cost_usd.toFixed(2)}</td>
-                <td className="py-2 text-right tabular-nums">{f.num(data.total_credits)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      )}
+      {data && data.calls === 0 && <EmptyState>{t("Bu dönemde AI kullanımı yok.", "No AI usage in this period.")}</EmptyState>}
+      {data && data.calls > 0 && <UsageBreakdown usage={data} admin />}
       <p className="mt-3 text-xs text-neutral-400 dark:text-neutral-500">
         {t(
-          "Maliyet, Modeller sayfasındaki fiyatlardan hesaplanır; fiyatı girilmemiş modeller 0 görünür. Kredi sistemi kapalıyken de ölçülür.",
-          "Cost is calculated from the prices on the Models page; models without a price show 0. Measured even while the credit system is off.",
+          "Maliyet, Modeller sayfasındaki fiyatlardan hesaplanır; fiyatı girilmemiş modeller 0 görünür. Gelir, harcanan kredinin satış değeridir (kredi satın alma geliri değil). Kredi sistemi kapalıyken de ölçülür.",
+          "Cost is calculated from the prices on the Models page; models without a price show 0. Revenue is the sale value of the credits spent (not purchase income). Measured even while the credit system is off.",
         )}
       </p>
     </Section>

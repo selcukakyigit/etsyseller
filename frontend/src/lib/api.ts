@@ -1,6 +1,7 @@
 import { getAccessToken, supabase } from "@/lib/supabase";
 import { toast } from "@/lib/toast";
 import { tNow } from "@/lib/i18n";
+import { emitCreditRequired, emitCreditsChanged, spendsCredits } from "@/lib/creditEvents";
 import { clearSessionCache } from "@/lib/sessionCache";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -921,6 +922,7 @@ export type AdminOnlineUser = { id: number; email: string; name: string | null; 
 
 export type AdminUserDetail = {
   user: AdminUser;
+  workspace_id: number | null;
   balance_plan: number;
   balance_purchased: number;
   subscriptions: { id: number; product: string | null; status: string; manual: boolean; renews_at: string | null; ends_at: string | null }[];
@@ -985,6 +987,8 @@ export type AdminAiModel = {
   supported: boolean;
   input_usd_per_mtok: number | null;
   output_usd_per_mtok: number | null;
+  /** Metin modelinde yöneticinin sabitlediği çağrı başına kredi (sağlayıcı payı); boşsa token maliyetinden. */
+  fixed_credits: number | null;
   options: AdminAiModelOptions;
   variants: AdminAiVariantOut[];
 };
@@ -992,7 +996,7 @@ export type AdminAiModel = {
 export type AdminAiModelInput = Omit<AdminAiModel, "id" | "supported" | "variants"> & { variants: AdminAiVariant[] };
 
 /** Seçenek kredisini panelde canlı hesaplamak için (backend billing/pricing.py ile aynı kural). */
-export type AdminPricing = { credit_usd: number; credit_markup: number; units: Record<string, "image" | "second"> };
+export type AdminPricing = { credit_usd: number; credit_markup: number; platform_fee: number; units: Record<string, "image" | "second"> };
 
 export type AdminTask = { task: string; kind: string; name_tr: string; name_en: string; model_id: number | null; effective: string };
 
@@ -1008,7 +1012,7 @@ export type AdminCatalog = {
 
 export type AdminTestResult = { ok: boolean; message: string };
 
-export type AdminCreditSettings = { credits_enabled: boolean; credit_markup: number; credit_usd: number; signup_credits: number };
+export type AdminCreditSettings = { credits_enabled: boolean; credit_markup: number; credit_usd: number; platform_fee: number; signup_credits: number };
 
 export type LandingSocialKey = "instagram" | "youtube" | "linkedin" | "pinterest";
 export type AdminLandingSettings = { social: Record<LandingSocialKey, string> };
@@ -1021,13 +1025,6 @@ export type AdminWorkspaceCredit = {
   purchased: number;
   subscription_status: string | null;
   used_30d: number;
-};
-
-export type AdminUsageReport = {
-  days: number;
-  rows: { task: string | null; model: string | null; variant: string | null; calls: number; cost_usd: number; credits: number }[];
-  total_cost_usd: number;
-  total_credits: number;
 };
 
 export type AdminProduct = {
@@ -1075,7 +1072,21 @@ export type BillingSummary = {
   can_buy: boolean;
 };
 
-export type BillingHistoryRow = { id: number; kind: string; task: string | null; credits: number; delta: number; created_at: string | null };
+export type BillingHistoryRow = { id: number; kind: string; task: string | null; model: string | null; credits: number; platform_credits: number; delta: number; created_at: string | null };
+
+/** Kredi harcama dökümü: kategori (metin / görsel / video / sistem), model ve gün bazında. Maliyet, gelir ve marj yalnızca yönetici yanıtında vardır. */
+export type CreditCategory = "text" | "image" | "video" | "system";
+export type CreditUsage = {
+  days: number;
+  calls: number;
+  total: number;
+  by_category: Record<CreditCategory, number>;
+  daily: ({ date: string } & Record<CreditCategory, number>)[];
+  by_model: { category: CreditCategory; model: string; credits: number; calls: number; cost_usd?: number }[];
+  cost_usd?: number;
+  revenue_usd?: number;
+  margin_usd?: number;
+};
 
 export class ApiError extends Error {
   status: number;
@@ -1130,9 +1141,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json", ...(await authHeader()), ...init?.headers },
   });
   if (!res.ok) {
+    if (res.status === 402) emitCreditRequired(); // kredi bitti: bir pencere "kredi al"a yönlendirir
     const body = await res.json().catch(() => ({}));
     throw new ApiError(res.status, detailText(body.detail) ?? `${tNow("İstek başarısız", "Request failed")}: ${res.status}`);
   }
+  if (init?.method && init.method !== "GET" && spendsCredits(path)) emitCreditsChanged();
   if (res.status === 204) return undefined as T;
   return res.json();
 }
@@ -1674,6 +1687,8 @@ export const api = {
     testKey: (provider: string, apiKey?: string) =>
       request<AdminTestResult>(`/api/admin/keys/${encodeURIComponent(provider)}/test`, { method: "POST", body: JSON.stringify({ api_key: apiKey || null }) }),
     testEtsy: () => request<AdminTestResult>("/api/admin/etsy/test", { method: "POST" }),
+    creditBreakdown: (days = 30, workspaceId?: number | null) =>
+      request<CreditUsage>(`/api/admin/credits/breakdown?days=${days}${workspaceId ? `&workspace_id=${workspaceId}` : ""}`),
     creditSettings: () => request<AdminCreditSettings>("/api/admin/credits/settings"),
     updateCreditSettings: (body: Partial<AdminCreditSettings>) =>
       request<AdminCreditSettings>("/api/admin/credits/settings", { method: "PUT", body: JSON.stringify(body) }),
@@ -1684,7 +1699,6 @@ export const api = {
       request<{ items: AdminWorkspaceCredit[]; total: number }>(`/api/admin/credits/workspaces?${new URLSearchParams({ q, offset: String(offset), limit: String(limit) })}`),
     adjustCredits: (workspaceId: number, amount: number, bucket: "plan" | "purchased", note: string) =>
       request<{ ok: boolean }>(`/api/admin/credits/workspaces/${workspaceId}/adjust`, { method: "POST", body: JSON.stringify({ amount, bucket, note }) }),
-    creditUsage: (days = 30) => request<AdminUsageReport>(`/api/admin/credits/usage?days=${days}`),
     billing: () => request<AdminBilling>("/api/admin/billing"),
     createProduct: (body: AdminProductInput) => request<AdminProduct>("/api/admin/billing/products", { method: "POST", body: JSON.stringify(body) }),
     updateProduct: (id: number, body: AdminProductInput) =>
@@ -1694,6 +1708,7 @@ export const api = {
   billing: {
     summary: () => request<BillingSummary>("/api/billing/summary"),
     history: () => request<BillingHistoryRow[]>("/api/billing/history"),
+    usage: (days = 30) => request<CreditUsage>(`/api/billing/usage?days=${days}`),
     checkout: (productId: number) => request<{ url: string }>("/api/billing/checkout", { method: "POST", body: JSON.stringify({ product_id: productId }) }),
   },
   shops: {

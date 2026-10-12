@@ -93,6 +93,7 @@ class UserSubscriptionOut(BaseModel):
 
 class UserDetailOut(BaseModel):
     user: AdminUserOut
+    workspace_id: int | None  # kredi bakiyesinin ve harcama dökümünün sahibi
     balance_plan: int
     balance_purchased: int
     subscriptions: list[UserSubscriptionOut]
@@ -331,22 +332,6 @@ class AdjustIn(BaseModel):
     amount: int = Field(ge=-1_000_000, le=1_000_000)
     bucket: str = Field(default="purchased", pattern="^(plan|purchased)$")
     note: str = Field(default="", max_length=300)
-
-
-class UsageRowOut(BaseModel):
-    task: str | None
-    model: str | None
-    variant: str | None
-    calls: int
-    cost_usd: float
-    credits: int
-
-
-class UsageReportOut(BaseModel):
-    days: int
-    rows: list[UsageRowOut]
-    total_cost_usd: float
-    total_credits: int
 
 
 # ---- Satış (Lemon Squeezy)

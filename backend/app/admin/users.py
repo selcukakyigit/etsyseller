@@ -168,7 +168,7 @@ def get_detail(db: Session, user_id: int) -> UserDetailOut:
         for a in db.scalars(select(AdminAuditLog).where(AdminAuditLog.target == f"user:{user_id}").order_by(AdminAuditLog.id.desc()).limit(50)).all()
     ]
     return UserDetailOut(
-        user=user_out, balance_plan=balance.plan if balance else 0, balance_purchased=balance.purchased if balance else 0,
+        user=user_out, workspace_id=wid, balance_plan=balance.plan if balance else 0, balance_purchased=balance.purchased if balance else 0,
         subscriptions=subs, ledger=ledger, notes=notes, audit=audit,
     )
 

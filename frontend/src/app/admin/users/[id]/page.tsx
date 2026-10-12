@@ -7,6 +7,7 @@ import Avatar from "@/components/Avatar";
 import AdminShell from "@/components/admin/AdminShell";
 import { Badge, Button, EmptyState, Section, StatCard, errorText, inputClass, useFormat } from "@/components/admin/ui";
 import { StatusBadge, UserActionsMenu, useUserAction } from "@/components/admin/userActions";
+import UsageBreakdown from "@/components/billing/UsageBreakdown";
 import { BlockSpinner } from "@/components/ui/Spinner";
 import { AdminUserDetail, api } from "@/lib/api";
 import { useT } from "@/lib/i18n-client";
@@ -141,6 +142,8 @@ function Detail({ id }: { id: number }) {
 
       <Notes userId={u.id} notes={data.notes} onChanged={reload} />
 
+      {data.workspace_id && <Spend workspaceId={data.workspace_id} />}
+
       <Section title={t("Kredi hareketleri", "Credit activity")}>
         {data.ledger.length === 0 ? (
           <EmptyState>{t("Hareket yok.", "No activity.")}</EmptyState>
@@ -263,6 +266,29 @@ function Notes({ userId, notes, onChanged }: { userId: number; notes: AdminUserD
           </ul>
         )}
       </div>
+    </Section>
+  );
+}
+
+/** Bu kullanıcının kredi harcaması: kategori (metin / görsel / video / sistem), günlük grafik, model bazında kredi ve sağlayıcı maliyeti, marj. */
+function Spend({ workspaceId }: { workspaceId: number }) {
+  const { t } = useT();
+  const [days, setDays] = useState(30);
+  const { data, error } = useApiData(`admin:user-spend:${workspaceId}:${days}`, () => api.admin.creditBreakdown(days, workspaceId));
+  return (
+    <Section
+      title={t("Harcama", "Spend")}
+      action={
+        <select value={days} onChange={(e) => setDays(Number(e.target.value))} className={`${inputClass} w-auto py-1`} aria-label={t("Dönem", "Period")}>
+          {[7, 30, 90].map((d) => (
+            <option key={d} value={d}>
+              {t(`Son ${d} gün`, `Last ${d} days`)}
+            </option>
+          ))}
+        </select>
+      }
+    >
+      {error && !data ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : data ? <UsageBreakdown usage={data} admin /> : <BlockSpinner />}
     </Section>
   );
 }
