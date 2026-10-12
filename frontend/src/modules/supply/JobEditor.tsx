@@ -6,7 +6,7 @@ import { BlockSpinner, Spinner } from "@/components/ui/Spinner";
 import { useT } from "@/lib/i18n-client";
 import { toast } from "@/lib/toast";
 import { useApiData } from "@/lib/useApiData";
-import DecimalInput from "../components/DecimalInput";
+import DecimalInput, { NumberInput } from "../components/DecimalInput";
 import { materialLabel } from "../core/materials";
 import DocumentAnalyzer from "../components/DocumentAnalyzer";
 import { SourceBadge } from "../components/DocumentList";
@@ -14,7 +14,7 @@ import UnitSelect from "../components/UnitSelect";
 import { EntityAccess, PriceItem, can, isMember } from "../core/api";
 import { errMsg } from "../core/errors";
 import { badge, btnDanger, btnDark, btnLink, btnOutline, btnPrimary, card, h2, input, label, muted, rowBorder, td, th, warnBox } from "../core/ui";
-import { UNIT_GROUPS, money, perUnit, qty as fmtQty, unitLabel } from "../core/units";
+import { UNIT_GROUPS, currencySymbol, money, perUnit, qty as fmtQty, unitLabel } from "../core/units";
 import AllocationEditor from "./AllocationEditor";
 import { ACCEPT, DocData, JobDetail, JobLine, PROFILE, supplyApi } from "./api";
 import { STATUS, statusLabel } from "./texts";
@@ -562,6 +562,7 @@ function LinesEditor({
   onSave: (lines: JobLine[]) => Promise<void>;
 }) {
   const { t, locale } = useT();
+  const symbol = currencySymbol(currency, locale);
   const [lines, setLines] = useState<JobLine[]>(job.lines);
   const dirty = JSON.stringify(lines) !== JSON.stringify(job.lines);
   const active = items.filter((i) => !i.archived && i.kind !== "minimum");
@@ -611,16 +612,7 @@ function LinesEditor({
                     <td className={td}>
                       <div className="flex items-center gap-1">
                         {canEdit ? (
-                          <input
-                            value={String(l.qty)}
-                            onChange={(e) => {
-                              const v = Number(e.target.value.replace(",", "."));
-                              if (Number.isFinite(v) && v >= 0) patch(i, { qty: v });
-                            }}
-                            inputMode="decimal"
-                            className={`${input} w-24`}
-                            aria-label={t("Miktar", "Qty")}
-                          />
+                          <NumberInput value={l.qty} onValue={(v) => patch(i, { qty: v })} className={`${input} w-24`} aria-label={t("Miktar", "Qty")} />
                         ) : (
                           fmtQty(l.qty, locale)
                         )}
@@ -633,16 +625,7 @@ function LinesEditor({
                     </td>
                     <td className={td}>
                       {canEdit && (l.manual_price || !l.price_item_id) ? (
-                        <input
-                          value={String(l.unit_price)}
-                          onChange={(e) => {
-                            const v = Number(e.target.value.replace(",", "."));
-                            if (Number.isFinite(v) && v >= 0) patch(i, { unit_price: v });
-                          }}
-                          inputMode="decimal"
-                          className={`${input} w-24`}
-                          aria-label={t("Birim fiyat", "Unit price")}
-                        />
+                        <NumberInput value={l.unit_price} onValue={(v) => patch(i, { unit_price: v })} unit={symbol} className={`${input} w-28`} aria-label={t("Birim fiyat", "Unit price")} />
                       ) : (
                         <span>{perUnit(money(l.unit_price, currency, locale), l.unit, t)}</span>
                       )}
@@ -728,6 +711,7 @@ function Totals({
   onActual: (v: number | null) => Promise<void>;
 }) {
   const { t, locale } = useT();
+  const symbol = currencySymbol(currency, locale);
   const [actual, setActual] = useState(job.actual !== null ? String(job.actual) : "");
   const e = job.estimate_totals;
   const row = (k: string, v: number | null, strong = false) => (
@@ -768,8 +752,7 @@ function Totals({
         <label className={label}>{noVat ? t("Gerçek tutar", "Actual amount") : t("Gerçek tutar (KDV hariç)", "Actual amount (excl. VAT)")}</label>
         {canEdit ? (
           <div className="flex items-center gap-2">
-            <DecimalInput value={actual} onValue={setActual} placeholder={data?.net != null ? String(data.net) : "—"} className={`${input} w-32`} />
-            <span className={muted}>{currency}</span>
+            <DecimalInput value={actual} onValue={setActual} unit={symbol} placeholder={data?.net != null ? String(data.net) : "—"} className={`${input} w-36`} />
             {changed && (
               <button type="button" disabled={busy} onClick={() => void onActual(parsed)} className={btnDark}>
                 {t("Kaydet", "Save")}

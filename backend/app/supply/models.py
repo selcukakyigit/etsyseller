@@ -64,14 +64,16 @@ class SupplyJobLine(Base):
 
 
 class SupplyAllocation(Base):
-    """Onaylanmış bir işin maliyetinden bir mağazaya düşen pay: bir ürüne (listing_id) ya da genel gidere (None).
+    """Onaylanmış bir işin maliyetinden bir mağazaya düşen pay: bir ürüne (listing_id) ya da genel gidere (None); `party_id` doluysa
+    mağazalara yazılmayan dış paydır (başka hesap, yerel satış…): maliyete ve Finans'a girmez, yalnızca raporda görünür.
     `amount` iş para biriminde, `amount_report` mağazanın rapor para biriminde (onay anındaki kurla)."""
 
     __tablename__ = "supply_allocations"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     job_id: Mapped[int] = mapped_column(ForeignKey("supply_jobs.id", ondelete="CASCADE"), index=True)
-    shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id", ondelete="CASCADE"), index=True)
+    shop_id: Mapped[int | None] = mapped_column(ForeignKey("shops.id", ondelete="CASCADE"), index=True, nullable=True)  # dış payda boş
+    party_id: Mapped[int | None] = mapped_column(ForeignKey("external_parties.id", ondelete="RESTRICT"), index=True, nullable=True)  # yalnızca dış pay
     listing_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     variant: Mapped[str] = mapped_column(String(300), default="")  # listing içindeki seçenek; "" = tüm ürün
     title: Mapped[str] = mapped_column(String(200), default="")

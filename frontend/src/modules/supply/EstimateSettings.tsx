@@ -5,7 +5,7 @@ import { useT } from "@/lib/i18n-client";
 import { toast } from "@/lib/toast";
 import { errMsg } from "../core/errors";
 import { input, label, muted } from "../core/ui";
-import { money } from "../core/units";
+import { currencySymbol, money } from "../core/units";
 import DecimalInput from "../components/DecimalInput";
 import { JobDetail, supplyApi } from "./api";
 
@@ -50,6 +50,7 @@ export default function EstimateSettings({ entityId, job, onJob }: { entityId: n
           <DecimalInput
             value={fee}
             onValue={setFee}
+            unit={currencySymbol(job.currency, locale)}
             onBlur={commitFee}
             disabled={job.status === "confirmed"}
             placeholder={job.time_fee_mapped != null ? String(job.time_fee_mapped) : t("tutar", "amount")}

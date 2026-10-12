@@ -11,6 +11,7 @@ from app.core.i18n import tr
 from app.modkit import pricebook, products, units
 from app.modkit.access import EntityAccess
 from app.modkit.models import PriceItem
+from app.supply import weights
 from app.supply.models import ProductPaint
 
 MODE = "paint_rate"
@@ -68,6 +69,6 @@ def amounts(db: Session, access: EntityAccess, targets: list[dict], when: dt.dat
         names = ", ".join(lacking[:5]) + (f" (+{len(lacking) - 5})" if len(lacking) > 5 else "")
         raise HTTPException(422, tr(f"Şu ürünlerde boya türü seçilmedi (satırdaki 'Boya' kutusundan seç): {names}",
                                     f"Pick a paint type for these products (the 'Paint' box in the row): {names}"))
-    areas = products.weights(db, access, targets, "paint_area")  # adet × yüzey × yüz sayısı, mm²
+    areas = weights.weights(db, access, targets, "paint_area")  # adet × yüzey × yüz sayısı, mm²
     prices = pricebook.prices_at(db, [i.id for i in chosen], when)
     return [round(units.convert(a / 1e6, "m2", i.unit) * (prices[i.id].price if i.id in prices else 0.0), 2) for a, i in zip(areas, chosen)], chosen

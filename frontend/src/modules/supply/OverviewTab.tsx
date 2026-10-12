@@ -1,6 +1,9 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
+import DateRangePicker, { presetOptions } from "@/components/ui/DateRangePicker";
+import { BlockSpinner } from "@/components/ui/Spinner";
+import { DateRange, presetRange } from "@/lib/dateRanges";
 import { useT } from "@/lib/i18n-client";
 import { useApiData } from "@/lib/useApiData";
 import ActivityFeed from "../components/ActivityFeed";
@@ -10,19 +13,49 @@ import { Entity, EntityAccess, isMember } from "../core/api";
 import { card, h2, muted } from "../core/ui";
 import { money } from "../core/units";
 import { MODULE_PATH, SupplySummary, supplyApi } from "./api";
+import CostReport, { lastYear } from "./CostReport";
 import { SUPPLY_ACTIVITY } from "./texts";
 
-type Shortcut = { tab: "jobs" | "products" | "prices" | "documents" | "reports"; tr: string; en: string; hintTr: string; hintEn: string };
+type Shortcut = {
+  tab: "jobs" | "products" | "prices" | "documents";
+  tr: string;
+  en: string;
+  hintTr: string;
+  hintEn: string;
+};
 
 const SHORTCUTS: Shortcut[] = [
-  { tab: "jobs", tr: "İşler", en: "Jobs", hintTr: "Rapor yükle, işi onayla ve maliyeti ürünlere yaz", hintEn: "Upload a report, confirm the job and write the cost to products" },
-  { tab: "products", tr: "Ürünler", en: "Products", hintTr: "Plaka DXF'i yükle, parçaları ürünlere ata", hintEn: "Upload the sheet DXF and assign parts to products" },
-  { tab: "prices", tr: "Fiyat listesi", en: "Price list", hintTr: "Hizmet, malzeme ve sabit ücret fiyatları", hintEn: "Service, material and fixed-charge prices" },
-  { tab: "documents", tr: "Belgeler", en: "Documents", hintTr: "Yüklenen rapor, fatura ve fişler", hintEn: "Uploaded reports, invoices and receipts" },
-  { tab: "reports", tr: "Raporlar", en: "Reports", hintTr: "Dönem maliyet raporu", hintEn: "Cost report for a period" },
+  {
+    tab: "jobs",
+    tr: "İşler",
+    en: "Jobs",
+    hintTr: "Rapor yükle, işi onayla ve maliyeti ürünlere yaz",
+    hintEn: "Upload a report, confirm the job and write the cost to products",
+  },
+  {
+    tab: "products",
+    tr: "Ürünler",
+    en: "Products",
+    hintTr: "Plaka DXF'i yükle, parçaları ürünlere ata",
+    hintEn: "Upload the sheet DXF and assign parts to products",
+  },
+  {
+    tab: "prices",
+    tr: "Fiyat listesi",
+    en: "Price list",
+    hintTr: "Hizmet, malzeme ve sabit ücret fiyatları",
+    hintEn: "Service, material and fixed-charge prices",
+  },
+  {
+    tab: "documents",
+    tr: "Belgeler",
+    en: "Documents",
+    hintTr: "Yüklenen rapor, fatura ve fişler",
+    hintEn: "Uploaded reports, invoices and receipts",
+  },
 ];
 
-/** "Genel" sekmesi: özet kartları, kısayollar ve son hareketler. Kayıt ayarları "Ayarlar" sekmesindedir. */
+/** "Genel" sekmesi: özet kartları, dönem maliyet raporu, kısayollar ve son hareketler. Kayıt ayarları "Ayarlar" sekmesindedir. */
 export default function OverviewTab({
   entity,
   summary,
@@ -41,23 +74,72 @@ export default function OverviewTab({
   const lastChange = summary?.last_price_change ? new Date(summary.last_price_change).toLocaleDateString(locale) : null;
   const member = isMember(access);
 
+  // Dönem seçimi sayfadaki bütün sayılar ve grafikler için geçerlidir ("Tümü" = aralık yok).
+  const [period, setPeriod] = useState("ytd");
+  const [custom, setCustom] = useState<DateRange | null>(null);
+  const range = period === "all" ? null : period === "custom" ? custom : presetRange(period);
+  const key = range ? `${range.start}:${range.end}` : "all";
+  const { data, error } = useApiData(`supply-overview:${entity.id}:${key}`, () => supplyApi.report(entity.id, range));
+  const prevRange = range ? { start: lastYear(range.start), end: lastYear(range.end) } : null;
+  const { data: previous } = useApiData(`supply-overview:${entity.id}:${prevRange ? `${prevRange.start}:${prevRange.end}` : "none"}`, () =>
+    prevRange ? supplyApi.report(entity.id, prevRange) : Promise.resolve(undefined),
+  );
+  const today = new Date().toISOString().slice(0, 10);
+  const chartStart = range?.start ?? (data?.months[0] ? `${data.months[0].month}-01` : today);
+  const diff = data ? data.actual_total - data.estimate_total : 0;
+
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatCard
-          title={t("Onayını bekleyen", "Waiting for you")}
-          value={String(summary?.submitted ?? "—")}
-          hint={t("tedarikçinin gönderdiği işler", "jobs sent by the supplier")}
-          onClick={() => onOpenJobs("submitted")}
-        />
-        <StatCard title={t("Açık işler", "Open jobs")} value={String(summary ? summary.draft + summary.submitted + summary.disputed : "—")} onClick={() => onOpenJobs("open")} />
-        <StatCard title={t("Bu ay maliyet", "Cost this month")} value={summary ? money(summary.month_cost, entity.currency, locale) : "—"} hint={t("onaylanan işler", "confirmed jobs")} />
-        <StatCard
-          title={t("Fiyat kalemi", "Price items")}
-          value={String(summary?.price_items ?? "—")}
-          hint={lastChange ? t(`son değişiklik ${lastChange}`, `last change ${lastChange}`) : undefined}
-        />
-      </div>
+      <DateRangePicker
+        label={t("Dönem", "Period")}
+        value={period}
+        custom={custom}
+        options={[{ id: "all", label: t("Tümü", "All"), range: null }, ...presetOptions(["30d", "90d", "month", "last_month", "ytd"], t)]}
+        onChange={(id, r) => {
+          setPeriod(id);
+          if (id === "custom") setCustom(r);
+        }}
+      />
+      {error && !data && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {!data ? (
+        <BlockSpinner />
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <StatCard
+              title={t("Onayını bekleyen", "Waiting for you")}
+              value={String(data.statuses.submitted)}
+              hint={t("tedarikçinin gönderdiği işler", "jobs sent by the supplier")}
+              onClick={() => onOpenJobs("submitted")}
+            />
+            <StatCard title={t("Açık işler", "Open jobs")} value={String(data.statuses.draft + data.statuses.submitted + data.statuses.disputed)} onClick={() => onOpenJobs("open")} />
+            <StatCard title={t("Toplam maliyet", "Total cost")} value={money(data.cost, entity.currency, locale)} hint={t("onaylanan işler", "confirmed jobs")} />
+            <StatCard
+              title={t("Onaylanan iş", "Confirmed jobs")}
+              value={
+                <>
+                  {data.confirmed} <span className="text-sm font-normal text-neutral-400">/ {data.jobs}</span>
+                </>
+              }
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+            <StatCard title={t("Tahmin (gerçeği olan işler)", "Estimate (jobs with actual)")} value={money(data.estimate_total, entity.currency, locale)} />
+            <StatCard
+              title={t("Gerçek − tahmin", "Actual − estimate")}
+              value={`${diff > 0 ? "+" : ""}${money(diff, entity.currency, locale)}`}
+              valueClass={diff > 0 ? "text-red-600 dark:text-red-400" : diff < 0 ? "text-emerald-700 dark:text-emerald-400" : ""}
+            />
+            <StatCard
+              title={t("Fiyat kalemi", "Price items")}
+              value={String(summary?.price_items ?? "—")}
+              hint={lastChange ? t(`son değişiklik ${lastChange}`, `last change ${lastChange}`) : t("güncel", "current")}
+            />
+          </div>
+
+          <CostReport data={data} previous={previous ?? undefined} start={chartStart} end={range?.end ?? today} currency={entity.currency} />
+        </>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
         <section className={card}>

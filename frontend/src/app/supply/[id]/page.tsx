@@ -22,10 +22,9 @@ import JobsTab from "@/modules/supply/JobsTab";
 import OverviewTab from "@/modules/supply/OverviewTab";
 import PackagesTab from "@/modules/supply/PackagesTab";
 import SupplySettings from "@/modules/supply/SupplySettings";
-import ReportsTab from "@/modules/supply/ReportsTab";
 import { supplyStore } from "@/modules/supply/store";
 
-const TABS = ["overview", "prices", "products", "packages", "jobs", "documents", "reports", "sharing", "settings"] as const;
+const TABS = ["overview", "prices", "products", "packages", "jobs", "documents", "sharing", "settings"] as const;
 type Tab = (typeof TABS)[number];
 
 export default function SupplierPage() {
@@ -52,7 +51,6 @@ export default function SupplierPage() {
       : []),
     { id: "jobs", tr: "İşler", en: "Jobs", count: member ? entity?.summary?.submitted : undefined },
     { id: "documents", tr: "Belgeler", en: "Documents" },
-    { id: "reports", tr: "Raporlar", en: "Reports" },
     ...(member
       ? [
           { id: "sharing" as const, tr: "Paylaşım", en: "Sharing" },
@@ -133,7 +131,6 @@ export default function SupplierPage() {
             />
           )}
           {current === "documents" && <DocumentsTab entityId={id} access={access} onOpenJob={(j) => openJob(j)} />}
-          {current === "reports" && <ReportsTab entityId={id} currency={entity.currency} />}
           {current === "sharing" && member && <SharingPanel api={supplyApi} entityId={id} whoTr="Tedarikçiyi" whoEn="the supplier" />}
           {current === "settings" && member && <SupplySettings entity={entity} onChanged={changed} />}
         </ModuleShell>

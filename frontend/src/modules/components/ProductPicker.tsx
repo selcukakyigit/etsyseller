@@ -79,12 +79,15 @@ export default function ProductPicker({
   shopId,
   onPick,
   disabled,
+  asButton,
 }: {
   api: EntityApi;
   entityId: number;
   shopId: number | null;
   onPick: (p: PickedProduct) => void;
   disabled?: boolean;
+  /** Açılır kutu yerine "+ Ürün ekle" düğmesi (ürün eklenen yerlerde; bir alanı doldurmadığı için kutu gibi görünmesin). */
+  asButton?: boolean;
 }) {
   const { t } = useT();
   const shops = useShops(api, entityId);
@@ -274,16 +277,22 @@ export default function ProductPicker({
   );
 
   return (
-    <div className="min-w-0 flex-1 sm:max-w-sm">
-      <button
-        type="button"
-        disabled={disabled || !shopId}
-        onClick={() => setOpen(true)}
-        className={`${input} flex w-full items-center justify-between gap-2 text-left text-neutral-500 disabled:opacity-50 dark:text-neutral-400`}
-      >
-        <span className="truncate">{t("Ürün seç…", "Choose a product…")}</span>
-        <span aria-hidden className="text-neutral-400">▾</span>
-      </button>
+    <div className={asButton ? "" : "min-w-0 flex-1 sm:max-w-sm"}>
+      {asButton ? (
+        <button type="button" disabled={disabled || !shopId} onClick={() => setOpen(true)} className={btnOutline}>
+          + {t("Ürün ekle", "Add product")}
+        </button>
+      ) : (
+        <button
+          type="button"
+          disabled={disabled || !shopId}
+          onClick={() => setOpen(true)}
+          className={`${input} flex w-full items-center justify-between gap-2 text-left text-neutral-500 disabled:opacity-50 dark:text-neutral-400`}
+        >
+          <span className="truncate">{t("Ürün seç…", "Choose a product…")}</span>
+          <span aria-hidden className="text-neutral-400">▾</span>
+        </button>
+      )}
 
       {open && (
         <Modal

@@ -110,13 +110,25 @@ def per_metre(item) -> float | None:
 
 
 def stock_prices(item, price: float) -> dict[str, float | None]:
-    """Fiyat listesinde kg ya da plaka (levha) fiyatı yazılır, diğeri plaka ağırlığından türetilir: {"kg", "plate"}."""
-    kg = plate_kg(item)
-    if item.unit == "kg":
-        return {"kg": price, "plate": price * kg if kg else None}
+    """Fiyat listesindeki fiyattan (kalemin birimi başına) türetilen kg ve plaka fiyatı: {"kg", "plate"}. Kütle birimli kalem (kg, g, ton): kg
+    fiyatı birimden, plaka fiyatı plaka ağırlığından; plaka (tabaka) fiyatı: kg fiyatı plaka ağırlığından; alan (m², cm²) ve hacim (m³, litre, ml)
+    fiyatı: plaka fiyatı plakanın alanı ya da hacmi (kalınlıkla) kadar, kg fiyatı ona bölünen plaka ağırlığından. Hesaplanamayan None."""
+    kg, dims = plate_kg(item), plate_dims(item)
+    _, thick = spec_of(item)
+    unit = units.UNITS.get(item.unit)
+    plate = per_kg = None
     if item.unit == "sheet":
-        return {"kg": price / kg if kg else None, "plate": price}
-    return {"kg": None, "plate": None}
+        plate = price
+    elif unit is not None and unit.dimension == "mass":
+        per_kg = price * units.convert(1, "kg", item.unit)
+        plate = per_kg * kg if kg else None
+    elif unit is not None and unit.dimension == "area" and dims:
+        plate = price * units.convert(dims[0] * dims[1] / 1e6, "m2", item.unit)
+    elif unit is not None and unit.dimension == "volume" and dims and thick:
+        plate = price * units.convert(dims[0] * dims[1] * thick / 1e9, "m3", item.unit)
+    if per_kg is None and plate is not None and kg:
+        per_kg = plate / kg
+    return {"kg": per_kg, "plate": plate}
 
 
 def stock_kg(item, key: str | None, thickness: float | None, width_mm: float, height_mm: float) -> float | None:
@@ -131,17 +143,22 @@ def stock_kg(item, key: str | None, thickness: float | None, width_mm: float, he
 
 def stock_cost(item, price: float, width_mm: float, height_mm: float) -> float | None:
     """Bir parçanın (en × boy, mm; çizimin sınır kutusu) malzeme maliyeti, fiyat listesi kaleminden; hesaplanamazsa None.
-    - m2: alan × fiyat;
-    - plaka boyutu biliniyorsa: parçanın plakadaki alan payı × plaka fiyatı (kg fiyatıysa plaka ağırlığıyla plaka fiyatına çevrilir);
-    - plaka boyutu yoksa (kg): parça ağırlığı (alan × kalınlık × yoğunluk) × kg fiyatı.
+    - alan fiyatı (m², cm²): alan × fiyat;
+    - plaka boyutu biliniyorsa: parçanın plakadaki alan payı × plaka fiyatı (kütle ya da hacim fiyatı plaka fiyatına çevrilir);
+    - plaka boyutu yoksa: kütle fiyatı (kg, g, ton) için alan × kalınlık × yoğunluk, hacim fiyatı (m³, litre, ml) için alan × kalınlık.
     Sınır kutusu kullanılır çünkü kesimci kesilen parçanın artığını da fatura eder."""
     area = width_mm * height_mm  # mm²
-    if item.unit == "m2":
-        return price * area / 1e6
+    unit = units.UNITS.get(item.unit)
+    if unit is not None and unit.dimension == "area":
+        return price * units.convert(area / 1e6, "m2", item.unit)
     dims, prices = plate_dims(item), stock_prices(item, price)
     if dims and prices["plate"] is not None:
         return prices["plate"] * area / (dims[0] * dims[1])
     key, thick = spec_of(item)
-    if item.unit == "kg" and _density(key) and thick:
-        return price * area * thick * _density(key) / 1e6
+    if unit is None or not thick:
+        return None
+    if unit.dimension == "volume":
+        return price * units.convert(area * thick / 1e9, "m3", item.unit)
+    if unit.dimension == "mass" and _density(key):
+        return price * units.convert(area * thick * _density(key) / 1e6, "kg", item.unit)
     return None

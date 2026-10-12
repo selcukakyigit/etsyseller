@@ -4,12 +4,13 @@ import { useT } from "@/lib/i18n-client";
 import DecimalInput from "../components/DecimalInput";
 import { materialLabel } from "../core/materials";
 import { input, muted, rowBorder, td, th } from "../core/ui";
-import { money, qty as fmtQty } from "../core/units";
+import { currencySymbol, money, qty as fmtQty } from "../core/units";
 import { PlanTarget, SplitMode } from "./api";
 
-export type Draft = { shop_id: number; listing_id: number | null; variant: string; title: string; qty: number; amount: number | null; item_id: number | null };
+export type Draft = { shop_id: number; party_id: number | null; listing_id: number | null; variant: string; title: string; qty: number; amount: number | null; item_id: number | null };
 
-const sameTarget = (a: Draft, b: Pick<PlanTarget, "shop_id" | "listing_id" | "variant">) => a.shop_id === b.shop_id && a.listing_id === b.listing_id && a.variant === (b.variant ?? "");
+const sameTarget = (a: Draft, b: Pick<PlanTarget, "shop_id" | "party_id" | "listing_id" | "variant">) =>
+  a.shop_id === (b.shop_id ?? 0) && a.party_id === (b.party_id ?? null) && a.listing_id === b.listing_id && a.variant === (b.variant ?? "");
 
 /** Dağıtım hedefleri: ürün başına tek satır (ad, malzeme, adet, lazer, malzeme ₺, pay); çok ürün olunca liste kaydırılır, başlık ve
  * toplam satırı yerinde kalır. `shares`: sunucunun hesapladığı paylar (kaydedilmemiş değişiklik varsa boş). */
@@ -57,17 +58,17 @@ export default function TargetsTable({
         </thead>
         <tbody>
           {rows.map(({ d, sh }, i) => {
-            const name = d.listing_id ? d.title || `#${d.listing_id}` : t("Genel gider", "Overhead");
+            const name = d.party_id ? d.title : d.listing_id ? d.title || `#${d.listing_id}` : t("Genel gider", "Overhead");
             const mat = sh?.material;
             const matText = mat ? mat.parts.map((p) => `${p.qty > 1 ? `${p.qty}× ` : ""}${materialLabel(p.type, t) || p.name}${p.thickness ? ` ${p.thickness} mm` : ""}`).join(" + ") : "";
             return (
-              <tr key={`${d.shop_id}-${d.listing_id}-${d.variant}`} className={`${rowBorder} odd:bg-neutral-50 dark:odd:bg-neutral-800/40`}>
+              <tr key={`${d.shop_id}-${d.party_id}-${d.listing_id}-${d.variant}`} className={`${rowBorder} odd:bg-neutral-50 dark:odd:bg-neutral-800/40`}>
                 <td className={`${td} pl-3`}>
                   <div className="max-w-[18rem] truncate font-medium text-neutral-900 dark:text-neutral-100" title={name}>
                     {name}
                   </div>
                   <div className={`${muted} max-w-[18rem] truncate`} title={d.variant}>
-                    {d.variant}
+                    {d.party_id ? t("Dış pay · maliyete yazılmaz", "External share · not booked as cost") : d.variant}
                     {shopNames?.get(d.shop_id) ? `${d.variant ? " · " : ""}${shopNames.get(d.shop_id)}` : ""}
                   </div>
                 </td>
@@ -112,6 +113,7 @@ export default function TargetsTable({
                     <DecimalInput
                       value={d.amount === null ? "" : String(d.amount)}
                       onValue={(text) => patch(i, { amount: text === "" ? null : Number(text.replace(",", ".")) || 0 })}
+                      unit={currencySymbol(currency, locale)}
                       className={`${input} w-28 py-1`}
                       aria-label={t("Tutar", "Amount")}
                     />

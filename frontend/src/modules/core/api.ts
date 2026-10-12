@@ -109,6 +109,13 @@ export interface DocumentRow {
   created_at: string;
 }
 
+/** Dış pay sahibi: maliyetin kendi mağazalarına yazılmayan payının sahibi (başka hesaptaki mağaza, yerel satış…). Çalışma alanı seviyesinde, modüller arası ortak. */
+export interface ExternalParty {
+  id: number;
+  name: string;
+  archived: boolean;
+}
+
 export interface SharingOverview {
   invites: { id: number; email: string; permissions: GuestPerm[]; status: "pending" | "expired"; expires_at: string; created_at: string }[];
   grants: { id: number; email: string; name: string; permissions: GuestPerm[]; created_at: string }[];
@@ -255,6 +262,12 @@ export function entityApi<TEntity extends Entity = Entity, TSummary = unknown>(b
       list: (id: number) => apiRequest<{ items: DocumentRow[] }>(`${one(id)}/documents`),
       fileUrl: (id: number, docId: number) => `${API_URL}${one(id)}/documents/${docId}/file`,
       remove: (id: number, docId: number) => apiRequest<{ ok: true }>(`${one(id)}/documents/${docId}`, { method: "DELETE" }),
+    },
+
+    parties: {
+      list: (id: number) => apiRequest<{ items: ExternalParty[] }>(`${one(id)}/parties`),
+      create: (id: number, name: string) => apiRequest<ExternalParty>(`${one(id)}/parties`, { method: "POST", ...json({ name }) }),
+      update: (id: number, partyId: number, body: { name?: string; archived?: boolean }) => apiRequest<ExternalParty>(`${one(id)}/parties/${partyId}`, { method: "PATCH", ...json(body) }),
     },
 
     /** Çalışma alanının mağazaları ve ürün arama (yalnızca üye): maliyet paylaştırma ve ürün ölçüleri için. */

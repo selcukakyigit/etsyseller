@@ -6,6 +6,7 @@ import { BlockSpinner, Spinner } from "@/components/ui/Spinner";
 import { useT } from "@/lib/i18n-client";
 import { toast } from "@/lib/toast";
 import { useApiData } from "@/lib/useApiData";
+import { useUrlParam } from "../core/useUrlParam";
 import { EntityApi, MeasureKey, MeasuresBody, ProductMeasureRow, SheetAnalysis } from "../core/api";
 import { errMsg } from "../core/errors";
 import { badge, btnDanger, btnDark, btnLink, btnOutline, card, h2, input, label as labelCls, muted, rowBorder, td, th } from "../core/ui";
@@ -15,6 +16,7 @@ import { materialLabel } from "../core/materials";
 import MaterialTypeSelect from "./MaterialTypeSelect";
 import ProductPicker, { PickedProduct, ShopSelect, useShopChoice } from "./ProductPicker";
 import SheetSplitter from "./SheetSplitter";
+import SubTabs from "./SubTabs";
 
 const MAX_DRAWING_MB = 15;
 const DEFAULT_GAP = 60; // plaka gruplama hassasiyeti (mm); pencerede değiştirilebilir
@@ -32,6 +34,15 @@ const FIELDS: { key: MeasureKey; tr: string; en: string; toView: (v: number) => 
   { key: "part_qty", tr: "Ürün başına adet", en: "Qty per product", toView: String, fromView: (n) => n, width: "w-24", placeholder: "1" },
 ];
 
+/** Maliyet paylaştırması için gerekli olup ürün parçasında girilmemiş alanlar (ekranda "Eksik: …" olarak yazılır). */
+const REQUIRED: { test: (r: ProductMeasureRow) => boolean; tr: string; en: string }[] = [
+  { test: (r) => !!r.material, tr: "malzeme", en: "material" },
+  { test: (r) => !!r.values.thickness, tr: "kalınlık", en: "thickness" },
+  { test: (r) => !!r.values.cut_length, tr: "kesim", en: "cutting" },
+  { test: (r) => !!(r.values.width && r.values.height), tr: "ebat", en: "size" },
+];
+const missingOf = (r: ProductMeasureRow) => REQUIRED.filter((x) => !x.test(r));
+
 type Target = Pick<ProductMeasureRow, "shop_id" | "listing_id" | "variant" | "title"> & {
   part?: number; shop_name?: string; values?: ProductMeasureRow["values"]; material?: ProductMeasureRow["material"]; source?: ProductMeasureRow["source"] };
 
@@ -47,7 +58,8 @@ export default function ProductMeasures({ api, entityId }: { api: EntityApi; ent
   const [sheet, setSheet] = useState<{ file: File; analysis: SheetAnalysis; stamp: number } | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const sheetInput = useRef<HTMLInputElement>(null);
-  const rows = data?.items ?? null;
+  const [view, setView] = useUrlParam("products");
+  const all = data?.items ?? null;
   const multiShop = (shops?.length ?? 0) > 1;
 
   function done() {
@@ -57,6 +69,14 @@ export default function ProductMeasures({ api, entityId }: { api: EntityApi; ent
   }
 
   const sameProduct = (a: Target, b: Target) => a.shop_id === b.shop_id && a.listing_id === b.listing_id && a.variant === b.variant;
+
+  // "Eksik" sekmesi: herhangi bir parçasında gerekli alan girilmemiş ürünler (tüm parçalarıyla); "Hazır": hepsi tamam.
+  const pendingRows = all?.filter((r) => all.some((x) => sameProduct(x, r) && missingOf(x).length > 0)) ?? null;
+  const tab: "new" | "done" = view === "done" ? "done" : "new";
+  const rows = all && pendingRows ? (tab === "new" ? pendingRows : all.filter((r) => !pendingRows.includes(r))) : null;
+  // "Şundan kopyala": tanımı tamam olan ürünler, aynı ebat/malzemeli yeni ürünü baştan girmemek için kalıp olur (ürün başına ilk parça).
+  const templates = (all ?? []).filter((r) => missingOf(r).length === 0 && r.part === 0);
+  const productCount = (list: ProductMeasureRow[]) => list.filter((r, i) => i === 0 || !sameProduct(list[i - 1], r)).length;
 
   /** Plaka DXF'ini çözümler; pencere gruplar hazır olunca açılır (bu sürede yalnızca küçük bir spinner görünür). */
   function startSheet(file: File) {
@@ -79,40 +99,55 @@ export default function ProductMeasures({ api, entityId }: { api: EntityApi; ent
         )}
       </p>
 
-      <div className="mb-4 flex flex-wrap items-start gap-2">
-        <input
-          ref={sheetInput}
-          type="file"
-          accept=".dxf"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            e.target.value = "";
-            if (!f) return;
-            if (f.size > MAX_DRAWING_MB * 1024 * 1024) {
-              toast.error(t(`Dosya çok büyük (en fazla ${MAX_DRAWING_MB} MB)`, `File too large (max ${MAX_DRAWING_MB} MB)`));
-              return;
-            }
-            startSheet(f);
-          }}
-        />
-        <button type="button" disabled={analyzing} onClick={() => sheetInput.current?.click()} className={btnDark}>
-          {t("Plaka DXF'i yükle", "Upload sheet DXF")}
-        </button>
-        {analyzing && (
-          <span className="flex items-center gap-2 self-center text-xs text-neutral-500 dark:text-neutral-400">
-            <Spinner size={16} />
-            {t("Çizim okunuyor…", "Reading the drawing…")}
-          </span>
-        )}
-        <ShopSelect shops={shops} shopId={shopId} onChange={setShopId} />
-        <ProductPicker api={api} entityId={entityId} shopId={shopId} onPick={setAdding} />
-      </div>
+      <SubTabs
+        tabs={[
+          { id: "new", label: t("Yeni", "New"), count: pendingRows ? productCount(pendingRows) : undefined },
+          { id: "done", label: t("İşlenmiş", "Processed"), count: all && pendingRows ? productCount(all.filter((r) => !pendingRows.includes(r))) : undefined },
+        ]}
+        value={tab}
+        onChange={(id) => setView(id === "new" ? "" : id)}
+      />
+
+      {tab === "new" && (
+        <div className="mb-4 flex flex-wrap items-start gap-2">
+          <input
+            ref={sheetInput}
+            type="file"
+            accept=".dxf"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (!f) return;
+              if (f.size > MAX_DRAWING_MB * 1024 * 1024) {
+                toast.error(t(`Dosya çok büyük (en fazla ${MAX_DRAWING_MB} MB)`, `File too large (max ${MAX_DRAWING_MB} MB)`));
+                return;
+              }
+              startSheet(f);
+            }}
+          />
+          <button type="button" disabled={analyzing} onClick={() => sheetInput.current?.click()} className={btnDark}>
+            {t("Plaka DXF'i yükle", "Upload sheet DXF")}
+          </button>
+          {analyzing && (
+            <span className="flex items-center gap-2 self-center text-xs text-neutral-500 dark:text-neutral-400">
+              <Spinner size={16} />
+              {t("Çizim okunuyor…", "Reading the drawing…")}
+            </span>
+          )}
+          <ShopSelect shops={shops} shopId={shopId} onChange={setShopId} />
+          <ProductPicker api={api} entityId={entityId} shopId={shopId} onPick={setAdding} asButton />
+        </div>
+      )}
 
       {!rows ? (
         error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : <BlockSpinner />
       ) : rows.length === 0 && !adding ? (
-        <p className="text-sm text-neutral-400 dark:text-neutral-500">{t("Henüz ürün eklenmedi. Plaka DXF'i yükle ya da yukarıdan ürün ara.", "No products yet. Upload a sheet DXF or search for one above.")}</p>
+        <p className="text-sm text-neutral-400 dark:text-neutral-500">
+          {tab === "new"
+            ? t("Yeni ürün yok. Plaka DXF'i yükle ya da yukarıdan ürün ara; tanımı tamamlanan ürünler “İşlenmiş” sekmesine geçer.", "No new products. Upload a sheet DXF or search above; products whose definition is complete move to “Processed”.")
+            : t("Henüz işlenmiş ürün yok.", "No processed products yet.")}
+        </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-sm">
@@ -127,8 +162,8 @@ export default function ProductMeasures({ api, entityId }: { api: EntityApi; ent
               </tr>
             </thead>
             <tbody>
-              {adding && !rows.some((r) => r.shop_id === adding.shop_id && r.listing_id === adding.listing_id && r.variant === adding.variant) && (
-                <MeasureRow key={`new-${adding.shop_id}-${adding.listing_id}-${adding.variant}`} api={api} entityId={entityId} target={adding} multiShop={multiShop} onDone={done} onCancel={() => setAdding(null)} />
+              {adding && !(all ?? []).some((r) => r.shop_id === adding.shop_id && r.listing_id === adding.listing_id && r.variant === adding.variant) && (
+                <MeasureRow key={`new-${adding.shop_id}-${adding.listing_id}-${adding.variant}`} api={api} entityId={entityId} target={adding} templates={templates} multiShop={multiShop} onDone={done} onCancel={() => setAdding(null)} />
               )}
               {rows.map((r, i) => {
                 const parts = rows.filter((x) => sameProduct(x, r));
@@ -139,6 +174,8 @@ export default function ProductMeasures({ api, entityId }: { api: EntityApi; ent
                       api={api}
                       entityId={entityId}
                       target={r}
+                      templates={templates}
+                      missing={missingOf(r)}
                       multiShop={multiShop}
                       onDone={done}
                       partLabel={parts.length > 1 ? parts.indexOf(r) + 1 : 0}
@@ -182,7 +219,7 @@ export default function ProductMeasures({ api, entityId }: { api: EntityApi; ent
             entityId={entityId}
             file={sheet.file}
             initial={sheet.analysis}
-            existing={rows ?? []}
+            existing={all ?? []}
             onPickOther={() => sheetInput.current?.click()}
             onSaved={() => {
               reload();
@@ -208,6 +245,8 @@ function MeasureRow({
   partLabel = 0,
   continued = false,
   onAddPart,
+  missing = [],
+  templates = [],
 }: {
   api: EntityApi;
   entityId: number;
@@ -218,6 +257,8 @@ function MeasureRow({
   partLabel?: number;
   continued?: boolean;
   onAddPart?: () => void;
+  missing?: typeof REQUIRED;
+  templates?: ProductMeasureRow[];
 }) {
   const part = target.part ?? 0;
   const { t, locale } = useT();
@@ -320,6 +361,29 @@ function MeasureRow({
                 )}
               </div>
             </div>
+            {templates.length > 0 && (
+              <label className="block">
+                <span className={labelCls}>{t("Şundan kopyala (aynı malzeme ve ebat)", "Copy from (same material and size)")}</span>
+                <select
+                  value=""
+                  disabled={busy}
+                  onChange={(e) => {
+                    const src = templates.find((x) => `${x.shop_id}-${x.listing_id}-${x.variant}` === e.target.value);
+                    if (!src) return;
+                    setMaterial(src.material ?? "");
+                    setFields(Object.fromEntries(FIELDS.map((f) => [f.key, src.values[f.key] !== undefined ? f.toView(src.values[f.key]!) : ""])) as Record<MeasureKey, string>);
+                  }}
+                  className={`${input} w-full sm:max-w-md`}
+                >
+                  <option value="">{t("Seç…", "Select…")}</option>
+                  {templates.map((x) => (
+                    <option key={`${x.shop_id}-${x.listing_id}-${x.variant}`} value={`${x.shop_id}-${x.listing_id}-${x.variant}`}>
+                      {[x.title, x.variant].filter(Boolean).join(" · ")} — {materialLabel(x.material, t)} {x.values.thickness ?? ""} mm, {x.values.width}×{x.values.height}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
               <label className="block">
                 <span className={labelCls}>{t("Malzeme türü", "Material type")}</span>
@@ -369,6 +433,11 @@ function MeasureRow({
         <div className="text-[11px] text-neutral-400">
           {partName && <span className="mr-1.5">↳ {partName}</span>}
           {(v.part_qty ?? 1) > 1 && <span className="mr-1.5">× {v.part_qty}</span>}
+          {missing.length > 0 && (
+            <span className={`${badge} mr-1.5 bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300`}>
+              {t("Eksik", "Missing")}: {missing.map((m) => t(m.tr, m.en)).join(", ")}
+            </span>
+          )}
           {target.source === "cad" && <span className={`${badge} bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300`}>{t("çizimden", "from drawing")}</span>}
         </div>
         {onAddPart && (

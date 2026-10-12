@@ -49,6 +49,15 @@ export function money(n: number | null | undefined, currency: string, locale: st
   }
 }
 
+/** Para biriminin kısa simgesi ("₺", "$", "€"); bilinmiyorsa kodun kendisi. */
+export function currencySymbol(currency: string, locale: string): string {
+  try {
+    return new Intl.NumberFormat(locale, { style: "currency", currency, currencyDisplay: "narrowSymbol" }).formatToParts(0).find((p) => p.type === "currency")?.value ?? currency;
+  } catch {
+    return currency;
+  }
+}
+
 export function qty(n: number, locale: string): string {
   return new Intl.NumberFormat(locale, { maximumFractionDigits: 3 }).format(n);
 }

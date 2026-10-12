@@ -10,7 +10,7 @@ import { useApiData } from "@/lib/useApiData";
 import { EntityAccess, EntityApi, PriceItem, PriceKind, PriceVersion, StockPatch, can, isInternal, isMember } from "../core/api";
 import { errMsg } from "../core/errors";
 import { btnDanger, btnLink, btnOutline, btnPrimary, card, h2, input, label as labelCls, muted, rowBorder, th, td } from "../core/ui";
-import { money, perUnit, unitLabel } from "../core/units";
+import { currencySymbol, money, perUnit, unitLabel } from "../core/units";
 import DecimalInput from "./DecimalInput";
 import { materialLabel } from "../core/materials";
 import StockFields, { emptyStock, pruneStock, StockForm, stockOf, stockPayload } from "./StockFields";
@@ -250,7 +250,7 @@ function PriceRow({
                 <span className={labelCls}>
                   {t("Fiyat", "Price")} ({perUnit(currency, unit, t)})
                 </span>
-                <DecimalInput value={price} onValue={setPrice} className={`${input} w-full`} />
+                <DecimalInput value={price} onValue={setPrice} unit={currencySymbol(currency, locale)} className={`${input} w-full`} />
               </label>
               {member && (
                 <label className={field}>
@@ -349,7 +349,7 @@ function StockSummary({ item, currency }: { item: PriceItem; currency: string })
     item.film_um ? (item.material === "bubble" ? `${item.film_um / 1000} mm` : `${item.film_um} µm`) : "",
     item.roll_length ? `${item.roll_length} m` : "",
   ].filter(Boolean);
-  const other = item.unit === "kg" ? { label: t("plaka", "plate"), value: item.derived?.plate } : item.unit === "sheet" ? { label: "kg", value: item.derived?.kg } : null;
+  const other = item.unit === "sheet" ? { label: "kg", value: item.derived?.kg } : { label: t("plaka", "plate"), value: item.derived?.plate };
   if (parts.length === 0 && !other?.value) return null;
   return (
     <div className={muted}>
@@ -375,7 +375,7 @@ function AddRow({
   addLabel: string;
   onAdd: (v: { kind: PriceKind; name: string; unit: string; spec?: string; price: number; auto_qty?: number | null } & StockPatch) => Promise<void>;
 }) {
-  const { t } = useT();
+  const { t, locale } = useT();
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<PriceKind>(kinds[0]);
   const [name, setName] = useState("");
@@ -465,7 +465,7 @@ function AddRow({
           <span className={labelCls}>
             {t("Fiyat", "Price")} ({currency})
           </span>
-          <DecimalInput value={price} onValue={setPrice} placeholder="0" className={`${input} w-full`} />
+          <DecimalInput value={price} onValue={setPrice} unit={currencySymbol(currency, locale)} placeholder="0" className={`${input} w-full`} />
         </label>
         {!fixed && canAuto && (
           <label className="block">

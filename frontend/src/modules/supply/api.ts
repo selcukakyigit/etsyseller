@@ -85,7 +85,10 @@ export interface JobLine {
 }
 
 export interface PlanTarget {
+  /** Dış payda 0; `party_id` doludur. */
   shop_id: number;
+  /** Dış pay sahibi (mağazalara yazılmaz). */
+  party_id?: number | null;
   listing_id: number | null;
   /** Listing içindeki seçenek (ebat); "" = tüm ürün. */
   variant: string;
@@ -107,7 +110,9 @@ export interface PlanTarget {
 
 export interface Allocation {
   id: number;
-  shop_id: number;
+  /** Dış payda null; `party_id` doludur. */
+  shop_id: number | null;
+  party_id: number | null;
   listing_id: number | null;
   variant: string;
   title: string;
@@ -126,7 +131,7 @@ export interface JobDetail extends Job {
   diff: number | null;
   vat_in_cost: boolean;
   document: (DocumentRow & { data: DocData | null }) | null;
-  plan?: { mode: SplitMode; targets: PlanTarget[] };
+  plan?: { mode: SplitMode; targets: PlanTarget[]; remainder_party_id?: number | null };
   allocations?: Allocation[];
   /** Tahmini dağıtım ayarları (yalnızca üye): elle yazılan süre bedeli, süre ölçüsüne eşlenen satırların toplamı, malzeme kesimciden mi, raporun süreleri. */
   /** Dağıtım hedeflerinin kullandığı malzemenin tahmini (malzeme kalemi başına toplam); yalnızca üye ve malzeme kesimciden ise. */
@@ -165,6 +170,8 @@ export interface PlanPreview {
   check: MeasureCheck | null;
   /** Tahmini ve m² fiyatlı dağıtımda işin tutarından dağıtılmayan kısım (negatif: paylar tutardan fazla). */
   unallocated?: number | null;
+  /** Dağıtılmayan kalanın yazılacağı dış pay sahibi ve tutarı (seçilmediyse null). */
+  remainder?: { party_id: number; amount: number } | null;
   /** m² fiyatlı dağıtımda seçilebilen boya türleri. */
   paint_items?: { id: number; name: string }[] | null;
   targets: PlanTarget[];
@@ -184,6 +191,8 @@ export interface SupplyReport {
   currency: string;
   jobs: number;
   confirmed: number;
+  /** Dönemdeki işlerin durum sayıları. */
+  statuses: { draft: number; submitted: number; disputed: number; confirmed: number };
   cost: number;
   estimate_total: number;
   actual_total: number;
@@ -191,6 +200,8 @@ export interface SupplyReport {
   material: number;
   service: number;
   fee: number;
+  /** Dış pay sahiplerine düşen paylar (onaylanan işlerde; iş para biriminde). */
+  external: { party_id: number; name: string; amount: number; jobs: number }[];
   months: { month: string; cost: number; estimate: number; actual: number; jobs: number; material: number; service: number; fee: number }[];
   usage: { price_item_id: number | null; description: string; unit: string; qty: number; amount: number; avg_unit_price: number | null }[];
 }
@@ -279,8 +290,13 @@ export const supplyApi = {
     reopen: (id: number, jobId: number) => apiRequest<JobDetail>(`${one(id)}/jobs/${jobId}/reopen`, { method: "POST" }),
     remove: (id: number, jobId: number) => apiRequest<{ ok: true }>(`${one(id)}/jobs/${jobId}`, { method: "DELETE" }),
     plan: (id: number, jobId: number) => apiRequest<PlanPreview>(`${one(id)}/jobs/${jobId}/plan`),
-    setPlan: (id: number, jobId: number, mode: SplitMode, targets: { shop_id: number; listing_id: number | null; variant?: string; qty: number; amount?: number | null; item_id?: number | null }[]) =>
-      apiRequest<PlanPreview>(`${one(id)}/jobs/${jobId}/plan`, { method: "PUT", ...json({ mode, targets }) }),
+    setPlan: (
+      id: number,
+      jobId: number,
+      mode: SplitMode,
+      targets: { shop_id: number; party_id?: number | null; listing_id: number | null; variant?: string; qty: number; amount?: number | null; item_id?: number | null }[],
+      remainderPartyId: number | null,
+    ) => apiRequest<PlanPreview>(`${one(id)}/jobs/${jobId}/plan`, { method: "PUT", ...json({ mode, targets, remainder_party_id: remainderPartyId }) }),
   },
   /** Onaylanmış işin uygulanmamış ürün paylarının hepsini Finans'a birim maliyet olarak yazar. */
   packages: {
@@ -304,7 +320,8 @@ export const supplyApi = {
   undoJobCosts: (id: number, jobId: number) => apiRequest<{ reverted: number }>(`${one(id)}/jobs/${jobId}/undo-costs`, { method: "POST" }),
   applyAllocation: (id: number, allocationId: number) =>
     apiRequest<{ unit_cost: number; currency: string }>(`${one(id)}/allocations/${allocationId}/apply`, { method: "POST" }),
-  report: (id: number, start: string, end: string) => apiRequest<SupplyReport>(`${one(id)}/report?start=${start}&end=${end}`),
+  /** Dönem raporu; aralık null ise tüm zamanlar. */
+  report: (id: number, range: { start: string; end: string } | null) => apiRequest<SupplyReport>(`${one(id)}/report${range ? `?start=${range.start}&end=${range.end}` : ""}`),
   analyze: {
     file: (id: number, file: File, opts: { createJob: boolean; jobId?: number | null; note?: string }) => {
       const form = new FormData();

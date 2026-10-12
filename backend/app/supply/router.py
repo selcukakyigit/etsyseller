@@ -14,10 +14,10 @@ from app.modkit.access import EntityAccess, entity_access
 from app.modkit.routes import build_entity_router
 from app.shops.deps import check_ai_allowed
 from app.supply import profile as doc_profile
-from app.supply import packages, service
+from app.supply import allocation, packages, plan, reports, service
 from app.supply.models import JOB_STATUSES
 
-base_router = build_entity_router(module=service.MODULE, prefix="/api/supply", tag="supply", item_in_use=service.item_in_use, summary=service.summary)
+base_router = build_entity_router(module=service.MODULE, prefix="/api/supply", tag="supply", item_in_use=service.item_in_use, summary=reports.summary)
 router = APIRouter(prefix="/api/supply", tags=["supply"])
 access_dep = entity_access(service.MODULE)
 
@@ -57,7 +57,8 @@ class DisputeIn(BaseModel):
 
 
 class TargetIn(BaseModel):
-    shop_id: int
+    shop_id: int = 0  # dış payda 0 (party_id verilir)
+    party_id: int | None = None  # dış pay sahibi (modkit/parties); mağazaya yazılmaz
     listing_id: int | None = None
     variant: str = Field("", max_length=300)  # listing içindeki seçenek (ebat); "" = tüm ürün
     qty: int = Field(1, ge=1, le=1_000_000)
@@ -67,7 +68,8 @@ class TargetIn(BaseModel):
 
 class PlanIn(BaseModel):
     mode: str = Field("price", max_length=20)
-    targets: list[TargetIn] = Field(max_length=service.MAX_TARGETS)
+    targets: list[TargetIn] = Field(max_length=plan.MAX_TARGETS)
+    remainder_party_id: int | None = None  # tahmini / boya dağıtımında işin dağıtılmayan kalanı bu dış pay sahibine yazılır
 
 
 class TextIn(BaseModel):
@@ -146,14 +148,14 @@ def dispute(job_id: int, payload: DisputeIn, a: EntityAccess = Depends(access_de
 @router.post("/{entity_id}/jobs/{job_id}/confirm")
 def confirm(job_id: int, allow_duplicate: bool = False, a: EntityAccess = Depends(access_dep), db: Session = Depends(get_db)):
     job = service.get_job(db, a, job_id)
-    service.confirm(db, a, job, allow_duplicate)
+    allocation.confirm(db, a, job, allow_duplicate)
     return service.serialize_job(db, a, job, detail=True)
 
 
 @router.post("/{entity_id}/jobs/{job_id}/reopen")
 def reopen(job_id: int, a: EntityAccess = Depends(access_dep), db: Session = Depends(get_db)):
     job = service.get_job(db, a, job_id)
-    service.reopen(db, a, job)
+    allocation.reopen(db, a, job)
     return service.serialize_job(db, a, job, detail=True)
 
 
@@ -167,43 +169,44 @@ def delete_job(job_id: int, a: EntityAccess = Depends(access_dep), db: Session =
 
 @router.get("/{entity_id}/jobs/{job_id}/plan")
 def get_plan(job_id: int, a: EntityAccess = Depends(access_dep), db: Session = Depends(get_db)):
-    return service.preview(db, a, service.get_job(db, a, job_id))
+    return allocation.preview(db, a, service.get_job(db, a, job_id))
 
 
 @router.put("/{entity_id}/jobs/{job_id}/plan")
 def put_plan(job_id: int, payload: PlanIn, a: EntityAccess = Depends(access_dep), db: Session = Depends(get_db)):
     _write_limit(a)
     job = service.get_job(db, a, job_id)
-    return service.set_plan(db, a, job, payload.mode, [t.model_dump() for t in payload.targets])
+    return allocation.set_plan(db, a, job, payload.mode, [t.model_dump() for t in payload.targets], payload.remainder_party_id)
 
 
 @router.get("/{entity_id}/jobs/{job_id}/suggestions")
 def get_suggestions(job_id: int, a: EntityAccess = Depends(access_dep), db: Session = Depends(get_db)):
-    return {"items": service.suggest_targets(db, a, service.get_job(db, a, job_id))}
+    return {"items": allocation.suggest_targets(db, a, service.get_job(db, a, job_id))}
 
 
 @router.post("/{entity_id}/jobs/{job_id}/apply-costs")
 def apply_job_costs(job_id: int, a: EntityAccess = Depends(access_dep), db: Session = Depends(get_db)):
     """Onaylanmış işin ürün paylarının hepsini Finans'a birim maliyet olarak yazar."""
-    return service.apply_job_costs(db, a, service.get_job(db, a, job_id))
+    return allocation.apply_job_costs(db, a, service.get_job(db, a, job_id))
 
 
 @router.post("/{entity_id}/jobs/{job_id}/undo-costs")
 def undo_job_costs(job_id: int, a: EntityAccess = Depends(access_dep), db: Session = Depends(get_db)):
     """İşin Finans'a uygulanmış ürün maliyetlerini geri alır (uygulamadan önceki maliyete döner)."""
-    return service.undo_job_costs(db, a, service.get_job(db, a, job_id))
+    return allocation.undo_job_costs(db, a, service.get_job(db, a, job_id))
 
 
 @router.post("/{entity_id}/allocations/{allocation_id}/apply")
 def apply_allocation(allocation_id: int, a: EntityAccess = Depends(access_dep), db: Session = Depends(get_db)):
-    return service.apply_unit_cost(db, a, allocation_id)
+    return allocation.apply_unit_cost(db, a, allocation_id)
 
 
 @router.get("/{entity_id}/report")
-def report(start: dt.date, end: dt.date, a: EntityAccess = Depends(access_dep), db: Session = Depends(get_db)):
-    if end < start or (end - start).days > 3660:
+def report(start: dt.date | None = None, end: dt.date | None = None, a: EntityAccess = Depends(access_dep), db: Session = Depends(get_db)):
+    """Başlangıç ve bitiş verilmezse tüm zamanlar."""
+    if (start is None) != (end is None) or (start and end and (end < start or (end - start).days > 3660)):
         raise HTTPException(422, "Geçersiz tarih")
-    return service.report(db, a, start, end)
+    return reports.report(db, a, start, end)
 
 
 # --------------------------------------------------------------- belge okuma ----

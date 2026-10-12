@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Modal } from "@/components/listing-editor/Modal";
 import { BlockSpinner } from "@/components/ui/Spinner";
 import { useT } from "@/lib/i18n-client";
 import { toast } from "@/lib/toast";
 import { useApiData } from "@/lib/useApiData";
 import EstimateSettings from "./EstimateSettings";
 import TargetsTable, { Draft } from "./TargetsTable";
+import PartySelect from "../components/PartySelect";
+import SubTabs from "../components/SubTabs";
 import { productName, useShopChoice } from "../components/ProductPicker";
 import { materialLabel } from "../core/materials";
 import { btnDark, btnLink, btnOutline, card, h2, input, muted, rowBorder, warnBox } from "../core/ui";
@@ -61,6 +64,8 @@ export default function AllocationEditor({ entityId, job, onJob }: { entityId: n
   const { shops, shopId: activeShop } = useShopChoice(supplyApi, entityId);
   const [mode, setMode] = useState<SplitMode>(job.plan?.mode ?? DEFAULT_MODE);
   const [targets, setTargets] = useState<Draft[]>(() => (job.plan?.targets ?? []).map(toDraft));
+  const [picking, setPicking] = useState(false);
+  const [remainderParty, setRemainderParty] = useState<number | null>(job.plan?.remainder_party_id ?? null);
   const { data: suggested } = useApiData(`supply-suggest:${entityId}:${job.id}:${job.document_id ?? 0}`, () =>
     job.document_id && !confirmed ? supplyApi.jobs.suggestions(entityId, job.id) : Promise.resolve({ items: [] as Suggestion[] }),
   );
@@ -72,13 +77,19 @@ export default function AllocationEditor({ entityId, job, onJob }: { entityId: n
     supplyApi.jobs.plan(entityId, job.id).then(setPreview).catch(() => setPreview(null));
   }, [entityId, job.id, job.basis, job.plan, confirmed]);
 
-  const saved = JSON.stringify({ mode: job.plan?.mode ?? DEFAULT_MODE, targets: (job.plan?.targets ?? []).map(toDraft) });
-  const dirty = JSON.stringify({ mode, targets }) !== saved;
+  const saved = JSON.stringify({ mode: job.plan?.mode ?? DEFAULT_MODE, targets: (job.plan?.targets ?? []).map(toDraft), remainderParty: job.plan?.remainder_party_id ?? null });
+  const dirty = JSON.stringify({ mode, targets, remainderParty }) !== saved;
 
   async function save() {
     setBusy(true);
     try {
-      const p = await supplyApi.jobs.setPlan(entityId, job.id, mode, targets.map(({ shop_id, listing_id, variant, qty, amount, item_id }) => ({ shop_id, listing_id, variant, qty, amount: mode === "manual" ? amount ?? 0 : null, item_id: mode === "paint_rate" ? item_id : null })));
+      const p = await supplyApi.jobs.setPlan(
+        entityId,
+        job.id,
+        mode,
+        targets.map(({ shop_id, party_id, listing_id, variant, qty, amount, item_id }) => ({ shop_id, party_id, listing_id, variant, qty, amount: mode === "manual" ? amount ?? 0 : null, item_id: mode === "paint_rate" ? item_id : null })),
+        PRODUCT_ONLY.includes(mode) ? remainderParty : null,
+      );
       setPreview(p);
       onJob(await supplyApi.jobs.get(entityId, job.id));
       if (p.error) toast.error(p.error);
@@ -89,7 +100,7 @@ export default function AllocationEditor({ entityId, job, onJob }: { entityId: n
   }
 
   function add(d: Draft) {
-    if (targets.some((x) => x.shop_id === d.shop_id && x.listing_id === d.listing_id && x.variant === d.variant)) return;
+    if (targets.some((x) => x.shop_id === d.shop_id && x.party_id === d.party_id && x.listing_id === d.listing_id && x.variant === d.variant)) return;
     setTargets((ts) => [...ts, d]);
   }
 
@@ -147,22 +158,34 @@ export default function AllocationEditor({ entityId, job, onJob }: { entityId: n
             />
           )}
 
-          <RegisteredProducts entityId={entityId} taken={targets} onAdd={(rows) => rows.forEach((r) => add({ shop_id: r.shop_id, listing_id: r.listing_id, variant: r.variant, title: r.title, qty: 1, amount: null, item_id: null }))} />
 
           {(suggested?.items.length ?? 0) > 0 && (
             <SuggestionList
               items={suggested!.items}
               currency={job.currency}
               taken={targets}
-              onAdd={(m) => add({ shop_id: m.shop_id, listing_id: m.listing_id, variant: m.variant, title: m.title, qty: 1, amount: null, item_id: null })}
+              onAdd={(m) => add({ shop_id: m.shop_id, party_id: null, listing_id: m.listing_id, variant: m.variant, title: m.title, qty: 1, amount: null, item_id: null })}
             />
           )}
 
           <div className="flex flex-wrap items-start gap-2">
+            <button type="button" onClick={() => setPicking(true)} className={btnOutline}>
+              + {t("Ürün ekle", "Add products")}
+            </button>
             {!PRODUCT_ONLY.includes(mode) && (
-              <button type="button" onClick={() => activeShop && add({ shop_id: activeShop, listing_id: null, variant: "", title: "", qty: 1, amount: null, item_id: null })} className={btnOutline}>
+              <button type="button" onClick={() => activeShop && add({ shop_id: activeShop, party_id: null, listing_id: null, variant: "", title: "", qty: 1, amount: null, item_id: null })} className={btnOutline}>
                 + {t("Genel gider", "Overhead")}
               </button>
+            )}
+            {!PRODUCT_ONLY.includes(mode) && (
+              <PartySelect
+                api={supplyApi}
+                entityId={entityId}
+                value={null}
+                onChange={(p) => p && add({ shop_id: 0, party_id: p.id, listing_id: null, variant: "", title: p.name, qty: 1, amount: null, item_id: null })}
+                placeholder={`+ ${t("Dış pay", "External share")}`}
+                ariaLabel={t("Dış pay ekle", "Add external share")}
+              />
             )}
             {dirty && (
               <button type="button" disabled={busy} onClick={() => void save()} className={btnDark}>
@@ -170,6 +193,19 @@ export default function AllocationEditor({ entityId, job, onJob }: { entityId: n
               </button>
             )}
           </div>
+          {PRODUCT_ONLY.includes(mode) && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className={muted}>{t("Dağıtılmayan kalan şuna yazılsın:", "Write the unallocated rest to:")}</span>
+              <PartySelect
+                api={supplyApi}
+                entityId={entityId}
+                value={remainderParty}
+                onChange={(p) => setRemainderParty(p?.id ?? null)}
+                placeholder={t("Hiçbiri (dağıtılmaz)", "None (not allocated)")}
+                ariaLabel={t("Kalanın yazılacağı dış pay", "External share for the rest")}
+              />
+            </div>
+          )}
           {!dirty && preview?.error && <p className={`${warnBox} mt-3`}>{preview.error}</p>}
           {!dirty && preview?.check && <MeasureCheckNote check={preview.check} partial={mode === "estimated"} />}
           {!dirty && preview && !preview.error && preview.targets.length > 0 && (
@@ -178,6 +214,11 @@ export default function AllocationEditor({ entityId, job, onJob }: { entityId: n
                 ? t(
                     `Hesaplanan paylar işin tutarından ${money(-preview.unallocated, job.currency, locale)} fazla (${money(preview.basis, job.currency, locale)}).`,
                     `The calculated shares exceed the job amount (${money(preview.basis, job.currency, locale)}) by ${money(-preview.unallocated, job.currency, locale)}.`,
+                  )
+                : preview.unallocated && preview.remainder
+                ? t(
+                    `${money(preview.basis - preview.unallocated, job.currency, locale)} bu ürünlere dağıtılacak; kalan ${money(preview.remainder.amount, job.currency, locale)} seçilen dış paya yazılacak (maliyete girmez).`,
+                    `${money(preview.basis - preview.unallocated, job.currency, locale)} will be split between these products; the remaining ${money(preview.remainder.amount, job.currency, locale)} goes to the chosen external share (not booked as cost).`,
                   )
                 : preview.unallocated
                 ? t(
@@ -188,6 +229,25 @@ export default function AllocationEditor({ entityId, job, onJob }: { entityId: n
             </p>
           )}
         </>
+      )}
+      {picking && (
+        <Modal
+          title={t("Çizimi yüklenmiş ürünler", "Products with a drawing")}
+          widthClass="max-w-2xl"
+          onClose={() => setPicking(false)}
+          footer={
+            <button type="button" onClick={() => setPicking(false)} className={btnLink}>
+              {t("Kapat", "Close")}
+            </button>
+          }
+        >
+          <RegisteredProducts
+            entityId={entityId}
+            taken={targets}
+            onAdd={(rows) => rows.forEach((r) => add({ shop_id: r.shop_id, party_id: null, listing_id: r.listing_id, variant: r.variant, title: r.title, qty: 1, amount: null, item_id: null }))}
+            onRemove={(r) => setTargets((ts) => ts.filter((x) => !(x.shop_id === r.shop_id && x.listing_id === r.listing_id && x.variant === r.variant)))}
+          />
+        </Modal>
       )}
     </section>
   );
@@ -237,48 +297,74 @@ function SuggestionList({ items, currency, taken, onAdd }: { items: Suggestion[]
 
 /** Ürünler sekmesinde kayıtlı (çizimi yüklenmiş / ölçüsü girilmiş) ürünler: işi yapılmışlar doğrudan listelenir, tıklayınca hedefe
  * eklenir. Çok parçalı üründe parçalar tek satırda toplanır. */
-function RegisteredProducts({ entityId, taken, onAdd }: { entityId: number; taken: Draft[]; onAdd: (rows: ProductMeasureRow[]) => void }) {
+function RegisteredProducts({ entityId, taken, onAdd, onRemove }: { entityId: number; taken: Draft[]; onAdd: (rows: ProductMeasureRow[]) => void; onRemove: (row: ProductMeasureRow) => void }) {
   const { t, locale } = useT();
   const { data } = useApiData(`supply-registered:${entityId}`, () => supplyApi.measures.list(entityId));
+  const [view, setView] = useState<"new" | "done">("new");
   if (!data) return <BlockSpinner />;
   const products = new Map<string, { row: ProductMeasureRow; parts: ProductMeasureRow[] }>();
   for (const r of data.items) {
     const key = `${r.shop_id}-${r.listing_id}-${r.variant}`;
     products.set(key, { row: r, parts: [...(products.get(key)?.parts ?? []), r] });
   }
-  const free = [...products.entries()].filter(([, p]) => !taken.some((x) => x.shop_id === p.row.shop_id && x.listing_id === p.row.listing_id && x.variant === p.row.variant));
-  if (free.length === 0) {
-    return products.size === 0 ? (
-      <p className={`${muted} mb-3`}>{t("Henüz ürün tanımlı değil: Ürünler sekmesinden plaka DXF'i yükleyip parçaları ürünlere ata.", "No products yet: upload the sheet DXF in the Products tab and assign its parts to products.")}</p>
-    ) : null;
-  }
+  const isTaken = (p: { row: ProductMeasureRow }) => taken.some((x) => x.shop_id === p.row.shop_id && x.listing_id === p.row.listing_id && x.variant === p.row.variant);
+  const fresh = [...products.entries()].filter(([, p]) => !isTaken(p));
+  const added = [...products.entries()].filter(([, p]) => isTaken(p));
+  const shown = view === "new" ? fresh : added;
   return (
-    <div className="mb-3 rounded-lg border border-neutral-200 p-3 dark:border-neutral-800">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{t("Çizimi yüklenmiş ürünler", "Products with a drawing")}</div>
-        <button type="button" onClick={() => onAdd(free.map(([, p]) => p.row))} className={btnLink}>
-          {t("Hepsini ekle", "Add all")}
-        </button>
-      </div>
-      <ul className="max-h-64 divide-y divide-neutral-100 overflow-y-auto dark:divide-neutral-800">
-        {free.map(([key, p]) => {
-          const cut = p.parts.reduce((sum, x) => sum + (x.values.cut_length ?? 0) * (x.values.part_qty ?? 1), 0);
-          const materials = [...new Set(p.parts.map((x) => materialLabel(x.material, t)).filter(Boolean))].join(", ");
-          return (
-            <li key={key}>
-              <button type="button" onClick={() => onAdd([p.row])} className="flex w-full items-center gap-3 py-2 text-left transition hover:bg-neutral-50 dark:hover:bg-neutral-800/60">
-                <span className="text-neutral-400">+</span>
-                <span className="min-w-0 flex-1 truncate text-sm text-neutral-800 dark:text-neutral-200">{productName(p.row.title, p.row.variant)}</span>
-                <span className="shrink-0 text-[11px] text-neutral-400">
-                  {cut ? `${fmtQty(cut / 1000, locale)} m` : t("kesim uzunluğu yok", "no cut length")}
-                  {p.parts.length > 1 ? ` · ${t(`${p.parts.length} parça`, `${p.parts.length} parts`)}` : p.row.values.width && p.row.values.height ? ` · ${fmtQty(p.row.values.width, locale)}×${fmtQty(p.row.values.height, locale)} mm` : ""}
-                  {materials ? ` · ${materials}` : ""}
-                </span>
+    <div>
+      <SubTabs
+        tabs={[
+          { id: "new", label: t("Yeni", "New"), count: fresh.length },
+          { id: "done", label: t("İşlenmiş", "Processed"), count: added.length },
+        ]}
+        value={view}
+        onChange={setView}
+      />
+      {shown.length === 0 ? (
+        <p className={muted}>
+          {products.size === 0
+            ? t("Henüz ürün tanımlı değil: Ürünler sekmesinden plaka DXF'i yükleyip parçaları ürünlere ata.", "No products yet: upload the sheet DXF in the Products tab and assign its parts to products.")
+            : view === "new"
+              ? t("Tanımlı bütün ürünler bu işe eklendi.", "All defined products are already added to this job.")
+              : t("Bu işe henüz ürün eklenmedi.", "No products added to this job yet.")}
+        </p>
+      ) : (
+        <>
+          {view === "new" && (
+            <div className="mb-2 flex items-center justify-end gap-2">
+              <button type="button" onClick={() => onAdd(fresh.map(([, p]) => p.row))} className={btnLink}>
+                {t("Hepsini ekle", "Add all")}
               </button>
-            </li>
-          );
-        })}
-      </ul>
+            </div>
+          )}
+          <ul className="max-h-[60vh] divide-y divide-neutral-100 overflow-y-auto dark:divide-neutral-800">
+            {shown.map(([key, p]) => {
+              const cut = p.parts.reduce((sum, x) => sum + (x.values.cut_length ?? 0) * (x.values.part_qty ?? 1), 0);
+              const materials = [...new Set(p.parts.map((x) => materialLabel(x.material, t)).filter(Boolean))].join(", ");
+              return (
+                <li key={key}>
+                  <button
+                    type="button"
+                    onClick={() => (view === "new" ? onAdd([p.row]) : onRemove(p.row))}
+                    className="flex w-full items-center gap-3 py-2 text-left transition hover:bg-neutral-50 dark:hover:bg-neutral-800/60"
+                    title={view === "done" ? t("Bu işten çıkar", "Remove from this job") : undefined}
+                  >
+                    <span className={view === "new" ? "text-neutral-400" : "text-emerald-600 dark:text-emerald-400"}>{view === "new" ? "+" : "✓"}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm text-neutral-800 dark:text-neutral-200">{productName(p.row.title, p.row.variant)}</span>
+                    <span className="shrink-0 text-[11px] text-neutral-400">
+                      {cut ? `${fmtQty(cut / 1000, locale)} m` : t("kesim uzunluğu yok", "no cut length")}
+                      {p.parts.length > 1 ? ` · ${t(`${p.parts.length} parça`, `${p.parts.length} parts`)}` : p.row.values.width && p.row.values.height ? ` · ${fmtQty(p.row.values.width, locale)}×${fmtQty(p.row.values.height, locale)} mm` : ""}
+                      {materials ? ` · ${materials}` : ""}
+                    </span>
+                    {view === "done" && <span className="shrink-0 text-xs text-red-600 dark:text-red-400">{t("çıkar", "remove")}</span>}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
     </div>
   );
 }
@@ -305,7 +391,7 @@ function MeasureCheckNote({ check, partial }: { check: MeasureCheck; partial: bo
 }
 
 function toDraft(p: PlanTarget): Draft {
-  return { shop_id: p.shop_id, listing_id: p.listing_id, variant: p.variant ?? "", title: p.title, qty: p.qty, amount: p.amount, item_id: p.item_id ?? null };
+  return { shop_id: p.shop_id ?? 0, party_id: p.party_id ?? null, listing_id: p.listing_id, variant: p.variant ?? "", title: p.title, qty: p.qty, amount: p.amount, item_id: p.item_id ?? null };
 }
 
 function Allocations({ entityId, job, onJob }: { entityId: number; job: JobDetail; onJob: (j: JobDetail) => void }) {
@@ -318,12 +404,12 @@ function Allocations({ entityId, job, onJob }: { entityId: number; job: JobDetai
       {list.map((a) => (
         <li key={a.id} className={`${rowBorder} flex flex-wrap items-center justify-between gap-2 py-2 last:border-0`}>
           <div className="min-w-0 text-sm">
-            <div className="line-clamp-1 font-medium text-neutral-900 dark:text-neutral-100">{a.listing_id ? productName(a.title, a.variant) : t("Genel gider", "Overhead")}</div>
+            <div className="line-clamp-1 font-medium text-neutral-900 dark:text-neutral-100">{a.party_id ? a.title : a.listing_id ? productName(a.title, a.variant) : t("Genel gider", "Overhead")}</div>
             <div className={muted}>
               {money(a.amount, job.currency, locale)}
               {a.report_ccy !== job.currency && ` ≈ ${money(a.amount_report, a.report_ccy, locale)}`}
               {a.listing_id && a.qty > 1 && ` · ${a.qty} ${t("adet", "units")} → ${money(a.amount_report / a.qty, a.report_ccy, locale)} / ${t("adet", "unit")}`}
-              {!a.listing_id && ` · ${t("Finans giderlerinde", "in Finance expenses")}`}
+              {a.party_id ? ` · ${t("dış pay: maliyete yazılmaz", "external share: not booked as cost")}` : !a.listing_id && ` · ${t("Finans giderlerinde", "in Finance expenses")}`}
             </div>
           </div>
           {a.listing_id &&

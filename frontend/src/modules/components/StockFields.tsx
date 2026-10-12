@@ -48,20 +48,21 @@ export function stockPayload(form: StockForm, from?: StockForm): StockPatch | nu
 const FILM_TYPES = ["stretch", "bubble", "bag"];
 const ROLL_TYPES = ["tape", "stretch", "bubble", "paper", "other"];
 
-/** Hangi alanlar gösterilir: BİRİME göre. Plaka (tabaka) fiyatında kalınlık ve plaka boyutu/ağırlığı gerekir; kg/g/ton ve m² fiyatında
- * yalnızca levha malzemede (metal, ahşap, akrilik) kalınlık (ve kg'da plaka bilgisi, "hesaplanan plaka fiyatı" için) anlamlıdır; adet, uzunluk
- * birimlerinde (kutu, çıta, streç metresi, toz boya) yalnızca tür sorulur. Türü seçilmemiş kalemde daha önce girilmiş değer
- * varsa görünür kalır. */
-export function stockFields(unit: string, form: StockForm): { thickness: boolean; plate: boolean; film: boolean; roll: boolean } {
+/** Hangi alanlar gösterilir: BİRİME göre (maliyet hesabı `materials.stock_cost`, fiyattan türeyen plaka fiyatı `stock_prices` ile aynı mantık).
+ * Plaka (tabaka) fiyatında kalınlık, plaka boyutu ve ağırlığı gerekir; kütle (kg/g/ton) fiyatında levha malzemede kalınlık, plaka boyutu ve ağırlığı;
+ * alan (m²/cm²) fiyatında kalınlık (ürünle eşleşmek için) ve plaka boyutu; hacim (m³/litre/ml) fiyatında kalınlık (hacim = alan × kalınlık) ve plaka
+ * boyutu; adet, uzunluk birimlerinde (kutu, çıta, streç metresi, toz boya) yalnızca tür sorulur. Plaka boyutu ve ağırlığı isteğe bağlıdır
+ * ("hesaplanan plaka fiyatı" ve plakadaki alan payı için). Türü seçilmemiş kalemde daha önce girilmiş değer varsa görünür kalır. */
+export function stockFields(unit: string, form: StockForm): { thickness: boolean; plate: boolean; plateKg: boolean; film: boolean; roll: boolean } {
   const sheetLike = isSheetMaterial(form.material) || (form.material === "" && PLATE_NUMBERS.some((k) => form[k] !== ""));
   const film = ["kg", "g", "t"].includes(unit) && FILM_TYPES.includes(form.material); // streç/naylon: en × kalınlık → kg/m
   const roll = unit === "piece" && ROLL_TYPES.includes(form.material); // bant rulosu gibi: rulo boyu → adet/m
   const rolls = { film, roll };
-  if (unit === "sheet") return { thickness: true, plate: true, ...rolls };
-  if (["kg", "g", "t"].includes(unit)) return { thickness: sheetLike, plate: sheetLike, ...rolls };
-  if (["m2", "cm2"].includes(unit)) return { thickness: sheetLike, plate: false, ...rolls };
-  if (["ml", "l", "m3"].includes(unit)) return { thickness: true, plate: false, ...rolls }; // hacim fiyatı: alan × kalınlık hacmi verir
-  return { thickness: false, plate: false, ...rolls };
+  if (unit === "sheet") return { thickness: true, plate: true, plateKg: true, ...rolls };
+  if (["kg", "g", "t"].includes(unit)) return { thickness: sheetLike, plate: sheetLike, plateKg: sheetLike, ...rolls };
+  if (["m2", "cm2"].includes(unit)) return { thickness: sheetLike, plate: sheetLike, plateKg: false, ...rolls };
+  if (["ml", "l", "m3"].includes(unit)) return { thickness: true, plate: true, plateKg: false, ...rolls };
+  return { thickness: false, plate: false, plateKg: false, ...rolls };
 }
 
 /** Birim ya da tür değişince artık gösterilmeyen alanların değerlerini temizler (gizli değer sunucuya gitmesin). */
@@ -70,7 +71,8 @@ export function pruneStock(form: StockForm, unit: string): StockForm {
   return {
     ...form,
     thickness_mm: f.thickness ? form.thickness_mm : "",
-    ...(f.plate ? {} : { plate_width: "", plate_height: "", plate_kg: "" }),
+    ...(f.plate ? {} : { plate_width: "", plate_height: "" }),
+    ...(f.plateKg ? {} : { plate_kg: "" }),
     ...(f.film ? {} : { roll_width: "", film_um: "" }),
     ...(f.roll ? {} : { roll_length: "" }),
   };
@@ -105,7 +107,7 @@ export default function StockFields({ value, unit, onChange }: { value: StockFor
         {show.thickness && num("thickness_mm", t("Kalınlık (mm)", "Thickness (mm)"), "2")}
         {show.plate && num("plate_width", t("Plaka eni (mm)", "Plate width (mm)"), "1500")}
         {show.plate && num("plate_height", t("Plaka boyu (mm)", "Plate length (mm)"), "3000")}
-        {show.plate && num("plate_kg", t("Plaka ağırlığı (kg)", "Plate weight (kg)"), t("boşsa hesaplanır", "auto if empty"))}
+        {show.plateKg && num("plate_kg", t("Plaka ağırlığı (kg)", "Plate weight (kg)"), t("boşsa hesaplanır", "auto if empty"))}
         {show.film && num("roll_width", t("Rulo eni (mm)", "Roll width (mm)"), "500")}
         {show.film && (value.material === "bubble" ? num("film_um", t("Kalınlık (mm)", "Thickness (mm)"), "4") : num("film_um", t("Kalınlık (mikron)", "Thickness (micron)"), "23"))}
         {show.roll && num("roll_length", t("Rulo boyu (m)", "Roll length (m)"), "100")}
@@ -121,8 +123,8 @@ export default function StockFields({ value, unit, onChange }: { value: StockFor
       {show.plate && (
         <p className={`${muted} mt-1.5`}>
           {t(
-            "İsteğe bağlı. Plaka boyutu varsa ürünün malzemesi plakadaki alan payından, yoksa ağırlığından hesaplanır.",
-            "Optional. With a plate size the product’s material comes from its area share of the plate, otherwise from its weight.",
+            "İsteğe bağlı. Plaka boyutu varsa ürünün malzemesi plakadaki alan payından, yoksa ağırlığından ya da hacminden hesaplanır.",
+            "Optional. With a plate size the product’s material comes from its area share of the plate, otherwise from its weight or volume.",
           )}
         </p>
       )}

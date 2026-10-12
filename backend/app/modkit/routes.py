@@ -19,7 +19,8 @@ from app.core import blobstore
 from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.modkit import access as acc
-from app.modkit import activity, cad, currencies, documents, entities, pricebook, products, ratelimit, sharing
+from app.drawings import cad
+from app.modkit import activity, currencies, documents, entities, parties, pricebook, products, ratelimit, sharing
 from app.modkit.models import FieldMapping, PriceItem
 
 
@@ -49,6 +50,15 @@ class DeleteIn(BaseModel):
 
 class ArchiveIn(BaseModel):
     archived: bool
+
+
+class PartyIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
+class PartyPatch(BaseModel):
+    name: str | None = Field(None, max_length=80)
+    archived: bool | None = None
 
 
 class PriceItemIn(BaseModel):
@@ -288,6 +298,21 @@ def build_entity_router(module: str, prefix: str, tag: str, item_in_use: Callabl
     def delete_document(doc_id: int, a: acc.EntityAccess = Depends(entity_access), db: Session = Depends(get_db)):
         documents.remove(db, a, documents.get(db, a, doc_id))
         return {"ok": True}
+
+    # ------------------------------------------------------------ dış paylar ----
+
+    @router.get("/{entity_id}/parties")
+    def list_parties(a: acc.EntityAccess = Depends(entity_access), db: Session = Depends(get_db)):
+        return {"items": parties.list_parties(db, a)}
+
+    @router.post("/{entity_id}/parties")
+    def create_party(payload: PartyIn, a: acc.EntityAccess = Depends(entity_access), db: Session = Depends(get_db)):
+        ratelimit.hit(f"{module}.parties", f"user:{a.user.id}", 60, 3600)
+        return parties.create(db, a, payload.name)
+
+    @router.patch("/{entity_id}/parties/{party_id}")
+    def update_party(party_id: int, payload: PartyPatch, a: acc.EntityAccess = Depends(entity_access), db: Session = Depends(get_db)):
+        return parties.update(db, a, party_id, payload.name, payload.archived)
 
     # ------------------------------------------------------------ mağaza ürünleri ----
 

@@ -15,7 +15,7 @@ from app.core.i18n import tr
 from app.modkit import materials, pricebook, products, units
 from app.modkit.access import EntityAccess
 from app.modkit.models import ModuleEntity, PriceItem, ProductMeasure
-from app.shops.models import Shop
+from app.supply import fx
 from app.supply.models import PackageLine, PackageType, ProductPackage
 
 MODULE = "supply"
@@ -241,7 +241,6 @@ def apply_costs(db: Session, access: EntityAccess, dry_run: bool) -> dict:
     bugünkü kurla çevrilip yazılır (kur alınamazsa hata). Önizleme: [{title, variant, currency, old, new, source_new}] (old/new rapor para biriminde,
     source_new tedarikçi para biriminde); yalnızca değişenler."""
     from app.finance import service as finance_service
-    from app.supply.service import fx_rate
 
     access.require_member()
     ws = access.entity.workspace_id
@@ -267,7 +266,7 @@ def apply_costs(db: Session, access: EntityAccess, dry_run: bool) -> dict:
             continue
         source_new = round(sum(r["cost"] for pid in _resolved(explicit.get(key), defaults) if pid in own for r in evaluate(db, lines.get(pid, []), dims, dt.datetime.utcnow())), 2)
         currency = finance_service.report_currency(db, shop)
-        new = round(source_new * fx_rate(access.entity.currency, currency, dt.date.today()), 2)
+        new = round(source_new * fx.rate(access.entity.currency, currency, dt.date.today()), 2)
         combos = {o["key"]: o["combos"] for o in products.listing_variants(db, shop.id, key[1])}.get(key[2]) or [key[2]] if key[2] else [""]
         old = next((c["amount"] for c in current[key[0]].get((key[1], combos[0]), []) if c["label"] == label), 0.0)
         if abs(new - old) < 0.005:

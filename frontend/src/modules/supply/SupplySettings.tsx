@@ -1,6 +1,7 @@
 "use client";
 
 import EntitySettings from "../components/EntitySettings";
+import PartiesManager from "../components/PartiesManager";
 import { Entity } from "../core/api";
 import { MODULE_PATH, supplyApi } from "./api";
 
@@ -18,6 +19,7 @@ export default function SupplySettings({ entity, onChanged }: { entity: Entity; 
         deleteWarningEn="This record is deleted with its prices, jobs, documents and invitations. Allocations written to finance are removed too."
         onChanged={onChanged}
       />
+      <PartiesManager api={supplyApi} entityId={entity.id} />
     </div>
   );
 }

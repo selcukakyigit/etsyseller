@@ -146,6 +146,21 @@ class FieldMapping(EntityOwned, Base):
     price_item_id: Mapped[int] = mapped_column(ForeignKey("price_items.id", ondelete="CASCADE"))
 
 
+class ExternalParty(Base):
+    """Maliyetin kendi mağazalarına yazılmayan payının sahibi: başka bir Ulagg hesabındaki mağaza, yerel (liste dışı) satış, ortak vb.
+    ÇALIŞMA ALANI seviyesindedir ve bütün modüllerce kullanılır. Pay maliyete/Finans'a yazılmaz; yalnızca kimin ne kadar payı olduğu
+    kayıt ve rapor için tutulur. Kullanılmış bir kayıt silinmez, arşive alınır."""
+
+    __tablename__ = "external_parties"
+    __table_args__ = (UniqueConstraint("workspace_id", "name", name="uq_external_parties_workspace_name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    archived: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+
+
 class ProductMeasure(Base):
     """Bir mağaza ürününün (listing + seçenek + parça) üretim tanımı: kesim uzunluğu, delme sayısı, ebat, yüzey alanı, boyalı yüz sayısı,
     malzeme türü ve kalınlığı… ÇALIŞMA ALANI seviyesindedir: ürün bir kez tanımlanır, bütün modül kayıtları (tedarikçiler) kullanır;
