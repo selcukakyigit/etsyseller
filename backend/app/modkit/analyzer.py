@@ -192,7 +192,7 @@ def _model():
 
 def ai_from_text(profile: Profile, text: str) -> dict:
     """Yalnızca metin gider — ucuz yol."""
-    from app.ai.client import get_anthropic_client, get_openai_client
+    from app.ai.client import get_anthropic_client, get_openai_client, openai_limits
     from app.billing import metering
 
     model = _model()
@@ -202,7 +202,7 @@ def ai_from_text(profile: Profile, text: str) -> dict:
             resp = get_anthropic_client().messages.create(model=model.model_id, max_tokens=profile.max_tokens, messages=[{"role": "user", "content": prompt}])
             raw = "".join(b.text for b in resp.content if b.type == "text")
         else:
-            resp = get_openai_client().chat.completions.create(model=model.model_id, messages=[{"role": "user", "content": prompt}], max_tokens=profile.max_tokens)
+            resp = get_openai_client().chat.completions.create(model=model.model_id, messages=[{"role": "user", "content": prompt}], **openai_limits(model.model_id, profile.max_tokens))
             raw = resp.choices[0].message.content or ""
         metering.record_response("document", model, resp)
     except Exception as exc:  # noqa: BLE001
@@ -212,7 +212,7 @@ def ai_from_text(profile: Profile, text: str) -> dict:
 
 def ai_from_file(profile: Profile, content: bytes, content_type: str) -> dict:
     """Taranmış PDF ya da fotoğraf — görüntü/dosya destekli model (pahalı yol)."""
-    from app.ai.client import get_anthropic_client, get_openai_client
+    from app.ai.client import get_anthropic_client, get_openai_client, openai_limits
     from app.ai.images import for_llm
     from app.billing import metering
 
@@ -240,7 +240,7 @@ def ai_from_file(profile: Profile, content: bytes, content_type: str) -> dict:
             resp = get_openai_client().chat.completions.create(
                 model=model.model_id,
                 messages=[{"role": "user", "content": [{"type": "text", "text": profile.prompt}, part]}],
-                max_tokens=profile.max_tokens,
+                **openai_limits(model.model_id, profile.max_tokens),
             )
             raw = resp.choices[0].message.content or ""
         metering.record_response("document", model, resp)

@@ -46,7 +46,7 @@ class EtsyDataError(ValueError):
 
 
 def _ai(content_text: str | None, image: tuple[bytes, str] | None) -> dict:
-    from app.ai.client import get_anthropic_client, get_openai_client
+    from app.ai.client import get_anthropic_client, get_openai_client, openai_limits
     from app.ai.vision import VisionError, text_model
     from app.billing import metering
 
@@ -69,7 +69,7 @@ def _ai(content_text: str | None, image: tuple[bytes, str] | None) -> dict:
             if image:
                 data, ctype = for_llm(*image)
                 parts.append({"type": "image_url", "image_url": {"url": f"data:{ctype};base64,{base64.b64encode(data).decode()}"}})
-            resp = get_openai_client().chat.completions.create(model=model.model_id, messages=[{"role": "user", "content": parts}], max_tokens=4000)
+            resp = get_openai_client().chat.completions.create(model=model.model_id, messages=[{"role": "user", "content": parts}], **openai_limits(model.model_id, 4000))
             raw = resp.choices[0].message.content or ""
         metering.record_response("document", model, resp)
     except Exception as exc:  # noqa: BLE001

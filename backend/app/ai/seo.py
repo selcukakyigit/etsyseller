@@ -3,7 +3,7 @@ import re
 
 from app.ai import catalog, quality
 from app.ai.catalog import ResolvedModel
-from app.ai.client import get_anthropic_client, get_openai_client
+from app.ai.client import get_anthropic_client, get_openai_client, openai_limits
 from app.billing import metering
 
 SYSTEM_PROMPT = """Sen bir Etsy SEO uzmanısın. Sana bir listing'in mevcut başlığı, etiketleri ve \
@@ -73,6 +73,7 @@ def _generate_with_openai(model: ResolvedModel, user_content: str) -> dict:
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_content},
         ],
+        **openai_limits(model.model_id),
     )
     metering.record_response("seo", model, completion)
     return json.loads(completion.choices[0].message.content or "{}")

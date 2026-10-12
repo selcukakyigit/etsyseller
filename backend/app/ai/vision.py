@@ -5,7 +5,7 @@ import re
 
 from app.ai import catalog
 from app.ai.catalog import ResolvedModel
-from app.ai.client import get_anthropic_client, get_openai_client
+from app.ai.client import get_anthropic_client, get_openai_client, openai_limits
 from app.ai.images import for_llm
 from app.billing import metering
 from app.core import blobstore
@@ -58,7 +58,7 @@ def generate_alt_texts(items: list[dict], title: str) -> list[str]:
         else:
             content = [{"type": "text", "text": prompt}] + [{"type": "image_url", "image_url": {"url": f"data:{m};base64,{d}"}} for m, d in blobs]
             resp = get_openai_client().chat.completions.create(
-                model=model.model_id, messages=[{"role": "user", "content": content}], max_tokens=1200
+                model=model.model_id, messages=[{"role": "user", "content": content}], **openai_limits(model.model_id, 1200)
             )
             raw = resp.choices[0].message.content or ""
         metering.record_response("vision", model, resp)

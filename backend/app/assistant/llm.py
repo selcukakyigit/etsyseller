@@ -15,7 +15,7 @@ from typing import Callable
 
 from app.ai import catalog
 from app.ai.catalog import ResolvedModel
-from app.ai.client import get_anthropic_client, get_openai_client
+from app.ai.client import get_anthropic_client, get_openai_client, openai_limits
 from app.core.i18n import tr
 
 log = logging.getLogger(__name__)
@@ -122,7 +122,7 @@ def _run_openai(static, dynamic, history, user_text, images, tools, execute, usa
     messages = [{"role": "system", "content": f"{static}\n\n{dynamic}"}, *history, {"role": "user", "content": content}]
     oa_tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in tools]
     for _ in range(MAX_ROUNDS):
-        resp = client.chat.completions.create(model=usage.model, messages=messages, tools=oa_tools, max_tokens=MAX_TOKENS)
+        resp = client.chat.completions.create(model=usage.model, messages=messages, tools=oa_tools, **openai_limits(usage.model, MAX_TOKENS))
         _add_openai_usage(usage, resp)
         msg = resp.choices[0].message
         if not msg.tool_calls:
