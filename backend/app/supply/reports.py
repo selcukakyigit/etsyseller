@@ -75,12 +75,13 @@ def report(db: Session, access: EntityAccess, start: dt.date | None = None, end:
     with_actual = [j for j in confirmed if j.actual is not None and j.estimate]
     usage, external = [], []
     ids = [j.id for j in confirmed]
-    if ids:
+    if ids and access.internal:  # dış paylar (kimin ne kadar payı olduğu) iç bilgidir; tedarikçi görmez
         external = [{"party_id": pid, "name": name, "amount": round(amount or 0, 2), "jobs": n} for pid, name, amount, n in db.execute(
             select(ExternalParty.id, ExternalParty.name, func.sum(SupplyAllocation.amount), func.count(func.distinct(SupplyAllocation.job_id)))
             .join(SupplyAllocation, SupplyAllocation.party_id == ExternalParty.id).where(SupplyAllocation.job_id.in_(ids))
             .group_by(ExternalParty.id, ExternalParty.name).order_by(ExternalParty.name)
         ).all()]
+    if ids:
         rows = db.execute(
             select(SupplyJobLine.price_item_id, SupplyJobLine.description, SupplyJobLine.unit, func.sum(SupplyJobLine.qty), func.sum(SupplyJobLine.amount))
             .where(SupplyJobLine.job_id.in_(ids)).group_by(SupplyJobLine.price_item_id, SupplyJobLine.description, SupplyJobLine.unit)
