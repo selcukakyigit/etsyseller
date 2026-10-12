@@ -125,6 +125,30 @@ export function InfoDot({ filled = false }: { filled?: boolean }) {
   );
 }
 
+/** Birim maliyetin bileşenleri (kesim, boya, ambalaj…): kutunun yanında "i" ikonu; ayrıntı fare üzerine gelince görünür. Kutu toplamı gösterir. */
+function CostComponentsInfo({ components, currency }: { components: { label: string; amount: number }[]; currency: string }) {
+  const symbol = currencySymbol(currency);
+  return (
+    <span className="group relative block leading-none">
+      <span aria-label={t("Maliyetin bileşenleri", "Cost components")}>
+        <InfoDot filled />
+      </span>
+      <span className="pointer-events-none absolute right-full top-1/2 z-30 mr-1 hidden -translate-y-1/2 whitespace-nowrap rounded-md bg-neutral-900 px-2 py-1.5 text-left text-[11px] leading-snug text-white shadow-lg group-hover:block dark:bg-neutral-700">
+        {components.map((c) => (
+          <span key={c.label} className="flex justify-between gap-4">
+            <span>{c.label}</span>
+            <b>
+              {symbol}
+              {c.amount.toFixed(2)}
+            </b>
+          </span>
+        ))}
+        <span className="mt-1 block text-neutral-300">{t("Buraya elle yazarsan bileşenler silinir, değer tek toplam olur.", "If you type a value here the components are removed and it becomes a single total.")}</span>
+      </span>
+    </span>
+  );
+}
+
 type InvoiceOrder = { receipt_id: number; buyer: string; date: string; tracking: string; invoice: number | null };
 
 function InvoiceInfo({ invoice, manual, orders }: { invoice: { amount: number; count: number; units: number }; manual: boolean; orders: InvoiceOrder[] }) {
@@ -197,9 +221,12 @@ function CostInputs({
   weightKg,
   invoice,
   orders,
+  components,
 }: {
   /** Fatura ikonuna tıklanınca gösterilen sipariş listesi (faturalı/faturasız). */
   orders?: InvoiceOrder[];
+  /** Birim maliyetin bileşenleri; varsa maliyet kutusunun yanında "i" ikonu çıkar. */
+  components?: { label: string; amount: number }[];
   init: { unit: number | null; ship: number | null; pct: number | null };
   onSave: (unit: number, ship: number, pct: number) => Promise<unknown>;
   onSaved: () => void;
@@ -230,7 +257,15 @@ function CostInputs({
   return (
     <>
       <td className="py-2 pr-2 text-right">
-        <UnitInput value={unit} onChange={setUnit} onBlur={commit} onKeyDown={keys} symbol={symbol} className={unit !== "" ? filledCls : inputCls} />
+        <UnitInput
+          value={unit}
+          onChange={setUnit}
+          onBlur={commit}
+          onKeyDown={keys}
+          symbol={symbol}
+          adornment={components && components.length > 0 ? <CostComponentsInfo components={components} currency={currency} /> : undefined}
+          className={unit !== "" ? filledCls : inputCls}
+        />
       </td>
       <td className="py-2 pr-2 text-right">
         {noShip ? (
@@ -396,6 +431,7 @@ export function ProductCosts({
                     onSaved={onSaved}
                     noShip={p.is_digital}
                     currency={currency}
+                    components={p.cost_components}
                   />
                   <td className={`py-2 pr-3 text-right font-semibold ${p.profit >= 0 ? "text-emerald-600" : "text-red-600"}`}>{money2.format(p.profit)}</td>
                   <td className="py-2 text-right text-neutral-500">%{p.margin.toFixed(0)}</td>
@@ -438,6 +474,7 @@ function VariantRow({ v, listingId, shopId, money2, onSaved, currency }: { v: Fi
         noShip={v.is_digital}
         currency={currency}
         weightKg={v.weight_kg}
+        components={v.cost_components}
         invoice={{ amount: v.invoice_amount, count: v.invoice_count, units: v.units }}
         orders={v.orders}
       />

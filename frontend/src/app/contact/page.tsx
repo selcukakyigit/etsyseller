@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import ContactForm from "@/components/site/ContactForm";
 import { SiteFooter, SiteHeader } from "@/components/site/SiteChrome";
-import { serif } from "@/components/site/fonts";
+import { display, sans } from "@/components/site/fonts";
 import { getLang } from "@/lib/i18n-server";
 import { BRAND, COMPANY } from "@/lib/legal";
 
@@ -47,10 +47,10 @@ export default async function ContactPage() {
   const mapsLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${COMPANY.name} ${COMPANY.address}`)}`;
 
   return (
-    <div className="flex-1 bg-[#FBF9F6] text-neutral-800 dark:bg-[#0E0D0C] dark:text-neutral-200">
+    <div className={`${sans.className} flex-1 bg-[#FBF9F6] text-neutral-800 dark:bg-[#0E0D0C] dark:text-neutral-200`}>
       <SiteHeader lang={lang} />
       <main className="mx-auto max-w-6xl px-6 py-14">
-        <h1 className={`${serif.className} text-5xl text-neutral-900 dark:text-neutral-50`}>{c.title}</h1>
+        <h1 className={`${display.className} text-5xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50`}>{c.title}</h1>
         <p className="mt-4 max-w-2xl text-lg leading-relaxed text-neutral-600 dark:text-neutral-300">{c.lead}</p>
 
         <div className="mt-12 grid grid-cols-1 gap-12 lg:grid-cols-[0.8fr_1.2fr]">

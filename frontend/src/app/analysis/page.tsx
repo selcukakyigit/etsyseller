@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { api, ShopProfile } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import AppShell from "@/components/AppShell";
+import { pageContainer } from "@/components/layout/pageContainer";
 import AttentionTile from "@/components/dashboard/AttentionTile";
 import ChangesTile from "@/components/dashboard/ChangesTile";
 import { card, Change, StatTile, useDashboardData } from "@/components/dashboard/stats";
@@ -31,9 +32,9 @@ export default function AnalysisPage() {
   const m = data?.month;
 
   return (
-    <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/analysis">
-      <div className="mx-auto max-w-6xl space-y-5 px-4 py-6 sm:px-6 sm:py-8">
-        <div className="min-h-[20px]">{!user && !bootError && <PageSpinner />}</div>
+    <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/analysis" requiresShop>
+      <div className={pageContainer("page", "normal", "space-y-5")}>
+        {!user && !bootError && <PageSpinner />}
         <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t("Analiz", "Analysis")}</h1>
         {(bootError || error) && <p className="text-sm text-red-600 dark:text-red-400">{bootError ?? error}</p>}
 

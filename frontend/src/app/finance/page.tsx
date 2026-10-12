@@ -5,6 +5,7 @@ import { api, FinReport, FinSyncStatus } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import { useUrlTab } from "@/lib/useUrlTab";
 import AppShell from "@/components/AppShell";
+import { pageContainer } from "@/components/layout/pageContainer";
 import { CompareBars, StackedBars, monthLabel } from "@/components/finance/charts";
 import { ProductCosts, OrderCosts } from "@/components/finance/CostEditors";
 import ShippingInvoices from "@/components/finance/ShippingInvoices";
@@ -20,7 +21,12 @@ import { presetRange, yearRange } from "@/lib/dateRanges";
 const regionNames: Record<string, Intl.DisplayNames> = {};
 const countryOf = (code: string) => {
   const lang = tNow("tr", "en");
-  return (regionNames[lang] ??= new Intl.DisplayNames([lang], { type: "region", fallback: "code" })).of(code) ?? code;
+  return (
+    (regionNames[lang] ??= new Intl.DisplayNames([lang], {
+      type: "region",
+      fallback: "code",
+    })).of(code) ?? code
+  );
 };
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
@@ -66,7 +72,10 @@ export default function FinancePage() {
     period === "custom"
       ? { start: customStart, end: customEnd }
       : period === "all"
-        ? { start: iso(new Date(report?.first_year ?? 2005, 0, 1)), end: iso(new Date()) }
+        ? {
+            start: iso(new Date(report?.first_year ?? 2005, 0, 1)),
+            end: iso(new Date()),
+          }
         : rangeFor(period);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [sync, setSync] = useState<FinSyncStatus | null>(null);
@@ -165,13 +174,18 @@ export default function FinancePage() {
   // Tek "senkronize et" düğmesi navbar'da; o bitince rapor kendiliğinden tazelenir.
   useEffect(() => onSyncDone(() => setReloadTick((n) => n + 1)), []);
 
+  const exportTab = tab === "invoices" ? null : tab; // kargo faturaları sekmesinde dışa aktarılacak bir tablo yok
   const exportExcel = (all: boolean) => {
-    if (shopId === undefined) return;
+    if (shopId === undefined || (!all && !exportTab)) return;
     const { start, end } = range;
-    const scope = all ? "all" : tab === "invoices" ? "products" : tab;
+    const scope = all ? "all" : exportTab!;
     setExporting(true);
     api.finance
-      .exportXlsx(shopId, start, end, country, { scope, q: all ? "" : orderQ, sort: prodSort })
+      .exportXlsx(shopId, start, end, country, {
+        scope,
+        q: all ? "" : orderQ,
+        sort: prodSort,
+      })
       .then((blob) => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -183,7 +197,13 @@ export default function FinancePage() {
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setExporting(false));
   };
-  const tabLabel = { overview: t("Genel bakış", "Overview"), products: t("Ürünler", "Products"), orders: t("Siparişler", "Orders"), invoices: t("Ürünler", "Products") }[tab];
+  const tabLabel = exportTab
+    ? {
+        overview: t("Genel bakış", "Overview"),
+        products: t("Ürünler", "Products"),
+        orders: t("Siparişler", "Orders"),
+      }[exportTab]
+    : "";
 
   // Aynı dönem/ülke için daha önce yüklenmiş bir rapor sessionStorage'daysa (ör. sayfadan çıkıp geri gelince)
   // taze veri gelene kadar onu gösterir — "Rapor hazırlanıyor…" boşluğu ve ardından gelen ani UI değişimi yerine.
@@ -198,8 +218,24 @@ export default function FinancePage() {
   }, [report, key]);
 
   const cur = displayReport?.currency ?? "USD";
-  const money = useMemo(() => new Intl.NumberFormat(locale, { style: "currency", currency: cur, maximumFractionDigits: 0 }), [cur, locale]);
-  const money2 = useMemo(() => new Intl.NumberFormat(locale, { style: "currency", currency: cur, maximumFractionDigits: 2 }), [cur, locale]);
+  const money = useMemo(
+    () =>
+      new Intl.NumberFormat(locale, {
+        style: "currency",
+        currency: cur,
+        maximumFractionDigits: 0,
+      }),
+    [cur, locale],
+  );
+  const money2 = useMemo(
+    () =>
+      new Intl.NumberFormat(locale, {
+        style: "currency",
+        currency: cur,
+        maximumFractionDigits: 2,
+      }),
+    [cur, locale],
+  );
   const fmt = (n: number) => money.format(n);
 
   const years = useMemo(() => {
@@ -222,20 +258,21 @@ export default function FinancePage() {
   const PALETTE = ["#c4c4c4", "#93c5fd", "#a78bfa"];
   const chartSorted = [...chartYears].sort((a, b) => a - b); // eski yıl solda
   const others = chartYears.filter((y) => y !== baseYear).sort((a, b) => b - a); // en yakın yıl gri
-  const compareSeries = chartSorted.map((y) => ({ name: String(y), color: y === baseYear ? "#D97757" : PALETTE[others.indexOf(y)] ?? PALETTE[2] }));
+  const compareSeries = chartSorted.map((y) => ({
+    name: String(y),
+    color: y === baseYear ? "#D97757" : (PALETTE[others.indexOf(y)] ?? PALETTE[2]),
+  }));
   const k = displayReport?.kpi;
   const pk = displayReport?.prev_kpi;
   const missingFees = displayReport?.coverage.orders_without_fees ?? 0;
   const select = "rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900";
 
   return (
-    <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/finance">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6 pb-8 pt-0">
+    <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/finance" requiresShop>
+      <div className={pageContainer("page", "flush")}>
         {/* Sabit yükseklik: bu satır `user` gelince DOM'dan tamamen kalkıyor — sarmalayıcı olmadan
             altındaki başlık/filtre satırı bir anda yukarı kayıyordu ("UI zıplaması"). */}
-        <div>
-          {!user && !bootError && <PageSpinner />}
-        </div>
+        <div>{!user && !bootError && <PageSpinner />}</div>
         {(bootError || error) && <p className="mb-4 text-sm text-red-600">{bootError ?? error}</p>}
 
         <div className={`mb-5 ${!displayReport && !error ? "min-h-[52px]" : ""}`}>
@@ -247,7 +284,11 @@ export default function FinancePage() {
               </div>
             </div>
           )}
-          {sync?.error && !isDemo && <p className="text-sm text-red-600">{t("Senkronizasyon hatası", "Sync error")}: {sync.error}</p>}
+          {sync?.error && !isDemo && (
+            <p className="text-sm text-red-600">
+              {t("Senkronizasyon hatası", "Sync error")}: {sync.error}
+            </p>
+          )}
           {!sync?.running && !sync?.error && missingFees > 0 && (
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
               {t(
@@ -259,50 +300,10 @@ export default function FinancePage() {
         </div>
 
         <div className="z-[9] -mx-4 lg:sticky lg:top-[49px] sm:-mx-6 bg-neutral-50 px-4 sm:px-6 pb-3 pt-3 dark:bg-neutral-950">
-        <div className="mb-2.5 flex items-center justify-between gap-3">
-          <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t("Finans", "Finance")}</h1>
-          <Popover
-            label={t("Excel'e aktar", "Export to Excel")}
-            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-[#D97757] px-3.5 text-sm font-medium text-white hover:bg-[#C6613F] disabled:opacity-50"
-            button={exporting ? t("Hazırlanıyor…", "Preparing…") : <>{t("Excel", "Excel")} ▾</>}
-          >
-            {(close) => (
-              <div role="menu" className={`${menuBox} w-64`}>
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={exporting || !displayReport}
-                  onClick={() => {
-                    close();
-                    void exportExcel(false);
-                  }}
-                  className={`${menuItem} disabled:opacity-50`}
-                >
-                  <span>
-                    <span className="block">{t(`Bu sekme: ${tabLabel}`, `This tab: ${tabLabel}`)}</span>
-                    <span className="block text-[11px] text-neutral-400 dark:text-neutral-500">{t("Dönem, ülke ve filtrelerle", "With the period, country and filters")}</span>
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={exporting || !displayReport}
-                  onClick={() => {
-                    close();
-                    void exportExcel(true);
-                  }}
-                  className={`${menuItem} disabled:opacity-50`}
-                >
-                  <span>
-                    <span className="block">{t("Tümünü aktar", "Export all")}</span>
-                    <span className="block text-[11px] text-neutral-400 dark:text-neutral-500">{t("Özet, müşteriler, ülkeler, ürünler, siparişler", "Summary, customers, countries, products, orders")}</span>
-                  </span>
-                </button>
-              </div>
-            )}
-          </Popover>
-        </div>
-        <div className="mb-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+          <div className="mb-2.5 flex items-center justify-between gap-3">
+            <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t("Finans", "Finance")}</h1>
+          </div>
+          <div className="mb-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
             <DateRangePicker
               label={t("Dönem", "Period")}
               value={period}
@@ -325,31 +326,77 @@ export default function FinancePage() {
                 </option>
               ))}
             </select>
-        </div>
-        <div className="-mx-4 flex gap-1 overflow-x-auto whitespace-nowrap border-b border-neutral-200 px-4 [scrollbar-width:none] dark:border-neutral-800 sm:mx-0 sm:px-0">
-          {(
-            [
-              ["overview", t("Genel bakış", "Overview")],
-              ["products", t("Ürün kârlılığı", "Product profitability")],
-              ["orders", t("Sipariş maliyetleri", "Order costs")],
-              ["invoices", t("Kargo faturaları", "Shipping invoices")],
-            ] as const
-          ).map(([v, l]) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => setTab(v)}
-              className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === v ? "border-[#D97757] text-neutral-900 dark:text-neutral-100" : "border-transparent text-neutral-500 hover:text-neutral-800"}`}
-            >
-              {l}
-            </button>
-          ))}
-        </div>
+            <div className="col-span-2 flex justify-end sm:ml-auto">
+              {exportTab && (
+                <Popover
+                  label={t("Excel'e aktar", "Export to Excel")}
+                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-[#D97757] px-3.5 text-sm font-medium text-white hover:bg-[#C6613F] disabled:opacity-50"
+                  button={exporting ? t("Hazırlanıyor…", "Preparing…") : <>{t("Excel", "Excel")} ▾</>}
+                >
+                  {(close) => (
+                    <div role="menu" className={`${menuBox} w-64`}>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={exporting || !displayReport}
+                        onClick={() => {
+                          close();
+                          void exportExcel(false);
+                        }}
+                        className={`${menuItem} disabled:opacity-50`}
+                      >
+                        <span>
+                          <span className="block">{t(`Bu sekme: ${tabLabel}`, `This tab: ${tabLabel}`)}</span>
+                          <span className="block text-[11px] text-neutral-400 dark:text-neutral-500">
+                            {t("Dönem, ülke ve filtrelerle", "With the period, country and filters")}
+                          </span>
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={exporting || !displayReport}
+                        onClick={() => {
+                          close();
+                          void exportExcel(true);
+                        }}
+                        className={`${menuItem} disabled:opacity-50`}
+                      >
+                        <span>
+                          <span className="block">{t("Tümünü aktar", "Export all")}</span>
+                          <span className="block text-[11px] text-neutral-400 dark:text-neutral-500">
+                            {t("Özet, müşteriler, ülkeler, ürünler, siparişler", "Summary, customers, countries, products, orders")}
+                          </span>
+                        </span>
+                      </button>
+                    </div>
+                  )}
+                </Popover>
+              )}
+            </div>
+          </div>
+          <div className="-mx-4 flex gap-1 overflow-x-auto whitespace-nowrap border-b border-neutral-200 px-4 [scrollbar-width:none] dark:border-neutral-800 sm:mx-0 sm:px-0">
+            {(
+              [
+                ["overview", t("Genel bakış", "Overview")],
+                ["products", t("Ürün kârlılığı", "Product profitability")],
+                ["orders", t("Sipariş maliyetleri", "Order costs")],
+                ["invoices", t("Kargo faturaları", "Shipping invoices")],
+              ] as const
+            ).map(([v, l]) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setTab(v)}
+                className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === v ? "border-[#D97757] text-neutral-900 dark:text-neutral-100" : "border-transparent text-neutral-500 hover:text-neutral-800"}`}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {user && !displayReport && !error && (
-          <PageSpinner />
-        )}
+        {user && !displayReport && !error && <PageSpinner />}
 
         {displayReport && k && pk && (
           <div className={loading ? "opacity-60 transition-opacity" : "transition-opacity"}>
@@ -397,36 +444,37 @@ export default function FinancePage() {
                       </p>
                     </>
                   )}
-                  {topTab === "customers" && (displayReport.customers.length === 0 ? (
-                    <p className="text-sm text-neutral-400">{tNow("Bu dönemde sipariş yok.", "No orders in this period.")}</p>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b border-neutral-100 text-left text-xs text-neutral-500 dark:border-neutral-800">
-                            <th className="py-2 pr-3 font-medium">#</th>
-                            <th className="py-2 pr-3 font-medium">{t("Müşteri", "Customer")}</th>
-                            <th className="py-2 pr-3 font-medium">{t("Ülke", "Country")}</th>
-                            <th className="py-2 pr-3 text-right font-medium">{t("Sipariş", "Orders")}</th>
-                            <th className="py-2 pr-3 text-right font-medium">{t("Toplam", "Total")}</th>
-                            <th className="py-2 text-right font-medium">{t("Son sipariş", "Last order")}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {displayReport.customers.slice(0, 10).map((c, i) => (
-                            <tr key={`${c.name}-${i}`} className="border-b border-neutral-50 last:border-0 dark:border-neutral-800/60">
-                              <td className="py-2 pr-3 text-neutral-400">{i + 1}</td>
-                              <td className="py-2 pr-3 font-medium">{c.name}</td>
-                              <td className="py-2 pr-3 text-neutral-500">{c.country ? countryOf(c.country) : "—"}</td>
-                              <td className="py-2 pr-3 text-right">{c.orders}</td>
-                              <td className="py-2 pr-3 text-right font-medium">{money2.format(c.sales)}</td>
-                              <td className="py-2 text-right text-neutral-500">{c.last}</td>
+                  {topTab === "customers" &&
+                    (displayReport.customers.length === 0 ? (
+                      <p className="text-sm text-neutral-400">{tNow("Bu dönemde sipariş yok.", "No orders in this period.")}</p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-neutral-100 text-left text-xs text-neutral-500 dark:border-neutral-800">
+                              <th className="py-2 pr-3 font-medium">#</th>
+                              <th className="py-2 pr-3 font-medium">{t("Müşteri", "Customer")}</th>
+                              <th className="py-2 pr-3 font-medium">{t("Ülke", "Country")}</th>
+                              <th className="py-2 pr-3 text-right font-medium">{t("Sipariş", "Orders")}</th>
+                              <th className="py-2 pr-3 text-right font-medium">{t("Toplam", "Total")}</th>
+                              <th className="py-2 text-right font-medium">{t("Son sipariş", "Last order")}</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ))}
+                          </thead>
+                          <tbody>
+                            {displayReport.customers.slice(0, 10).map((c, i) => (
+                              <tr key={`${c.name}-${i}`} className="border-b border-neutral-50 last:border-0 dark:border-neutral-800/60">
+                                <td className="py-2 pr-3 text-neutral-400">{i + 1}</td>
+                                <td className="py-2 pr-3 font-medium">{c.name}</td>
+                                <td className="py-2 pr-3 text-neutral-500">{c.country ? countryOf(c.country) : "—"}</td>
+                                <td className="py-2 pr-3 text-right">{c.orders}</td>
+                                <td className="py-2 pr-3 text-right font-medium">{money2.format(c.sales)}</td>
+                                <td className="py-2 text-right text-neutral-500">{c.last}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ))}
                 </section>
 
                 {displayReport.overhead_excluded && (
@@ -438,7 +486,12 @@ export default function FinancePage() {
                   </p>
                 )}
                 <section className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-                  <Kpi label={t("Satış (vergi hariç)", "Sales (excl. tax)")} value={fmt(k.sales)} sub={<Delta label={cmpLabel} cur={k.sales} prev={pk.sales} />} extra={t(`${k.orders} sipariş`, `${k.orders} orders`)} />
+                  <Kpi
+                    label={t("Satış (vergi hariç)", "Sales (excl. tax)")}
+                    value={fmt(k.sales)}
+                    sub={<Delta label={cmpLabel} cur={k.sales} prev={pk.sales} />}
+                    extra={t(`${k.orders} sipariş`, `${k.orders} orders`)}
+                  />
                   <Kpi
                     label={t("Etsy ücretleri", "Etsy fees")}
                     value={fmt(k.fees + k.overhead)}
@@ -448,36 +501,71 @@ export default function FinancePage() {
                   <Kpi
                     label={t("Ürün + kargo maliyeti", "Product + shipping cost")}
                     value={fmt(k.cogs)}
-                    sub={k.cogs === 0 ? <span className="text-xs text-amber-600">{t("Maliyet girilmemiş", "No costs entered")}</span> : <Delta label={cmpLabel} cur={k.cogs} prev={pk.cogs} invert />}
+                    sub={
+                      k.cogs === 0 ? (
+                        <span className="text-xs text-amber-600">{t("Maliyet girilmemiş", "No costs entered")}</span>
+                      ) : (
+                        <Delta label={cmpLabel} cur={k.cogs} prev={pk.cogs} invert />
+                      )
+                    }
                     extra={t("Ürün kârlılığı sekmesinden girilir", "Entered on the Product profitability tab")}
                   />
                   <Kpi label={t("Net kâr", "Net profit")} value={fmt(k.profit)} sub={<Delta label={cmpLabel} cur={k.profit} prev={pk.profit} />} highlight />
-                  <Kpi label={t("Kâr marjı", "Profit margin")} value={`%${k.margin.toFixed(1)}`} sub={<span className="text-xs text-neutral-400">{cmpLabel}: %{pk.margin.toFixed(1)}</span>} />
+                  <Kpi
+                    label={t("Kâr marjı", "Profit margin")}
+                    value={`%${k.margin.toFixed(1)}`}
+                    sub={
+                      <span className="text-xs text-neutral-400">
+                        {cmpLabel}: %{pk.margin.toFixed(1)}
+                      </span>
+                    }
+                  />
                   <Kpi label={t("İadeler", "Refunds")} value={fmt(k.refunds)} sub={<Delta label={cmpLabel} cur={k.refunds} prev={pk.refunds} invert />} />
                 </section>
 
                 <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                  <Metric label={t("Satılan ürün adedi", "Units sold")} value={k.units.toLocaleString(locale)} sub={<Delta label={cmpLabel} cur={k.units} prev={pk.units} />} />
-                  <Metric label={t("Ortalama sipariş değeri", "Average order value")} value={money2.format(k.aov)} sub={<Delta label={cmpLabel} cur={k.aov} prev={pk.aov} />} />
+                  <Metric
+                    label={t("Satılan ürün adedi", "Units sold")}
+                    value={k.units.toLocaleString(locale)}
+                    sub={<Delta label={cmpLabel} cur={k.units} prev={pk.units} />}
+                  />
+                  <Metric
+                    label={t("Ortalama sipariş değeri", "Average order value")}
+                    value={money2.format(k.aov)}
+                    sub={<Delta label={cmpLabel} cur={k.aov} prev={pk.aov} />}
+                  />
                   <Metric
                     label={t("Etsy'ye giden pay", "Share paid to Etsy")}
                     value={`%${k.etsy_share.toFixed(1)}`}
                     hint={t("Sipariş ücretleri + reklam + yenileme, satışa oranı", "Order fees + ads + renewals, as a share of sales")}
-                    sub={<span className="text-xs text-neutral-400">{cmpLabel}: %{pk.etsy_share.toFixed(1)}</span>}
+                    sub={
+                      <span className="text-xs text-neutral-400">
+                        {cmpLabel}: %{pk.etsy_share.toFixed(1)}
+                      </span>
+                    }
                   />
                   <Metric
                     label={t("Reklam harcaması", "Ad spend")}
                     value={fmt(k.ads)}
                     hint={t("Etsy Ads + Offsite Ads; satışa oranı", "Etsy Ads + Offsite Ads; as a share of sales")}
-                    sub={<span className="text-xs text-neutral-400">
+                    sub={
+                      <span className="text-xs text-neutral-400">
                         {t(`satışın %${k.ads_pct.toFixed(1)}'i`, `${k.ads_pct.toFixed(1)}% of sales`)} · {cmpLabel}: %{pk.ads_pct.toFixed(1)}
-                      </span>}
+                      </span>
+                    }
                   />
                   <Metric
                     label={t("İade + iptal oranı", "Refund + cancellation rate")}
                     value={`%${k.problem_pct.toFixed(1)}`}
-                    hint={t(`${k.canceled} iptal, ${k.refunded_orders} iadeli sipariş / ${k.all_orders} sipariş`, `${k.canceled} canceled, ${k.refunded_orders} refunded / ${k.all_orders} orders`)}
-                    sub={<span className="text-xs text-neutral-400">{cmpLabel}: %{pk.problem_pct.toFixed(1)}</span>}
+                    hint={t(
+                      `${k.canceled} iptal, ${k.refunded_orders} iadeli sipariş / ${k.all_orders} sipariş`,
+                      `${k.canceled} canceled, ${k.refunded_orders} refunded / ${k.all_orders} orders`,
+                    )}
+                    sub={
+                      <span className="text-xs text-neutral-400">
+                        {cmpLabel}: %{pk.problem_pct.toFixed(1)}
+                      </span>
+                    }
                   />
                 </section>
 
@@ -512,11 +600,15 @@ export default function FinancePage() {
                       // "Tüm zamanlar"/çok yıllı özel aralıkta series birden fazla yılın aylarını içerebilir, aynı ay adı (Oca, Şub…)
                       // birden fazla kez gelip React key çakışmasına yol açardı.
                       .map((sp) => ({
-                      label: monthLabel(sp.month).slice(0, 3),
-                      values: chartSorted.map((y) =>
-                        y === baseYear ? sp.sales : baseYear - y === displayReport.offsets[0] ? sp.prev_sales : (sp.cmp.find((c) => c.offset === baseYear - y)?.sales ?? 0),
-                      ),
-                    }))}
+                        label: monthLabel(sp.month).slice(0, 3),
+                        values: chartSorted.map((y) =>
+                          y === baseYear
+                            ? sp.sales
+                            : baseYear - y === displayReport.offsets[0]
+                              ? sp.prev_sales
+                              : (sp.cmp.find((c) => c.offset === baseYear - y)?.sales ?? 0),
+                        ),
+                      }))}
                     series={compareSeries}
                     fmt={fmt}
                   />
@@ -525,12 +617,24 @@ export default function FinancePage() {
                 <section className={card}>
                   <h2 className={h2}>{t("Satış nereye gidiyor?", "Where do sales go?")}</h2>
                   <StackedBars
-                    data={displayReport.series.map((s) => ({ label: monthLabel(s.month), parts: [s.profit, s.cogs, s.fees, s.overhead] }))}
+                    data={displayReport.series.map((s) => ({
+                      label: monthLabel(s.month),
+                      parts: [s.profit, s.cogs, s.fees, s.overhead],
+                    }))}
                     legend={[
                       { name: t("Net kâr", "Net profit"), color: "#10b981" },
-                      { name: t("Ürün + kargo", "Product + shipping"), color: "#6366f1" },
-                      { name: t("Sipariş ücretleri", "Order fees"), color: "#D97757" },
-                      { name: t("Reklam / diğer", "Ads / other"), color: "#f59e0b" },
+                      {
+                        name: t("Ürün + kargo", "Product + shipping"),
+                        color: "#6366f1",
+                      },
+                      {
+                        name: t("Sipariş ücretleri", "Order fees"),
+                        color: "#D97757",
+                      },
+                      {
+                        name: t("Reklam / diğer", "Ads / other"),
+                        color: "#f59e0b",
+                      },
                     ]}
                     fmt={fmt}
                   />
@@ -562,9 +666,7 @@ export default function FinancePage() {
                 currency={cur}
               />
             )}
-            {tab === "orders" && shopId !== undefined && (
-              <OrderCosts shopId={shopId} range={range} money2={money2} onSaved={scheduleRefresh} onQuery={setOrderQ} />
-            )}
+            {tab === "orders" && shopId !== undefined && <OrderCosts shopId={shopId} range={range} money2={money2} onSaved={scheduleRefresh} onQuery={setOrderQ} />}
             {tab === "invoices" && shopId !== undefined && (
               <ShippingInvoices shopId={shopId} products={displayReport.products} money2={money2} onSaved={scheduleRefresh} />
             )}

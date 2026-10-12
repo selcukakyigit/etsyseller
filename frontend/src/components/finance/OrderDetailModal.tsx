@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, FinOrderDetail } from "@/lib/api";
+import ItemCostComponents from "./ItemCostComponents";
 import ProductThumb from "./ProductThumb";
 import { tNow as t } from "@/lib/i18n";
 import { BlockSpinner } from "@/components/ui/Spinner";
@@ -151,6 +152,7 @@ export default function OrderDetailModal({ shopId, receiptId, onClose }: { shopI
                     value={e.cost > 0 ? `−${money(e.cost)}` : <span className="text-amber-600">{t("girilmemiş", "not entered")}</span>}
                     muted
                   />
+                  <ItemCostComponents items={data.items} money={money} />
                   <div className="mt-1 border-t border-neutral-100 pt-1 dark:border-neutral-800">
                     <Row label={t("Net kâr", "Net profit")} value={<span className={e.profit >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-600"}>{money(e.profit)}</span>} bold />
                   </div>

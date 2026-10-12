@@ -1010,6 +1010,9 @@ export type AdminTestResult = { ok: boolean; message: string };
 
 export type AdminCreditSettings = { credits_enabled: boolean; credit_markup: number; credit_usd: number; signup_credits: number };
 
+export type LandingSocialKey = "instagram" | "youtube" | "linkedin" | "pinterest";
+export type AdminLandingSettings = { social: Record<LandingSocialKey, string> };
+
 export type AdminWorkspaceCredit = {
   workspace_id: number;
   name: string;
@@ -1140,10 +1143,13 @@ async function requestForm<T>(path: string, formData: FormData): Promise<T> {
   const res = await send(`${API_URL}${path}`, { method: "POST", headers: await authHeader(), body: formData });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, body.detail ?? `${tNow("İstek başarısız", "Request failed")}: ${res.status}`);
+    throw new ApiError(res.status, detailText(body.detail) ?? `${tNow("İstek başarısız", "Request failed")}: ${res.status}`);
   }
   return res.json();
 }
+
+/** Modüllerin (src/modules/*) kendi API istemcilerini kurması için: aynı kimlik, dil başlığı ve hata işleme. */
+export { request as apiRequest, requestForm as apiUpload };
 
 export interface FinKpi {
   orders: number;
@@ -1222,6 +1228,8 @@ export interface FinProduct {
   unit_cost: number | null;
   shipping_cost: number | null;
   cost_pct: number | null;
+  /** Birim maliyetin bileşenleri (kesim, boya, ambalaj… kaynağa göre; Dış Tedarik'ten uygulanmışsa), yoksa boş: maliyet elle girilmiştir. */
+  cost_components: { label: string; amount: number }[];
   is_digital: boolean;
   /** Bu üründen bu dönemde satın alan müşteri adları (arama için). */
   buyers: string[];
@@ -1240,6 +1248,8 @@ export interface FinVariant {
   unit_cost: number | null;
   shipping_cost: number | null;
   cost_pct: number | null;
+  /** Birim maliyetin bileşenleri (kesim, boya, ambalaj… kaynağa göre; Dış Tedarik'ten uygulanmışsa), yoksa boş: maliyet elle girilmiştir. */
+  cost_components: { label: string; amount: number }[];
   /** Yüklenen kargo faturalarından ortalama ağırlık (varsa) — yalnızca bilgi amaçlı, hesaplamaya girmez. */
   weight_kg: number | null;
   /** Bu varyanta eşleşen onaylanmış fatura tutarlarının toplamı; kargo kutusu boşsa otomatik kullanılır. */
@@ -1267,6 +1277,8 @@ export interface InvoiceMatch {
   score: number;
   reason: string;
   items: InvoiceMatchItem[];
+  /** Bu siparişte aynı tutarda kayıtlı kalem: aynı fatura iki kez yüklenmiş olabilir. */
+  duplicate_of: { invoice_no: string; invoice_date: string; kind: string } | null;
 }
 
 /** `/finance/invoices/parse`'ın döndüğü, henüz kaydedilmemiş bir GÖNDERİ satırı — kullanıcı siparişi onaylayınca
@@ -1390,7 +1402,7 @@ export interface FinOrderDetail {
     cost_defined: boolean;
     is_digital: boolean;
     /** Adet başına maliyet parçaları; kargo kaynağı: faturadan / elle girilen / yok. */
-    cost_parts: { unit: number; pct: number; ship: number; ship_source: "fatura" | "elle" | "" };
+    cost_parts: { unit: number; pct: number; ship: number; ship_source: "fatura" | "elle" | ""; components: { label: string; amount: number }[] };
   }[];
   earnings: {
     buyer_paid: number;
@@ -1665,6 +1677,9 @@ export const api = {
     creditSettings: () => request<AdminCreditSettings>("/api/admin/credits/settings"),
     updateCreditSettings: (body: Partial<AdminCreditSettings>) =>
       request<AdminCreditSettings>("/api/admin/credits/settings", { method: "PUT", body: JSON.stringify(body) }),
+    landingSettings: () => request<AdminLandingSettings>("/api/admin/landing"),
+    updateLandingSettings: (body: AdminLandingSettings) =>
+      request<AdminLandingSettings>("/api/admin/landing", { method: "PUT", body: JSON.stringify(body) }),
     creditWorkspaces: (q: string, offset: number, limit = 50) =>
       request<{ items: AdminWorkspaceCredit[]; total: number }>(`/api/admin/credits/workspaces?${new URLSearchParams({ q, offset: String(offset), limit: String(limit) })}`),
     adjustCredits: (workspaceId: number, amount: number, bucket: "plan" | "purchased", note: string) =>
@@ -2065,10 +2080,14 @@ export const api = {
         form.append("file", file, file.name);
         return requestForm<InvoiceCandidate[]>(`/api/shops/${shopId}/finance/invoices/parse`, form);
       },
-      confirm: (shopId: number, receiptId: number, candidate: InvoiceCandidate) =>
+      /** Siparişte aynı tutarda kalem varsa sunucu 409 döner; kullanıcı onaylarsa `allowDuplicate` ile tekrar gönderilir. */
+      /** Yapıştırılan fatura metni: görüntü yerine yalnızca metin okunur (çok daha ucuz). */
+      parseText: (shopId: number, text: string) =>
+        request<InvoiceCandidate[]>(`/api/shops/${shopId}/finance/invoices/parse-text`, { method: "POST", body: JSON.stringify({ text }) }),
+      confirm: (shopId: number, receiptId: number, candidate: InvoiceCandidate, allowDuplicate = false) =>
         request<{ ids: number[] }>(`/api/shops/${shopId}/finance/invoices/confirm`, {
           method: "POST",
-          body: JSON.stringify({ receipt_id: receiptId, candidate }),
+          body: JSON.stringify({ receipt_id: receiptId, candidate, allow_duplicate: allowDuplicate }),
         }),
       list: (shopId: number, f: InvoiceQuery = {}) => {
         const params = new URLSearchParams({ sort: f.sort ?? "inv_date", page: String(f.page ?? 0), per_page: String(f.perPage ?? 20) });

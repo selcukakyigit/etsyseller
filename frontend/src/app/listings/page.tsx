@@ -7,6 +7,7 @@ import { onRanksChanged } from "@/lib/syncEvents";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import { useIncrementalList } from "@/lib/useIncrementalList";
 import AppShell from "@/components/AppShell";
+import { pageContainer } from "@/components/layout/pageContainer";
 import ListingRow from "@/components/ListingRow";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { onPublishFinished, startPublish, usePublishJobs } from "@/lib/publishJobs";
@@ -576,8 +577,8 @@ export default function Home() {
   });
 
   return (
-    <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/listings">
-      <div className={`mx-auto max-w-7xl px-3 pt-0 sm:px-6 ${selected.size > 0 ? "pb-28" : "pb-8"}`}>
+    <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/listings" requiresShop>
+      <div className={pageContainer("wide", selected.size > 0 ? "flushTall" : "flush")}>
         <div>
           {!user && !bootError && <PageSpinner />}
         </div>
@@ -588,17 +589,6 @@ export default function Home() {
           {user && shops === null && !bootError && <PageSpinner />}
         </div>
 
-        {user && shops !== null && !activeShop && (
-          <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-8 text-center">
-            <p className="text-neutral-600 dark:text-neutral-300 mb-4">{t("Devam etmek için Etsy mağazanı bağlaman gerekiyor.", "Connect your Etsy shop to continue.")}</p>
-            <a
-              href={api.shops.connectUrl()}
-              className="inline-block text-sm font-medium px-4 py-2 rounded-lg bg-[#D97757] text-white hover:bg-[#C6613F] transition"
-            >
-              {t("Etsy'ye Bağlan", "Connect Etsy")}
-            </a>
-          </div>
-        )}
 
         {activeShop && listings === null && !error && (
           <PageSpinner />
@@ -622,7 +612,7 @@ export default function Home() {
 
         {activeShop && listings && listings.length > 0 && (
           <>
-            <div className="z-[9] -mx-3 bg-neutral-50 px-3 pb-3 pt-3 dark:bg-neutral-950 sm:-mx-6 sm:px-6 lg:sticky lg:top-[49px]">
+            <div className="z-[9] -mx-4 bg-neutral-50 px-4 pb-3 pt-3 dark:bg-neutral-950 sm:-mx-6 sm:px-6 lg:sticky lg:top-[49px]">
               <ListingsToolbar
                 total={listings.length}
                 visible={visibleListings.length}

@@ -8,10 +8,8 @@ kargo maliyeti olarak (elle girilen tahminin yerine) kullanılır.
 Akış: `parse_file()` -> "aday" satırlar (henüz KAYDEDİLMEZ, önizleme) -> kullanıcı onaylar -> `confirm()`.
 Dosyanın kendisi saklanmaz; yalnızca çıkarılan sayısal veri.
 """
-import csv
 import datetime as dt
 import html
-import io
 import json
 import logging
 import re
@@ -21,7 +19,10 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.i18n import tr
 from app.finance.models import ShippingInvoice
+from app.modkit import analyzer
+from app.modkit.numbers import parse_amount
 from app.orders.models import OrderCache
 from app.shops.models import Shop
 
@@ -57,130 +58,6 @@ EXTRACT_PROMPT = (
 )
 
 
-def _extract_json(text: str) -> dict:
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    try:
-        return json.loads(match.group(0) if match else text)
-    except (json.JSONDecodeError, AttributeError) as exc:
-        raise InvoiceError("Yapay zekâ faturadan okunabilir bir sonuç döndürmedi, tekrar dene.") from exc
-
-
-def extract_pdf_or_image(content: bytes, content_type: str) -> dict:
-    """Taranmış PDF ya da fotoğraf — vision/dosya destekli AI ile okunur (pahalı yol; yalnızca metin katmanı yoksa
-    ya da metin yolu güvenilir sonuç vermezse). Claude ve OpenAI ikisi de PDF'i doğrudan okuyabilir."""
-    import base64
-
-    from app.ai.client import get_anthropic_client, get_openai_client
-    from app.ai.vision import VisionError, text_model
-    from app.billing import metering
-
-    try:
-        model = text_model("document")
-    except VisionError as exc:
-        raise InvoiceError(str(exc)) from exc
-
-    from app.ai.images import for_llm
-
-    content, content_type = for_llm(content, content_type)  # büyük fotoğraf/tarama 5 MB sınırına sığsın
-    b64 = base64.b64encode(content).decode()
-    try:
-        if model.provider == "anthropic":
-            media_type = content_type if content_type in ("image/png", "image/jpeg", "image/webp", "image/gif") else "application/pdf"
-            doc_type = "image" if media_type.startswith("image/") else "document"
-            resp = get_anthropic_client().messages.create(
-                model=model.model_id,
-                max_tokens=2000,
-                messages=[{"role": "user", "content": [
-                    {"type": doc_type, "source": {"type": "base64", "media_type": media_type, "data": b64}},
-                    {"type": "text", "text": EXTRACT_PROMPT},
-                ]}],
-            )
-            raw = "".join(b.text for b in resp.content if b.type == "text")
-        else:
-            if content_type == "application/pdf":  # OpenAI PDF'i "dosya" parçası olarak okur (resim değil)
-                part = {"type": "file", "file": {"filename": "fatura.pdf", "file_data": f"data:application/pdf;base64,{b64}"}}
-            else:
-                part = {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{b64}"}}
-            resp = get_openai_client().chat.completions.create(
-                model=model.model_id,
-                messages=[{"role": "user", "content": [{"type": "text", "text": EXTRACT_PROMPT}, part]}],
-                max_tokens=2000,
-            )
-            raw = resp.choices[0].message.content or ""
-        metering.record_response("document", model, resp)
-    except Exception as exc:  # noqa: BLE001
-        raise InvoiceError(f"Yapay zekâ faturayı okuyamadı: {str(exc)[:200]}") from exc
-    return _extract_json(raw)
-
-
-def _extract_from_text(text: str) -> dict:
-    """Metin (PDF metin katmanı / HTML) -> aynı çıkarım promptu. Görüntü değil yalnızca metin gittiği için ucuzdur."""
-    from app.ai.client import get_anthropic_client, get_openai_client
-    from app.ai.vision import VisionError, text_model
-    from app.billing import metering
-
-    try:
-        model = text_model("document")
-    except VisionError as exc:
-        raise InvoiceError(str(exc)) from exc
-    prompt = EXTRACT_PROMPT + "\n\nFatura metni:\n" + text[:12000]
-    try:
-        if model.provider == "anthropic":
-            resp = get_anthropic_client().messages.create(model=model.model_id, max_tokens=2000, messages=[{"role": "user", "content": prompt}])
-            raw = "".join(b.text for b in resp.content if b.type == "text")
-        else:
-            resp = get_openai_client().chat.completions.create(model=model.model_id, messages=[{"role": "user", "content": prompt}], max_tokens=2000)
-            raw = resp.choices[0].message.content or ""
-        metering.record_response("document", model, resp)
-    except Exception as exc:  # noqa: BLE001
-        raise InvoiceError(f"Yapay zekâ faturayı okuyamadı: {str(exc)[:200]}") from exc
-    return _extract_json(raw)
-
-
-def extract_html(content: bytes) -> dict:
-    text = re.sub(r"<[^>]+>", " ", content.decode("utf-8", errors="ignore"))
-    return _extract_from_text(html.unescape(re.sub(r"\s+", " ", text)).strip())
-
-
-MIN_PDF_TEXT_CHARS = 80  # bunun altı = metin katmanı yok (taranmış PDF); görüntü yoluna düşülür
-
-
-def pdf_text(content: bytes) -> str:
-    """PDF'in metin katmanını yerelde (ücretsiz, AI'sız) çıkarır; şifreli/bozuk/taranmış PDF'te boş döner."""
-    try:
-        from pypdf import PdfReader
-
-        reader = PdfReader(io.BytesIO(content))
-        return re.sub(r"\s+", " ", " ".join((page.extract_text() or "") for page in reader.pages)).strip()
-    except Exception:  # noqa: BLE001
-        return ""
-
-
-MAX_TEXT_CHARS = 12000  # bundan uzun metin AI'ya kesilerek gitmez (satır kaybı riski); PDF doğrudan gönderilir
-
-
-def _usable(raw: dict) -> bool:
-    """Metin yolunun sonucu güvenilir mi: en az bir gönderi satırı ve hepsinde sayısal tutar var."""
-    lines = raw.get("shipments") or []
-    return bool(lines) and all(_to_float(x.get("amount")) for x in lines)
-
-
-def extract_pdf(content: bytes) -> dict:
-    """Önce PDF'in TÜM metni (yerel, ucuz) AI'ya verilir — faturalar firmaya/düzene göre değiştiği için kural
-    tabanlı ayrıştırma yerine AI okur. Risk varsa (metin yok/çok uzun, AI hata verdi ya da sonuç eksik) PDF
-    doğrudan gönderilir: daha pahalı ama en güvenilir yol."""
-    text = pdf_text(content)
-    if MIN_PDF_TEXT_CHARS <= len(text) <= MAX_TEXT_CHARS:
-        try:
-            raw = _extract_from_text(text)
-            if _usable(raw):
-                return raw
-            logger.info("PDF metin yolu eksik sonuç verdi; PDF doğrudan gönderiliyor")
-        except InvoiceError:
-            logger.info("PDF metin yolu başarısız; PDF doğrudan gönderiliyor")
-    return extract_pdf_or_image(content, "application/pdf")
-
-
 # Excel/CSV: AI'sız — sütun başlıklarından doğrudan okunur.
 COLUMN_ALIASES = {
     "tracking_no": ("tracking", "takip", "gönderi no", "awb", "waybill"),
@@ -207,26 +84,8 @@ def _match_column(headers: list[str], field: str) -> int | None:
     return None
 
 
-def extract_spreadsheet(content: bytes, filename: str) -> dict:
-    """Excel (xlsx/xls) ya da CSV — her satır bir gönderi olur."""
-    lower = filename.lower()
-    if lower.endswith(".csv"):
-        rows = list(csv.reader(io.StringIO(content.decode("utf-8-sig", errors="ignore"))))
-    elif lower.endswith(".xls"):
-        try:
-            import xlrd
-        except ImportError as exc:
-            raise InvoiceError("Eski .xls formatı için xlrd paketi kurulu değil.") from exc
-        sheet = xlrd.open_workbook(file_contents=content).sheet_by_index(0)
-        rows = [sheet.row_values(i) for i in range(sheet.nrows)]
-    else:
-        from openpyxl import load_workbook
-
-        rows = [list(r) for r in load_workbook(io.BytesIO(content), read_only=True, data_only=True).active.iter_rows(values_only=True)]
-
-    rows = [r for r in rows if any(c not in (None, "") for c in r)]
-    if not rows:
-        raise InvoiceError("Dosyada okunabilir satır bulunamadı.")
+def _parse_table(rows: list[list]) -> dict:
+    """Excel (xlsx/xls) ya da CSV satırları — her satır bir gönderi olur. AI kullanılmaz."""
     headers = [str(c or "") for c in rows[0]]
     idx = {f: _match_column(headers, f) for f in COLUMN_ALIASES}
     if idx["amount"] is None:
@@ -256,44 +115,6 @@ def extract_spreadsheet(content: bytes, filename: str) -> dict:
     if not shipments:
         raise InvoiceError("Dosyada geçerli tutarlı hiçbir satır bulunamadı.")
     return {"vendor": "", "invoice_number": "", "invoice_date": None, "currency": currency, "stated_rate": None, "shipments": shipments}
-
-
-def parse_amount(v) -> tuple[float | None, bool]:
-    """Para tutarı okuyucu: 1250 · 1,250 · 1.250 · 1 250 · 1'250 · 1.250,50 · 1,250.50 · ₺/$/TL/USD gibi eklerle.
-    Döner: (değer, belirsiz mi). İki ayraç varsa sonuncusu ondalıktır; tek ayraçta ve ardında TAM 3 hane varsa
-    ("1,250" / "1.250") para tutarında 3 ondalık olmayacağından binlik sayılır ama BELİRSİZ işaretlenir (fatura toplamıyla
-    çapraz kontrol edilir); 1-2 hane ondalıktır; aynı ayraç birden fazlaysa binliktir."""
-    import re as _re
-
-    if v is None or v == "":
-        return None, False
-    if isinstance(v, (int, float)):
-        return float(v), False
-    s = _re.sub(r"[^\d,.\-\s'\u2019\u00a0]", "", str(v))
-    neg = "-" in s
-    s = _re.sub(r"[\s'\u2019\u00a0-]", "", s)
-    if not s or not any(ch.isdigit() for ch in s):
-        return None, False
-    ambiguous = False
-    if "," in s and "." in s:
-        dec = "," if s.rfind(",") > s.rfind(".") else "."
-        s = s.replace("." if dec == "," else ",", "").replace(dec, ".")
-    elif "," in s or "." in s:
-        sep = "," if "," in s else "."
-        parts = s.split(sep)
-        if len(parts) > 2:
-            s = "".join(parts)
-        else:
-            head, tail = parts
-            if len(tail) == 3 and head not in ("", "0") and len(head) <= 3:
-                s, ambiguous = head + tail, True
-            else:
-                s = (head or "0") + "." + tail
-    try:
-        val = float(s)
-    except ValueError:
-        return None, False
-    return (-val if neg else val), ambiguous
 
 
 def _to_float(v) -> float | None:
@@ -492,19 +313,22 @@ def fingerprint(invoice_no: str, tracking: str, receipt_id: int | None, kind: st
     return f"{invoice_no}|{who}|{kind}|{original_amount:.2f}"
 
 
+def _usable(raw: dict) -> bool:
+    """Metin yolunun sonucu güvenilir mi: en az bir gönderi satırı ve hepsinde sayısal tutar var."""
+    lines = raw.get("shipments") or []
+    return bool(lines) and all(_to_float(x.get("amount")) for x in lines)
+
+
+PROFILE = analyzer.register(analyzer.Profile(key="shipping_invoice", prompt=EXTRACT_PROMPT, parse_table=_parse_table, usable=_usable))
+
+
 def parse_file(db: Session, shop: Shop, content: bytes, filename: str, content_type: str, report_ccy: str) -> list[dict]:
-    """Bir dosyayı okuyup, KAYDETMEDEN, her gönderi satırı için bir "aday" döner (onay ekranı için)."""
-    lower = filename.lower()
-    if lower.endswith((".xlsx", ".xls", ".csv")):
-        raw = extract_spreadsheet(content, filename)
-    elif lower.endswith((".html", ".htm")):
-        raw = extract_html(content)
-    elif content_type == "application/pdf" or lower.endswith(".pdf"):
-        raw = extract_pdf(content)
-    elif content_type.startswith("image/") or lower.endswith((".jpg", ".jpeg", ".png", ".webp")):
-        raw = extract_pdf_or_image(content, content_type)
-    else:
-        raise InvoiceError(f"Desteklenmeyen dosya türü: {filename}")
+    """Bir dosyayı okuyup, KAYDETMEDEN, her gönderi satırı için bir "aday" döner (onay ekranı için). Okuma ortak
+    Analyzer motorundan geçer: önbellek → tablo → metin → görüntü (bkz. modkit/analyzer.py)."""
+    try:
+        raw = analyzer.analyze_file(db, shop.workspace_id, PROFILE.key, content, filename, content_type).data
+    except analyzer.AnalyzerError as exc:
+        raise InvoiceError(str(exc)) from exc
     return _candidates(db, shop, raw, filename, report_ccy)
 
 
@@ -513,13 +337,47 @@ def parse_text(db: Session, shop: Shop, text: str, report_ccy: str, source: str 
     text = (text or "").strip()
     if len(text) < 20:
         raise InvoiceError("Fatura metni çok kısa.")
-    return _candidates(db, shop, _extract_from_text(text[:MAX_TEXT_CHARS]), source, report_ccy)
+    try:
+        raw = analyzer.analyze_text(db, shop.workspace_id, PROFILE.key, text).data
+    except analyzer.AnalyzerError as exc:
+        raise InvoiceError(str(exc)) from exc
+    return _candidates(db, shop, raw, source, report_ccy)
+
+
+def _saved_lines_by_order(db: Session, shop: Shop, receipt_ids: set[int] | None = None) -> dict[int, list[dict]]:
+    """Siparişe kayıtlı fatura kalemleri (ürünlere dağıtılmış satırlar parmak izine göre tek kaleme toplanmış)."""
+    stmt = select(ShippingInvoice).where(ShippingInvoice.shop_id == shop.id)
+    if receipt_ids is not None:
+        stmt = stmt.where(ShippingInvoice.receipt_id.in_(receipt_ids))
+    by_fp: dict[tuple, dict] = {}
+    for r in db.scalars(stmt):
+        key = (r.receipt_id, r.fingerprint or f"id{r.id}")
+        line = by_fp.setdefault(key, {
+            "receipt_id": r.receipt_id, "invoice_no": r.invoice_no or r.source_filename, "invoice_date": r.invoice_date.isoformat(),
+            "kind": r.kind, "currency": (r.original_currency or "").upper(), "original_amount": 0.0,
+        })
+        line["original_amount"] += r.original_amount
+    out: dict[int, list[dict]] = defaultdict(list)
+    for line in by_fp.values():
+        out[line["receipt_id"]].append(line)
+    return out
+
+
+def _same_amount_line(saved: list[dict], currency: str, amount: float) -> dict | None:
+    """Olası mükerrer: aynı siparişte aynı para birimi ve aynı tutarda (±0,01) kayıtlı bir kalem. Fatura no ve tür
+    bakılmaz — aynı fatura ekran görüntüsü + Excel olarak iki kez yüklenince bunlar farklı çıkar, tutar çıkmaz."""
+    currency = (currency or "").upper()
+    for line in saved:
+        if line["currency"] == currency and abs(line["original_amount"] - amount) <= 0.01:
+            return {"invoice_no": line["invoice_no"], "invoice_date": line["invoice_date"], "kind": line["kind"]}
+    return None
 
 
 def _candidates(db: Session, shop: Shop, raw: dict, filename: str, report_ccy: str) -> list[dict]:
     """Çıkarılan fatura verisinden her gönderi satırı için bir aday (sipariş eşleşmeleriyle birlikte)."""
     index = _order_index(db, shop)
     saved_fp = set(db.scalars(select(ShippingInvoice.fingerprint).where(ShippingInvoice.shop_id == shop.id)))
+    saved_by_order = _saved_lines_by_order(db, shop)
     invoice_date = raw.get("invoice_date") or dt.date.today().isoformat()
     candidates = []
     amounts, check_note = _line_amounts(raw)
@@ -530,6 +388,10 @@ def _candidates(db: Session, shop: Shop, raw: dict, filename: str, report_ccy: s
         kind = line.get("kind") if line.get("kind") in KINDS else "nakliye"
         tracking = _digits(line.get("tracking_no"))
         invoice_no = (raw.get("invoice_number") or "").strip() or _stem(filename)
+        currency = (raw.get("currency") or report_ccy).upper()
+        matches = match_orders(index, line)
+        for m in matches:
+            m["duplicate_of"] = _same_amount_line(saved_by_order.get(m["receipt_id"], []), currency, amount)
         candidates.append({
             "vendor": raw.get("vendor") or "",
             "invoice_number": invoice_no,
@@ -543,11 +405,11 @@ def _candidates(db: Session, shop: Shop, raw: dict, filename: str, report_ccy: s
             "weight_kg": _to_float(line.get("weight_kg")),
             "original_amount": amount,
             "check_note": check_note,
-            "original_currency": (raw.get("currency") or report_ccy).upper(),
+            "original_currency": currency,
             "amount": round(converted, 2),
             "fx_rate": fx_rate,
             "fx_source": fx_source,
-            "matches": match_orders(index, line),
+            "matches": matches,
             "already_saved": bool(tracking) and fingerprint(invoice_no, tracking, None, kind, amount) in saved_fp,
             "source_filename": filename,
         })
@@ -556,7 +418,11 @@ def _candidates(db: Session, shop: Shop, raw: dict, filename: str, report_ccy: s
     return candidates
 
 
-def confirm(db: Session, shop: Shop, receipt_id: int, candidate: dict) -> list[ShippingInvoice]:
+class PossibleDuplicate(InvoiceError):
+    """Siparişte aynı tutarda bir kalem zaten var; kullanıcı ikinci kez onaylarsa (allow_duplicate) yine kaydedilir."""
+
+
+def confirm(db: Session, shop: Shop, receipt_id: int, candidate: dict, allow_duplicate: bool = False) -> list[ShippingInvoice]:
     """Onaylanan gönderi kalemini, siparişin ürünlerine fiyat payına göre dağıtıp kaydeder."""
     from app.finance.service import _money, variant_key
 
@@ -570,7 +436,15 @@ def confirm(db: Session, shop: Shop, receipt_id: int, candidate: dict) -> list[S
     fp = fingerprint(invoice_no, tracking, receipt_id, kind, original)
     if db.scalar(select(ShippingInvoice.id).where(ShippingInvoice.shop_id == shop.id, ShippingInvoice.fingerprint == fp)):
         raise InvoiceError("Bu fatura kalemi zaten kayıtlı (aynı fatura no, gönderi, tür ve tutar).")
-    txs = json.loads(row.raw_json).get("transactions") or []
+    if not allow_duplicate:
+        currency = str(candidate.get("original_currency") or "")
+        dup = _same_amount_line(_saved_lines_by_order(db, shop, {receipt_id}).get(receipt_id, []), currency, original)
+        if dup:
+            raise PossibleDuplicate(tr(
+                f"Bu siparişe aynı tutarda bir kalem zaten kayıtlı ({dup['invoice_no']} · {dup['invoice_date']}). Aynı fatura iki kez yüklenmiş olabilir.",
+                f"This order already has a line with the same amount ({dup['invoice_no']} · {dup['invoice_date']}). The same invoice may have been uploaded twice.",
+            ))
+    txs =json.loads(row.raw_json).get("transactions") or []
     if not txs:
         raise InvoiceError("Siparişte ürün kalemi yok.")
     physical = [t for t in txs if not t.get("is_digital")]
@@ -632,17 +506,26 @@ def _warnings(lines: list[dict]) -> list[str]:
     """Aynı gönderiye şüpheli/fazla kalem kesilmiş mi: kullanıcının hatalı faturayı yakalaması için."""
     out = []
     if len(lines) >= 3:
-        out.append(f"Bu gönderiye {len(lines)} kalem kesilmiş")
+        out.append(tr(f"Bu gönderiye {len(lines)} kalem kesilmiş", f"{len(lines)} lines billed for this shipment"))
     kinds: dict[str, int] = {}
     for ln in lines:
         kinds[ln["kind"]] = kinds.get(ln["kind"], 0) + 1
-    out += [f"{n} adet '{k}' kalemi" for k, n in kinds.items() if n >= 2]
+    out += [tr(f"{n} adet '{k}' kalemi", f"{n} '{k}' lines") for k, n in kinds.items() if n >= 2]
     names: dict[str, int] = {}
     for ln in lines:
         key = (ln["description"] or "").strip().lower()
         if key:
             names[key] = names.get(key, 0) + 1
-    out += [f"'{k}' kalemi {n} kez kesilmiş" for k, n in names.items() if n >= 2]
+    out += [tr(f"'{k}' kalemi {n} kez kesilmiş", f"'{k}' billed {n} times") for k, n in names.items() if n >= 2]
+    # Fatura no/tür farklı ama tutar aynı: çoğunlukla aynı faturanın iki kez (ör. ekran görüntüsü + Excel) yüklenmesi.
+    amounts: dict[tuple, int] = {}
+    for ln in lines:
+        key = ((ln["original_currency"] or "").upper(), round(ln["original_amount"], 2))
+        amounts[key] = amounts.get(key, 0) + 1
+    out += [
+        tr(f"Aynı tutarda {n} kalem ({c} {a:.2f}) — aynı fatura iki kez yüklenmiş olabilir", f"{n} lines with the same amount ({c} {a:.2f}) — the same invoice may have been uploaded twice")
+        for (c, a), n in amounts.items() if n >= 2
+    ]
     return out
 
 

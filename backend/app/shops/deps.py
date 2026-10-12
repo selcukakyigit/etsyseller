@@ -24,23 +24,29 @@ def get_owned_shop(
     return shop
 
 
-def _ai_allowed(shop: Shop = Depends(get_owned_shop), user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Scope:
-    """AI isteğine izin kontrolleri (veritabanı okur, bu yüzden senkron; iş parçacığında çalışır)."""
-    ws = db.get(Workspace, shop.workspace_id)
+def check_ai_allowed(db: Session, workspace_id: int, user: User) -> Scope:
+    """AI isteğine izin kontrolleri — mağazaya bağlı olmayan modüller (Dış Tedarik…) de aynı kuralla geçer.
+    AI kapalıysa 403, istek sınırı aşıldıysa 429, kredi bittiyse 402."""
+    ws = db.get(Workspace, workspace_id)
     if ws is not None and not ws.ai_enabled:
         raise HTTPException(403, "Yapay zekâ özellikleri kapalı. Ayarlar > Yapay Zekâ bölümünden açabilirsin.")
     # Çalışma alanı başına 10 dakikada en fazla AI_MAX_CALLS istek: ele geçirilmiş ya da kötü niyetli bir hesabın AI
     # sağlayıcı faturasını şişirmesini önler. Bellek içi sayaç (tek kopya için yeterli; ölçeklenince Redis'e taşınmalı).
     now = time.time()
-    hits = _ai_hits[shop.workspace_id]
+    hits = _ai_hits[workspace_id]
     while hits and now - hits[0] > AI_WINDOW_SECONDS:
         hits.popleft()
     if len(hits) >= AI_MAX_CALLS:
         raise HTTPException(429, "Kısa sürede çok fazla yapay zekâ isteği gönderildi. Birkaç dakika sonra tekrar dene.")
-    if not credits.has_credits(shop.workspace_id):
+    if not credits.has_credits(workspace_id):
         raise HTTPException(402, "Kredin bitti. Ayarlar > Plan ve krediler bölümünden kredi alabilirsin.")
     hits.append(now)
-    return Scope(workspace_id=shop.workspace_id, user_id=user.id)
+    return Scope(workspace_id=workspace_id, user_id=user.id)
+
+
+def _ai_allowed(shop: Shop = Depends(get_owned_shop), user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Scope:
+    """AI isteğine izin kontrolleri (veritabanı okur, bu yüzden senkron; iş parçacığında çalışır)."""
+    return check_ai_allowed(db, shop.workspace_id, user)
 
 
 async def require_ai_enabled(scope: Scope = Depends(_ai_allowed)) -> None:

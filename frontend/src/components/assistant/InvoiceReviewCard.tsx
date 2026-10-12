@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { api, InvoiceCandidate } from "@/lib/api";
+import { api, ApiError, InvoiceCandidate } from "@/lib/api";
 import { Spinner } from "@/components/ui/Spinner";
 import { useT } from "@/lib/i18n-client";
 
@@ -17,7 +17,7 @@ export default function InvoiceReviewCard({ shopId, source, currency, candidates
   const [rows, setRows] = useState<Row[]>(() =>
     candidates.map((c) => {
       const best = c.matches[0];
-      return { receiptId: c.already_saved ? null : (best?.receipt_id ?? null), checked: !c.already_saved && !!best && best.score >= 0.9, status: "idle" };
+      return { receiptId: c.already_saved ? null : (best?.receipt_id ?? null), checked: !c.already_saved && !!best && best.score >= 0.9 && !best.duplicate_of, status: "idle" };
     }),
   );
   const [busy, setBusy] = useState(false);
@@ -38,8 +38,18 @@ export default function InvoiceReviewCard({ shopId, source, currency, candidates
     for (let i = 0; i < rows.length; i++) {
       if (!ready[i]) continue;
       patch(i, { status: "saving", error: undefined });
+      const receiptId = rows[i].receiptId as number;
+      // Olası mükerreri kullanıcı kartta gördü ve kutuyu kendisi işaretledi: bu onay yeterli.
+      const dup = !!candidates[i].matches.find((m) => m.receipt_id === receiptId)?.duplicate_of;
       try {
-        await api.finance.invoices.confirm(shopId, rows[i].receiptId as number, candidates[i]);
+        try {
+          await api.finance.invoices.confirm(shopId, receiptId, candidates[i], dup);
+        } catch (e) {
+          if (!(e instanceof ApiError && e.status === 409) || !window.confirm(`${e.message}
+
+${t("Yine de kaydedilsin mi?", "Save it anyway?")}`)) throw e;
+          await api.finance.invoices.confirm(shopId, receiptId, candidates[i], true);
+        }
         patch(i, { status: "saved", checked: false });
       } catch (e) {
         patch(i, { status: "error", error: e instanceof Error && e.message ? e.message : t("Kaydedilemedi", "Could not save") });
@@ -85,6 +95,15 @@ export default function InvoiceReviewCard({ shopId, source, currency, candidates
                   {c.weight_kg ? ` · ${c.weight_kg} kg` : ""}
                 </div>
                 {c.check_note && <div className="text-amber-700 dark:text-amber-400">⚠ {c.check_note}</div>}
+                {!c.already_saved && match?.duplicate_of && r.status !== "saved" && (
+                  <div className="text-amber-700 dark:text-amber-400">
+                    ⚠{" "}
+                    {t(
+                      `Bu siparişe aynı tutarda bir kalem zaten kayıtlı (${match.duplicate_of.invoice_no} · ${match.duplicate_of.invoice_date}). Aynı fatura iki kez yüklenmiş olabilir.`,
+                      `This order already has a line with the same amount (${match.duplicate_of.invoice_no} · ${match.duplicate_of.invoice_date}). The same invoice may have been uploaded twice.`,
+                    )}
+                  </div>
+                )}
 
                 {c.already_saved ? (
                   <div className="text-neutral-500 dark:text-neutral-400">✓ {t("Bu satır zaten kayıtlı.", "This line is already saved.")}</div>

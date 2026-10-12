@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Logo from "@/components/Logo";
-import { serif } from "@/components/site/fonts";
+import { display, sans } from "@/components/site/fonts";
 import { STATUS_ACTIONS, STATUS_COPY, StatusCode } from "@/lib/copy-errors";
 import type { Lang } from "@/lib/i18n";
 
@@ -27,11 +27,11 @@ export default function StatusPage({
   const copy = STATUS_COPY[code][lang];
   const actions = STATUS_ACTIONS[lang];
   return (
-    <main className="flex min-h-screen flex-1 flex-col items-center justify-center bg-[#FBF9F6] px-6 py-16 text-center text-neutral-800 dark:bg-[#0E0D0C] dark:text-neutral-200">
+    <main className={`${sans.className} flex min-h-screen flex-1 flex-col items-center justify-center bg-[#FBF9F6] px-6 py-16 text-center text-neutral-800 dark:bg-[#0E0D0C] dark:text-neutral-200`}>
       <Link href="/" aria-label="Ulagg">
         <Logo height={28} />
       </Link>
-      <p className={`${serif.className} mt-14 text-8xl leading-none text-[#D97757] sm:text-9xl`}>{code}</p>
+      <p className={`${display.className} mt-14 text-8xl font-bold tracking-tight leading-none text-[#D97757] sm:text-9xl`}>{code}</p>
       <h1 className="mt-6 text-2xl font-semibold text-neutral-900 dark:text-neutral-50">{copy.title}</h1>
       <p className="mt-3 max-w-md leading-relaxed text-neutral-600 dark:text-neutral-300">{copy.message}</p>
       <div className="mt-8 flex flex-wrap items-center justify-center gap-3">

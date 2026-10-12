@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, Order, OrdersPage as OrdersPageData, OrdersSyncStatus } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import AppShell from "@/components/AppShell";
+import { pageContainer } from "@/components/layout/pageContainer";
 import OrderCard from "@/components/orders/OrderCard";
 import OrderFilterPanel from "@/components/orders/OrderFilterPanel";
 import ShipModal from "@/components/orders/ShipModal";
@@ -325,21 +326,13 @@ export default function OrdersPage() {
   );
 
   return (
-    <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/orders">
-      <div className="mx-auto max-w-6xl px-3 pb-8 pt-0 sm:px-6">
+    <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/orders" requiresShop>
+      <div className={pageContainer("page", "flush")}>
         <div>
           {!user && !bootError && <PageSpinner />}
         </div>
         {(bootError || error) && <p className="mb-4 text-sm text-red-600">{bootError ?? error}</p>}
 
-        {user && shops !== null && !activeShop && (
-          <div className="rounded-xl border border-neutral-200 bg-white p-8 text-center dark:border-neutral-800 dark:bg-neutral-900">
-            <p className="mb-4 text-neutral-600 dark:text-neutral-300">{t("Siparişleri görmek için önce Etsy mağazanı bağlaman gerekiyor.", "Connect your Etsy shop to see your orders.")}</p>
-            <a href={api.shops.connectUrl()} className="inline-block rounded-lg bg-[#D97757] px-4 py-2 text-sm font-medium text-white hover:bg-[#C6613F]">
-              {t("Etsy'ye Bağlan", "Connect Etsy")}
-            </a>
-          </div>
-        )}
 
         {activeShop && (
           <>
@@ -358,7 +351,7 @@ export default function OrdersPage() {
               </p>
             )}
 
-            <div ref={stickyRef} className="z-[9] -mx-3 bg-neutral-50 px-3 pb-3 pt-3 dark:bg-neutral-950 sm:-mx-6 sm:px-6 lg:sticky lg:top-[49px]">
+            <div ref={stickyRef} className="z-[9] -mx-4 bg-neutral-50 px-4 pb-3 pt-3 dark:bg-neutral-950 sm:-mx-6 sm:px-6 lg:sticky lg:top-[49px]">
             <h1 className="mb-2.5 text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t("Siparişler", "Orders")}</h1>
             <div className="flex items-center gap-2">
               <div className="relative min-w-0 flex-1">
@@ -417,7 +410,7 @@ export default function OrdersPage() {
               )}
               <div className="ml-auto flex shrink-0 items-center gap-2 sm:hidden">{controls}</div>
             </div>
-            <div className="-mx-3 mt-3 flex gap-x-5 overflow-x-auto whitespace-nowrap border-b border-neutral-200 px-3 [scrollbar-width:none] dark:border-neutral-800 sm:mx-0 sm:flex-wrap sm:px-0">
+            <div className="-mx-4 mt-3 flex gap-x-5 overflow-x-auto whitespace-nowrap border-b border-neutral-200 px-4 [scrollbar-width:none] dark:border-neutral-800 sm:mx-0 sm:flex-wrap sm:px-0">
               {TABS.map(([key, tr, en]) => (
                 <button
                   key={key}

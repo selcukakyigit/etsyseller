@@ -34,6 +34,8 @@ from app.notifications import models as _notification_models  # noqa: F401
 from app.ai import models as _ai_models  # noqa: F401
 from app.billing import models as _billing_models  # noqa: F401
 from app.admin import models as _admin_models  # noqa: F401
+from app.modkit import models as _modkit_models  # noqa: F401
+from app.supply import models as _supply_models  # noqa: F401
 from app.core import app_settings as _app_settings  # noqa: F401
 
 from app.account.router import router as account_router
@@ -45,8 +47,11 @@ from app.banners.router import router as banners_router
 from app.billing.router import router as billing_router
 from app.billing.webhooks import router as billing_webhooks_router
 from app.contact.router import router as contact_router
+from app.site.router import router as site_router
 from app.finance.router import router as finance_router
 from app.finance.invoices_router import router as finance_invoices_router
+from app.modkit.routes import core_router as modkit_router, invite_router
+from app.supply.router import base_router as supply_base_router, router as supply_router
 from app.core.db_guard import warn_unlocked_tables
 from app.jobs.scheduler import start_scheduler, stop_scheduler
 from app.keywords.router import router as keywords_router
@@ -144,6 +149,10 @@ app.include_router(orders_router)
 app.include_router(notifications_router)
 app.include_router(finance_router)
 app.include_router(finance_invoices_router)
+app.include_router(modkit_router)
+app.include_router(invite_router)
+app.include_router(supply_base_router)
+app.include_router(supply_router)
 app.include_router(assistant_router)
 app.include_router(taxonomy_router)
 app.include_router(keywords_router)
@@ -153,3 +162,4 @@ app.include_router(admin_router)
 app.include_router(billing_router)
 app.include_router(billing_webhooks_router)
 app.include_router(banners_router)
+app.include_router(site_router)

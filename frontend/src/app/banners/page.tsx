@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, API_URL, BannerImage, BannerStyle, Listing, ShopSection } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import AppShell from "@/components/AppShell";
+import { pageContainer } from "@/components/layout/pageContainer";
 import ListingPicker from "@/components/banners/ListingPicker";
 import { useT } from "@/lib/i18n-client";
 import { useCached } from "@/lib/pageCache";
@@ -140,8 +141,8 @@ export default function BannersPage() {
   const done = slots.filter((s) => s.status === "done").length;
 
   return (
-    <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/banners">
-      <div className="mx-auto max-w-4xl space-y-4 px-3 py-4 sm:px-6 sm:py-8">
+    <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/banners" requiresShop>
+      <div className={pageContainer("form", "normal", "space-y-4")}>
         {!user && !bootError && <PageSpinner />}
         {bootError && <p className="text-sm text-red-600 dark:text-red-400">{bootError}</p>}
 

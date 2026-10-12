@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 import { SiteFooter, SiteHeader } from "@/components/site/SiteChrome";
 import { Lang } from "@/lib/i18n";
 import { LEGAL_UPDATED } from "@/lib/legal";
+import { sans } from "@/components/site/fonts";
 
 export default function LegalLayout({
   lang,
@@ -15,7 +16,7 @@ export default function LegalLayout({
   children: ReactNode;
 }) {
   return (
-    <div className="flex-1 bg-[#FBF9F6] text-neutral-800 dark:bg-[#0E0D0C] dark:text-neutral-200">
+    <div className={`${sans.className} flex-1 bg-[#FBF9F6] text-neutral-800 dark:bg-[#0E0D0C] dark:text-neutral-200`}>
       <SiteHeader lang={lang} />
       <main className="mx-auto max-w-3xl px-6 py-12">
         <h1 className="text-3xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">{title}</h1>

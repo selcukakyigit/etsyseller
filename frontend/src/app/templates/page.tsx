@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api, DescriptionTemplate } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import AppShell from "@/components/AppShell";
+import { pageContainer } from "@/components/layout/pageContainer";
 import { Modal, btnGhost, btnPrimary } from "@/components/listing-editor/Modal";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { BlockSpinner } from "@/components/ui/Spinner";
@@ -106,8 +107,8 @@ export default function DescriptionTemplatesPage() {
   const allSelected = list.length > 0 && list.every((x) => selected.has(x.id));
 
   return (
-    <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/templates">
-      <div className="mx-auto max-w-2xl space-y-6 px-4 sm:px-6 py-6 sm:py-8">
+    <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/templates" requiresShop>
+      <div className={pageContainer("narrow", "normal", "space-y-6")}>
       <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{t("Açıklama şablonları", "Description templates")}</h1>
       {(bootError || error) && <p className="text-sm text-red-600 dark:text-red-400">{bootError ?? error}</p>}
 

@@ -1,24 +1,31 @@
 import { ComponentType } from "react";
 import { BoxIcon, ChartIcon, HomeIcon, PulseIcon, TagIcon } from "@/components/icons";
 
-/** Uygulama içi gezinmenin tek kaynağı: masaüstü kenar çubuğu, mobil çekmece ve alt sekme çubuğu buradan okur. */
-export type NavItem = { href: string; tr: string; en: string; icon?: ComponentType<{ className?: string }> };
+/** Uygulama içi gezinmenin tek kaynağı: masaüstü kenar çubuğu, mobil çekmece ve alt sekme çubuğu buradan okur.
+ * `needsShop`: bağlı Etsy mağazası olmadan anlamsız sayfa; mağaza yokken menüde gösterilmez (bkz. `forShops`). */
+export type NavItem = { href: string; tr: string; en: string; icon?: ComponentType<{ className?: string }>; needsShop?: boolean };
 
 export const MAIN_NAV: NavItem[] = [
   { href: "/dashboard", tr: "Ana sayfa", en: "Home", icon: HomeIcon },
-  { href: "/analysis", tr: "Analiz", en: "Analysis", icon: PulseIcon },
-  { href: "/listings", tr: "Listing'ler", en: "Listings", icon: TagIcon },
-  { href: "/orders", tr: "Siparişler", en: "Orders", icon: BoxIcon },
-  { href: "/finance", tr: "Finans", en: "Finance", icon: ChartIcon },
+  { href: "/analysis", tr: "Analiz", en: "Analysis", icon: PulseIcon, needsShop: true },
+  { href: "/listings", tr: "Listing'ler", en: "Listings", icon: TagIcon, needsShop: true },
+  { href: "/orders", tr: "Siparişler", en: "Orders", icon: BoxIcon, needsShop: true },
+  { href: "/finance", tr: "Finans", en: "Finance", icon: ChartIcon, needsShop: true },
 ];
 
 // "Mağaza" açılır menüsü: mağazanın kendisine ait, ara sıra açılan sayfalar.
 export const SHOP_NAV: NavItem[] = [
-  { href: "/reviews", tr: "Yorumlar", en: "Reviews" },
-  { href: "/shipping", tr: "Kargo ayarları", en: "Shipping settings" },
-  { href: "/templates", tr: "Açıklama şablonları", en: "Description templates" },
-  { href: "/banners", tr: "Banner oluşturucu", en: "Banner maker" },
+  { href: "/reviews", tr: "Yorumlar", en: "Reviews", needsShop: true },
+  { href: "/shipping", tr: "Kargo ayarları", en: "Shipping settings", needsShop: true },
+  { href: "/templates", tr: "Açıklama şablonları", en: "Description templates", needsShop: true },
+  { href: "/banners", tr: "Banner oluşturucu", en: "Banner maker", needsShop: true },
 ];
+
+/** Mağaza yokken mağaza gerektiren öğeleri ayıklar. */
+export const forShops = (items: NavItem[], hasShop: boolean): NavItem[] => (hasShop ? items : items.filter((i) => !i.needsShop));
+
+// Dış Tedarik: kenar çubuğunda sabit bölüm; altında kullanıcının tedarikçileri listelenir (bkz. SidebarNav).
+export const SUPPLY_NAV: NavItem = { href: "/supply", tr: "Dış Tedarik", en: "External suppliers" };
 
 export const SETTINGS_NAV: NavItem = { href: "/settings", tr: "Ayarlar", en: "Settings" };
 

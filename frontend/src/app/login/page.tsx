@@ -9,6 +9,7 @@ import Logo from "@/components/Logo";
 import LangSwitch from "@/components/LangSwitch";
 import { useLang } from "@/lib/i18n-client";
 import { AUTH_COPY, translateAuthError } from "@/lib/copy-auth";
+import { takeNext } from "@/modules/core/postLogin";
 
 type Mode = "login" | "register" | "forgot";
 
@@ -28,15 +29,21 @@ export default function LoginPage() {
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Ana sayfadaki "Get started" bağlantısı ?mode=register ile gelir.
+  // Ana sayfadaki "Get started" bağlantısı ?mode=register ile gelir; davet sayfası e-postayı da doldurur (?email=).
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("mode") === "register") setMode("register");
+    const q = new URLSearchParams(window.location.search);
+    // URL ancak tarayıcıda okunabilir; bağlandıktan sonra bir kez eşitlemek kaçınılmaz.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (q.get("mode") === "register") setMode("register");
+    const preset = q.get("email");
+    if (preset && /^\S+@\S+\.\S+$/.test(preset)) setEmail(preset.slice(0, 255));
   }, []);
 
   // Giriş zaten varsa (veya Google dönüşünden sonra oturum kurulduysa) uygulamaya geç.
   useEffect(() => {
+    // Davet gibi bir sayfadan gelindiyse oraya dönülür (yalnızca site içi yol; bkz. modules/core/postLogin.ts).
     const go = () => {
-      router.replace("/dashboard");
+      router.replace(takeNext() ?? "/dashboard");
       router.refresh();
     };
     supabase.auth.getSession().then(({ data }) => {

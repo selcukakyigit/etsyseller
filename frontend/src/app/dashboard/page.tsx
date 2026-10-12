@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { api } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import AppShell from "@/components/AppShell";
+import { pageContainer } from "@/components/layout/pageContainer";
 import ChatPanel from "@/components/assistant/ChatPanel";
 import { useDashboardData } from "@/components/dashboard/stats";
 import { useT } from "@/lib/i18n-client";
@@ -20,21 +20,10 @@ export default function DashboardPage() {
   const chip = "flex min-w-0 items-baseline gap-1.5 rounded-lg px-2 py-1 transition hover:bg-neutral-100 dark:hover:bg-neutral-800";
 
   return (
-    <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/dashboard">
-      <div className="mx-auto max-w-[96rem] px-3 py-2 sm:px-6 sm:py-6">
+    <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/dashboard" requiresShop>
+      <div className={pageContainer("dashboard", "compact")}>
         {!user && !bootError && <PageSpinner />}
         {(bootError || error) && <p className="mb-4 text-sm text-red-600 dark:text-red-400">{bootError ?? error}</p>}
-
-        {user && shops !== null && !activeShop && (
-          <div className="rounded-xl border border-neutral-200 bg-white p-8 text-center dark:border-neutral-800 dark:bg-neutral-900">
-            <p className="mb-4 text-neutral-600 dark:text-neutral-300">
-              {t("Ulagg'ı kullanmak için önce Etsy mağazanı bağlaman gerekiyor.", "Connect your Etsy shop to start using Ulagg.")}
-            </p>
-            <a href={api.shops.connectUrl()} className="inline-block rounded-lg bg-[#D97757] px-4 py-2 text-sm font-medium text-white hover:bg-[#C6613F]">
-              {t("Etsy'ye Bağlan", "Connect Etsy")}
-            </a>
-          </div>
-        )}
 
         {shopId !== undefined && (
           <div className="space-y-2 sm:space-y-3">

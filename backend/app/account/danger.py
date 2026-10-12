@@ -73,6 +73,10 @@ def _shop_ids(db: Session, user: User) -> list[int]:
 def reset_data(db: Session, user: User) -> None:
     """Hesap açık, profil aynı kalır; bağlı mağazalar ve onlara ait TÜM veri silinir — hesap yeni açılmış gibi olur."""
     _wipe_shops(db, _shop_ids(db, user))
+    # Modül kayıtları (Dış Tedarik…) ve depodaki belgeleri de gider; misafir olarak erişilen başkalarının kayıtlarına dokunulmaz.
+    from app.modkit.documents import wipe_workspaces
+
+    wipe_workspaces(db, workspace_ids(db, user))
     db.execute(delete(Base.metadata.tables["oauth_states"]).where(Base.metadata.tables["oauth_states"].c.user_id == user.id))
     db.commit()
 

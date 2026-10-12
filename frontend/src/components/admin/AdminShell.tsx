@@ -36,6 +36,7 @@ const TABS = [
   { href: "/admin/credits", tr: "Krediler", en: "Credits", icon: "M12 3a9 9 0 100 18 9 9 0 000-18zm0 4v10m-3-7.5c0-1 1.3-1.5 3-1.5s3 .7 3 2-1.3 1.7-3 2-3 .8-3 2 1.3 2 3 2 3-.5 3-1.5" },
   { href: "/admin/billing", tr: "Satış", en: "Sales", icon: "M3 7h18v10H3V7zm0 4h18M7 15h3" },
   { href: "/admin/messages", tr: "Mesajlar", en: "Messages", icon: "M4 5h16v11H8l-4 4V5z" },
+  { href: "/admin/landing", tr: "Landing", en: "Landing", icon: "M3 5h18v14H3V5zm0 4h18M7 7h.01M10 7h.01" },
   { href: "/admin/system", tr: "Sistem", en: "System", icon: "M12 15a3 3 0 100-6 3 3 0 000 6zm7.4-3a7.4 7.4 0 00-.1-1.2l2-1.6-2-3.4-2.4 1a7.5 7.5 0 00-2-1.2L14.5 3h-5l-.4 2.6a7.5 7.5 0 00-2 1.2l-2.4-1-2 3.4 2 1.6a7.4 7.4 0 000 2.4l-2 1.6 2 3.4 2.4-1a7.5 7.5 0 002 1.2l.4 2.6h5l.4-2.6a7.5 7.5 0 002-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z" },
 ] as const satisfies readonly NavItem[];
 

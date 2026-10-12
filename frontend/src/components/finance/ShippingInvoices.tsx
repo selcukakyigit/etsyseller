@@ -1,37 +1,18 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useState } from "react";
-import { api, FinProduct, InvoiceCandidate, InvoiceShipment } from "@/lib/api";
-import { useRegenProgress } from "@/lib/useRegenProgress";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { api, ApiError, FinProduct, InvoiceCandidate, InvoiceShipment } from "@/lib/api";
 import { tNow as t } from "@/lib/i18n";
 import { useCached } from "@/lib/pageCache";
 import { BlockSpinner } from "@/components/ui/Spinner";
-import { CameraIcon } from "@/components/icons";
 import DateRangePicker, { presetOptions } from "@/components/ui/DateRangePicker";
+import DocumentAnalyzer from "@/modules/components/DocumentAnalyzer";
 
 const card = "rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900";
 const input = "rounded-lg border border-neutral-300 bg-white px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900";
 
 
 type Review = { id: number; candidate: InvoiceCandidate; receiptId: number | null };
-type Progress = { done: number; total: number; startedAt: number; name: string };
-
-/** Dosya sayısı + mevcut dosyanın zaman-bazlı tahmini ilerlemesiyle tek bir yüzdelik dolum çubuğu. */
-function ProgressBar({ p }: { p: Progress }) {
-  const cur = useRegenProgress({ phase: "running", startedAt: p.startedAt });
-  const pct = Math.min(99, Math.round(((p.done + cur / 100) / p.total) * 100));
-  return (
-    <div className="mt-3" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
-      <div className="relative h-5 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
-        <div className="h-full rounded-full bg-[#D97757]/70 transition-[width] duration-200 ease-out" style={{ width: `${pct}%` }} />
-        <span className="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-neutral-900 dark:text-neutral-50">
-          {p.name} {t("okunuyor…", "reading…")} %{pct} ({p.done}/{p.total})
-        </span>
-      </div>
-    </div>
-  );
-}
-
 /**
  * "Kargo faturaları" sekmesi: fatura dosyası (PDF/görsel/Excel/CSV/HTML) yükle → yapay zekâ gönderi satırlarını
  * çıkarır → her satır takip no / alıcı adına göre bir SİPARİŞLE eşleşir → onayla → tutar o siparişin ürünlerine
@@ -59,10 +40,9 @@ export default function ShippingInvoices({
   const [sort, setSort] = useState("inv_date");
   const [page, setPage] = useState(0);
   const PER_PAGE = 20;
-  const [progress, setProgress] = useState<Progress | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [nextId, setNextId] = useState(1);
+  const nextId = useRef(1);
   // Kayıtlı faturalar sekme belleğinde tutulur: sekmeye geri dönünce liste beklemeden görünür, arkada tazelenir.
   const [list, setList] = useCached<{ items: InvoiceShipment[]; total: number; total_amount: number }>(
     `fin-invoices:${shopId}:${q}:${kind}:${invStart}:${invEnd}:${sort}:${page}`,
@@ -115,34 +95,53 @@ export default function ShippingInvoices({
     onSaved();
   }
 
-  async function handleFiles(files: FileList | File[]) {
-    const list = Array.from(files);
-    if (list.length === 0) return;
-    setError(null);
-    let id = nextId;
-    const added: Review[] = [];
-    for (let i = 0; i < list.length; i++) {
-      setProgress({ done: i, total: list.length, startedAt: Date.now(), name: list[i].name });
-      try {
-        const candidates = await api.finance.invoices.parse(shopId, list[i]);
-        for (const c of candidates) {
-          added.push({ id: id++, candidate: c, receiptId: c.already_saved ? null : (c.matches[0]?.receipt_id ?? null) });
-        }
-      } catch (e) {
-        // Ağ hatasında (sunucu yanıt vermediğinde) mesaj boş gelir; dosya adının yanında boşluk kalmasın.
-        const msg = e instanceof Error && e.message ? e.message : t("okunamadı, tekrar dene", "could not be read, try again");
-        setError(`${list[i].name}: ${msg}`);
-      }
-    }
-    setNextId(id);
+  // Her dosya/metin ayrı okunur; adaylar onay listesine eklenir (satır kimliği yalnızca liste anahtarı içindir).
+  function addCandidates(candidates: InvoiceCandidate[]) {
+    const added: Review[] = candidates.map((c) => ({ id: nextId.current++, candidate: c, receiptId: c.already_saved ? null : (c.matches[0]?.receipt_id ?? null) }));
     setReviews((r) => [...r, ...added]);
-    setProgress(null);
   }
+
+  async function readFile(file: File) {
+    setError(null);
+    try {
+      addCandidates(await api.finance.invoices.parse(shopId, file));
+    } catch (e) {
+      // Ağ hatasında (sunucu yanıt vermediğinde) mesaj boş gelir; dosya adının yanında boşluk kalmasın.
+      const msg = e instanceof Error && e.message ? e.message : t("okunamadı, tekrar dene", "could not be read, try again");
+      setError(`${file.name}: ${msg}`);
+    }
+  }
+
+  async function readText(text: string) {
+    setError(null);
+    try {
+      addCandidates(await api.finance.invoices.parseText(shopId, text));
+    } catch (e) {
+      setError(e instanceof Error && e.message ? e.message : t("Metin okunamadı, tekrar dene", "The text could not be read, try again"));
+    }
+  }
+
+  const duplicateOf = (r: Review) => r.candidate.matches.find((m) => m.receipt_id === r.receiptId)?.duplicate_of ?? null;
+  const askDuplicate = (msg: string) => window.confirm(`${msg}
+
+${t("Yine de kaydedilsin mi?", "Save it anyway?")}`);
 
   async function confirmOne(r: Review): Promise<boolean> {
     if (r.receiptId === null) return false;
+    // Siparişte aynı tutarda kalem varsa (ör. aynı fatura hem ekran görüntüsü hem Excel olarak yüklendi) ikinci onay iste.
+    const dup = duplicateOf(r);
+    if (dup && !askDuplicate(t(
+      `Bu siparişe aynı tutarda bir kalem zaten kayıtlı (${dup.invoice_no} · ${dup.invoice_date}). Aynı fatura iki kez yüklenmiş olabilir.`,
+      `This order already has a line with the same amount (${dup.invoice_no} · ${dup.invoice_date}). The same invoice may have been uploaded twice.`,
+    ))) return false;
     try {
-      await api.finance.invoices.confirm(shopId, r.receiptId, r.candidate);
+      try {
+        await api.finance.invoices.confirm(shopId, r.receiptId, r.candidate, !!dup);
+      } catch (e) {
+        // Sipariş elle girildiyse ya da aynı yüklemede iki kopya varsa mükerreri sunucu yakalar (409).
+        if (!(e instanceof ApiError && e.status === 409) || !askDuplicate(e.message)) throw e;
+        await api.finance.invoices.confirm(shopId, r.receiptId, r.candidate, true);
+      }
       setReviews((list) => list.filter((x) => x.id !== r.id));
       return true;
     } catch (e) {
@@ -160,8 +159,8 @@ export default function ShippingInvoices({
     setSaving(false);
   }
 
-  // Takip no ile kesin eşleşen (skor ≥ 0,9) ve daha önce kaydedilmemiş satırların tümünü tek tıkla onaylar.
-  const sure = reviews.filter((r) => !r.candidate.already_saved && r.receiptId !== null && (r.candidate.matches.find((m) => m.receipt_id === r.receiptId)?.score ?? 0) >= 0.9);
+  // Takip no ile kesin eşleşen (skor ≥ 0,9), daha önce kaydedilmemiş ve olası mükerrer olmayan satırların tümünü tek tıkla onaylar.
+  const sure = reviews.filter((r) => !r.candidate.already_saved && r.receiptId !== null && !duplicateOf(r) && (r.candidate.matches.find((m) => m.receipt_id === r.receiptId)?.score ?? 0) >= 0.9);
   async function confirmSure() {
     setSaving(true);
     for (const r of sure) await confirmOne(r);
@@ -188,50 +187,13 @@ export default function ShippingInvoices({
             "PDF, JPG/PNG, Excel (xlsx/xls), CSV or HTML. Each shipment on the invoice is matched to an order by tracking number / recipient name, and the amount is added to that order's items. You can upload several invoices for one shipment (e.g. customs + freight); they are added up. Files are not stored, only the extracted amounts.",
           )}
         </p>
-        {/* Dokunmatik cihazda (telefon/tablet): faturanın fotoğrafını doğrudan arka kamerayla çek. */}
-        <label
-          aria-disabled={!!progress}
-          className="mb-2 hidden cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#D97757] px-4 py-3.5 text-sm font-semibold text-white hover:bg-[#C6613F] aria-disabled:opacity-50 pointer-coarse:flex"
-        >
-          <CameraIcon />
-          {t("Faturanın fotoğrafını çek", "Take a photo of the invoice")}
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            disabled={!!progress}
-            onChange={(e) => {
-              if (e.target.files) void handleFiles(e.target.files);
-              e.target.value = "";
-            }}
-          />
-        </label>
-        <label
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => {
-            e.preventDefault();
-            if (!progress) void handleFiles(e.dataTransfer.files);
-          }}
-          className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-neutral-300 p-8 text-center text-sm text-neutral-500 hover:border-neutral-400 dark:border-neutral-700 dark:hover:border-neutral-600 pointer-coarse:p-5"
-        >
-          <span className="text-2xl">🧾</span>
-          <span className="font-medium text-neutral-700 dark:text-neutral-200 pointer-coarse:hidden">{t("Faturaları buraya bırak ya da tıkla", "Drop invoices here or click")}</span>
-          <span className="hidden font-medium text-neutral-700 dark:text-neutral-200 pointer-coarse:inline">{t("ya da dosya seç (PDF, Excel, resim)", "or choose a file (PDF, Excel, image)")}</span>
-          <input
-            type="file"
-            multiple
-            accept=".pdf,.jpg,.jpeg,.png,.webp,.xlsx,.xls,.csv,.html,.htm"
-            className="hidden"
-            disabled={!!progress}
-            onChange={(e) => {
-              if (e.target.files) void handleFiles(e.target.files);
-              e.target.value = "";
-            }}
-          />
-        </label>
-        {progress && <ProgressBar p={progress} />}
-        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+        <DocumentAnalyzer
+          accept=".pdf,.jpg,.jpeg,.png,.webp,.xlsx,.xls,.csv,.html,.htm"
+          hint={t("PDF, Excel, resim ya da HTML", "PDF, Excel, image or HTML")}
+          onFile={readFile}
+          onText={readText}
+        />
+        {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
       </section>
 
       {reviews.length > 0 && (
@@ -249,7 +211,7 @@ export default function ShippingInvoices({
               const c = r.candidate;
               const match = c.matches.find((m) => m.receipt_id === r.receiptId);
               return (
-                <div key={r.id} className={`rounded-lg border p-3 text-sm ${c.already_saved ? "border-amber-300 dark:border-amber-800" : "border-neutral-200 dark:border-neutral-800"}`}>
+                <div key={r.id} className={`rounded-lg border p-3 text-sm ${c.already_saved || match?.duplicate_of ? "border-amber-300 dark:border-amber-800" : "border-neutral-200 dark:border-neutral-800"}`}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <span className="font-semibold">{c.recipient || t("Alıcı yok", "No recipient")}</span>
@@ -269,6 +231,15 @@ export default function ShippingInvoices({
 
                   {c.already_saved && <div className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">{t("Bu gönderi zaten kayıtlı — tekrar eklenmez.", "This shipment is already saved — it will not be added again.")}</div>}
                   {c.check_note && <div className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">⚠ {c.check_note}</div>}
+                  {!c.already_saved && match?.duplicate_of && (
+                    <div className="mt-2 rounded-md bg-amber-50 px-3 py-1.5 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                      ⚠{" "}
+                      {t(
+                        `Bu siparişe aynı tutarda bir kalem zaten kayıtlı (${match.duplicate_of.invoice_no} · ${match.duplicate_of.invoice_date}). Aynı faturayı iki kez yüklemiş olabilirsiniz; mükerrerse "Atla" deyin.`,
+                        `This order already has a line with the same amount (${match.duplicate_of.invoice_no} · ${match.duplicate_of.invoice_date}). You may have uploaded the same invoice twice; if so, choose "Skip".`,
+                      )}
+                    </div>
+                  )}
 
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <select value={c.kind} onChange={(e) => patch(r.id, { candidate: { ...c, kind: e.target.value as InvoiceCandidate["kind"] } })} className={input}>

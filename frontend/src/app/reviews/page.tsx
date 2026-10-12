@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { api, ShopReview, ShopReviewStats } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import AppShell from "@/components/AppShell";
+import { pageContainer } from "@/components/layout/pageContainer";
 import { Pager } from "@/components/shipping/shared";
 import { useT } from "@/lib/i18n-client";
 import { useCached } from "@/lib/pageCache";
@@ -194,8 +195,8 @@ function ReviewsPageInner() {
   const pages = total !== null ? Math.max(1, Math.ceil(total / PAGE_SIZE)) : 1;
 
   return (
-    <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/reviews">
-      <div className="mx-auto max-w-3xl space-y-6 px-4 sm:px-6 py-6 sm:py-8">
+    <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/reviews" requiresShop>
+      <div className={pageContainer("reading", "normal", "space-y-6")}>
         {/* Başlık + üst sayfalama + istatistik kartları: hepsi tek blok olarak sabit — kaydırınca liste
             altından geçer, sayfa değiştirince de bu blok yerinden oynamaz. */}
         {/* Yalnızca geniş ekranda sabit: telefonda kartlar alt alta dizilince blok ekrandan uzun oluyor ve listeyi kapatıyordu. */}

@@ -4,11 +4,12 @@ from typing import Callable, Literal, TypeVar
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.admin import ai_models, audit, billing, credits, messages, overview, system, user_actions, users
+from app.admin import ai_models, audit, billing, credits, landing, messages, overview, system, user_actions, users
 from app.admin.deps import AdminError, admin_only
 from app.admin.schemas import (
     AdjustIn, AiModelIn, AiModelOut, AssignPlanIn, AttachmentUrlOut, AuditOut, BillingOverviewOut, BulkIn, BulkResultOut,
-    CatalogOut, CreditSettingsIn, CreditSettingsOut, DeleteUserIn, KeyIn, KeyTestIn, MessageOut, MessageUpdateIn, NoteIn,
+    CatalogOut, CreditSettingsIn, CreditSettingsOut, DeleteUserIn, KeyIn, KeyTestIn, LandingSettingsIn, LandingSettingsOut,
+    MessageOut, MessageUpdateIn, NoteIn,
     OnlineUserOut, OverviewOut, ProductIn, ProductOut, RoleIn, StatusIn, SystemOut, TaskIn, TestOut, UsageReportOut, UserCreditsIn,
     UserDetailOut, UsersPageOut, WorkspaceCreditsPageOut,
 )
@@ -273,6 +274,21 @@ def adjust_credits(workspace_id: int, payload: AdjustIn, admin: User = Depends(a
 @router.get("/credits/usage", response_model=UsageReportOut)
 def credit_usage(days: int = Query(30, ge=1, le=365), db: Session = Depends(get_db)):
     return credits.usage_report(db, days)
+
+
+# ---- Landing (tanıtım sitesi)
+
+
+@router.get("/landing", response_model=LandingSettingsOut)
+def landing_settings():
+    return landing.get_settings()
+
+
+@router.put("/landing", response_model=LandingSettingsOut)
+def update_landing_settings(payload: LandingSettingsIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    out = _run(landing.update_settings, db, payload)
+    audit.record(db, admin, "landing.settings", "", payload.model_dump_json())
+    return out
 
 
 # ---- Satış

@@ -70,6 +70,28 @@ class VariantCost(Base):
     cost_pct: Mapped[float] = mapped_column(PCT, default=0.0, server_default="0")
 
 
+class CostVersion(Base):
+    """Birim maliyetin tarihli sürümü (yalnızca modüllerden — ör. Dış Tedarik — gelen maliyetler için). `variant_key` boşsa ilan
+    geneli. Maliyet BİLEŞENLERDEN oluşur: her kaynak (kesim tedarikçisi, boyacı, ambalaj…) kendi bileşenini yazar (`component`, ekranda
+    `label`); ürünün birim maliyeti bileşenlerin toplamıdır, aynı kaynağın yeni sürümü yalnızca kendi bileşenini günceller. Sipariş,
+    kendi tarihindeki sürümlerle hesaplanır (geçmiş siparişler sonradan değişmez); ürün kârlılığı güncel (en son) sürümleri kullanır.
+    Elle girilen maliyet sürümleri siler (tek değer, tüm siparişler). `source`: baseline (modülden önceki değer) ya da modül adı; `ref`:
+    kaynağı (ör. "supply:12"), geri almada o kaynağın sürümleri silinir."""
+
+    __tablename__ = "cost_versions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
+    listing_id: Mapped[int] = mapped_column(BigInteger)
+    variant_key: Mapped[str] = mapped_column(String(300), default="")
+    valid_from: Mapped[dt.date] = mapped_column(Date)
+    unit_cost: Mapped[float] = mapped_column(MONEY, default=0.0)
+    source: Mapped[str] = mapped_column(String(12), default="")
+    ref: Mapped[str] = mapped_column(String(40), default="", index=True)
+    component: Mapped[str] = mapped_column(String(40), default="")  # bileşenin kimliği (ör. "supply:4" = o tedarikçi kaydı, "base" = önceki elle girilmiş değer)
+    label: Mapped[str] = mapped_column(String(120), default="")  # ekranda görünen ad (ör. "Kesim · Ant Lazer")
+
+
 class OrderCost(Base):
     """Tek bir sipariş için elle girilmiş toplam maliyet (özel siparişler); otomatik hesabın yerine geçer."""
 

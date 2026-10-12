@@ -20,6 +20,12 @@ from app.shops.models import ShippingReferenceCache, Shop
 logger = logging.getLogger("app.shipping")
 
 
+def peek(db: Session, shop_id: int, kind: str) -> Any | None:
+    """Yalnızca yerel önbellekten okur (yoksa None); hiçbir zaman Etsy'ye istek atmaz."""
+    row = db.scalars(select(ShippingReferenceCache).where(ShippingReferenceCache.shop_id == shop_id, ShippingReferenceCache.kind == kind)).one_or_none()
+    return json.loads(row.data_json) if row is not None else None
+
+
 def get_or_fetch(db: Session, shop: Shop, kind: str, loader: Callable[[], Any]) -> Any:
     row = db.scalars(
         select(ShippingReferenceCache).where(ShippingReferenceCache.shop_id == shop.id, ShippingReferenceCache.kind == kind)

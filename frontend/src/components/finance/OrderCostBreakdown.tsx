@@ -5,6 +5,7 @@ import { Modal } from "@/components/listing-editor/Modal";
 import { api, FinOrderDetail } from "@/lib/api";
 import { tNow as t } from "@/lib/i18n";
 import { BlockSpinner } from "@/components/ui/Spinner";
+import ItemCostComponents from "./ItemCostComponents";
 
 const KIND: Record<string, [string, string]> = {
   nakliye: ["Nakliye", "Freight"],
@@ -100,6 +101,7 @@ export default function OrderCostBreakdown({
                 <span className="text-neutral-500">{t("Ürün maliyeti", "Item cost")}</span>
                 <span>{money2.format(d.items.reduce((sum, i) => sum + (i.cost_parts.unit + i.cost_parts.pct) * i.quantity, 0))}</span>
               </div>
+              <ItemCostComponents items={d.items} money={money2.format} />
               <div className="flex justify-between py-0.5">
                 <span className="text-neutral-500">{t("Kargo (nakliye + gümrük + ek hizmet)", "Shipping (freight + customs + extras)")}</span>
                 <span>{money2.format(shipTotal)}</span>

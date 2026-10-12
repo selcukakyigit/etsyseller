@@ -1,7 +1,11 @@
-import { tNow } from "@/lib/i18n";
+"use client";
 
-/** Dönen halka. Ekran okuyucular için "Yükleniyor" metni görünmez olarak durur. */
+import { useT } from "@/lib/i18n-client";
+
+/** Dönen halka. Ekran okuyucular için "Yükleniyor" metni görünmez olarak durur. Dil hook'tan gelir: sunucuda ve ilk
+ * çizimde aynı metin üretilir (tNow kullanılınca sunucu "Loading…", tarayıcı "Yükleniyor…" yazıp uyuşmazlık veriyordu). */
 export function Spinner({ size = 20, className = "" }: { size?: number; className?: string }) {
+  const { t } = useT();
   return (
     <span role="status" className={`inline-flex items-center justify-center ${className}`}>
       <span
@@ -9,7 +13,7 @@ export function Spinner({ size = 20, className = "" }: { size?: number; classNam
         style={{ width: size, height: size }}
         className="animate-spin rounded-full border-2 border-neutral-200 border-t-[#D97757] dark:border-neutral-700 dark:border-t-[#D97757]"
       />
-      <span className="sr-only">{tNow("Yükleniyor…", "Loading…")}</span>
+      <span className="sr-only">{t("Yükleniyor…", "Loading…")}</span>
     </span>
   );
 }

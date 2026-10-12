@@ -24,6 +24,12 @@ class MatchItem(BaseModel):
     qty: int
 
 
+class DuplicateOut(BaseModel):
+    invoice_no: str
+    invoice_date: str
+    kind: str
+
+
 class MatchOut(BaseModel):
     receipt_id: int
     canceled: bool = False
@@ -33,6 +39,8 @@ class MatchOut(BaseModel):
     score: float
     reason: str
     items: list[MatchItem]
+    # Bu siparişte aynı tutarda kayıtlı kalem (olası mükerrer); yoksa None.
+    duplicate_of: DuplicateOut | None = None
 
 
 class CandidateOut(BaseModel):
@@ -61,6 +69,8 @@ class ConfirmIn(BaseModel):
     receipt_id: int
     # Aday, /parse'ın döndüğü CandidateOut'un aynısı — sunucu tarafında ayrıca saklanmadığı için istemci geri gönderir.
     candidate: dict
+    # Aynı siparişte aynı tutarda kalem varken kullanıcı "yine de kaydet" dediyse.
+    allow_duplicate: bool = False
 
 
 @router.post("/parse", response_model=list[CandidateOut], dependencies=[Depends(require_ai_enabled)])
@@ -70,9 +80,24 @@ async def parse_invoice(
     file: UploadFile = File(...),
 ):
     content = await read_limited(file, MAX_BYTES, "Dosya")
-    report_ccy = service._fx_tables(db, shop)["R"]
+    report_ccy = service.report_currency(db, shop)
     try:
         return invoices.parse_file(db, shop, content, file.filename or "fatura", file.content_type or "", report_ccy)
+    except invoices.InvoiceError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+class ParseTextIn(BaseModel):
+    text: str = Field(min_length=1, max_length=20000)
+
+
+@router.post("/parse-text", response_model=list[CandidateOut], dependencies=[Depends(require_ai_enabled)])
+def parse_invoice_text(payload: ParseTextIn, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    """Kopyalanıp yapıştırılan fatura metni (telefonun "metni kopyala" özelliği, e-posta gövdesi): görüntü yerine
+    yalnızca metin okunduğu için çok daha ucuzdur."""
+    report_ccy = service.report_currency(db, shop)
+    try:
+        return invoices.parse_text(db, shop, payload.text, report_ccy)
     except invoices.InvoiceError as exc:
         raise HTTPException(422, str(exc)) from exc
 
@@ -80,7 +105,9 @@ async def parse_invoice(
 @router.post("/confirm")
 def confirm_invoice(payload: ConfirmIn, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
     try:
-        rows = invoices.confirm(db, shop, payload.receipt_id, payload.candidate)
+        rows = invoices.confirm(db, shop, payload.receipt_id, payload.candidate, payload.allow_duplicate)
+    except invoices.PossibleDuplicate as exc:
+        raise HTTPException(409, str(exc)) from exc
     except invoices.InvoiceError as exc:
         raise HTTPException(422, str(exc)) from exc
     return {"ids": [r.id for r in rows]}

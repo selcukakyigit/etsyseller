@@ -10,9 +10,10 @@ import logging
 import statistics
 import threading
 from types import SimpleNamespace
+from typing import NamedTuple
 from collections import Counter, defaultdict
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal
@@ -20,7 +21,7 @@ from app.core.fingerprint import ResultCache, fingerprints
 from app.core.i18n import get_lang, tr
 import copy
 from app.etsy.client import EtsyClient
-from app.finance.models import FinPayment, LedgerEntry, ListingCost, OrderCost, VariantCost
+from app.finance.models import CostVersion, FinPayment, LedgerEntry, ListingCost, OrderCost, VariantCost
 from app.listings.models import ListingCache
 from app.orders.derive import fulfillment
 from app.orders.models import OrderCache
@@ -44,26 +45,75 @@ OVERHEAD_LABELS = {
     "ads": ("Etsy Ads / reklam", "Etsy Ads"),
     "listing_fees": ("Listeleme ve yenileme", "Listing and renewal fees"),
     "other": ("Diğer (abonelik, KDV, kredi)", "Other (subscription, VAT, credits)"),
+    "supply": ("Dış tedarik (genel gider)", "External suppliers (overhead)"),
 }
+
+
+def variant_key_from_pairs(pairs: list[tuple[str, str]]) -> str:
+    """(ad, değer) çiftlerinden seçenek anahtarı ("Color: Black | SIZE: M-45"x13""). Satış kalemleri (`variant_key`) ve Etsy
+    envanteri (modkit/products.listing_variants) aynı biçimi kullanır: maliyet, satışlardaki seçenekle birebir eşleşir."""
+    parts = []
+    for name, value in pairs:
+        name = (name or "").strip()
+        if name.lower() == "personalization":
+            continue
+        parts.append(f"{html.unescape(name)}: {html.unescape((value or '').strip())}")
+    return " | ".join(sorted(parts))[:300]
 
 
 def variant_key(t: dict) -> str:
     """İşlem satırındaki seçenekleri (boyut, renk…) tek metne çevirir; kişiselleştirme/serbest metin alanları hariç."""
-    parts = []
-    for v in t.get("variations") or []:
-        name = (v.get("formatted_name") or "").strip()
-        if name.lower() == "personalization" or v.get("question_id"):
-            continue
-        parts.append(f"{html.unescape(name)}: {html.unescape((v.get('formatted_value') or '').strip())}")
-    return " | ".join(sorted(parts))[:300]
+    return variant_key_from_pairs([(v.get("formatted_name") or "", v.get("formatted_value") or "") for v in t.get("variations") or [] if not v.get("question_id")])
 
 
-def cost_parts(t: dict, costs: dict, vcosts: dict, kc: float = 1.0, ship_override: float | None = None) -> dict:
-    """Bir sipariş kaleminin ADET BAŞINA maliyetinin parçaları — her zaman GÜNCEL maliyetle (eski sürüm/geçmiş yok).
+BASE_COMPONENT = "base"  # modülden önce elle girilmiş toplam maliyet
+class CostStep(NamedTuple):
+    start: dt.date
+    component: str
+    cost: float
+    label: str = ""
+
+
+CostHistory = dict[tuple[int, str], list[CostStep]]  # (listing, seçenek | "") -> tarihe göre sıralı sürümler
+
+
+def load_cost_history(db: Session, shop: Shop) -> CostHistory:
+    """Modüllerden (Dış Tedarik) uygulanmış tarihli birim maliyet sürümleri."""
+    out: CostHistory = {}
+    for r in db.scalars(select(CostVersion).where(CostVersion.shop_id == shop.id).order_by(CostVersion.valid_from, CostVersion.id)):
+        out.setdefault((r.listing_id, r.variant_key), []).append(CostStep(r.valid_from, r.component, r.unit_cost, r.label or r.component))
+    return out
+
+
+def components_at(history: list[CostStep], when: dt.date) -> list[dict]:
+    """`when` tarihindeki birim maliyetin bileşenleri [{"label", "amount"}]; her bileşenin o tarihte geçerli (en yeni) sürümü. Maliyetin ilk girildiği
+    bileşen (en eski sürümün sahibi) geçmişe de uygulanır (yoksa eski siparişler maliyetsiz kalırdı); sonradan eklenen bileşenler yalnızca
+    başlangıç tarihlerinden itibaren sayılır (biten siparişlerin maliyeti sonradan artmasın). Modülden önce elle girilmiş toplam maliyet ("base")
+    yalnızca ilk bileşenin başlangıcından ÖNCEKİ siparişlerde geçerlidir; sonrasında bileşenler onun yerine geçer (iki kez sayılmaz)."""
+    first = history[0].component
+    starts = [s.start for s in history if s.component != BASE_COMPONENT]
+    latest: dict[str, CostStep] = {}
+    for step in history:  # tarihe göre sıralı
+        if step.start <= when or (step.component == first and step.component not in latest):
+            latest[step.component] = step
+    if starts and when >= min(starts):
+        latest.pop(BASE_COMPONENT, None)
+    return [{"label": s.label, "amount": s.cost} for s in latest.values()]
+
+
+def _unit_at(history: list[CostStep], when: dt.date) -> float:
+    """`when` tarihindeki birim maliyet = bileşenlerinin toplamı (bkz. `components_at`)."""
+    return sum(c["amount"] for c in components_at(history, when))
+
+
+def cost_parts(t: dict, costs: dict, vcosts: dict, kc: float = 1.0, ship_override: float | None = None, hist: CostHistory | None = None,
+               when: dt.date | None = None) -> dict:
+    """Bir sipariş kaleminin ADET BAŞINA maliyetinin parçaları. Birim maliyet: `hist` ve `when` verilmişse siparişin tarihindeki sürümle
+    (modülden gelen tarihli maliyetler), verilmezse GÜNCEL maliyetle; kargo ve yüzde her zaman güncel kayıttan.
     Seçenek maliyeti ilan geneli maliyeti alan alan ezer (boş alan ilandan devralınır). `kc`: siparişin para biriminden rapor para birimine çarpan (fiyat %
     için). Dijital ürünlerde kargo yoktur. `ship_override`: bu kalem için yüklenen kargo faturalarından gelen GERÇEK adet
     başına kargo (nakliye + gümrük + ek hizmet toplamı) — verilmişse elle yazılan kargonun YERİNE geçer; elle yazılan
-    değer yalnızca faturası olmayan siparişlerde tahmin olarak kullanılır. Döner: {unit, pct, ship, ship_source ("fatura" | "elle" | ""), defined}."""
+    değer yalnızca faturası olmayan siparişlerde tahmin olarak kullanılır. Döner: {unit, pct, ship, ship_source ("fatura" | "elle" | ""), defined, components (siparişin tarihindeki birim maliyet bileşenleri)}."""
     lid = t.get("listing_id")
     digital = bool(t.get("is_digital"))
     key = (lid, variant_key(t))
@@ -73,22 +123,34 @@ def cost_parts(t: dict, costs: dict, vcosts: dict, kc: float = 1.0, ship_overrid
     # maliyet, seçeneğe yalnızca farklı olan alan (ör. kargo) yazılabilir. (0 = "girilmemiş"; 0 yazarak ana değer ezilemez.)
     v, l = vcosts.get(key), costs.get(lid)
     pick = lambda field: (getattr(v, field) if v else 0.0) or (getattr(l, field) if l else 0.0)  # noqa: E731
-    unit, ship, pct = pick("unit_cost"), pick("shipping_cost"), pick("cost_pct")
+
+    def unit_of(row, hkey: tuple[int, str]) -> tuple[float, list[dict]]:
+        h = hist.get(hkey) if hist and when else None
+        if h:
+            parts = components_at(h, when)
+            return sum(c["amount"] for c in parts), parts
+        return (row.unit_cost if row else 0.0), []
+
+    (unit, components) = unit_of(v, key)
+    if not unit:
+        (unit, components) = unit_of(l, (lid, ""))
+    ship, pct = pick("shipping_cost"), pick("cost_pct")
     if not (unit or ship or pct):
         if real_ship is None:
-            return {"unit": 0.0, "pct": 0.0, "ship": 0.0, "ship_source": "", "defined": digital}
-        return {"unit": 0.0, "pct": 0.0, "ship": real_ship, "ship_source": "fatura", "defined": True}
+            return {"unit": 0.0, "pct": 0.0, "ship": 0.0, "ship_source": "", "defined": digital, "components": []}
+        return {"unit": 0.0, "pct": 0.0, "ship": real_ship, "ship_source": "fatura", "defined": True, "components": []}
     source = "elle" if ship else ""
     if digital:
         ship, source = 0.0, ""
     elif real_ship is not None:  # siparişin GERÇEK kargo faturası varsa o esastır; elle yazılan yalnızca faturasız siparişlerde tahmindir
         ship, source = real_ship, "fatura"
-    return {"unit": unit, "pct": pct / 100 * _money(t.get("price")) * kc, "ship": ship, "ship_source": source, "defined": True}
+    return {"unit": unit, "pct": pct / 100 * _money(t.get("price")) * kc, "ship": ship, "ship_source": source, "defined": True, "components": components}
 
 
-def unit_cost_for(t: dict, costs: dict, vcosts: dict, kc: float = 1.0, ship_override: float | None = None) -> tuple[float, bool]:
+def unit_cost_for(t: dict, costs: dict, vcosts: dict, kc: float = 1.0, ship_override: float | None = None, hist: CostHistory | None = None,
+                  when: dt.date | None = None) -> tuple[float, bool]:
     """`cost_parts`'ın toplamı: (adet başına maliyet+kargo, tanımlı mı)."""
-    c = cost_parts(t, costs, vcosts, kc, ship_override)
+    c = cost_parts(t, costs, vcosts, kc, ship_override, hist, when)
     return c["unit"] + c["pct"] + c["ship"], c["defined"]
 
 
@@ -353,6 +415,11 @@ def _fx_tables(db: Session, shop: Shop) -> dict:
     return tbl
 
 
+def report_currency(db: Session, shop: Shop) -> str:
+    """Mağazanın rapor para birimi (ayarlardan sabitlenen ya da siparişlerde en çok geçen)."""
+    return _fx_tables(db, shop)["R"]
+
+
 def _build_fx_tables(db: Session, shop: Shop) -> dict:
     """Kur tabloları (yalnızca sipariş sütunları ve ödeme tutarlarından; JSON açmaz, hızlıdır).
     Rapor para birimi `R` = en çok sipariş alınan para birimi. `own[rid]` = ödeme hesabı birimi / sipariş para birimi,
@@ -515,12 +582,32 @@ def _overhead(db: Session, shop: Shop, med: dict[str, float], overall_fx: float)
             continue
         d = dt.datetime.utcfromtimestamp(ts)
         out.append((d.date(), _ym(d), cat if cat in OVERHEAD_LABELS else "other", (-amt / 100) / med.get(_ym(d), overall_fx)))
+    out += _supply_overhead(db, shop)
+    return out
+
+
+def _supply_overhead(db: Session, shop: Shop) -> list[tuple[dt.date, str, str, float]]:
+    """Dış Tedarik'te onaylanıp bu mağazanın genel giderine yazılan paylar (rapor para biriminde, onay anındaki kurla).
+    Rapor para birimi sonradan değiştiyse pay, işin tarihindeki kurla yeniden çevrilir."""
+    from app.finance.invoices import resolve_fx
+    from app.supply.models import SupplyAllocation, SupplyJob
+
+    report_ccy = report_currency(db, shop)
+    out = []
+    for job_date, amount, ccy in db.execute(
+        select(SupplyJob.job_date, SupplyAllocation.amount_report, SupplyAllocation.report_ccy)
+        .join(SupplyJob, SupplyJob.id == SupplyAllocation.job_id)
+        .where(SupplyAllocation.shop_id == shop.id, SupplyAllocation.listing_id.is_(None), SupplyJob.status == "confirmed")
+    ):
+        if ccy != report_ccy:
+            amount = resolve_fx(ccy, amount, job_date.isoformat(), report_ccy, None)[0]
+        out.append((job_date, f"{job_date.year}-{job_date.month:02d}", "supply", float(amount)))
     return out
 
 
 # Hesaplanmış rapor sonuçları (dashboard ve Finans sayfası aynı dönemi tekrar tekrar ister). Geçerlilik: siparişler/ödemeler/
 # ledger sürümü + maliyet, fatura ve listing tablolarının parmak izi + arayüz dili (etiketler dile göre).
-_REPORT_SOURCES = ("listing_costs", "variant_costs", "order_costs", "shipping_invoices", "listing_cache")
+_REPORT_SOURCES = ("listing_costs", "variant_costs", "order_costs", "shipping_invoices", "listing_cache", "supply_allocations")
 _report_cache = ResultCache(max_items=60)
 
 
@@ -545,6 +632,8 @@ def _report(db: Session, shop: Shop, start: dt.date, end: dt.date, country: str 
     overall_fx = cov["overall_r"]
     costs = {c.listing_id: c for c in db.scalars(select(ListingCost).where(ListingCost.shop_id == shop.id))}
     vcosts = {(v.listing_id, v.variant_key): v for v in db.scalars(select(VariantCost).where(VariantCost.shop_id == shop.id))}
+    hist = load_cost_history(db, shop)
+    components = cost_components(db, shop)
     from app.finance import invoices as _invoices  # döngüsel import'tan kaçınmak için burada
     inv_ship = _invoices.invoice_totals(db, shop)  # yalnızca tabloda bilgi göstermek için (toplam/ağırlık/adet)
     inv_order = _invoices.order_shipping(db, shop)  # (sipariş, listing, seçenek) -> gerçek kargo; maliyette kullanılır
@@ -590,16 +679,24 @@ def _report(db: Session, shop: Shop, start: dt.date, end: dt.date, country: str 
             txs = raw.get("transactions") or []
             item_total = sum(_money(t.get("price")) * (t.get("quantity") or 1) for t in txs) or 1.0
             ship_ov = _ship_overrides(inv_order, row.receipt_id, txs)
-            resolved_costs = [unit_cost_for(t, costs, vcosts, kc, sv) for t, sv in zip(txs, ship_ov)]
-            item_costs = [r[0] * (t.get("quantity") or 1) for t, r in zip(txs, resolved_costs)]
             fixed = 0.0 if _all_digital(txs) else _fixed_cost(costs)
-            if fixed:  # sipariş başına sabit gider (ambalaj, etiket): kalemlere fiyat payına göre dağıtılır
-                item_costs = [c + fixed * _money(t.get("price")) * (t.get("quantity") or 1) / item_total for t, c in zip(txs, item_costs)]
             override = overrides.get(row.receipt_id)
-            if override is not None:
-                item_costs = [override * _money(t.get("price")) * (t.get("quantity") or 1) / item_total for t in txs]
+
+            def costs_of(resolved: list, txs=txs, fixed=fixed, override=override, item_total=item_total) -> list[float]:
+                items = [r[0] * (t.get("quantity") or 1) for t, r in zip(txs, resolved)]
+                if fixed:  # sipariş başına sabit gider (ambalaj, etiket): kalemlere fiyat payına göre dağıtılır
+                    items = [c + fixed * _money(t.get("price")) * (t.get("quantity") or 1) / item_total for t, c in zip(txs, items)]
+                if override is not None:
+                    items = [override * _money(t.get("price")) * (t.get("quantity") or 1) / item_total for t in txs]
+                return items
+
+            # Sipariş, ay ve ülke toplamları siparişin TARİHİNDEKİ maliyetle; ürün kârlılığı her zaman GÜNCEL maliyetle hesaplanır.
+            on = row.created_at.date()
+            resolved_costs = [unit_cost_for(t, costs, vcosts, kc, sv, hist, on) for t, sv in zip(txs, ship_ov)]
+            item_costs = costs_of(resolved_costs)
+            product_costs = costs_of([unit_cost_for(t, costs, vcosts, kc, sv) for t, sv in zip(txs, ship_ov)]) if hist else item_costs
             cogs = sum(item_costs)
-            for t, item_cost, r in zip(txs, item_costs, resolved_costs):
+            for t, item_cost, r in zip(txs, product_costs, resolved_costs):
                 qty = t.get("quantity") or 1
                 share = _money(t.get("price")) * qty / item_total
                 p = products.setdefault(
@@ -793,8 +890,9 @@ def _report(db: Session, shop: Shop, start: dt.date, end: dt.date, country: str 
             "margin": (profit / p["sales"] * 100) if p["sales"] else 0.0,
             "unit_cost": c.unit_cost if c else None, "shipping_cost": c.shipping_cost if c else None,
             "cost_pct": c.cost_pct if c else None,
+            "cost_components": components.get((p["listing_id"], ""), []),
             "variants": sorted(
-                (_variant_row(v, vcosts.get((p["listing_id"], v["key"]))) for v in p["variants"].values()),
+                (_variant_row(v, vcosts.get((p["listing_id"], v["key"])), components.get((p["listing_id"], v["key"]))) for v in p["variants"].values()),
                 key=lambda v: -v["sales"],
             ),
         })
@@ -821,19 +919,27 @@ def _report(db: Session, shop: Shop, start: dt.date, end: dt.date, country: str 
     }
 
 
-def _variant_row(v: dict, vc: VariantCost | None) -> dict:
+def _variant_row(v: dict, vc: VariantCost | None, components: list[dict] | None = None) -> dict:
     v = {**v, "orders": v["orders"] if v.get("invoice_count") else []}  # sipariş listesi yalnızca faturası olan seçeneklerde gider (yük küçük kalsın)
     return {
         **v,
         "unit_cost": vc.unit_cost if vc else None,
         "shipping_cost": vc.shipping_cost if vc else None,
         "cost_pct": vc.cost_pct if vc else None,
+        "cost_components": components or [],
     }
 
 
-def set_cost(db: Session, shop: Shop, listing_id: int, unit_cost: float, shipping_cost: float, cost_pct: float = 0.0) -> None:
-    """İlan geneli maliyet. Sürüm/geçmiş yok: girilen değer TÜM siparişler için (geçmiş dahil) geçerlidir."""
+def _drop_versions(db: Session, shop: Shop, listing_id: int, variant_key: str) -> None:
+    db.execute(delete(CostVersion).where(CostVersion.shop_id == shop.id, CostVersion.listing_id == listing_id, CostVersion.variant_key == variant_key))
+
+
+def set_cost(db: Session, shop: Shop, listing_id: int, unit_cost: float, shipping_cost: float, cost_pct: float = 0.0, keep_history: bool = False) -> None:
+    """İlan geneli maliyet. Elle girilen değer TÜM siparişler için (geçmiş dahil) geçerlidir; modülden gelen tarihli sürümleri siler
+    (`keep_history`: sürüm kaydeden modül çağırıyorsa korunur)."""
     row = db.scalar(select(ListingCost).where(ListingCost.shop_id == shop.id, ListingCost.listing_id == listing_id))
+    if not keep_history and (row is None or abs(row.unit_cost - unit_cost) > 1e-9):  # yalnızca kargo ya da yüzde değiştiyse bileşenler korunur
+        _drop_versions(db, shop, listing_id, "")
     if row is None:
         row = ListingCost(shop_id=shop.id, listing_id=listing_id)
         db.add(row)
@@ -847,8 +953,10 @@ def set_order_fixed_cost(db: Session, shop: Shop, amount: float) -> None:
     set_cost(db, shop, ORDER_FIXED_ID, amount, 0.0, 0.0)
 
 
-def set_variant_cost(db: Session, shop: Shop, listing_id: int, key: str, unit_cost: float, shipping_cost: float, cost_pct: float) -> None:
+def set_variant_cost(db: Session, shop: Shop, listing_id: int, key: str, unit_cost: float, shipping_cost: float, cost_pct: float, keep_history: bool = False) -> None:
     row = db.scalar(select(VariantCost).where(VariantCost.shop_id == shop.id, VariantCost.listing_id == listing_id, VariantCost.variant_key == key))
+    if not keep_history and (row is None or abs(row.unit_cost - unit_cost) > 1e-9):  # yalnızca kargo ya da yüzde değiştiyse bileşenler korunur
+        _drop_versions(db, shop, listing_id, key[:300])
     if row is None:
         row = VariantCost(shop_id=shop.id, listing_id=listing_id, variant_key=key[:300])
         db.add(row)
@@ -856,7 +964,60 @@ def set_variant_cost(db: Session, shop: Shop, listing_id: int, key: str, unit_co
     db.commit()
 
 
+def record_unit_cost(db: Session, shop: Shop, listing_id: int, key: str, unit_cost: float, on: dt.date, ref: str, source: str, component: str, label: str) -> None:
+    """Modülden gelen birim maliyeti `component` bileşeninin `on` tarihinden geçerli sürümü olarak ekler (key boşsa ilan geneli); ürünün maliyeti
+    bileşenlerin toplamı olur. İlk sürümde mevcut elle girilmiş değer "base" bileşeni olarak korunur; kargo ve yüzde değişmez. Çağıran commit eder."""
+    key = key[:300]
+    existing = db.scalars(select(CostVersion).where(CostVersion.shop_id == shop.id, CostVersion.listing_id == listing_id, CostVersion.variant_key == key)).first()
+    if existing is None:
+        row = db.scalar(select(VariantCost).where(VariantCost.shop_id == shop.id, VariantCost.listing_id == listing_id, VariantCost.variant_key == key)) if key else \
+            db.scalar(select(ListingCost).where(ListingCost.shop_id == shop.id, ListingCost.listing_id == listing_id))
+        if row is not None and row.unit_cost:
+            db.add(CostVersion(shop_id=shop.id, listing_id=listing_id, variant_key=key, valid_from=dt.date(1970, 1, 1), unit_cost=row.unit_cost, source="baseline",
+                               component=BASE_COMPONENT, label=tr("Önceki maliyet", "Previous cost")))
+    db.add(CostVersion(shop_id=shop.id, listing_id=listing_id, variant_key=key, valid_from=on, unit_cost=unit_cost, source=source[:12], ref=ref[:40],
+                       component=component[:40], label=label[:120]))
+    db.flush()
+    _sync_current(db, shop, listing_id, key)
+
+
+def remove_unit_costs(db: Session, shop: Shop, ref: str) -> None:
+    """`ref` kaynağının eklediği sürümleri siler (geri alma); güncel maliyet kalan en son sürüme (yoksa sıfıra) döner. Çağıran commit eder."""
+    rows = db.scalars(select(CostVersion).where(CostVersion.shop_id == shop.id, CostVersion.ref == ref)).all()
+    keys = {(r.listing_id, r.variant_key) for r in rows}
+    for r in rows:
+        db.delete(r)
+    db.flush()
+    for listing_id, key in keys:
+        _sync_current(db, shop, listing_id, key)
+
+
+def _sync_current(db: Session, shop: Shop, listing_id: int, key: str) -> None:
+    """Güncel birim maliyet = bileşenlerin bugünkü toplamı; sürüm kalmadıysa 0 ve kayıt başka alanı taşımıyorsa silinir."""
+    history = load_cost_history(db, shop).get((listing_id, key))
+    latest = history is not None
+    unit = _unit_at(history, dt.date.today()) if history else 0.0
+    row = db.scalar(select(VariantCost).where(VariantCost.shop_id == shop.id, VariantCost.listing_id == listing_id, VariantCost.variant_key == key)) if key else \
+        db.scalar(select(ListingCost).where(ListingCost.shop_id == shop.id, ListingCost.listing_id == listing_id))
+    if row is None:
+        if latest is None:
+            return
+        row = VariantCost(shop_id=shop.id, listing_id=listing_id, variant_key=key) if key else ListingCost(shop_id=shop.id, listing_id=listing_id)
+        db.add(row)
+    row.unit_cost = unit
+    if not (row.unit_cost or row.shipping_cost or row.cost_pct):
+        db.delete(row)
+
+
+def cost_components(db: Session, shop: Shop) -> dict[tuple[int, str], list[dict]]:
+    """Ürün ve seçeneklerin bugünkü maliyet bileşenleri (ekranda "maliyet nereden oluştu" bilgisi): {(listing, seçenek | ""): [{"label", "amount"}]};
+    bileşen yazılmamış (elle girilmiş) maliyette anahtar yoktur."""
+    today = dt.date.today()
+    return {key: components_at(history, today) for key, history in load_cost_history(db, shop).items()}
+
+
 def clear_variant_cost(db: Session, shop: Shop, listing_id: int, key: str) -> None:
+    _drop_versions(db, shop, listing_id, key)
     row = db.scalar(select(VariantCost).where(VariantCost.shop_id == shop.id, VariantCost.listing_id == listing_id, VariantCost.variant_key == key))
     if row is not None:
         db.delete(row)
@@ -922,6 +1083,7 @@ def orders_costs(db: Session, shop: Shop, start: dt.date, end: dt.date, q: str =
     """Siparişler ve maliyetleri: otomatik hesap (seçenek/listing maliyetinden) ve elle girilmiş düzeltme."""
     costs = {c.listing_id: c for c in db.scalars(select(ListingCost).where(ListingCost.shop_id == shop.id))}
     vcosts = {(v.listing_id, v.variant_key): v for v in db.scalars(select(VariantCost).where(VariantCost.shop_id == shop.id))}
+    hist = load_cost_history(db, shop)
     overrides = {o.receipt_id: o for o in db.scalars(select(OrderCost).where(OrderCost.shop_id == shop.id))}
     tbl = _fx_tables(db, shop)
     stmt = (
@@ -948,7 +1110,7 @@ def orders_costs(db: Session, shop: Shop, start: dt.date, end: dt.date, q: str =
         txs = raw.get("transactions") or []
         on = row.created_at.date()
         ship_ov = _ship_overrides(inv_order, row.receipt_id, txs)
-        resolved = [unit_cost_for(t, costs, vcosts, kc, sv) for t, sv in zip(txs, ship_ov)]
+        resolved = [unit_cost_for(t, costs, vcosts, kc, sv, hist, on) for t, sv in zip(txs, ship_ov)]
         fixed = 0.0 if _all_digital(txs) else _fixed_cost(costs)
         o = overrides.get(row.receipt_id)
         net = nets[row.receipt_id]
@@ -1049,6 +1211,7 @@ def order_detail(db: Session, shop: Shop, receipt_id: int) -> dict | None:
 
     costs = {c.listing_id: c for c in db.scalars(select(ListingCost).where(ListingCost.shop_id == shop.id))}
     vcosts = {(v.listing_id, v.variant_key): v for v in db.scalars(select(VariantCost).where(VariantCost.shop_id == shop.id))}
+    hist = load_cost_history(db, shop)
     override = db.scalar(select(OrderCost).where(OrderCost.shop_id == shop.id, OrderCost.receipt_id == receipt_id))
     images = {}
     for lid, rj in db.execute(select(ListingCache.listing_id, ListingCache.raw_json).where(ListingCache.shop_id == shop.id)):
@@ -1065,7 +1228,7 @@ def order_detail(db: Session, shop: Shop, receipt_id: int) -> dict | None:
     auto_items = 0.0
     for t, sv in zip(txs, ship_ov):
         qty = t.get("quantity") or 1
-        parts = cost_parts(t, costs, vcosts, kc, sv)
+        parts = cost_parts(t, costs, vcosts, kc, sv, hist, on)
         unit, defined = parts["unit"] + parts["pct"] + parts["ship"], parts["defined"]
         auto_items += unit * qty
         items.append({
@@ -1084,7 +1247,7 @@ def order_detail(db: Session, shop: Shop, receipt_id: int) -> dict | None:
             ],
             "unit_cost": unit,
             "cost_defined": defined,
-            "cost_parts": {"unit": parts["unit"], "pct": parts["pct"], "ship": parts["ship"], "ship_source": parts["ship_source"]},
+            "cost_parts": {"unit": parts["unit"], "pct": parts["pct"], "ship": parts["ship"], "ship_source": parts["ship_source"], "components": parts["components"]},
         })
     fixed = 0.0 if _all_digital(txs) else _fixed_cost(costs)
     auto_cost = auto_items + fixed

@@ -5,6 +5,9 @@ import { Shop, User } from "@/lib/api";
 import Sidebar from "@/components/layout/Sidebar";
 import MobileDrawer from "@/components/layout/MobileDrawer";
 import BottomNav from "@/components/layout/BottomNav";
+import ShopRequired from "@/components/layout/ShopRequired";
+import { PageSpinner } from "@/components/ui/Spinner";
+import { useShopState } from "@/lib/useShopState";
 import { BOTTOM_NAV_SPACE } from "@/components/layout/constants";
 import Topbar from "@/components/Topbar";
 import { useT } from "@/lib/i18n-client";
@@ -16,6 +19,7 @@ export default function AppShell({
   activeShop,
   onSwitchShop,
   current,
+  requiresShop = false,
   children,
 }: {
   user: User | null;
@@ -23,6 +27,8 @@ export default function AppShell({
   activeShop: Shop | null;
   onSwitchShop?: (id: number) => void;
   current: string;
+  /** Sayfa bağlı Etsy mağazası olmadan anlamsızsa true: mağaza yokken sayfa yerine "mağazanı bağla" gösterilir. */
+  requiresShop?: boolean;
   children: ReactNode;
 }) {
   const { t } = useT();
@@ -30,7 +36,8 @@ export default function AppShell({
   const [menuOpen, setMenuOpen] = useState(false);
   const openMenu = useCallback(() => setMenuOpen(true), []);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
-  const shell = { user, shops: shops ?? null, activeShop, onSwitchShop, current };
+  const shopState = useShopState(shops);
+  const shell = { user, hasShop: shopState === "yes", shops: shops ?? null, activeShop, onSwitchShop, current };
   usePresence(current, !!user);
   // Sidebar/Topbar `user` gelene kadar (kısa bir ağ isteği) hiç render edilmiyordu — sayfa önce tam genişlikte
   // açılıp bir anda kenar çubuğu ve üst bar belirince içerik yana/aşağı kayıyordu ("UI zıplaması"). İkisi de artık
@@ -49,9 +56,9 @@ export default function AppShell({
             )}
           </div>
         )}
-        <main className={`min-h-[calc(100vh-49px)] flex-1 bg-neutral-50 dark:bg-neutral-950 ${BOTTOM_NAV_SPACE}`}>{children}</main>
+        <main className={`min-h-[calc(100vh-49px)] flex-1 bg-neutral-50 dark:bg-neutral-950 ${BOTTOM_NAV_SPACE}`}>{requiresShop && !!user ? (shopState === "yes" ? children : shopState === "no" ? <ShopRequired /> : <PageSpinner />) : children}</main>
       </div>
-      <BottomNav current={current} onMenu={openMenu} />
+      <BottomNav current={current} onMenu={openMenu} hasShop={shopState === "yes"} />
     </div>
   );
 }

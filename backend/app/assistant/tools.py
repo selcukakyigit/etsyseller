@@ -767,7 +767,7 @@ def read_shipping_invoice(ctx: Ctx, a: dict) -> dict:
     from app.finance import invoices
     from app.finance import service as fin_service
 
-    report_ccy = fin_service._fx_tables(ctx.db, ctx.shop)["R"]
+    report_ccy = fin_service.report_currency(ctx.db, ctx.shop)
     try:
         if a.get("file_id"):
             f = ctx.db.get(ChatImage, str(a["file_id"]))
@@ -791,13 +791,15 @@ def read_shipping_invoice(ctx: Ctx, a: dict) -> dict:
             "satir": n, "takip_no": c["tracking_no"], "alici": c["recipient"], "ulke": c["recipient_country"], "tur": c["kind"],
             "tutar": f"{c['original_amount']} {c['original_currency']}", "rapor_tutari": c["amount"],
             "zaten_kayitli": c["already_saved"],
-            "en_iyi_eslesme": {"siparis": best["receipt_id"], "alici": best["buyer"], "guven": best["score"], "neden": best["reason"]} if best else None,
+            "en_iyi_eslesme": {"siparis": best["receipt_id"], "alici": best["buyer"], "guven": best["score"], "neden": best["reason"],
+                               "olasi_mukerrer": best.get("duplicate_of")} if best else None,
         })
     return {
         "kaynak": source, "satir_sayisi": len(cands), "satirlar": rows[:40],
         "eslesmeyen": sum(1 for c in cands if not c["matches"]), "zaten_kayitli": sum(1 for c in cands if c["already_saved"]),
         "not": "HİÇBİR ŞEY KAYDEDİLMEDİ. Ekrandaki fatura kartında kullanıcı her satırın siparişini kontrol edip 'Onayla' ile kaydeder. "
-               "Kısa özet ver: kaç satır, kaçı yüksek güvenle eşleşti, hangileri belirsiz/eşleşmedi, hangileri zaten kayıtlı. Kayıt yaptığını SÖYLEME.",
+               "Kısa özet ver: kaç satır, kaçı yüksek güvenle eşleşti, hangileri belirsiz/eşleşmedi, hangileri zaten kayıtlı; "
+               "olasi_mukerrer doluysa o siparişe aynı tutarda kalem zaten var, aynı faturanın iki kez yüklenmiş olabileceğini söyle. Kayıt yaptığını SÖYLEME.",
     }
 
 

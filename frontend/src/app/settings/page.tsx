@@ -4,6 +4,7 @@ import Link from "next/link";
 import Avatar from "@/components/Avatar";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import AppShell from "@/components/AppShell";
+import { pageContainer } from "@/components/layout/pageContainer";
 import { BellIcon, ChevronRightIcon, HelpIcon, KeyIcon, ShieldIcon, StoreIcon, UserIcon } from "@/components/icons";
 import { useT } from "@/lib/i18n-client";
 import { PageSpinner } from "@/components/ui/Spinner";
@@ -73,7 +74,7 @@ export default function SettingsHub() {
 
   return (
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/settings">
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
+      <div className={pageContainer("reading", "normal", "space-y-6")}>
         <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{t("Ayarlar", "Settings")}</h1>
 
         {bootError && <p className="text-sm text-red-600">{bootError}</p>}

@@ -422,3 +422,18 @@ class OnlineUserOut(BaseModel):
 
 
 UserDetailOut.model_rebuild()
+
+
+class SocialLinks(BaseModel):
+    instagram: str = Field(default="", max_length=300)
+    youtube: str = Field(default="", max_length=300)
+    linkedin: str = Field(default="", max_length=300)
+    pinterest: str = Field(default="", max_length=300)
+
+
+class LandingSettingsIn(BaseModel):
+    social: SocialLinks
+
+
+class LandingSettingsOut(BaseModel):
+    social: SocialLinks
