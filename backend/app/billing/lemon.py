@@ -1,4 +1,4 @@
-"""Lemon Squeezy API'si: ödeme sayfası açma, abonelik iptali ve webhook imzası. Yalnızca HTTP; veritabanına dokunmaz."""
+"""Lemon Squeezy API'si: ödeme sayfası açma ve webhook imzası. Yalnızca HTTP; veritabanına dokunmaz."""
 import hashlib
 import hmac
 import logging
@@ -54,19 +54,6 @@ def create_checkout(variant_id: str, email: str, custom: dict[str, str], redirec
         log.error("Lemon checkout hatası %s: %s", resp.status_code, resp.text[:500])
         raise LemonError("Ödeme sayfası açılamadı.")
     return resp.json()["data"]["attributes"]["url"]
-
-
-def cancel_subscription(lemon_subscription_id: str) -> None:
-    """Aboneliği iptal eder (Lemon'da dönem sonunda biter). Zaten yoksa sorun sayılmaz."""
-    if not configured():
-        raise LemonError("Ödeme sistemi yapılandırılmamış.")
-    try:
-        resp = httpx.delete(f"{API}/subscriptions/{lemon_subscription_id}", headers=_headers(), timeout=TIMEOUT)
-    except httpx.HTTPError as exc:
-        raise LemonError("Ödeme sağlayıcısına ulaşılamadı.") from exc
-    if resp.status_code not in (200, 204, 404):
-        log.error("Lemon abonelik iptali hatası %s: %s", resp.status_code, resp.text[:500])
-        raise LemonError("Abonelik iptal edilemedi.")
 
 
 def valid_signature(body: bytes, signature: str) -> bool:

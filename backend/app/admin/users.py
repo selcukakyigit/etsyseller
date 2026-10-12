@@ -4,18 +4,17 @@ Plan, kredi ve AI ayarı kullanıcının sahibi olduğu ilk (kişisel) çalışm
 import datetime as dt
 from collections import defaultdict
 
-from sqlalchemy import exists, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.admin.deps import AdminError
 from app.admin.models import AdminAuditLog, AdminUserNote
 from app.admin.schemas import (
-    AdminUserOut, AuditOut, LedgerRowOut, NoteOut, OnlineUserOut, UserDetailOut, UsersPageOut, UserShopOut, UserSubscriptionOut,
+    AdminUserOut, AuditOut, LedgerRowOut, NoteOut, OnlineUserOut, UserDetailOut, UsersPageOut, UserShopOut,
 )
 from app.auth.access import ONLINE_WINDOW, UserAccess, env_admin, is_online
 from app.auth.models import User, Workspace, WorkspaceMember
-from app.billing.models import BillingProduct, CreditBalance, CreditLedger, Subscription
-from app.billing.service import LIVE_STATUSES, MANUAL_PREFIX
+from app.billing.models import CreditBalance, CreditLedger
 from app.core.dates import iso
 from app.shops.models import OAuthToken, Shop
 
@@ -38,7 +37,7 @@ def _primary_ws():
     )
 
 
-def _filters(q: str, status: str, plan: str, joined_from: dt.date | None, joined_to: dt.date | None, ws, online: bool = False) -> list:
+def _filters(q: str, status: str, joined_from: dt.date | None, joined_to: dt.date | None, online: bool = False) -> list:
     where = []
     if online:
         where.append(UserAccess.last_seen_at >= dt.datetime.utcnow() - ONLINE_WINDOW)
@@ -49,13 +48,6 @@ def _filters(q: str, status: str, plan: str, joined_from: dt.date | None, joined
         where.append(or_(UserAccess.status.is_(None), UserAccess.status == "active"))
     elif status in ("suspended", "blocked"):
         where.append(UserAccess.status == status)
-    live = select(Subscription.id).where(Subscription.workspace_id == ws.c.workspace_id, Subscription.status.in_(LIVE_STATUSES))
-    if plan == "free":
-        where.append(~exists(live))
-    elif plan == "paid":
-        where.append(exists(live))
-    elif plan.isdigit():
-        where.append(exists(live.where(Subscription.product_id == int(plan))))
     if joined_from:
         where.append(User.created_at >= dt.datetime.combine(joined_from, dt.time.min))
     if joined_to:
@@ -75,16 +67,8 @@ def _rows_out(db: Session, rows: list[tuple]) -> list[AdminUserOut]:
             .group_by(CreditLedger.user_id)
         ).all()
     )
-    balances = {b.workspace_id: b.plan + b.purchased for b in db.scalars(select(CreditBalance).where(CreditBalance.workspace_id.in_(ws_ids))).all()}
+    balances = {b.workspace_id: b.balance for b in db.scalars(select(CreditBalance).where(CreditBalance.workspace_id.in_(ws_ids))).all()}
     ai_enabled = dict(db.execute(select(Workspace.id, Workspace.ai_enabled).where(Workspace.id.in_(ws_ids))).all())
-    plans: dict[int, tuple[str | None, bool]] = {}
-    for sub, name in db.execute(
-        select(Subscription, BillingProduct.name_en)
-        .outerjoin(BillingProduct, BillingProduct.id == Subscription.product_id)
-        .where(Subscription.workspace_id.in_(ws_ids), Subscription.status.in_(LIVE_STATUSES))
-        .order_by(Subscription.id)
-    ).all():
-        plans[sub.workspace_id] = (name, sub.lemon_subscription_id.startswith(MANUAL_PREFIX))
     shops: dict[int, list[UserShopOut]] = defaultdict(list)
     for shop, token_shop_id in db.execute(
         select(Shop, OAuthToken.shop_id).outerjoin(OAuthToken, OAuthToken.shop_id == Shop.id).where(Shop.user_id.in_(ids)).order_by(Shop.id)
@@ -98,7 +82,6 @@ def _rows_out(db: Session, rows: list[tuple]) -> list[AdminUserOut]:
         )
     out = []
     for u, acc, wid in rows:
-        plan_name, manual = plans.get(wid, (None, False)) if wid else (None, False)
         is_env = env_admin(u)
         out.append(
             AdminUserOut(
@@ -106,7 +89,7 @@ def _rows_out(db: Session, rows: list[tuple]) -> list[AdminUserOut]:
                 last_seen_at=iso(acc.last_seen_at) if acc else None, status=acc.status if acc else "active",
                 online=is_online(acc), last_path=acc.last_path if acc else None,
                 status_reason=acc.status_reason if acc else None, role="admin" if is_env or (acc is not None and acc.role == "admin") else "user",
-                env_admin=is_env, workspace_id=wid, plan=plan_name, plan_manual=manual, credits=balances.get(wid, 0) if wid else 0,
+                env_admin=is_env, workspace_id=wid, credits=balances.get(wid, 0) if wid else 0,
                 ai_enabled=ai_enabled.get(wid, True) if wid else True, ai_requests_30d=int(ai_counts.get(u.id, 0)), shops=shops.get(u.id, []),
             )
         )
@@ -122,11 +105,11 @@ def _base(ws):
 
 
 def list_users(
-    db: Session, q: str = "", status: str = "", plan: str = "", joined_from: dt.date | None = None, joined_to: dt.date | None = None,
+    db: Session, q: str = "", status: str = "", joined_from: dt.date | None = None, joined_to: dt.date | None = None,
     sort: str = "newest", limit: int = 50, offset: int = 0, online: bool = False,
 ) -> UsersPageOut:
     ws = _primary_ws()
-    stmt = _base(ws).where(*_filters(q, status, plan, joined_from, joined_to, ws, online))
+    stmt = _base(ws).where(*_filters(q, status, joined_from, joined_to, online))
     total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
     order = {
         "oldest": (User.id.asc(),),
@@ -144,17 +127,8 @@ def get_detail(db: Session, user_id: int) -> UserDetailOut:
     user_out = _rows_out(db, [tuple(row)])[0]
     wid = row[2]
     balance = db.get(CreditBalance, wid) if wid else None
-    subs: list[UserSubscriptionOut] = []
     ledger: list[LedgerRowOut] = []
     if wid:
-        for sub, name in db.execute(
-            select(Subscription, BillingProduct.name_en).outerjoin(BillingProduct, BillingProduct.id == Subscription.product_id)
-            .where(Subscription.workspace_id == wid).order_by(Subscription.id.desc()).limit(10)
-        ).all():
-            subs.append(UserSubscriptionOut(
-                id=sub.id, product=name, status=sub.status, manual=sub.lemon_subscription_id.startswith(MANUAL_PREFIX),
-                renews_at=iso(sub.renews_at), ends_at=iso(sub.ends_at),
-            ))
         ledger = [
             LedgerRowOut(id=r.id, kind=r.kind, task=r.task, model=r.model, credits=r.credits, platform_credits=r.platform_credits, delta=r.delta, note=r.note, created_at=iso(r.created_at))
             for r in db.scalars(select(CreditLedger).where(CreditLedger.workspace_id == wid).order_by(CreditLedger.id.desc()).limit(DETAIL_LEDGER_ROWS)).all()
@@ -168,8 +142,8 @@ def get_detail(db: Session, user_id: int) -> UserDetailOut:
         for a in db.scalars(select(AdminAuditLog).where(AdminAuditLog.target == f"user:{user_id}").order_by(AdminAuditLog.id.desc()).limit(50)).all()
     ]
     return UserDetailOut(
-        user=user_out, workspace_id=wid, balance_plan=balance.plan if balance else 0, balance_purchased=balance.purchased if balance else 0,
-        subscriptions=subs, ledger=ledger, notes=notes, audit=audit,
+        user=user_out, workspace_id=wid, balance=balance.balance if balance else 0,
+        ledger=ledger, notes=notes, audit=audit,
     )
 
 

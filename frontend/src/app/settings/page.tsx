@@ -22,7 +22,7 @@ const CARDS = [
     icon: KeyIcon,
     color: "bg-[#D97757]",
     title: ["Plan ve krediler", "Plan and credits"],
-    description: ["Kredi bakiyen, aboneliğin ve satın alma", "Your credit balance, subscription and purchases"],
+    description: ["Kredi bakiyen, satın alma ve harcama dökümün", "Your credit balance, purchases and spending"],
   },
   {
     href: "/settings/shop",

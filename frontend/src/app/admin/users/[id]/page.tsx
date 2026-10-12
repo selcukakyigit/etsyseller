@@ -26,8 +26,6 @@ const ACTION_NAMES: Record<string, [string, string]> = {
   "user.credits": ["Kredi düzeltildi", "Credits adjusted"],
   "user.note": ["Not eklendi", "Note added"],
   "user.note_delete": ["Not silindi", "Note deleted"],
-  "user.plan": ["Plan atandı", "Plan assigned"],
-  "user.plan_end": ["Plan bitirildi", "Plan ended"],
   "user.password_reset": ["Şifre sıfırlama gönderildi", "Password reset sent"],
   "user.role": ["Rol değişti", "Role changed"],
   "user.status": ["Durum değişti", "Status changed"],
@@ -74,7 +72,6 @@ function Detail({ id }: { id: number }) {
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <StatusBadge user={u} />
               {u.role === "admin" && <Badge tone="warn">{u.env_admin ? t("Yönetici (sunucu)", "Admin (server)") : t("Yönetici", "Admin")}</Badge>}
-              {u.plan ? <Badge tone="good">{u.plan}{u.plan_manual ? ` · ${t("elle", "manual")}` : ""}</Badge> : <Badge tone="muted">{t("Ücretsiz", "Free")}</Badge>}
               {!u.ai_enabled && <Badge tone="muted">{t("AI kapalı", "AI off")}</Badge>}
             </div>
             {u.status !== "active" && u.status_reason && <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">{t("Neden", "Reason")}: {u.status_reason}</p>}
@@ -89,15 +86,14 @@ function Detail({ id }: { id: number }) {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           label={t("Kredi", "Credits")}
-          value={f.num(data.balance_plan + data.balance_purchased)}
-          hint={t(`plan ${f.num(data.balance_plan)} · satın alınan ${f.num(data.balance_purchased)}`, `plan ${f.num(data.balance_plan)} · purchased ${f.num(data.balance_purchased)}`)}
+          value={f.num(data.balance)}
         />
         <StatCard label={t("AI çağrısı (30 gün)", "AI calls (30 days)")} value={f.num(u.ai_requests_30d)} />
         <StatCard label={t("Kayıt", "Joined")} value={<span className="text-base">{f.date(u.created_at)}</span>} />
         <StatCard label={t("Son aktif", "Last active")} value={<span className="text-base">{f.dateTime(u.last_seen_at)}</span>} />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6">
         <Section title={t("Mağazalar", "Shops")}>
           {u.shops.length === 0 ? (
             <EmptyState>{t("Bağlı mağaza yok.", "No connected shops.")}</EmptyState>
@@ -111,27 +107,6 @@ function Detail({ id }: { id: number }) {
                     <Badge tone={s.is_demo ? "muted" : s.revoked ? "bad" : s.connected ? "good" : "warn"}>
                       {s.is_demo ? t("demo", "demo") : s.revoked ? t("erişim kaldırıldı", "revoked") : s.connected ? t("bağlı", "connected") : t("bağlı değil", "not connected")}
                     </Badge>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Section>
-
-        <Section title={t("Abonelikler", "Subscriptions")}>
-          {data.subscriptions.length === 0 ? (
-            <EmptyState>{t("Abonelik yok.", "No subscriptions.")}</EmptyState>
-          ) : (
-            <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
-              {data.subscriptions.map((s) => (
-                <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-                  <span className="text-neutral-900 dark:text-neutral-100">
-                    {s.product ?? "—"}
-                    {s.manual && <span className="ml-1.5 text-xs text-neutral-500 dark:text-neutral-400">({t("elle verildi", "assigned")})</span>}
-                  </span>
-                  <span className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
-                    {s.ends_at ? `${t("Bitiş", "Ends")}: ${f.date(s.ends_at)}` : s.renews_at ? `${t("Yenilenme", "Renews")}: ${f.date(s.renews_at)}` : ""}
-                    <Badge tone={s.status === "active" || s.status === "on_trial" ? "good" : "muted"}>{s.status}</Badge>
                   </span>
                 </li>
               ))}

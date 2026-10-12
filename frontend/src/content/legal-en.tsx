@@ -50,8 +50,9 @@ export function TermsEn() {
 
       <H2>7. Fees</H2>
       <P>
-        Free and paid plans may be offered. Prices, usage limits and AI credits are shown at purchase. Subscriptions renew until
-        cancelled. Refund terms will be shown at checkout.
+        The AI features of the service are used with credits. Credits are bought in advance, are deducted from your balance as
+        you use them and never expire; there is no subscription. Credit pack prices and the credit cost of each action are shown
+        at purchase and before use. Refund terms will be shown at checkout.
       </P>
 
       <H2>8. Your data</H2>
@@ -144,7 +145,7 @@ export function PrivacyEn() {
           ["Render", "Application servers and background jobs", "EU / USA"],
           ["Vercel", "Hosting of the web interface", "Global CDN"],
           ["Anthropic, OpenAI, Google", "AI text and image generation, only when you use an AI feature", "USA"],
-          ["Payment provider (when paid plans launch)", "Subscriptions and invoices", "EU / USA"],
+          ["Payment provider (when credit sales launch)", "Credit purchases and invoices", "EU / USA"],
         ]}
       />
 

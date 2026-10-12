@@ -8,11 +8,9 @@ import { useApiData } from "@/lib/useApiData";
 import EventsSection from "./EventsSection";
 import LemonSection from "./LemonSection";
 import ProductsSection from "./ProductsSection";
-import SubscriptionsSection from "./SubscriptionsSection";
 
 const SECTIONS = {
-  subscriptions: { href: "/admin/billing", tr: "Abonelikler", en: "Subscriptions", Component: SubscriptionsSection },
-  products: { href: "/admin/billing/products", tr: "Planlar ve kredi paketleri", en: "Plans and credit packs", Component: ProductsSection },
+  products: { href: "/admin/billing", tr: "Kredi paketleri", en: "Credit packs", Component: ProductsSection },
   events: { href: "/admin/billing/events", tr: "Son webhook olayları", en: "Recent webhook events", Component: EventsSection },
   lemon: { href: "/admin/billing/lemon", tr: "Lemon Squeezy bağlantısı", en: "Lemon Squeezy connection", Component: LemonSection },
 } as const;

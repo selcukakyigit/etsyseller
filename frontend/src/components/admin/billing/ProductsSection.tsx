@@ -14,7 +14,7 @@ function money(cents: number, currency: string, locale: string): string {
   }
 }
 
-/** Satılan planlar ve kredi paketleri (Lemon varyantlarına bağlı). */
+/** Satılan kredi paketleri (Lemon varyantlarına bağlı). */
 export default function ProductsSection({ data, onChanged }: { data: AdminBilling; onChanged: () => void }) {
   const products = data.products;
   const { t, locale } = useT();
@@ -37,7 +37,7 @@ export default function ProductsSection({ data, onChanged }: { data: AdminBillin
 
   return (
     <Section
-      title={t("Planlar ve kredi paketleri", "Plans and credit packs")}
+      title={t("Kredi paketleri", "Credit packs")}
       action={
         editing === null && (
           <Button tone="primary" onClick={() => setEditing("new")}>
@@ -48,8 +48,8 @@ export default function ProductsSection({ data, onChanged }: { data: AdminBillin
     >
       <p className="mb-3 text-xs text-neutral-500 dark:text-neutral-400">
         {t(
-          "Ürünü önce Lemon Squeezy'de oluşturun, varyant numarasını buraya girin. Fiyatın asıl kaynağı Lemon'dur; buradaki fiyat yalnızca gösterim içindir. Plan kredisi her dönem yenilenir (devretmez), paket kredisi süresizdir.",
-          "Create the product in Lemon Squeezy first and enter its variant ID here. Lemon is the source of truth for the price; the price here is for display only. Plan credits renew each period (no rollover); pack credits never expire.",
+          "Ürünü önce Lemon Squeezy'de oluşturun, varyant numarasını buraya girin. Fiyatın asıl kaynağı Lemon'dur; buradaki fiyat yalnızca gösterim içindir. Satın alınan krediler süresizdir.",
+          "Create the product in Lemon Squeezy first and enter its variant ID here. Lemon is the source of truth for the price; the price here is for display only. Purchased credits never expire.",
         )}
       </p>
       {editing !== null && (
@@ -71,7 +71,6 @@ export default function ProductsSection({ data, onChanged }: { data: AdminBillin
               <div className="min-w-0">
                 <p className="flex flex-wrap items-center gap-1.5 text-sm font-medium text-neutral-900 dark:text-neutral-100">
                   {t(p.name_tr, p.name_en)}
-                  <Badge tone="muted">{p.kind === "plan" ? (p.interval === "year" ? t("yıllık plan", "yearly plan") : t("aylık plan", "monthly plan")) : t("paket", "pack")}</Badge>
                   {!p.active && <Badge tone="warn">{t("satışta değil", "not for sale")}</Badge>}
                 </p>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400">
@@ -94,14 +93,12 @@ export default function ProductsSection({ data, onChanged }: { data: AdminBillin
 
 function ProductForm({ initial, onCancel, onSaved }: { initial: AdminProduct | null; onCancel: () => void; onSaved: () => void }) {
   const { t } = useT();
-  const [kind, setKind] = useState<AdminProduct["kind"]>(initial?.kind ?? "pack");
   const [nameTr, setNameTr] = useState(initial?.name_tr ?? "");
   const [nameEn, setNameEn] = useState(initial?.name_en ?? "");
   const [variant, setVariant] = useState(initial?.variant_id ?? "");
   const [creditsValue, setCreditsValue] = useState(initial ? String(initial.credits) : "");
   const [price, setPrice] = useState(initial ? (initial.price_cents / 100).toFixed(2) : "");
   const [currency, setCurrency] = useState(initial?.currency ?? "USD");
-  const [interval, setBillingInterval] = useState<"month" | "year">(initial?.interval ?? "month");
   const [active, setActive] = useState(initial?.active ?? true);
   const [sort, setSort] = useState(String(initial?.sort ?? 0));
   const [saving, setSaving] = useState(false);
@@ -113,14 +110,12 @@ function ProductForm({ initial, onCancel, onSaved }: { initial: AdminProduct | n
 
   async function save() {
     const body: AdminProductInput = {
-      kind,
       name_tr: nameTr.trim(),
       name_en: nameEn.trim(),
       variant_id: variant.trim(),
       credits: creditsNum,
       price_cents: Math.round(priceNum * 100),
       currency,
-      interval: kind === "plan" ? interval : null,
       active,
       sort: Number(sort) || 0,
     };
@@ -140,22 +135,6 @@ function ProductForm({ initial, onCancel, onSaved }: { initial: AdminProduct | n
   return (
     <div className="mb-4 space-y-3 rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-800 dark:bg-neutral-950">
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label={t("Tür", "Type")}>
-          <select value={kind} onChange={(e) => setKind(e.target.value as AdminProduct["kind"])} className={inputClass}>
-            <option value="pack">{t("Kredi paketi (tek seferlik)", "Credit pack (one-off)")}</option>
-            <option value="plan">{t("Plan (abonelik)", "Plan (subscription)")}</option>
-          </select>
-        </Field>
-        {kind === "plan" ? (
-          <Field label={t("Ödeme aralığı", "Billing interval")}>
-            <select value={interval} onChange={(e) => setBillingInterval(e.target.value as "month" | "year")} className={inputClass}>
-              <option value="month">{t("Aylık", "Monthly")}</option>
-              <option value="year">{t("Yıllık", "Yearly")}</option>
-            </select>
-          </Field>
-        ) : (
-          <div className="hidden sm:block" />
-        )}
         <Field label={t("Ad (Türkçe)", "Name (Turkish)")}>
           <input value={nameTr} onChange={(e) => setNameTr(e.target.value)} className={inputClass} />
         </Field>
@@ -165,7 +144,7 @@ function ProductForm({ initial, onCancel, onSaved }: { initial: AdminProduct | n
         <Field label={t("Lemon varyant no.", "Lemon variant ID")}>
           <input inputMode="numeric" value={variant} onChange={(e) => setVariant(e.target.value)} className={`${inputClass} font-mono`} />
         </Field>
-        <Field label={kind === "plan" ? t("Dönem başına kredi", "Credits per period") : t("Kredi", "Credits")}>
+        <Field label={t("Kredi", "Credits")}>
           <input inputMode="numeric" value={creditsValue} onChange={(e) => setCreditsValue(e.target.value)} className={inputClass} />
         </Field>
         <Field label={t("Fiyat (gösterim)", "Price (display)")}>

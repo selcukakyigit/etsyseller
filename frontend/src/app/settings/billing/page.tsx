@@ -74,8 +74,8 @@ function Billing() {
   if (summary.error && !data) return <p className="text-sm text-red-600 dark:text-red-400">{summary.error}</p>;
   if (!data) return <BlockSpinner />;
 
-  const total = data.balance.plan + data.balance.purchased;
-  const packs = data.products.filter((p) => p.kind === "pack");
+  const total = data.balance;
+  const packs = data.products;
   const price = (p: BillingProductOption) => {
     try {
       return (p.price_cents / 100).toLocaleString(locale, { style: "currency", currency: p.currency });

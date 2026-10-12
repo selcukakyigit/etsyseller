@@ -67,9 +67,9 @@ export default async function TermsPage() {
 
       <H2>7. Ücretler</H2>
       <P>
-        Ücretsiz ve ücretli planlar sunulabilir. Ücretli planların fiyatı, kullanım limitleri ve AI kredileri satın alma
-        sırasında gösterilir. Abonelikler iptal edilmediği sürece yenilenir. İade koşulları satın alma sayfasında
-        belirtilecektir.
+        Hizmetin yapay zekâ özellikleri kredi ile kullanılır. Krediler önceden satın alınır, harcandıkça bakiyenizden
+        düşer ve süresizdir; abonelik yoktur. Kredi paketlerinin fiyatı ve her işlemin kredi karşılığı satın alma
+        sırasında ve kullanım öncesinde gösterilir. İade koşulları satın alma sayfasında belirtilecektir.
       </P>
 
       <H2>8. Veriler</H2>

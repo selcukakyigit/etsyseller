@@ -1,6 +1,5 @@
 """Lemon Squeezy webhook'u. Lemon'da Settings > Webhooks'ta adres `https://api.ulagg.com/webhooks/lemonsqueezy`, sır
-LEMONSQUEEZY_WEBHOOK_SECRET ile aynı olmalı; olaylar: order_created, order_refunded, subscription_* ve
-subscription_payment_success.
+LEMONSQUEEZY_WEBHOOK_SECRET ile aynı olmalı; olaylar: order_created ve order_refunded.
 
 İmza ham gövde üzerinden doğrulanır. İşleme hatasında 500 dönülür ki Lemon yeniden denesin; kredi yüklemeleri
 tekilleştiği için tekrar gelen olay çift kredi vermez."""

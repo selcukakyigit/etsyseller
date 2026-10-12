@@ -15,7 +15,7 @@ import { toast } from "@/lib/toast";
 import { useApiData } from "@/lib/useApiData";
 
 const PAGE_SIZE = 50;
-const EMPTY_QUERY: AdminUserQuery = { q: "", status: "", plan: "", joined_from: "", joined_to: "", sort: "newest", online: false, offset: 0 };
+const EMPTY_QUERY: AdminUserQuery = { q: "", status: "", joined_from: "", joined_to: "", sort: "newest", online: false, offset: 0 };
 
 export default function AdminUsersPage() {
   return (
@@ -41,7 +41,6 @@ function Users() {
   }, [search]);
   const key = `admin:users:${JSON.stringify(query)}`;
   const { data, error, loading, reload } = useApiData(key, () => api.admin.users({ ...query, limit: PAGE_SIZE }));
-  const products = useApiData("admin:billing", api.admin.billing).data?.products.filter((p) => p.kind === "plan") ?? [];
   const action = useUserAction(reload);
 
   function update(patch: Partial<AdminUserQuery>) {
@@ -52,7 +51,7 @@ function Users() {
   const items = useMemo(() => data?.items ?? [], [data]);
   const total = data?.total ?? 0;
   const allSelected = items.length > 0 && items.every((u) => selected.has(u.id));
-  const filtered = query.q || query.status || query.plan || query.joined_from || query.joined_to || query.online;
+  const filtered = query.q || query.status || query.joined_from || query.joined_to || query.online;
 
   function toggle(id: number) {
     setSelected((s) => {
@@ -79,16 +78,6 @@ function Users() {
             <option value="active">{t("Aktif", "Active")}</option>
             <option value="suspended">{t("Askıda", "Suspended")}</option>
             <option value="blocked">{t("Engelli", "Blocked")}</option>
-          </select>
-          <select value={query.plan} onChange={(e) => update({ plan: e.target.value })} className={`${inputClass} sm:w-auto`} aria-label={t("Plan", "Plan")}>
-            <option value="">{t("Tüm planlar", "All plans")}</option>
-            <option value="free">{t("Ücretsiz", "Free")}</option>
-            <option value="paid">{t("Planı olan", "On a plan")}</option>
-            {products.map((p) => (
-              <option key={p.id} value={String(p.id)}>
-                {t(p.name_tr, p.name_en)}
-              </option>
-            ))}
           </select>
           <DateRangePicker
             label={t("Kayıt tarihi", "Joined")}
@@ -178,7 +167,6 @@ function Users() {
                   </th>
                   <th className="px-3 py-2.5 font-medium">{t("Kullanıcı", "User")}</th>
                   <th className="px-3 py-2.5 font-medium">{t("Durum", "Status")}</th>
-                  <th className="px-3 py-2.5 font-medium">{t("Plan", "Plan")}</th>
                   <th className="px-3 py-2.5 font-medium">{t("Rol", "Role")}</th>
                   <th className="px-3 py-2.5 text-right font-medium">{t("Kredi", "Credits")}</th>
                   <th className="px-3 py-2.5 font-medium">{t("Mağazalar", "Shops")}</th>
@@ -215,16 +203,6 @@ function Users() {
                     </td>
                     <td className="px-3 py-2.5">
                       <StatusBadge user={u} />
-                    </td>
-                    <td className="px-3 py-2.5">
-                      {u.plan ? (
-                        <Badge tone="good">
-                          {u.plan}
-                          {u.plan_manual ? ` · ${t("elle", "manual")}` : ""}
-                        </Badge>
-                      ) : (
-                        <span className="text-xs text-neutral-500 dark:text-neutral-400">{t("Ücretsiz", "Free")}</span>
-                      )}
                     </td>
                     <td className="px-3 py-2.5">
                       {u.role === "admin" ? <Badge tone="warn">{t("Yönetici", "Admin")}</Badge> : <span className="text-xs text-neutral-500 dark:text-neutral-400">{t("Kullanıcı", "User")}</span>}
@@ -289,7 +267,6 @@ function Users() {
 function BulkDialog({ action, userIds, onClose, onDone }: { action: AdminBulkAction; userIds: number[]; onClose: () => void; onDone: () => void }) {
   const { t } = useT();
   const [amount, setAmount] = useState("");
-  const [bucket, setBucket] = useState<"plan" | "purchased">("purchased");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const value = Number(amount);
@@ -303,7 +280,7 @@ function BulkDialog({ action, userIds, onClose, onDone }: { action: AdminBulkAct
   async function run() {
     setBusy(true);
     try {
-      const results = await api.admin.usersBulk(userIds, action, { amount: action === "credits" ? value : undefined, bucket, reason: reason.trim() });
+      const results = await api.admin.usersBulk(userIds, action, { amount: action === "credits" ? value : undefined, reason: reason.trim() });
       const failed = results.filter((r) => !r.ok);
       if (failed.length === 0) toast.success(t(`${results.length} kullanıcı güncellendi`, `${results.length} users updated`));
       else toast.error(t(`${results.length - failed.length} başarılı, ${failed.length} başarısız: ${failed[0].error}`, `${results.length - failed.length} done, ${failed.length} failed: ${failed[0].error}`));
@@ -351,12 +328,6 @@ function BulkDialog({ action, userIds, onClose, onDone }: { action: AdminBulkAct
           <>
             <Field label={t("Miktar (eksi değer düşer)", "Amount (negative removes)")}>
               <input autoFocus inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="100" className={inputClass} />
-            </Field>
-            <Field label={t("Kova", "Bucket")}>
-              <select value={bucket} onChange={(e) => setBucket(e.target.value as "plan" | "purchased")} className={inputClass}>
-                <option value="purchased">{t("Satın alınan", "Purchased")}</option>
-                <option value="plan">{t("Plan", "Plan")}</option>
-              </select>
             </Field>
           </>
         )}

@@ -897,9 +897,6 @@ export type AdminUser = {
   /** Sunucu ayarındaki (ADMIN_EMAILS) yönetici: rolü ve durumu panelden değişmez. */
   env_admin: boolean;
   workspace_id: number | null;
-  /** Canlı aboneliğin plan adı; null = ücretsiz. */
-  plan: string | null;
-  plan_manual: boolean;
   credits: number;
   ai_enabled: boolean;
   ai_requests_30d: number;
@@ -909,7 +906,6 @@ export type AdminUser = {
 export type AdminUserQuery = {
   q: string;
   status: "" | AdminUserStatus;
-  plan: string;
   joined_from: string;
   joined_to: string;
   sort: "newest" | "oldest" | "last_seen";
@@ -923,9 +919,7 @@ export type AdminOnlineUser = { id: number; email: string; name: string | null; 
 export type AdminUserDetail = {
   user: AdminUser;
   workspace_id: number | null;
-  balance_plan: number;
-  balance_purchased: number;
-  subscriptions: { id: number; product: string | null; status: string; manual: boolean; renews_at: string | null; ends_at: string | null }[];
+  balance: number;
   ledger: { id: number; kind: string; task: string | null; model: string | null; credits: number; delta: number; note: string; created_at: string | null }[];
   notes: { id: number; author_email: string; text: string; created_at: string | null }[];
   audit: AdminAudit[];
@@ -1021,22 +1015,18 @@ export type AdminWorkspaceCredit = {
   workspace_id: number;
   name: string;
   owner_email: string | null;
-  plan: number;
-  purchased: number;
-  subscription_status: string | null;
+  balance: number;
   used_30d: number;
 };
 
 export type AdminProduct = {
   id: number;
-  kind: "plan" | "pack";
   name_tr: string;
   name_en: string;
   variant_id: string;
   credits: number;
   price_cents: number;
   currency: string;
-  interval: "month" | "year" | null;
   active: boolean;
   sort: number;
 };
@@ -1047,7 +1037,6 @@ export type AdminBilling = {
   lemon_configured: boolean;
   webhook_configured: boolean;
   products: AdminProduct[];
-  subscriptions: { id: number; workspace_id: number; owner_email: string | null; product: string | null; status: string; renews_at: string | null; ends_at: string | null }[];
   events: { id: number; event_name: string; lemon_id: string | null; workspace_id: number | null; ok: boolean; error: string | null; created_at: string | null }[];
 };
 
@@ -1055,19 +1044,16 @@ export type AdminAudit = { id: number; email: string; action: string; target: st
 
 export type BillingProductOption = {
   id: number;
-  kind: "plan" | "pack";
   name: string;
   credits: number;
   price_cents: number;
   currency: string;
-  interval: "month" | "year" | null;
 };
 
 export type BillingSummary = {
   /** Kredi sistemi açık mı; kapalıyken AI kullanımı bakiyeden düşmez. */
   enabled: boolean;
-  balance: { plan: number; purchased: number };
-  subscription: { status: string; renews_at: string | null; ends_at: string | null; portal_url: string | null; product: BillingProductOption | null } | null;
+  balance: number;
   products: BillingProductOption[];
   can_buy: boolean;
 };
@@ -1642,7 +1628,6 @@ export const api = {
     users: (query: AdminUserQuery) => {
       const params = new URLSearchParams({ q: query.q, sort: query.sort, offset: String(query.offset), limit: String(query.limit ?? 50) });
       if (query.status) params.set("status", query.status);
-      if (query.plan) params.set("plan", query.plan);
       if (query.joined_from) params.set("joined_from", query.joined_from);
       if (query.joined_to) params.set("joined_to", query.joined_to);
       if (query.online) params.set("online", "true");
@@ -1650,23 +1635,20 @@ export const api = {
     },
     user: (id: number) => request<AdminUserDetail>(`/api/admin/users/${id}`),
     online: () => request<AdminOnlineUser[]>("/api/admin/online"),
-    userCredits: (id: number, amount: number, bucket: "plan" | "purchased", note: string) =>
-      request<{ ok: boolean }>(`/api/admin/users/${id}/credits`, { method: "POST", body: JSON.stringify({ amount, bucket, note }) }),
+    userCredits: (id: number, amount: number, note: string) =>
+      request<{ ok: boolean }>(`/api/admin/users/${id}/credits`, { method: "POST", body: JSON.stringify({ amount, note }) }),
     userAddNote: (id: number, text: string) => request<{ ok: boolean }>(`/api/admin/users/${id}/notes`, { method: "POST", body: JSON.stringify({ text }) }),
     userDeleteNote: (id: number, noteId: number) => request<{ ok: boolean }>(`/api/admin/users/${id}/notes/${noteId}`, { method: "DELETE" }),
-    userAssignPlan: (id: number, productId: number, months: number) =>
-      request<{ ok: boolean }>(`/api/admin/users/${id}/plan`, { method: "POST", body: JSON.stringify({ product_id: productId, months }) }),
-    userEndPlan: (id: number) => request<{ ok: boolean }>(`/api/admin/users/${id}/plan`, { method: "DELETE" }),
     userPasswordReset: (id: number) => request<{ ok: boolean }>(`/api/admin/users/${id}/password-reset`, { method: "POST" }),
     userRole: (id: number, role: "user" | "admin") => request<{ ok: boolean }>(`/api/admin/users/${id}/role`, { method: "PUT", body: JSON.stringify({ role }) }),
     userStatus: (id: number, status: AdminUserStatus, reason: string) =>
       request<{ ok: boolean }>(`/api/admin/users/${id}/status`, { method: "PUT", body: JSON.stringify({ status, reason }) }),
     userDelete: (id: number, confirmEmail: string) =>
       request<{ ok: boolean }>(`/api/admin/users/${id}`, { method: "DELETE", body: JSON.stringify({ confirm_email: confirmEmail }) }),
-    usersBulk: (userIds: number[], action: AdminBulkAction, opts: { amount?: number; bucket?: "plan" | "purchased"; reason?: string } = {}) =>
+    usersBulk: (userIds: number[], action: AdminBulkAction, opts: { amount?: number; reason?: string } = {}) =>
       request<{ user_id: number; ok: boolean; error: string | null }[]>("/api/admin/users/bulk", {
         method: "POST",
-        body: JSON.stringify({ user_ids: userIds, action, amount: opts.amount ?? null, bucket: opts.bucket ?? "purchased", reason: opts.reason ?? "" }),
+        body: JSON.stringify({ user_ids: userIds, action, amount: opts.amount ?? null, reason: opts.reason ?? "" }),
       }),
     messages: (status: "open" | "all") => request<AdminMessage[]>(`/api/admin/messages?status=${status}`),
     setMessageHandled: (id: number, handled: boolean) =>
@@ -1697,8 +1679,8 @@ export const api = {
       request<AdminLandingSettings>("/api/admin/landing", { method: "PUT", body: JSON.stringify(body) }),
     creditWorkspaces: (q: string, offset: number, limit = 50) =>
       request<{ items: AdminWorkspaceCredit[]; total: number }>(`/api/admin/credits/workspaces?${new URLSearchParams({ q, offset: String(offset), limit: String(limit) })}`),
-    adjustCredits: (workspaceId: number, amount: number, bucket: "plan" | "purchased", note: string) =>
-      request<{ ok: boolean }>(`/api/admin/credits/workspaces/${workspaceId}/adjust`, { method: "POST", body: JSON.stringify({ amount, bucket, note }) }),
+    adjustCredits: (workspaceId: number, amount: number, note: string) =>
+      request<{ ok: boolean }>(`/api/admin/credits/workspaces/${workspaceId}/adjust`, { method: "POST", body: JSON.stringify({ amount, note }) }),
     billing: () => request<AdminBilling>("/api/admin/billing"),
     createProduct: (body: AdminProductInput) => request<AdminProduct>("/api/admin/billing/products", { method: "POST", body: JSON.stringify(body) }),
     updateProduct: (id: number, body: AdminProductInput) =>

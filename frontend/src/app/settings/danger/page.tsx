@@ -66,7 +66,7 @@ export default function DangerSettingsPage() {
             t("Etsy mağaza bağlantıları ve oturum yetkileri kaldırılır", "Etsy shop connections and access tokens are removed"),
             t("İlanlar, siparişler, finans kayıtları, maliyetler ve kargo faturaları silinir", "Listings, orders, finance records, costs and shipping invoices are deleted"),
             t("Taslaklar, yerel fotoğraflar ve Ulagg sohbetleri silinir", "Drafts, local photos and Ulagg chats are deleted"),
-            t("Hesabın (e-posta, şifre, profil), kredi bakiyen ve aboneliğin kalır", "Your account (email, password, profile), credit balance and subscription stay"),
+            t("Hesabın (e-posta, şifre, profil) ve kredi bakiyen kalır", "Your account (email, password, profile) and credit balance stay"),
           ]}
           actionLabel={t("Verileri sıfırla", "Reset data")}
           onClose={() => setModal(null)}

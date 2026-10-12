@@ -50,8 +50,6 @@ class AdminUserOut(BaseModel):
     role: str  # user | admin
     env_admin: bool  # ADMIN_EMAILS'ten gelen yönetici: rolü/durumu panelden değişmez
     workspace_id: int | None
-    plan: str | None  # canlı aboneliğin plan adı; yoksa ücretsiz
-    plan_manual: bool
     credits: int
     ai_enabled: bool
     ai_requests_30d: int
@@ -82,21 +80,10 @@ class NoteOut(BaseModel):
     created_at: str | None
 
 
-class UserSubscriptionOut(BaseModel):
-    id: int
-    product: str | None
-    status: str
-    manual: bool
-    renews_at: str | None
-    ends_at: str | None
-
-
 class UserDetailOut(BaseModel):
     user: AdminUserOut
     workspace_id: int | None  # kredi bakiyesinin ve harcama dökümünün sahibi
-    balance_plan: int
-    balance_purchased: int
-    subscriptions: list[UserSubscriptionOut]
+    balance: int
     ledger: list[LedgerRowOut]
     notes: list[NoteOut]
     audit: list["AuditOut"]
@@ -104,17 +91,11 @@ class UserDetailOut(BaseModel):
 
 class UserCreditsIn(BaseModel):
     amount: int = Field(ge=-1_000_000, le=1_000_000)
-    bucket: str = Field(default="purchased", pattern="^(plan|purchased)$")
     note: str = Field(default="", max_length=300)
 
 
 class NoteIn(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
-
-
-class AssignPlanIn(BaseModel):
-    product_id: int
-    months: int = Field(ge=1, le=36)
 
 
 class RoleIn(BaseModel):
@@ -134,7 +115,6 @@ class BulkIn(BaseModel):
     user_ids: list[int] = Field(min_length=1, max_length=200)
     action: str = Field(pattern="^(credits|suspend|activate|block)$")
     amount: int | None = Field(default=None, ge=-1_000_000, le=1_000_000)
-    bucket: str = Field(default="purchased", pattern="^(plan|purchased)$")
     reason: str = Field(default="", max_length=300)
 
 
@@ -317,9 +297,7 @@ class WorkspaceCreditOut(BaseModel):
     workspace_id: int
     name: str
     owner_email: str | None
-    plan: int
-    purchased: int
-    subscription_status: str | None
+    balance: int
     used_30d: int
 
 
@@ -330,7 +308,6 @@ class WorkspaceCreditsPageOut(BaseModel):
 
 class AdjustIn(BaseModel):
     amount: int = Field(ge=-1_000_000, le=1_000_000)
-    bucket: str = Field(default="purchased", pattern="^(plan|purchased)$")
     note: str = Field(default="", max_length=300)
 
 
@@ -338,39 +315,25 @@ class AdjustIn(BaseModel):
 
 class ProductOut(BaseModel):
     id: int
-    kind: str
     name_tr: str
     name_en: str
     variant_id: str
     credits: int
     price_cents: int
     currency: str
-    interval: str | None
     active: bool
     sort: int
 
 
 class ProductIn(BaseModel):
-    kind: str = Field(pattern="^(plan|pack)$")
     name_tr: str = Field(min_length=1, max_length=120)
     name_en: str = Field(min_length=1, max_length=120)
     variant_id: str = Field(min_length=1, max_length=40, pattern=r"^[0-9]+$")
     credits: int = Field(ge=1, le=10_000_000)
     price_cents: int = Field(ge=0, le=100_000_000)
     currency: str = Field(default="USD", pattern="^[A-Z]{3}$")
-    interval: str | None = Field(default=None, pattern="^(month|year)$")
     active: bool = True
     sort: int = Field(default=0, ge=0, le=1000)
-
-
-class SubscriptionOut(BaseModel):
-    id: int
-    workspace_id: int
-    owner_email: str | None
-    product: str | None
-    status: str
-    renews_at: str | None
-    ends_at: str | None
 
 
 class BillingEventOut(BaseModel):
@@ -387,7 +350,6 @@ class BillingOverviewOut(BaseModel):
     lemon_configured: bool
     webhook_configured: bool
     products: list[ProductOut]
-    subscriptions: list[SubscriptionOut]
     events: list[BillingEventOut]
 
 

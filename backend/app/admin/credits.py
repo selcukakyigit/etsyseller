@@ -10,8 +10,7 @@ from app.admin.schemas import (
 )
 from app.auth.models import User, Workspace, WorkspaceMember
 from app.billing import credits, settings as credit_settings, usage
-from app.billing.models import CreditBalance, CreditLedger, Subscription
-from app.billing.service import LIVE_STATUSES
+from app.billing.models import CreditBalance, CreditLedger
 from app.core import app_settings
 
 MAX_PAGE = 100
@@ -33,7 +32,7 @@ def _escape_like(text: str) -> str:
 
 
 def list_workspaces(db: Session, q: str = "", limit: int = 50, offset: int = 0) -> WorkspaceCreditsPageOut:
-    """Çalışma alanları, sahibinin e-postası, bakiye, abonelik durumu ve son 30 günde harcanan (fiyatlanan) kredi."""
+    """Çalışma alanları, sahibinin e-postası, bakiye ve son 30 günde harcanan (fiyatlanan) kredi."""
     owner = (
         select(WorkspaceMember.workspace_id, func.min(User.email).label("email"))
         .join(User, User.id == WorkspaceMember.user_id)
@@ -52,11 +51,6 @@ def list_workspaces(db: Session, q: str = "", limit: int = 50, offset: int = 0) 
         return WorkspaceCreditsPageOut(items=[], total=total)
 
     balances = {b.workspace_id: b for b in db.scalars(select(CreditBalance).where(CreditBalance.workspace_id.in_(ids))).all()}
-    subs = dict(
-        db.execute(
-            select(Subscription.workspace_id, Subscription.status).where(Subscription.workspace_id.in_(ids), Subscription.status.in_(LIVE_STATUSES))
-        ).all()
-    )
     since = dt.datetime.utcnow() - dt.timedelta(days=30)
     used = dict(
         db.execute(
@@ -68,20 +62,19 @@ def list_workspaces(db: Session, q: str = "", limit: int = 50, offset: int = 0) 
     items = [
         WorkspaceCreditOut(
             workspace_id=wid, name=name, owner_email=email,
-            plan=balances[wid].plan if wid in balances else 0, purchased=balances[wid].purchased if wid in balances else 0,
-            subscription_status=subs.get(wid), used_30d=int(used.get(wid, 0)),
+            balance=balances[wid].balance if wid in balances else 0, used_30d=int(used.get(wid, 0)),
         )
         for wid, name, email in rows
     ]
     return WorkspaceCreditsPageOut(items=items, total=total)
 
 
-def adjust(db: Session, workspace_id: int, amount: int, bucket: str, note: str, admin_id: int) -> None:
+def adjust(db: Session, workspace_id: int, amount: int, note: str, admin_id: int) -> None:
     if db.get(Workspace, workspace_id) is None:
         raise AdminError(404, "Çalışma alanı bulunamadı")
     if amount == 0:
         raise AdminError(422, "Miktar 0 olamaz.")
-    credits.grant(db, workspace_id, amount, kind="adjust", bucket=bucket, note=note or "Yönetici düzeltmesi", user_id=admin_id)
+    credits.grant(db, workspace_id, amount, kind="adjust", note=note or "Yönetici düzeltmesi", user_id=admin_id)
 
 
 def breakdown(db: Session, workspace_id: int | None, days: int = 30) -> dict:

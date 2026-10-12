@@ -1,8 +1,8 @@
 """Kredi motoru: bakiye, harcama ve yükleme. İşlemin fiyatı billing/pricing.py'de hesaplanır.
 
-Kredi sistemi panelden açılana kadar (`credits_enabled`) kullanım yalnızca kaydedilir (maliyet raporu için), bakiyeden
-düşülmez ve hiçbir istek engellenmez. Açılınca bakiyesi 0 ya da altındaki çalışma alanının AI isteği 402 alır.
-Harcama önce plan kovasından düşer, yetmezse satın alınan kovadan (eşzamanlı isteklerde birkaç kredi eksiye inebilir)."""
+Çalışma alanının tek bir kredi bakiyesi vardır (abonelik yok): satın alınan, hediye edilen ve yöneticinin eklediği krediler süresizdir.
+Kredi sistemi panelden açılana kadar (`credits_enabled`) kullanım yalnızca kaydedilir (maliyet raporu için), bakiyeden düşülmez ve hiçbir
+istek engellenmez. Açılınca bakiyesi 0 ya da altındaki çalışma alanının AI isteği 402 alır (eşzamanlı isteklerde birkaç kredi eksiye inebilir)."""
 import datetime as dt
 import logging
 
@@ -26,7 +26,7 @@ def _balance(db: Session, workspace_id: int, lock: bool = False) -> CreditBalanc
     if row is not None:
         return row
     gift = int(setting("signup_credits"))
-    row = CreditBalance(workspace_id=workspace_id, plan=0, purchased=0, updated_at=dt.datetime.utcnow())
+    row = CreditBalance(workspace_id=workspace_id, balance=0, updated_at=dt.datetime.utcnow())
     db.add(row)
     try:
         db.flush()
@@ -34,16 +34,16 @@ def _balance(db: Session, workspace_id: int, lock: bool = False) -> CreditBalanc
         db.rollback()
         return db.scalar(stmt.with_for_update() if lock else stmt)
     if gift > 0:
-        row.purchased += gift
-        db.add(CreditLedger(workspace_id=workspace_id, kind="grant", bucket="purchased", delta=gift, credits=gift, ref=f"signup:{workspace_id}", note="Hoş geldin kredisi"))
+        row.balance += gift
+        db.add(CreditLedger(workspace_id=workspace_id, kind="grant", delta=gift, credits=gift, ref=f"signup:{workspace_id}", note="Hoş geldin kredisi"))
     return row
 
 
-def balance(db: Session, workspace_id: int) -> tuple[int, int]:
-    """(plan, satın alınan). Satır yoksa oluşturur (hoş geldin kredisi dahil) ve commit eder."""
+def balance(db: Session, workspace_id: int) -> int:
+    """Çalışma alanının kredisi. Satır yoksa oluşturur (hoş geldin kredisi dahil) ve commit eder."""
     row = _balance(db, workspace_id)
     db.commit()
-    return row.plan, row.purchased
+    return row.balance
 
 
 def has_credits(workspace_id: int) -> bool:
@@ -58,8 +58,7 @@ def can_afford(workspace_id: int, amount: int) -> bool:
         return True
     db = SessionLocal()
     try:
-        plan, purchased = balance(db, workspace_id)
-        return plan + purchased >= amount
+        return balance(db, workspace_id) >= amount
     except SQLAlchemyError:
         log.exception("Kredi bakiyesi okunamadı (ws=%s); istek engellenmedi", workspace_id)
         return True
@@ -72,7 +71,7 @@ def charge_usage(
     variant: str | None = None, input_tokens: int = 0, output_tokens: int = 0, units: int = 0,
 ) -> None:
     """Fiyatı hesaplanmış bir AI çağrısını kaydeder (sistem açıksa bakiyeden düşer). Kendi oturumunu açar ve commit eder:
-    çağıranın işlemine karışmaz, ileride ayrı bir worker'dan da aynen çağrılabilir."""
+    çağıranın işlemine karışmaz, ileride ayrı bir worker'dan da aynen çağrılabilir. Bir çağrı = bir defter satırı."""
     common = dict(
         workspace_id=workspace_id, user_id=user_id, kind="usage", credits=p.credits, platform_credits=p.platform, task=task, model=f"{model.provider}/{model.model_id}"[:120],
         variant=variant, cost_usd=p.cost_usd, input_tokens=input_tokens or None, output_tokens=output_tokens or None, units=units or None,
@@ -80,59 +79,29 @@ def charge_usage(
     db = SessionLocal()
     try:
         if not enabled():
-            db.add(CreditLedger(bucket="none", delta=0, **common))
+            db.add(CreditLedger(delta=0, **common))
         else:
             row = _balance(db, workspace_id, lock=True)
-            from_plan = min(max(row.plan, 0), p.credits)
-            from_purchased = p.credits - from_plan
-            row.plan -= from_plan
-            row.purchased -= from_purchased
+            row.balance -= p.credits
             row.updated_at = dt.datetime.utcnow()
-            # Bir çağrı = bir defter satırı (maliyet raporu çift saymasın); iki kovadan birden düştüyse "mixed".
-            bucket = "mixed" if from_plan and from_purchased else ("plan" if from_plan else "purchased")
-            db.add(CreditLedger(bucket=bucket, delta=-p.credits, **common))
+            db.add(CreditLedger(delta=-p.credits, **common))
         db.commit()
     finally:
         db.close()
 
 
-def _ref_used(db: Session, ref: str | None) -> bool:
-    return bool(ref) and db.scalar(select(CreditLedger.id).where(CreditLedger.ref == ref)) is not None
-
-
-def grant(db: Session, workspace_id: int, amount: int, *, kind: str, bucket: str = "purchased", ref: str | None = None, note: str = "", user_id: int | None = None) -> bool:
-    """Kredi yükler (satın alma, hediye, iade). `ref` daha önce işlendiyse hiçbir şey yapmaz ve False döner. Commit eder."""
-    if _ref_used(db, ref):
+def grant(db: Session, workspace_id: int, amount: int, *, kind: str, ref: str | None = None, note: str = "", user_id: int | None = None) -> bool:
+    """Kredi yükler ya da düşer (satın alma, hediye, iade, yönetici düzeltmesi). `ref` daha önce işlendiyse hiçbir şey yapmaz ve False döner:
+    aynı ödeme olayı iki kez gelirse kredi iki kez yüklenmez. Commit eder."""
+    if ref and db.scalar(select(CreditLedger.id).where(CreditLedger.ref == ref)) is not None:
         return False
     row = _balance(db, workspace_id, lock=True)
-    setattr(row, bucket, getattr(row, bucket) + amount)
+    row.balance += amount
     row.updated_at = dt.datetime.utcnow()
-    db.add(CreditLedger(workspace_id=workspace_id, user_id=user_id, kind=kind, bucket=bucket, delta=amount, credits=amount, ref=ref, note=note[:300]))
+    db.add(CreditLedger(workspace_id=workspace_id, user_id=user_id, kind=kind, delta=amount, credits=amount, ref=ref, note=note[:300]))
     try:
         db.commit()
     except IntegrityError:  # aynı ref'li olay aynı anda işlendi
         db.rollback()
         return False
     return True
-
-
-def reset_plan(db: Session, workspace_id: int, amount: int, *, ref: str, note: str = "") -> bool:
-    """Abonelik dönemi başında plan kovasını `amount`'a eşitler (kalan plan kredisi devretmez). Commit eder."""
-    if _ref_used(db, ref):
-        return False
-    row = _balance(db, workspace_id, lock=True)
-    delta = amount - row.plan
-    row.plan = amount
-    row.updated_at = dt.datetime.utcnow()
-    db.add(CreditLedger(workspace_id=workspace_id, kind="plan_reset", bucket="plan", delta=delta, credits=amount, ref=ref, note=note[:300]))
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        return False
-    return True
-
-
-def clear_plan(db: Session, workspace_id: int, *, ref: str, note: str = "") -> bool:
-    """Abonelik bitince plan kovası sıfırlanır; satın alınan krediler kalır."""
-    return reset_plan(db, workspace_id, 0, ref=ref, note=note)

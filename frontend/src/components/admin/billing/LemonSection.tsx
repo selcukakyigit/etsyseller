@@ -24,8 +24,8 @@ export default function LemonSection({ data }: { data: AdminBilling; onChanged: 
       <div className="mt-3 space-y-1">
         <p className="text-xs text-neutral-500 dark:text-neutral-400">
           {t(
-            "Lemon'da Settings > Webhooks: aşağıdaki adres, aynı sır ve şu olaylar: order_created, order_refunded, subscription_created, subscription_updated, subscription_cancelled, subscription_resumed, subscription_expired, subscription_paused, subscription_unpaused, subscription_payment_success.",
-            "In Lemon, Settings > Webhooks: the URL below, the same secret and these events: order_created, order_refunded, subscription_created, subscription_updated, subscription_cancelled, subscription_resumed, subscription_expired, subscription_paused, subscription_unpaused, subscription_payment_success.",
+            "Lemon'da Settings > Webhooks: aşağıdaki adres, aynı sır ve şu olaylar: order_created ve order_refunded.",
+            "In Lemon, Settings > Webhooks: the URL below, the same secret and these events: order_created and order_refunded.",
           )}
         </p>
         <div className="flex items-center gap-2">

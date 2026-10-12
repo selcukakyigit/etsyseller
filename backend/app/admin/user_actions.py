@@ -1,4 +1,4 @@
-"""Yönetim > Kullanıcılar işlemleri: kredi, not, plan atama, şifre sıfırlama, rol, durum (askıya alma / engelleme), silme
+"""Yönetim > Kullanıcılar işlemleri: kredi, not, şifre sıfırlama, rol, durum (askıya alma / engelleme), silme
 ve toplu işlemler.
 
 Güvenlik kuralları: yönetici kendi hesabını askıya alamaz/engelleyemez/silemez/rolünü düşüremez; ADMIN_EMAILS'ten
@@ -14,8 +14,6 @@ from app.admin.schemas import BulkResultOut
 from app.auth import access, supabase_admin
 from app.auth.models import User, WorkspaceMember
 from app.billing import credits
-from app.billing import service as billing
-from app.billing.models import BillingProduct
 from app.core.config import settings
 from app.emails.renderer import render
 from app.emails.sender import send_email
@@ -44,11 +42,11 @@ def _guard_target(db: Session, admin: User, user: User) -> None:
         raise AdminError(409, "Sunucu ayarındaki (ADMIN_EMAILS) yöneticiye panelden dokunulamaz.")
 
 
-def add_credits(db: Session, admin: User, user_id: int, amount: int, bucket: str, note: str) -> None:
+def add_credits(db: Session, admin: User, user_id: int, amount: int, note: str) -> None:
     if amount == 0:
         raise AdminError(422, "Miktar 0 olamaz.")
     user = _user(db, user_id)
-    credits.grant(db, _workspace_id(db, user), amount, kind="adjust", bucket=bucket, note=note or "Yönetici düzeltmesi", user_id=admin.id)
+    credits.grant(db, _workspace_id(db, user), amount, kind="adjust", note=note or "Yönetici düzeltmesi", user_id=admin.id)
 
 
 def add_note(db: Session, admin: User, user_id: int, text: str) -> None:
@@ -63,28 +61,6 @@ def delete_note(db: Session, user_id: int, note_id: int) -> None:
         raise AdminError(404, "Not bulunamadı")
     db.delete(note)
     db.commit()
-
-
-def assign_plan(db: Session, user_id: int, product_id: int, months: int) -> None:
-    user = _user(db, user_id)
-    product = db.get(BillingProduct, product_id)
-    if product is None or product.kind != "plan":
-        raise AdminError(404, "Plan bulunamadı")
-    try:
-        billing.assign_manual_plan(db, _workspace_id(db, user), product, months)
-    except billing.EventError as exc:
-        raise AdminError(409, str(exc)) from exc
-
-
-def end_plan(db: Session, user_id: int) -> None:
-    """Elle verilen planı hemen bitirir. Ücretli (Lemon) abonelik buradan iptal edilmez; kullanıcı ya da Lemon panelinden."""
-    user = _user(db, user_id)
-    row = billing.live_subscription(db, _workspace_id(db, user))
-    if row is None:
-        raise AdminError(404, "Aktif plan yok.")
-    if not row.lemon_subscription_id.startswith(billing.MANUAL_PREFIX):
-        raise AdminError(409, "Ücretli abonelik Lemon Squeezy panelinden iptal edilir.")
-    billing.end_manual_plan(db, row)
 
 
 def send_password_reset(db: Session, user_id: int) -> None:
@@ -158,13 +134,13 @@ def delete_user(db: Session, admin: User, user_id: int, confirm_email: str) -> s
     return email
 
 
-def bulk(db: Session, admin: User, user_ids: list[int], action: str, amount: int | None, bucket: str, reason: str) -> list[BulkResultOut]:
+def bulk(db: Session, admin: User, user_ids: list[int], action: str, amount: int | None, reason: str) -> list[BulkResultOut]:
     """Her kullanıcı ayrı işlenir; birinin hatası diğerlerini durdurmaz."""
     results = []
     for uid in dict.fromkeys(user_ids):
         try:
             if action == "credits":
-                add_credits(db, admin, uid, amount or 0, bucket, reason)
+                add_credits(db, admin, uid, amount or 0, reason)
             elif action == "suspend":
                 set_status(db, admin, uid, "suspended", reason)
             elif action == "block":

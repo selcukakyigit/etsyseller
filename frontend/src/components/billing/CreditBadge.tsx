@@ -36,7 +36,7 @@ export default function CreditBadge() {
   }, []);
 
   if (!data?.enabled) return null;
-  const total = data.balance.plan + data.balance.purchased;
+  const total = data.balance;
   const tone = total <= 0 ? "text-red-600 dark:text-red-400" : total < LOW_BALANCE ? "text-amber-600 dark:text-amber-400" : "text-neutral-600 dark:text-neutral-300";
   const compact = new Intl.NumberFormat(locale, { notation: total >= 10_000 ? "compact" : "standard", maximumFractionDigits: 1 }).format(total);
 

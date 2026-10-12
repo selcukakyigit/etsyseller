@@ -207,7 +207,6 @@ function WorkspaceRow({ ws, open, onToggle, onDone }: { ws: AdminWorkspaceCredit
   const { t } = useT();
   const f = useFormat();
   const [amount, setAmount] = useState("");
-  const [bucket, setBucket] = useState<"plan" | "purchased">("purchased");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const value = Number(amount);
@@ -216,7 +215,7 @@ function WorkspaceRow({ ws, open, onToggle, onDone }: { ws: AdminWorkspaceCredit
   async function save() {
     setSaving(true);
     try {
-      await api.admin.adjustCredits(ws.workspace_id, value, bucket, note.trim());
+      await api.admin.adjustCredits(ws.workspace_id, value, note.trim());
       toast.success(t("Bakiye güncellendi", "Balance updated"));
       setAmount("");
       setNote("");
@@ -228,7 +227,7 @@ function WorkspaceRow({ ws, open, onToggle, onDone }: { ws: AdminWorkspaceCredit
     }
   }
 
-  const balance = ws.plan + ws.purchased;
+  const balance = ws.balance;
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -239,23 +238,14 @@ function WorkspaceRow({ ws, open, onToggle, onDone }: { ws: AdminWorkspaceCredit
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
-          {ws.subscription_status && <Badge tone="good">{ws.subscription_status}</Badge>}
-          <Badge tone={balance > 0 ? "muted" : "warn"}>
-            {t(`${f.num(balance)} kredi`, `${f.num(balance)} credits`)} ({t("plan", "plan")} {f.num(ws.plan)} · {t("satın alınan", "purchased")} {f.num(ws.purchased)})
-          </Badge>
+          <Badge tone={balance > 0 ? "muted" : "warn"}>{t(`${f.num(balance)} kredi`, `${f.num(balance)} credits`)}</Badge>
           <Button onClick={onToggle}>{open ? t("Kapat", "Close") : t("Düzelt", "Adjust")}</Button>
         </div>
       </div>
       {open && (
-        <div className="grid gap-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3 sm:grid-cols-[8rem_10rem_1fr_auto] sm:items-end dark:border-neutral-800 dark:bg-neutral-950">
+        <div className="grid gap-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3 sm:grid-cols-[8rem_1fr_auto] sm:items-end dark:border-neutral-800 dark:bg-neutral-950">
           <Field label={t("Miktar (+/−)", "Amount (+/−)")}>
             <input inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="100" className={inputClass} />
-          </Field>
-          <Field label={t("Kova", "Bucket")}>
-            <select value={bucket} onChange={(e) => setBucket(e.target.value as "plan" | "purchased")} className={inputClass}>
-              <option value="purchased">{t("Satın alınan", "Purchased")}</option>
-              <option value="plan">{t("Plan", "Plan")}</option>
-            </select>
           </Field>
           <Field label={t("Not", "Note")}>
             <input value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} placeholder={t("ör. destek telafisi", "e.g. support refund")} className={inputClass} />

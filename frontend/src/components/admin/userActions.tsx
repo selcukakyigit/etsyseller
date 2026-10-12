@@ -6,20 +6,19 @@ import { createPortal } from "react-dom";
 import { Modal, btnGhost, btnPrimary } from "@/components/listing-editor/Modal";
 import { Badge, Field, errorText, inputClass } from "@/components/admin/ui";
 import { Spinner } from "@/components/ui/Spinner";
-import { AdminProduct, AdminUser, AdminUserStatus, api } from "@/lib/api";
+import { AdminUser, AdminUserStatus, api } from "@/lib/api";
 import { useT } from "@/lib/i18n-client";
 import { toast } from "@/lib/toast";
 
 /** Kullanıcı satırındaki "⋯" menüsü ve her işlemin penceresi. Liste ve detay sayfası aynısını kullanır. */
 
-export type UserAction = "details" | "credits" | "note" | "plan" | "end_plan" | "password" | "role" | "suspend" | "block" | "activate" | "delete";
+export type UserAction = "details" | "credits" | "note" | "password" | "role" | "suspend" | "block" | "activate" | "delete";
 
 const btnDanger = btnPrimary.replace("bg-neutral-900", "bg-red-600").replace("hover:bg-neutral-700", "hover:bg-red-700");
 
 /** Menüde gösterilecek işlemler: sunucu ayarındaki yöneticiye ve yöneticilere yalnızca zararsız işlemler. */
 function actionsFor(u: AdminUser, inDetail: boolean): UserAction[][] {
-  const first: UserAction[] = inDetail ? ["credits", "note", "plan"] : ["details", "credits", "note", "plan"];
-  if (u.plan_manual) first.push("end_plan");
+  const first: UserAction[] = inDetail ? ["credits", "note"] : ["details", "credits", "note"];
   first.push("password");
   if (u.env_admin) return [first];
   const second: UserAction[] = ["role"];
@@ -32,8 +31,6 @@ const ICONS: Record<UserAction, string> = {
   details: "M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12zm10 3a3 3 0 100-6 3 3 0 000 6z",
   credits: "M12 5v14M5 12h14",
   note: "M4 5h16v11H8l-4 4V5z",
-  plan: "M3 7l4 4 5-6 5 6 4-4-2 11H5L3 7z",
-  end_plan: "M6 6l12 12M18 6L6 18",
   password: "M15 7a4 4 0 11-3.9 5H7v3H4v-3h-.5M15 7h.01",
   role: "M16 11a4 4 0 10-8 0 4 4 0 008 0zM4 21a8 8 0 0116 0",
   suspend: "M10 6v12M14 6v12",
@@ -41,7 +38,7 @@ const ICONS: Record<UserAction, string> = {
   activate: "M5 12l5 5L20 7",
   delete: "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3",
 };
-const DANGER: UserAction[] = ["suspend", "block", "delete", "end_plan"];
+const DANGER: UserAction[] = ["suspend", "block", "delete"];
 
 function label(a: UserAction, u: AdminUser | null, t: (tr: string, en: string) => string): string {
   switch (a) {
@@ -51,10 +48,6 @@ function label(a: UserAction, u: AdminUser | null, t: (tr: string, en: string) =
       return t("Kredi ekle / düş", "Add or remove credits");
     case "note":
       return t("Not ekle", "Add note");
-    case "plan":
-      return t("Plan ata", "Assign plan");
-    case "end_plan":
-      return t("Verilen planı bitir", "End assigned plan");
     case "password":
       return t("Şifre sıfırlama e-postası", "Send password reset");
     case "role":
@@ -209,28 +202,7 @@ export function UserActionDialog({ user, action, onClose, onDone }: { user: Admi
   const { t } = useT();
   const [busy, setBusy] = useState(false);
   const [amount, setAmount] = useState("");
-  const [bucket, setBucket] = useState<"plan" | "purchased">("purchased");
   const [text, setText] = useState("");
-  const [months, setMonths] = useState("1");
-  const [productId, setProductId] = useState<number | null>(null);
-  const [plans, setPlans] = useState<AdminProduct[] | null>(null);
-
-  useEffect(() => {
-    if (action !== "plan") return;
-    let alive = true;
-    api.admin
-      .billing()
-      .then((b) => {
-        if (!alive) return;
-        const list = b.products.filter((p) => p.kind === "plan");
-        setPlans(list);
-        setProductId((cur) => cur ?? list.find((p) => p.active)?.id ?? list[0]?.id ?? null);
-      })
-      .catch((e) => errorText(e) && toast.error(errorText(e)));
-    return () => {
-      alive = false;
-    };
-  }, [action]);
 
   if (action === null || action === "details") return null;
 
@@ -260,17 +232,11 @@ export function UserActionDialog({ user, action, onClose, onDone }: { user: Admi
           busy={busy}
           disabled={!Number.isInteger(value) || value === 0}
           onClose={onClose}
-          onConfirm={() => void run(() => api.admin.userCredits(user.id, value, bucket, text.trim()), t("Bakiye güncellendi", "Balance updated"))}
+          onConfirm={() => void run(() => api.admin.userCredits(user.id, value, text.trim()), t("Bakiye güncellendi", "Balance updated"))}
         >
           <p>{who}</p>
           <Field label={t("Miktar (eksi değer düşer)", "Amount (negative removes)")}>
             <input autoFocus inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="100" className={inputClass} />
-          </Field>
-          <Field label={t("Kova", "Bucket")} hint={t("Plan kredisi dönem sonunda sıfırlanır; satın alınan süresizdir.", "Plan credits reset each period; purchased credits never expire.")}>
-            <select value={bucket} onChange={(e) => setBucket(e.target.value as "plan" | "purchased")} className={inputClass}>
-              <option value="purchased">{t("Satın alınan", "Purchased")}</option>
-              <option value="plan">{t("Plan", "Plan")}</option>
-            </select>
           </Field>
           <Field label={t("Not (isteğe bağlı)", "Note (optional)")}>
             <input value={text} maxLength={300} onChange={(e) => setText(e.target.value)} className={inputClass} />
@@ -289,64 +255,6 @@ export function UserActionDialog({ user, action, onClose, onDone }: { user: Admi
         >
           <p>{who}</p>
           <textarea autoFocus value={text} maxLength={2000} rows={4} onChange={(e) => setText(e.target.value)} className={inputClass} placeholder={t("Yalnızca yöneticiler görür.", "Only admins can see this.")} />
-        </Dialog>
-      );
-    case "plan":
-      return (
-        <Dialog
-          title={t("Plan ata", "Assign plan")}
-          confirmLabel={t("Ata", "Assign")}
-          busy={busy}
-          disabled={productId === null}
-          onClose={onClose}
-          onConfirm={() => productId !== null && void run(() => api.admin.userAssignPlan(user.id, productId, Number(months)), t("Plan atandı", "Plan assigned"))}
-        >
-          <p>
-            {t(
-              "Ödeme alınmadan plan verilir (hediye, destek, ortaklık). Plan kredisi hemen yüklenir ve her dönem yenilenir; süre dolunca plan biter. Ücretli aboneliği olan kullanıcıya verilemez.",
-              "Gives a plan without payment (gift, support, partnership). Plan credits are added now and renew each period; the plan ends when the time is up. Not available for users with a paid subscription.",
-            )}
-          </p>
-          {plans === null ? (
-            <Spinner />
-          ) : plans.length === 0 ? (
-            <p className="text-amber-700 dark:text-amber-300">{t("Önce Satış sayfasından bir plan ekleyin.", "Add a plan on the Sales page first.")}</p>
-          ) : (
-            <>
-              <Field label={t("Plan", "Plan")}>
-                <select value={productId ?? ""} onChange={(e) => setProductId(Number(e.target.value))} className={inputClass}>
-                  {plans.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {t(p.name_tr, p.name_en)} · {p.credits} {t("kredi", "credits")}
-                      {p.active ? "" : ` (${t("satışta değil", "not for sale")})`}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label={t("Süre (ay)", "Duration (months)")}>
-                <select value={months} onChange={(e) => setMonths(e.target.value)} className={inputClass}>
-                  {[1, 3, 6, 12, 24].map((m) => (
-                    <option key={m} value={m}>
-                      {t(`${m} ay`, `${m} month${m > 1 ? "s" : ""}`)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </>
-          )}
-        </Dialog>
-      );
-    case "end_plan":
-      return (
-        <Dialog
-          title={t("Verilen planı bitir", "End assigned plan")}
-          confirmLabel={t("Planı bitir", "End plan")}
-          destructive
-          busy={busy}
-          onClose={onClose}
-          onConfirm={() => void run(() => api.admin.userEndPlan(user.id), t("Plan bitirildi", "Plan ended"))}
-        >
-          <p>{t(`${who} için elle verilen plan hemen biter ve plan kredisi sıfırlanır. Satın alınan krediler kalır.`, `The assigned plan for ${who} ends now and plan credits are cleared. Purchased credits stay.`)}</p>
         </Dialog>
       );
     case "password":
@@ -427,8 +335,8 @@ export function UserActionDialog({ user, action, onClose, onDone }: { user: Admi
         >
           <p>
             {t(
-              "Hesap, giriş kaydı, mağaza bağlantıları ve tüm veriler kalıcı olarak silinir; aktif abonelik iptal edilir. Geri alınamaz.",
-              "The account, sign-in record, shop connections and all data are deleted permanently; any active subscription is cancelled. This cannot be undone.",
+              "Hesap, giriş kaydı, mağaza bağlantıları ve tüm veriler kalıcı olarak silinir. Geri alınamaz.",
+              "The account, sign-in record, shop connections and all data are deleted permanently. This cannot be undone.",
             )}
           </p>
           <Field label={t(`Onaylamak için ${user.email} yaz`, `Type ${user.email} to confirm`)}>

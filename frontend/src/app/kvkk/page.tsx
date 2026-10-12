@@ -64,7 +64,7 @@ export default async function KvkkPage() {
           ["Render", "Uygulama sunucusu ve arka plan işleri", "AB/ABD"],
           ["Vercel", "Web arayüzünün barındırılması", "Küresel (CDN)"],
           ["Anthropic, OpenAI, Google", "Yapay zekâ ile metin ve görsel üretimi (yalnızca siz bir AI özelliğini kullandığınızda)", "ABD"],
-          ["Ödeme sağlayıcı (ücretli planlar başladığında)", "Abonelik ve fatura işlemleri", "AB/ABD"],
+          ["Ödeme sağlayıcı (kredi satışı başladığında)", "Kredi satın alma ve fatura işlemleri", "AB/ABD"],
         ]}
       />
       <P>
