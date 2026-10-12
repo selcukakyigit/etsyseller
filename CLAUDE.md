@@ -32,3 +32,11 @@ finance, cost-split, external-share or profit data.
 - Any sub-resource fetched by an id from the request (`db.get(Model, id)`) is checked against `entity_id` / `shop_id` / `workspace_id`; mismatch = 404.
 - Reports, summaries and lists must not return internal fields to guests (`access.internal`).
 - New table: enable RLS in its migration and tie it to `workspace_id` / `entity_id`.
+
+## Number fields and display helpers
+
+- Important numeric fields (price, credits, quantity, measures, durations, ids) never accept letters. Use the shared inputs from
+  `@/components/ui/NumberInputs`: `IntegerInput`, `SignedIntegerInput`, `DecimalInput`, `MoneyInput` (prices: at most 2 decimals, padded on blur,
+  currency symbol via `unit`), `NumberInput` (for `number` state). Do not write a bare `<input inputMode="decimal">`.
+- Country names always come from `countryName()` in `@/lib/countries`. `Intl.DisplayNames.of()` throws `RangeError` on codes like "??" (unknown
+  country), which crashes the page even with `fallback: "code"`.

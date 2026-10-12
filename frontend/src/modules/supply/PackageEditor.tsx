@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Spinner } from "@/components/ui/Spinner";
 import { useT } from "@/lib/i18n-client";
 import { toast } from "@/lib/toast";
-import DecimalInput from "../components/DecimalInput";
+import DecimalInput from "@/components/ui/NumberInputs";
 import { PriceItem } from "../core/api";
 import { errMsg } from "../core/errors";
 import { btnDark, btnLink, btnOutline, input, label, muted, rowBorder, td, th } from "../core/ui";

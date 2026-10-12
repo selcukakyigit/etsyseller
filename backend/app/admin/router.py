@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.admin import ai_models, audit, billing, credits, landing, messages, overview, system, user_actions, users
 from app.admin.deps import AdminError, admin_only
 from app.admin.schemas import (
-    AdjustIn, AiModelIn, AiModelOut, AttachmentUrlOut, AuditOut, BillingOverviewOut, BulkIn, BulkResultOut,
+    AdjustIn, AiModelIn, AiModelOut, AttachmentUrlOut, AuditOut, BillingOverviewOut, BulkIn, LemonCheckOut, BulkResultOut,
     CatalogOut, CreditSettingsIn, CreditSettingsOut, DeleteUserIn, KeyIn, KeyTestIn, LandingSettingsIn, LandingSettingsOut,
     MessageOut, MessageUpdateIn, NoteIn,
     OnlineUserOut, OverviewOut, ProductIn, ProductOut, RoleIn, StatusIn, SystemOut, TaskIn, TestOut, UserCreditsIn,
@@ -282,6 +282,11 @@ def update_landing_settings(payload: LandingSettingsIn, admin: User = Depends(ad
 @router.get("/billing", response_model=BillingOverviewOut)
 def billing_overview(db: Session = Depends(get_db)):
     return billing.overview(db)
+
+
+@router.get("/billing/lemon-check", response_model=LemonCheckOut)
+def lemon_check(admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    return billing.lemon_check(db)
 
 
 @router.post("/billing/products", response_model=ProductOut)

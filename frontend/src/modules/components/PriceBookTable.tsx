@@ -11,7 +11,7 @@ import { EntityAccess, EntityApi, PriceItem, PriceKind, PriceVersion, StockPatch
 import { errMsg } from "../core/errors";
 import { btnDanger, btnLink, btnOutline, btnPrimary, card, h2, input, label as labelCls, muted, rowBorder, th, td } from "../core/ui";
 import { currencySymbol, money, perUnit, unitLabel } from "../core/units";
-import DecimalInput from "./DecimalInput";
+import DecimalInput from "@/components/ui/NumberInputs";
 import { materialLabel } from "../core/materials";
 import StockFields, { emptyStock, pruneStock, StockForm, stockOf, stockPayload } from "./StockFields";
 import UnitSelect from "./UnitSelect";

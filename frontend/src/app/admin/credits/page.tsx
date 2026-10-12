@@ -1,5 +1,6 @@
 "use client";
 
+import { IntegerInput, NumberInput, SignedIntegerInput } from "@/components/ui/NumberInputs";
 import { useEffect, useState } from "react";
 import AdminShell from "@/components/admin/AdminShell";
 import { Badge, Button, EmptyState, Field, Section, Toggle, errorText, inputClass, useFormat } from "@/components/admin/ui";
@@ -74,16 +75,16 @@ function Settings() {
     >
       <div className="grid gap-3 sm:grid-cols-4">
         <Field label={t("Kâr çarpanı", "Markup")} hint={t("Sağlayıcı maliyetinin kaç katı alınır (1–50).", "How many times the provider cost is charged (1–50).")}>
-          <input type="number" min={1} max={50} step={0.1} value={form.credit_markup} onChange={(e) => setDraft({ ...form, credit_markup: Number(e.target.value) })} className={inputClass} />
+          <NumberInput value={form.credit_markup} onValue={(n) => setDraft({ ...form, credit_markup: n })} unit="×" className={inputClass} />
         </Field>
         <Field label={t("1 kredinin değeri (USD)", "Value of 1 credit (USD)")} hint={t("Kullanıcıya satış fiyatı, ör. 0.01.", "Sale price to users, e.g. 0.01.")}>
-          <input type="number" min={0.0001} step={0.001} value={form.credit_usd} onChange={(e) => setDraft({ ...form, credit_usd: Number(e.target.value) })} className={inputClass} />
+          <NumberInput value={form.credit_usd} onValue={(n) => setDraft({ ...form, credit_usd: n })} unit="$" className={inputClass} />
         </Field>
         <Field label={t("Platform payı (kredi)", "Platform fee (credits)")} hint={t("Her AI işleminde sağlayıcı payının üstüne eklenen sabit pay; sunucu ve veritabanı giderlerini karşılar.", "A fixed amount added on top of the provider share on every AI action; covers server and database costs.")}>
-          <input type="number" min={0} step={1} value={form.platform_fee} onChange={(e) => setDraft({ ...form, platform_fee: Number(e.target.value) })} className={inputClass} />
+          <IntegerInput value={String(form.platform_fee)} onValue={(v) => setDraft({ ...form, platform_fee: Number(v || 0) })} maxLength={4} className={inputClass} />
         </Field>
         <Field label={t("Hoş geldin kredisi", "Welcome credits")} hint={t("Bakiyesi ilk kez oluşan hesaba bir kez.", "Given once when an account's balance is first created.")}>
-          <input type="number" min={0} step={1} value={form.signup_credits} onChange={(e) => setDraft({ ...form, signup_credits: Number(e.target.value) })} className={inputClass} />
+          <IntegerInput value={String(form.signup_credits)} onValue={(v) => setDraft({ ...form, signup_credits: Number(v || 0) })} maxLength={6} className={inputClass} />
         </Field>
       </div>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
@@ -245,7 +246,7 @@ function WorkspaceRow({ ws, open, onToggle, onDone }: { ws: AdminWorkspaceCredit
       {open && (
         <div className="grid gap-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3 sm:grid-cols-[8rem_1fr_auto] sm:items-end dark:border-neutral-800 dark:bg-neutral-950">
           <Field label={t("Miktar (+/−)", "Amount (+/−)")}>
-            <input inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="100" className={inputClass} />
+            <SignedIntegerInput value={amount} onValue={setAmount} maxLength={8} placeholder="100" className={inputClass} />
           </Field>
           <Field label={t("Not", "Note")}>
             <input value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} placeholder={t("ör. destek telafisi", "e.g. support refund")} className={inputClass} />

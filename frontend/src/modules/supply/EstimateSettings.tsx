@@ -6,7 +6,7 @@ import { toast } from "@/lib/toast";
 import { errMsg } from "../core/errors";
 import { input, label, muted } from "../core/ui";
 import { currencySymbol, money } from "../core/units";
-import DecimalInput from "../components/DecimalInput";
+import DecimalInput from "@/components/ui/NumberInputs";
 import { JobDetail, supplyApi } from "./api";
 
 /** Süreyi "25 dk 4,8 sn" gibi yazar. */

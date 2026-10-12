@@ -1,5 +1,6 @@
 "use client";
 
+import { SignedIntegerInput } from "@/components/ui/NumberInputs";
 import { useRouter } from "next/navigation";
 import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -236,7 +237,7 @@ export function UserActionDialog({ user, action, onClose, onDone }: { user: Admi
         >
           <p>{who}</p>
           <Field label={t("Miktar (eksi değer düşer)", "Amount (negative removes)")}>
-            <input autoFocus inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="100" className={inputClass} />
+            <SignedIntegerInput autoFocus value={amount} onValue={setAmount} maxLength={8} placeholder="100" className={inputClass} />
           </Field>
           <Field label={t("Not (isteğe bağlı)", "Note (optional)")}>
             <input value={text} maxLength={300} onChange={(e) => setText(e.target.value)} className={inputClass} />

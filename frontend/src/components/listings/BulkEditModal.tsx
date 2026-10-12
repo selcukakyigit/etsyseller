@@ -1,5 +1,6 @@
 "use client";
 
+import { cleanSignedDecimal } from "@/components/ui/NumberInputs";
 import { useEffect, useMemo, useState } from "react";
 import { api, BulkChanges, BulkTextOp, DescriptionTemplate, ReadinessStateDefinition, ReturnPolicy, ShippingProfile, ShopSection } from "@/lib/api";
 import { Modal, btnGhost, btnPrimary } from "@/components/listing-editor/Modal";
@@ -247,7 +248,7 @@ export default function BulkEditModal({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className={labelCls}>{priceMode === "percent" ? t("Yüzde (ör. 10 ya da -5)", "Percent (e.g. 10 or -5)") : priceMode === "amount" ? t("Tutar (ör. 5 ya da -2)", "Amount (e.g. 5 or -2)") : t("Fiyat", "Price")}</label>
-                <input value={priceValue} onChange={(e) => setPriceValue(e.target.value)} inputMode="decimal" className={inputCls} />
+                <input value={priceValue} onChange={(e) => setPriceValue(cleanSignedDecimal(e.target.value))} inputMode="decimal" className={inputCls} />
               </div>
               <div>
                 <label className={labelCls}>{t("Yuvarlama", "Rounding")}</label>

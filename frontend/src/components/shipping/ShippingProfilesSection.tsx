@@ -1,5 +1,6 @@
 "use client";
 
+import { IntegerInput, MoneyInput } from "@/components/ui/NumberInputs";
 import { useMemo, useState } from "react";
 import { api, DestinationInput, ShippingProfile, ShippingProfileInput } from "@/lib/api";
 import { Modal, btnGhost, btnPrimary } from "@/components/listing-editor/Modal";
@@ -227,9 +228,9 @@ function ProfileForm({
                     <div>
                       <label className={labelCls}>{t("Teslimat süresi (iş günü)", "Delivery time (business days)")}</label>
                       <div className="flex items-center gap-2">
-                        <input value={d.min} onChange={(e) => patchDest(d.key, { min: e.target.value })} inputMode="numeric" className={`${inputCls} w-full`} />
+                        <IntegerInput value={d.min} onValue={(v) => patchDest(d.key, { min: v })} maxLength={3} className={`${inputCls} w-full`} />
                         <span>–</span>
-                        <input value={d.max} onChange={(e) => patchDest(d.key, { max: e.target.value })} inputMode="numeric" className={`${inputCls} w-full`} />
+                        <IntegerInput value={d.max} onValue={(v) => patchDest(d.key, { max: v })} maxLength={3} className={`${inputCls} w-full`} />
                       </div>
                     </div>
                   ) : (
@@ -241,14 +242,14 @@ function ProfileForm({
                         <label className={labelCls}>{t("Bir ürün", "One item")}</label>
                         <div className="flex items-center gap-1.5">
                           <span className="text-neutral-500">{symbol}</span>
-                          <input value={d.primary} onChange={(e) => patchDest(d.key, { primary: e.target.value })} inputMode="decimal" className={`${inputCls} w-full`} />
+                          <MoneyInput value={d.primary} onValue={(v) => patchDest(d.key, { primary: v })} className={`${inputCls} w-full`} />
                         </div>
                       </div>
                       <div>
                         <label className={labelCls}>{t("Ek ürün", "Additional item")}</label>
                         <div className="flex items-center gap-1.5">
                           <span className="text-neutral-500">{symbol}</span>
-                          <input value={d.secondary} onChange={(e) => patchDest(d.key, { secondary: e.target.value })} inputMode="decimal" className={`${inputCls} w-full`} />
+                          <MoneyInput value={d.secondary} onValue={(v) => patchDest(d.key, { secondary: v })} className={`${inputCls} w-full`} />
                         </div>
                       </div>
                     </>

@@ -1033,6 +1033,21 @@ export type AdminProduct = {
 
 export type AdminProductInput = Omit<AdminProduct, "id">;
 
+/** "Bağlantıyı test et" sonucu: anahtar ve mağaza Lemon'da okunur, her paketin varyantı doğrulanır. Sorunlar kodlarla gelir (ekran çevirir). */
+export type AdminLemonCheck = {
+  configured: boolean;
+  webhook_configured: boolean;
+  error: "not_configured" | "bad_key" | "not_found" | "unreachable" | "api_error" | null;
+  store: { id: string; name: string | null; currency: string | null; url: string | null } | null;
+  products: {
+    id: number;
+    name: string;
+    variant_id: string;
+    problems: string[];
+    lemon: { name: string | null; price_cents: number | null; status: string | null; product_status: string | null; test_mode: boolean } | null;
+  }[];
+};
+
 export type AdminBilling = {
   lemon_configured: boolean;
   webhook_configured: boolean;
@@ -1682,6 +1697,7 @@ export const api = {
     adjustCredits: (workspaceId: number, amount: number, note: string) =>
       request<{ ok: boolean }>(`/api/admin/credits/workspaces/${workspaceId}/adjust`, { method: "POST", body: JSON.stringify({ amount, note }) }),
     billing: () => request<AdminBilling>("/api/admin/billing"),
+    lemonCheck: () => request<AdminLemonCheck>("/api/admin/billing/lemon-check"),
     createProduct: (body: AdminProductInput) => request<AdminProduct>("/api/admin/billing/products", { method: "POST", body: JSON.stringify(body) }),
     updateProduct: (id: number, body: AdminProductInput) =>
       request<AdminProduct>(`/api/admin/billing/products/${id}`, { method: "PUT", body: JSON.stringify(body) }),

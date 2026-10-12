@@ -6,7 +6,7 @@ import { BlockSpinner, Spinner } from "@/components/ui/Spinner";
 import { useT } from "@/lib/i18n-client";
 import { toast } from "@/lib/toast";
 import { useApiData } from "@/lib/useApiData";
-import DecimalInput, { NumberInput } from "../components/DecimalInput";
+import DecimalInput, { NumberInput } from "@/components/ui/NumberInputs";
 import { materialLabel } from "../core/materials";
 import DocumentAnalyzer from "../components/DocumentAnalyzer";
 import { SourceBadge } from "../components/DocumentList";

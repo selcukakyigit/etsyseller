@@ -1,5 +1,6 @@
 "use client";
 
+import { IntegerInput, MoneyInput } from "@/components/ui/NumberInputs";
 import { useState } from "react";
 import { Button, Field, Toggle, errorText, inputClass } from "@/components/admin/ui";
 import { AdminAiModel, AdminAiModelInput, AdminAiModelOptions, AdminPricing, api } from "@/lib/api";
@@ -127,16 +128,16 @@ export default function ModelForm({
         {kind === "llm" && (
           <>
             <Field label={t("Girdi fiyatı (USD / 1M token)", "Input price (USD / 1M tokens)")}>
-              <input inputMode="decimal" value={inputPrice} onChange={(e) => setInputPrice(e.target.value)} className={inputClass} />
+              <MoneyInput value={inputPrice} onValue={setInputPrice} decimals={4} unit="$" className={inputClass} />
             </Field>
             <Field label={t("Çıktı fiyatı (USD / 1M token)", "Output price (USD / 1M tokens)")}>
-              <input inputMode="decimal" value={outputPrice} onChange={(e) => setOutputPrice(e.target.value)} className={inputClass} />
+              <MoneyInput value={outputPrice} onValue={setOutputPrice} decimals={4} unit="$" className={inputClass} />
             </Field>
             <Field
               label={t("Sabit kredi / çağrı (isteğe bağlı)", "Fixed credits / call (optional)")}
               hint={t("Doluysa her çağrının sağlayıcı payı bu olur (ör. 2); boşsa token maliyetinden hesaplanır. Platform payı üstüne eklenir.", "If set, each call's provider share is this (e.g. 2); if empty it is worked out from token cost. The platform fee is added on top.")}
             >
-              <input inputMode="numeric" value={fixedCredits} onChange={(e) => setFixedCredits(e.target.value.replace(/\D/g, ""))} className={inputClass} />
+              <IntegerInput value={fixedCredits} onValue={setFixedCredits} maxLength={7} className={inputClass} />
             </Field>
           </>
         )}

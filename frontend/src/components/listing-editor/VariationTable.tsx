@@ -1,5 +1,6 @@
 "use client";
 
+import { IntegerInput, MoneyInput } from "@/components/ui/NumberInputs";
 import { useEffect, useRef, useState } from "react";
 import {
   api,
@@ -115,6 +116,8 @@ function FieldCell({
   onChange: (v: string) => void;
 }) {
   if (field === "readinessStateId") return <ReadinessSelect value={value} states={states} onChange={onChange} />;
+  if (field === "price") return <MoneyInput value={value} onValue={onChange} className={inputCls} />;
+  if (field === "quantity") return <IntegerInput value={value} onValue={onChange} maxLength={6} className={inputCls} />;
   return <input value={value} onChange={(e) => onChange(e.target.value)} className={inputCls} />;
 }
 

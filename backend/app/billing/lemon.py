@@ -56,6 +56,36 @@ def create_checkout(variant_id: str, email: str, custom: dict[str, str], redirec
     return resp.json()["data"]["attributes"]["url"]
 
 
+def _get(path: str) -> dict:
+    """Lemon API'sinde bir kaynağı okur; hatayı `LemonError` olarak (kullanıcıya gösterilebilir kodla) fırlatır."""
+    if not configured():
+        raise LemonError("not_configured")
+    try:
+        resp = httpx.get(f"{API}{path}", headers=_headers(), timeout=TIMEOUT)
+    except httpx.HTTPError as exc:
+        raise LemonError("unreachable") from exc
+    if resp.status_code == 401:
+        raise LemonError("bad_key")
+    if resp.status_code == 404:
+        raise LemonError("not_found")
+    if resp.status_code >= 300:
+        log.error("Lemon okuma hatası %s %s: %s", path, resp.status_code, resp.text[:300])
+        raise LemonError("api_error")
+    return resp.json()
+
+
+def get_store() -> dict:
+    """Yapılandırılmış mağazanın özellikleri (ad, para birimi, adres)."""
+    return _get(f"/stores/{settings.lemonsqueezy_store_id}")["data"]["attributes"]
+
+
+def get_variant(variant_id: str) -> dict:
+    """Varyantın özellikleri (fiyat, durum, abonelik mi) ve bağlı olduğu ürünün özellikleri: {"variant": {...}, "product": {...}}."""
+    body = _get(f"/variants/{variant_id}?include=product")
+    product = next((i["attributes"] | {"id": i["id"]} for i in body.get("included", []) if i.get("type") == "products"), {})
+    return {"variant": body["data"]["attributes"], "product": product}
+
+
 def valid_signature(body: bytes, signature: str) -> bool:
     secret = settings.lemonsqueezy_webhook_secret
     if not secret or not signature:

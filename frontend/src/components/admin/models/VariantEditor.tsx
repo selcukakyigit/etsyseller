@@ -1,5 +1,6 @@
 "use client";
 
+import { IntegerInput, MoneyInput } from "@/components/ui/NumberInputs";
 import { Badge, Button, Toggle, inputClass } from "@/components/admin/ui";
 import type { AdminAiVariant, AdminPricing } from "@/lib/api";
 import { useT } from "@/lib/i18n-client";
@@ -96,11 +97,11 @@ export default function VariantEditor({
             <div className="grid gap-2 sm:grid-cols-3">
               <label className="block">
                 <span className="mb-1 block text-[11px] text-neutral-400 dark:text-neutral-500">{perSecond ? t("Maliyet (USD / sn)", "Cost (USD / sec)") : t("Maliyet (USD / görsel)", "Cost (USD / image)")}</span>
-                <input inputMode="decimal" value={d.cost} onChange={(e) => update(i, { cost: e.target.value })} placeholder="0.02" className={inputClass} />
+                <MoneyInput value={d.cost} onValue={(v) => update(i, { cost: v })} decimals={4} unit="$" placeholder="0.02" className={inputClass} />
               </label>
               <label className="block">
                 <span className="mb-1 block text-[11px] text-neutral-400 dark:text-neutral-500">{t("Kredi (boş: otomatik)", "Credits (empty: automatic)")}</span>
-                <input inputMode="numeric" value={d.credits} onChange={(e) => update(i, { credits: e.target.value })} placeholder={String(auto)} className={inputClass} />
+                <IntegerInput value={d.credits} onValue={(v) => update(i, { credits: v })} maxLength={7} placeholder={String(auto)} className={inputClass} />
               </label>
               {googleImage ? (
                 <label className="block">

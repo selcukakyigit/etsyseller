@@ -1,5 +1,6 @@
 "use client";
 
+import { countryName } from "@/lib/countries";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, FinReport, FinSyncStatus } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
@@ -18,16 +19,7 @@ import { useStoredState } from "@/lib/useStoredState";
 import DateRangePicker, { CUSTOM, RangeOption, presetOptions } from "@/components/ui/DateRangePicker";
 import { presetRange, yearRange } from "@/lib/dateRanges";
 
-const regionNames: Record<string, Intl.DisplayNames> = {};
-const countryOf = (code: string) => {
-  const lang = tNow("tr", "en");
-  return (
-    (regionNames[lang] ??= new Intl.DisplayNames([lang], {
-      type: "region",
-      fallback: "code",
-    })).of(code) ?? code
-  );
-};
+const countryOf = (code: string) => (code === "??" ? tNow("Bilinmiyor", "Unknown") : countryName(code));
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 function rangeFor(period: string): { start: string; end: string } {

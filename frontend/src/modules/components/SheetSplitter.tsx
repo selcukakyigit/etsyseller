@@ -9,7 +9,7 @@ import { EntityApi, MeasuresBody, ProductMeasureRow, SheetAnalysis } from "../co
 import { errMsg } from "../core/errors";
 import { badge, btnDark, btnLink, btnOutline, input, muted, rowBorder, td, th, warnBox } from "../core/ui";
 import { qty as fmtQty } from "../core/units";
-import DecimalInput from "./DecimalInput";
+import DecimalInput from "@/components/ui/NumberInputs";
 import MaterialTypeSelect from "./MaterialTypeSelect";
 import ProductPicker, { PickedProduct, productName, ShopSelect, useShopChoice } from "./ProductPicker";
 

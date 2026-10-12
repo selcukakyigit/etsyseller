@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.admin.deps import AdminError
-from app.admin.schemas import BillingEventOut, BillingOverviewOut, ProductIn, ProductOut
+from app.admin.schemas import BillingEventOut, BillingOverviewOut, LemonCheckOut, ProductIn, ProductOut
 from app.billing import lemon
 from app.billing.models import BillingEvent, BillingProduct
 from app.core.config import settings
@@ -32,6 +32,47 @@ def overview(db: Session) -> BillingOverviewOut:
             for e in events
         ],
     )
+
+
+def _check_product(p: BillingProduct, store_id: str, store_currency: str | None) -> dict:
+    """Bir paketin Lemon'daki karşılığını doğrular; sorunlar kod olarak döner (ekran iki dilde yazar)."""
+    out = {"id": p.id, "name": p.name_en, "variant_id": p.variant_id, "problems": [], "lemon": None}
+    try:
+        got = lemon.get_variant(p.variant_id)
+    except lemon.LemonError as exc:
+        out["problems"].append("variant_not_found" if str(exc) == "not_found" else f"error:{exc}")
+        return out
+    v, prod = got["variant"], got["product"]
+    out["lemon"] = {"name": v.get("name"), "price_cents": v.get("price"), "status": v.get("status"), "product_status": prod.get("status"), "test_mode": bool(v.get("test_mode"))}
+    if str(prod.get("store_id")) != store_id:
+        out["problems"].append("other_store")
+    if v.get("is_subscription"):
+        out["problems"].append("subscription")
+    if prod.get("status") != "published":
+        out["problems"].append("not_published")
+    if store_currency and p.currency != store_currency:
+        out["problems"].append("currency_mismatch")
+    if v.get("price") is not None and int(v["price"]) != p.price_cents:
+        out["problems"].append("price_mismatch")
+    return out
+
+
+def lemon_check(db: Session) -> LemonCheckOut:
+    """"Bağlantıyı test et": anahtar ve mağaza Lemon'da okunur, her paketin varyantı doğrulanır (var mı, bu mağazada mı, yayında mı, tek seferlik mi,
+    para birimi ve fiyat panelle uyuşuyor mu). Hiçbir şey değiştirmez."""
+    out = LemonCheckOut(configured=lemon.configured(), webhook_configured=bool(settings.lemonsqueezy_webhook_secret), error=None, store=None, products=[])
+    if not out.configured:
+        out.error = "not_configured"
+        return out
+    try:
+        store = lemon.get_store()
+    except lemon.LemonError as exc:
+        out.error = str(exc)
+        return out
+    out.store = {"id": str(settings.lemonsqueezy_store_id), "name": store.get("name"), "currency": store.get("currency"), "url": store.get("url")}
+    products = db.scalars(select(BillingProduct).order_by(BillingProduct.sort, BillingProduct.id)).all()
+    out.products = [_check_product(p, out.store["id"], out.store["currency"]) for p in products]
+    return out
 
 
 def _apply(row: BillingProduct, data: ProductIn) -> None:

@@ -336,6 +336,16 @@ class ProductIn(BaseModel):
     sort: int = Field(default=0, ge=0, le=1000)
 
 
+class LemonCheckOut(BaseModel):
+    """Lemon bağlantı testi: yapılandırma, mağaza ve her paketin Lemon'daki varyantıyla karşılaştırması. Hata/sorun kodları ekranda çevrilir."""
+
+    configured: bool
+    webhook_configured: bool
+    error: str | None  # not_configured | bad_key | not_found | unreachable | api_error
+    store: dict | None
+    products: list[dict]
+
+
 class BillingEventOut(BaseModel):
     id: int
     event_name: str

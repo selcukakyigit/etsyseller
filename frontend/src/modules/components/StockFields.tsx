@@ -3,7 +3,7 @@
 import { useT } from "@/lib/i18n-client";
 import { PriceItem, StockPatch } from "../core/api";
 import { isSheetMaterial, MATERIAL_TYPES } from "../core/materials";
-import DecimalInput from "./DecimalInput";
+import DecimalInput from "@/components/ui/NumberInputs";
 import { input, label, muted } from "../core/ui";
 
 /** Form durumu: sayılar metin olarak tutulur (boş = girilmemiş). */

@@ -1,5 +1,6 @@
 "use client";
 
+import { cleanDecimal } from "@/components/ui/NumberInputs";
 import { useMemo, useState } from "react";
 import { Order } from "@/lib/api";
 import { Modal, btnGhost, btnPrimary } from "@/components/listing-editor/Modal";
@@ -289,7 +290,7 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
                   <div className="flex items-center gap-1.5">
                     <input
                       value={newW}
-                      onChange={(e) => setNewW(e.target.value)}
+                      onChange={(e) => setNewW(cleanDecimal(e.target.value))}
                       inputMode="decimal"
                       placeholder={tx("Genişlik", "Width")}
                       className={`${inputCls} px-2 py-1.5`}
@@ -297,7 +298,7 @@ export default function GiftCardModal({ order, onClose }: { order: Order; onClos
                     <span className="text-xs text-neutral-500">×</span>
                     <input
                       value={newH}
-                      onChange={(e) => setNewH(e.target.value)}
+                      onChange={(e) => setNewH(cleanDecimal(e.target.value))}
                       inputMode="decimal"
                       placeholder={tx("Yükseklik", "Height")}
                       className={`${inputCls} px-2 py-1.5`}

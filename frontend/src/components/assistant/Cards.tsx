@@ -1,5 +1,6 @@
 "use client";
 
+import { countryName } from "@/lib/countries";
 import Link from "next/link";
 import { useState } from "react";
 import { ChatCard } from "@/lib/api";
@@ -33,7 +34,6 @@ export default function Card({ card, shopId }: { card: ChatCard; shopId: number 
   const [preview, setPreview] = useState(false);
   const { t, lang, locale } = useT();
   const fmt = currencyFormatter(locale);
-  const names = new Intl.DisplayNames([lang], { type: "region", fallback: "code" });
   if (card.type === "finance") {
     return (
       <div className={box}>
@@ -50,7 +50,7 @@ export default function Card({ card, shopId }: { card: ChatCard; shopId: number 
         </div>
         {card.countries.length > 0 && (
           <div className="border-t border-neutral-100 px-4 py-2 text-xs text-neutral-600 dark:border-neutral-800 dark:text-neutral-300">
-            <b>{t("En çok satış:", "Top sales:")}</b> {card.countries.map((c) => `${names.of(c.iso) ?? c.iso} ${fmt(card.currency, c.sales)}`).join(" · ")}
+            <b>{t("En çok satış:", "Top sales:")}</b> {card.countries.map((c) => `${countryName(c.iso, lang)} ${fmt(card.currency, c.sales)}`).join(" · ")}
           </div>
         )}
       </div>
@@ -281,7 +281,7 @@ export default function Card({ card, shopId }: { card: ChatCard; shopId: number 
               <div key={o.receipt_id} className="px-4 py-2 text-xs">
                 <div className="flex justify-between gap-2">
                   <span className="font-medium">
-                    {o.buyer} <span className="font-normal text-neutral-400">{o.country && (names.of(o.country) ?? o.country)}</span>
+                    {o.buyer} <span className="font-normal text-neutral-400">{o.country && countryName(o.country, lang)}</span>
                   </span>
                   <span className="whitespace-nowrap font-medium">${o.total.toFixed(2)}</span>
                 </div>

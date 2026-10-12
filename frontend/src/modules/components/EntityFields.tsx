@@ -5,7 +5,7 @@ import { T, useT } from "@/lib/i18n-client";
 import { Entity, EntityInput } from "../core/api";
 import { input, label } from "../core/ui";
 import CurrencySelect from "./CurrencySelect";
-import DecimalInput from "./DecimalInput";
+import DecimalInput from "@/components/ui/NumberInputs";
 
 /** Kayıt formunun ortak alanları (oluşturma ve ayarlar aynı bileşeni kullanır). KDV metin olarak tutulur ki yazarken
  * "20," gibi ara değerler bozulmasın; kaydederken `parseEntityFields` sayıya çevirir. */

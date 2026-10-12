@@ -1,5 +1,6 @@
 "use client";
 
+import { cleanDecimal } from "@/components/ui/NumberInputs";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Modal } from "@/components/listing-editor/Modal";
@@ -61,7 +62,7 @@ function UnitInput({
       <span className={`pointer-events-none absolute top-1/2 -translate-y-1/2 text-[11px] text-neutral-400 ${side === "prefix" ? "left-1.5" : "right-1.5"}`}>{symbol}</span>
       <input
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange(cleanDecimal(e.target.value))}
         onBlur={onBlur}
         onKeyDown={onKeyDown}
         inputMode="decimal"
@@ -320,7 +321,7 @@ function FixedCostCard({ shopId, initial, currency, onSaved }: { shopId: number;
       <div className="flex items-center gap-2">
         <input
           value={val}
-          onChange={(e) => setVal(e.target.value)}
+          onChange={(e) => setVal(cleanDecimal(e.target.value))}
           onBlur={commit}
           onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
           inputMode="decimal"
@@ -676,7 +677,7 @@ function OrderRow({ o, shopId, money2, onSaved, onOpen, onBreakdown, currency }:
       <td className="py-2 pr-2 text-right">
         <input
           value={val}
-          onChange={(e) => setVal(e.target.value)}
+          onChange={(e) => setVal(cleanDecimal(e.target.value))}
           onBlur={commit}
           onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
           inputMode="decimal"

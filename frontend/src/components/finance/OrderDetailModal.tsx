@@ -1,5 +1,6 @@
 "use client";
 
+import { countryName } from "@/lib/countries";
 import { useEffect, useState } from "react";
 import { api, FinOrderDetail } from "@/lib/api";
 import ItemCostComponents from "./ItemCostComponents";
@@ -46,7 +47,6 @@ export default function OrderDetailModal({ shopId, receiptId, onClose }: { shopI
   }, [onClose]);
 
   const loading = !data || data.receipt_id !== receiptId;
-  const names = new Intl.DisplayNames([t("tr", "en")], { type: "region", fallback: "code" });
   const money = (n: number) =>
     new Intl.NumberFormat(t("tr-TR", "en-US"), { style: "currency", currency: data?.currency ?? "USD", minimumFractionDigits: 2 }).format(n);
   const signed = (n: number) => (n < 0 ? `−${money(-n)}` : money(n));
@@ -202,7 +202,7 @@ export default function OrderDetailModal({ shopId, receiptId, onClose }: { shopI
                   <br />
                   {[data.address.city, data.address.state, data.address.zip].filter(Boolean).join(", ")}
                   <br />
-                  {data.address.country_iso ? (names.of(data.address.country_iso) ?? data.address.country_iso) : ""}
+                  {countryName(data.address.country_iso)}
                 </p>
                 {data.shipments.length > 0 && (
                   <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-300">

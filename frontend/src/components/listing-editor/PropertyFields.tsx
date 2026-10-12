@@ -1,5 +1,6 @@
 "use client";
 
+import { cleanDecimal } from "@/components/ui/NumberInputs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, ListingProperty, TaxonomyProperty } from "@/lib/api";
 import { tNow as t } from "@/lib/i18n";
@@ -94,8 +95,9 @@ function PropertyRow({
           <input
             value={dimValue}
             onChange={(e) => {
-              setDimValue(e.target.value);
-              commitDimension(e.target.value, scaleId);
+              const next = cleanDecimal(e.target.value);
+              setDimValue(next);
+              commitDimension(next, scaleId);
             }}
             inputMode="decimal"
             placeholder={t("Değer", "Value")}

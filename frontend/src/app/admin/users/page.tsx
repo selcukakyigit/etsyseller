@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { SignedIntegerInput } from "@/components/ui/NumberInputs";
 import { useEffect, useMemo, useState } from "react";
 import Avatar from "@/components/Avatar";
 import AdminShell from "@/components/admin/AdminShell";
@@ -327,7 +328,7 @@ function BulkDialog({ action, userIds, onClose, onDone }: { action: AdminBulkAct
         {action === "credits" && (
           <>
             <Field label={t("Miktar (eksi değer düşer)", "Amount (negative removes)")}>
-              <input autoFocus inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="100" className={inputClass} />
+              <SignedIntegerInput autoFocus value={amount} onValue={setAmount} maxLength={8} placeholder="100" className={inputClass} />
             </Field>
           </>
         )}

@@ -1,5 +1,6 @@
 "use client";
 
+import { IntegerInput, MoneyInput } from "@/components/ui/NumberInputs";
 import { useState } from "react";
 import { Badge, Button, EmptyState, Field, Section, Toggle, errorText, inputClass, useFormat } from "@/components/admin/ui";
 import { AdminBilling, AdminProduct, AdminProductInput, api } from "@/lib/api";
@@ -142,19 +143,19 @@ function ProductForm({ initial, onCancel, onSaved }: { initial: AdminProduct | n
           <input value={nameEn} onChange={(e) => setNameEn(e.target.value)} className={inputClass} />
         </Field>
         <Field label={t("Lemon varyant no.", "Lemon variant ID")}>
-          <input inputMode="numeric" value={variant} onChange={(e) => setVariant(e.target.value)} className={`${inputClass} font-mono`} />
+          <IntegerInput value={variant} onValue={setVariant} maxLength={20} className={`${inputClass} font-mono`} />
         </Field>
         <Field label={t("Kredi", "Credits")}>
-          <input inputMode="numeric" value={creditsValue} onChange={(e) => setCreditsValue(e.target.value)} className={inputClass} />
+          <IntegerInput value={creditsValue} onValue={setCreditsValue} maxLength={8} className={inputClass} />
         </Field>
         <Field label={t("Fiyat (gösterim)", "Price (display)")}>
-          <input inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="19.00" className={inputClass} />
+          <MoneyInput value={price} onValue={setPrice} unit={currency} placeholder="19.00" className={inputClass} />
         </Field>
         <Field label={t("Para birimi", "Currency")}>
-          <input value={currency} maxLength={3} onChange={(e) => setCurrency(e.target.value.toUpperCase())} className={`${inputClass} font-mono`} />
+          <input value={currency} maxLength={3} onChange={(e) => setCurrency(e.target.value.toUpperCase().replace(/[^A-Z]/g, ""))} className={`${inputClass} font-mono`} />
         </Field>
         <Field label={t("Sıra", "Order")} hint={t("Küçük sayı önce gösterilir.", "Lower numbers are shown first.")}>
-          <input inputMode="numeric" value={sort} onChange={(e) => setSort(e.target.value)} className={inputClass} />
+          <IntegerInput value={sort} onValue={setSort} maxLength={4} className={inputClass} />
         </Field>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">

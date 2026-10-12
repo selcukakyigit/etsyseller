@@ -1,7 +1,7 @@
 "use client";
 
 import { useT } from "@/lib/i18n-client";
-import DecimalInput from "../components/DecimalInput";
+import DecimalInput from "@/components/ui/NumberInputs";
 import { materialLabel } from "../core/materials";
 import { input, muted, rowBorder, td, th } from "../core/ui";
 import { currencySymbol, money, qty as fmtQty } from "../core/units";

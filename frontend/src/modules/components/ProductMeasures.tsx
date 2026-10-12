@@ -11,7 +11,7 @@ import { EntityApi, MeasureKey, MeasuresBody, ProductMeasureRow, SheetAnalysis }
 import { errMsg } from "../core/errors";
 import { badge, btnDanger, btnDark, btnLink, btnOutline, card, h2, input, label as labelCls, muted, rowBorder, td, th } from "../core/ui";
 import { qty as fmtQty } from "../core/units";
-import DecimalInput from "./DecimalInput";
+import DecimalInput from "@/components/ui/NumberInputs";
 import { materialLabel } from "../core/materials";
 import MaterialTypeSelect from "./MaterialTypeSelect";
 import ProductPicker, { PickedProduct, ShopSelect, useShopChoice } from "./ProductPicker";

@@ -1,5 +1,6 @@
 "use client";
 
+import { countryName } from "@/lib/countries";
 import { EMPTY_ORDER_FILTERS, OrderFilters } from "./orderUtils";
 import { useT } from "@/lib/i18n-client";
 
@@ -37,7 +38,6 @@ export default function OrderFilterPanel({
 }) {
   const set = (p: Partial<OrderFilters>) => onChange({ ...filters, ...p });
   const { t, lang } = useT();
-  const names = new Intl.DisplayNames([lang], { type: "region", fallback: "code" });
   return (
     <aside className="w-full shrink-0 lg:w-60 lg:sticky lg:self-start lg:overflow-y-auto lg:top-[14rem] lg:max-h-[calc(100vh-15rem)]">
       <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
@@ -63,7 +63,7 @@ export default function OrderFilterPanel({
         </Radio>
         {destinations.slice(0, 8).map(({ iso, count: n }) => (
           <Radio key={iso} checked={filters.destination === iso} onChange={() => set({ destination: iso })} count={n}>
-            {names.of(iso) ?? iso}
+            {countryName(iso, lang)}
           </Radio>
         ))}
 
