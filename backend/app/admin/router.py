@@ -287,19 +287,19 @@ def billing_overview(db: Session = Depends(get_db)):
 @router.post("/billing/products", response_model=ProductOut)
 def create_product(payload: ProductIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
     out = _run(billing.create_product, db, payload)
-    audit.record(db, admin, "product.create", f"{out.kind}:{out.variant_id}", payload.model_dump_json())
+    audit.record(db, admin, "product.create", f"product:{out.variant_id}", payload.model_dump_json())
     return out
 
 
 @router.put("/billing/products/{product_id}", response_model=ProductOut)
 def update_product(product_id: int, payload: ProductIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
     out = _run(billing.update_product, db, product_id, payload)
-    audit.record(db, admin, "product.update", f"{out.kind}:{out.variant_id}", payload.model_dump_json())
+    audit.record(db, admin, "product.update", f"product:{out.variant_id}", payload.model_dump_json())
     return out
 
 
 @router.delete("/billing/products/{product_id}")
 def delete_product(product_id: int, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
     row = _run(billing.delete_product, db, product_id)
-    audit.record(db, admin, "product.delete", f"{row.kind}:{row.variant_id}")
+    audit.record(db, admin, "product.delete", f"product:{row.variant_id}")
     return {"ok": True}
