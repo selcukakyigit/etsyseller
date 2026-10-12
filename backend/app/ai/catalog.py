@@ -72,6 +72,7 @@ class ResolvedModel:
     label: str
     input_usd_per_mtok: float | None = None
     output_usd_per_mtok: float | None = None
+    fixed_credits: int | None = None
     options: dict = field(default_factory=dict)
     variants: tuple[Variant, ...] = ()
 
@@ -128,7 +129,7 @@ def _variant(row: AiModelVariant) -> Variant:
 def _resolved(row: AiModel, variants: list[AiModelVariant]) -> ResolvedModel:
     return ResolvedModel(
         row.id, row.kind, row.provider, row.model_id, row.label, row.input_usd_per_mtok, row.output_usd_per_mtok,
-        _json_dict(row.options_json), tuple(_variant(v) for v in variants),
+        row.fixed_credits, _json_dict(row.options_json), tuple(_variant(v) for v in variants),
     )
 
 

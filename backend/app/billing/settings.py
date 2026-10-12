@@ -3,9 +3,10 @@ from app.core import app_settings
 
 DEFAULTS = {
     "credits_enabled": False,  # kapalıyken yalnızca ölçülür, düşülmez/engellenmez
-    "credit_markup": 3.0,  # sağlayıcı maliyetinin kaç katı kredi olarak alınır
+    "credit_markup": 2.0,  # sağlayıcı maliyetinin kaç katı kredi olarak alınır
     "credit_usd": 0.01,  # bir kredinin kullanıcıya satış değeri (USD)
-    "signup_credits": 0,  # yeni (ya da ilk kez bakiyesi oluşan) çalışma alanına bir kerelik hediye
+    "platform_fee": 1,  # her AI işleminde alınan sabit platform payı (kredi); sabit giderleri (sunucu, veritabanı…) karşılar
+    "signup_credits": 100,  # yeni (ya da ilk kez bakiyesi oluşan) çalışma alanına bir kerelik hediye
 }
 
 

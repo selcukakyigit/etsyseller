@@ -9,7 +9,7 @@ from app.admin.schemas import (
     CreditSettingsIn, CreditSettingsOut, UsageReportOut, UsageRowOut, WorkspaceCreditOut, WorkspaceCreditsPageOut,
 )
 from app.auth.models import User, Workspace, WorkspaceMember
-from app.billing import credits, settings as credit_settings
+from app.billing import credits, settings as credit_settings, usage
 from app.billing.models import CreditBalance, CreditLedger, Subscription
 from app.billing.service import LIVE_STATUSES
 from app.core import app_settings
@@ -82,6 +82,13 @@ def adjust(db: Session, workspace_id: int, amount: int, bucket: str, note: str, 
     if amount == 0:
         raise AdminError(422, "Miktar 0 olamaz.")
     credits.grant(db, workspace_id, amount, kind="adjust", bucket=bucket, note=note or "Yönetici düzeltmesi", user_id=admin_id)
+
+
+def breakdown(db: Session, workspace_id: int | None, days: int = 30) -> dict:
+    """Kategori / model / gün dökümü ve sağlayıcı maliyeti, gelir, marj; `workspace_id` None ise bütün çalışma alanları."""
+    if workspace_id is not None and db.get(Workspace, workspace_id) is None:
+        raise AdminError(404, "Çalışma alanı bulunamadı")
+    return usage.breakdown(db, workspace_id, days, include_cost=True)
 
 
 def usage_report(db: Session, days: int = 30) -> UsageReportOut:

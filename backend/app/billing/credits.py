@@ -74,7 +74,7 @@ def charge_usage(
     """Fiyatı hesaplanmış bir AI çağrısını kaydeder (sistem açıksa bakiyeden düşer). Kendi oturumunu açar ve commit eder:
     çağıranın işlemine karışmaz, ileride ayrı bir worker'dan da aynen çağrılabilir."""
     common = dict(
-        workspace_id=workspace_id, user_id=user_id, kind="usage", credits=p.credits, task=task, model=f"{model.provider}/{model.model_id}"[:120],
+        workspace_id=workspace_id, user_id=user_id, kind="usage", credits=p.credits, platform_credits=p.platform, task=task, model=f"{model.provider}/{model.model_id}"[:120],
         variant=variant, cost_usd=p.cost_usd, input_tokens=input_tokens or None, output_tokens=output_tokens or None, units=units or None,
     )
     db = SessionLocal()

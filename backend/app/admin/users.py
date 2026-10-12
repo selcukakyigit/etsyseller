@@ -156,7 +156,7 @@ def get_detail(db: Session, user_id: int) -> UserDetailOut:
                 renews_at=iso(sub.renews_at), ends_at=iso(sub.ends_at),
             ))
         ledger = [
-            LedgerRowOut(id=r.id, kind=r.kind, task=r.task, model=r.model, credits=r.credits, delta=r.delta, note=r.note, created_at=iso(r.created_at))
+            LedgerRowOut(id=r.id, kind=r.kind, task=r.task, model=r.model, credits=r.credits, platform_credits=r.platform_credits, delta=r.delta, note=r.note, created_at=iso(r.created_at))
             for r in db.scalars(select(CreditLedger).where(CreditLedger.workspace_id == wid).order_by(CreditLedger.id.desc()).limit(DETAIL_LEDGER_ROWS)).all()
         ]
     notes = [

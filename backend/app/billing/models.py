@@ -20,7 +20,7 @@ class CreditBalance(Base):
 
 
 class CreditLedger(Base):
-    """Kredi hareketi. `credits` işlemin fiyatı, `delta` bakiyeye gerçekten yansıyan değişiklik: kredi sistemi kapalıyken
+    """Kredi hareketi. `credits` işlemin fiyatı (sağlayıcı + platform payı), `delta` bakiyeye gerçekten yansıyan değişiklik: kredi sistemi kapalıyken
     kullanım kaydedilir (maliyet raporu için) ama bakiyeden düşmez, delta 0 olur. `ref` dış olayın kimliğidir (Lemon
     sipariş/fatura no.); benzersizdir, aynı webhook iki kez gelirse kredi iki kez yüklenmez."""
 
@@ -33,6 +33,7 @@ class CreditLedger(Base):
     bucket: Mapped[str] = mapped_column(String(10))  # plan | purchased | mixed (iki kovadan) | none (sistem kapalı)
     delta: Mapped[int] = mapped_column(Integer)
     credits: Mapped[int] = mapped_column(Integer)
+    platform_credits: Mapped[int] = mapped_column(Integer, default=0, server_default="0")  # `credits`in platform payı; kalanı sağlayıcı payı
     task: Mapped[str | None] = mapped_column(String(30), nullable=True)
     model: Mapped[str | None] = mapped_column(String(120), nullable=True)
     variant: Mapped[str | None] = mapped_column(String(40), nullable=True)  # görsel/video seçeneği, ör. "720p"

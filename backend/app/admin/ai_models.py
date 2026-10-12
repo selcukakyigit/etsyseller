@@ -48,7 +48,7 @@ def _out(row: AiModel, variants: list[AiModelVariant]) -> AiModelOut:
     return AiModelOut(
         id=row.id, kind=row.kind, provider=row.provider, model_id=row.model_id, label=row.label, active=row.active,
         supported=row.provider in catalog.SUPPORTED_PROVIDERS.get(row.kind, ()),
-        input_usd_per_mtok=row.input_usd_per_mtok, output_usd_per_mtok=row.output_usd_per_mtok, options=_json(row.options_json),
+        input_usd_per_mtok=row.input_usd_per_mtok, output_usd_per_mtok=row.output_usd_per_mtok, fixed_credits=row.fixed_credits, options=_json(row.options_json),
         variants=[_variant_out(v) for v in variants],
     )
 
@@ -64,7 +64,7 @@ def _variants_by_model(db: Session, model_ids: list[int] | None = None) -> dict[
 
 
 def _pricing() -> PricingOut:
-    return PricingOut(credit_usd=credit_settings.setting("credit_usd"), credit_markup=credit_settings.setting("credit_markup"), units=catalog.UNITS)
+    return PricingOut(credit_usd=credit_settings.setting("credit_usd"), credit_markup=credit_settings.setting("credit_markup"), platform_fee=pricing.platform_fee(), units=catalog.UNITS)
 
 
 def get_catalog(db: Session) -> CatalogOut:
@@ -170,6 +170,7 @@ def _apply(db: Session, row: AiModel, data: AiModelIn, options: dict, variants: 
     is_llm = data.kind == "llm"
     row.input_usd_per_mtok = data.input_usd_per_mtok if is_llm else None
     row.output_usd_per_mtok = data.output_usd_per_mtok if is_llm else None
+    row.fixed_credits = data.fixed_credits if is_llm else None
     row.options_json = json.dumps(options)
     row.updated_at = dt.datetime.utcnow()
     db.flush()

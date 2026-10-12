@@ -1,6 +1,6 @@
 """Kullanıcının Plan ve krediler ekranı: bakiye, abonelik, satın alınabilir ürünler, ödeme sayfası ve kullanım geçmişi.
 Bakiye kişisel (ilk) çalışma alanına aittir."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.models import User
 from app.auth.workspaces import primary_workspace
-from app.billing import credits, lemon, service, settings as credit_settings
+from app.billing import credits, lemon, service, settings as credit_settings, usage
 from app.billing.models import BillingProduct, CreditLedger
 from app.core.config import settings
 from app.core.dates import iso
@@ -53,6 +53,17 @@ def summary(user: User = Depends(get_current_user), db: Session = Depends(get_db
     }
 
 
+@router.get("/usage")
+def usage_breakdown(days: int = Query(30, ge=1, le=usage.MAX_DAYS), user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Bu çalışma alanının harcaması: kategoriye (metin / görsel / video / sistem), modele ve güne göre. Sağlayıcı maliyeti dönmez."""
+    ws = primary_workspace(db, user)
+    try:
+        return usage.breakdown(db, ws.id, days)
+    except SQLAlchemyError:
+        db.rollback()
+        return {"days": days, "calls": 0, "total": 0, "by_category": dict.fromkeys(usage.CATEGORIES, 0), "daily": [], "by_model": []}
+
+
 @router.get("/history")
 def history(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     ws = primary_workspace(db, user)
@@ -62,7 +73,7 @@ def history(user: User = Depends(get_current_user), db: Session = Depends(get_db
         db.rollback()
         return []
     return [
-        {"id": r.id, "kind": r.kind, "task": r.task, "credits": r.credits, "delta": r.delta, "created_at": iso(r.created_at)}
+        {"id": r.id, "kind": r.kind, "task": r.task, "credits": r.credits, "platform_credits": r.platform_credits, "delta": r.delta, "model": r.model, "created_at": iso(r.created_at)}
         for r in rows
     ]
 

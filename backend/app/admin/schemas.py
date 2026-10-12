@@ -69,6 +69,7 @@ class LedgerRowOut(BaseModel):
     task: str | None
     model: str | None
     credits: int
+    platform_credits: int
     delta: int
     note: str
     created_at: str | None
@@ -225,6 +226,7 @@ class AiModelOut(BaseModel):
     supported: bool  # kodda bu tür için sağlayıcı adaptörü var mı (yoksa göreve atanamaz)
     input_usd_per_mtok: float | None
     output_usd_per_mtok: float | None
+    fixed_credits: int | None
     options: dict
     variants: list[AiVariantOut]
 
@@ -237,6 +239,7 @@ class AiModelIn(BaseModel):
     active: bool = True
     input_usd_per_mtok: float | None = Field(default=None, ge=0, le=10_000)
     output_usd_per_mtok: float | None = Field(default=None, ge=0, le=10_000)
+    fixed_credits: int | None = Field(default=None, ge=0, le=1_000_000)  # metin modelinde çağrı başına sabit kredi (boşsa token maliyetinden)
     options: dict = Field(default_factory=dict)
     variants: list[AiVariantIn] = Field(default_factory=list, max_length=20)
 
@@ -261,6 +264,7 @@ class PricingOut(BaseModel):
 
     credit_usd: float
     credit_markup: float
+    platform_fee: int  # her işlemde alınan sabit platform payı (kredi)
     units: dict[str, str]  # tür -> fiyat birimi (image | second)
 
 
@@ -296,6 +300,7 @@ class CreditSettingsOut(BaseModel):
     credits_enabled: bool
     credit_markup: float
     credit_usd: float
+    platform_fee: int
     signup_credits: int
 
 
@@ -303,6 +308,7 @@ class CreditSettingsIn(BaseModel):
     credits_enabled: bool | None = None
     credit_markup: float | None = Field(default=None, ge=1, le=50)
     credit_usd: float | None = Field(default=None, gt=0, le=10)
+    platform_fee: int | None = Field(default=None, ge=0, le=1000)
     signup_credits: int | None = Field(default=None, ge=0, le=100_000)
 
 

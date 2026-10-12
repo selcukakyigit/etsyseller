@@ -34,6 +34,8 @@ class AiModel(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=sa_true())
     input_usd_per_mtok: Mapped[float | None] = mapped_column(MONEY, nullable=True)
     output_usd_per_mtok: Mapped[float | None] = mapped_column(MONEY, nullable=True)
+    # Metin modelinde yöneticinin sabitlediği çağrı başına kredi (sağlayıcı payı); boşsa token maliyetinden hesaplanır.
+    fixed_credits: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Modelin özellikleri, ör. videoda {"durations": [5, 10], "default_duration": 5}. (Eski `unit_usd` sütunu
     # veritabanında duruyor ama kullanılmıyor; fiyat 0028'den beri seçeneklerde.)
     options_json: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")

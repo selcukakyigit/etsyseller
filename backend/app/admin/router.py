@@ -271,6 +271,11 @@ def adjust_credits(workspace_id: int, payload: AdjustIn, admin: User = Depends(a
     return {"ok": True}
 
 
+@router.get("/credits/breakdown")
+def credits_breakdown(workspace_id: int | None = None, days: int = Query(30, ge=1, le=366), admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    return _run(credits.breakdown, db, workspace_id, days)
+
+
 @router.get("/credits/usage", response_model=UsageReportOut)
 def credit_usage(days: int = Query(30, ge=1, le=365), db: Session = Depends(get_db)):
     return credits.usage_report(db, days)
