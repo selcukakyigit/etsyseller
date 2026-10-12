@@ -20,8 +20,8 @@ function CoinIcon() {
   );
 }
 
-/** Üst çubuktaki kredi göstergesi: bakiye + tıklayınca bu ayın harcaması (metin / görsel / video / sistem) ve "Kredi al". Kredi sistemi kapalıyken
- * hiç görünmez. Bakiye, kredi harcayan ya da yükleyen işlemlerden sonra `credits-changed` olayıyla tazelenir. */
+/** Üst çubuktaki kredi göstergesi: bakiye + tıklayınca bu ayın harcaması (metin / görsel / video / sistem) ve "Kredi al". Kredi sistemi henüz
+ * kapalıysa da görünür (menüde bunu söyler). Bakiye, kredi harcayan ya da yükleyen işlemlerden sonra `credits-changed` olayıyla tazelenir. */
 export default function CreditBadge() {
   const { t, locale } = useT();
   const { data, reload } = useApiData("billing:summary", api.billing.summary);
@@ -35,7 +35,7 @@ export default function CreditBadge() {
     return () => document.removeEventListener("mousedown", close);
   }, []);
 
-  if (!data?.enabled) return null;
+  if (!data) return null;
   const total = data.balance;
   const tone = total <= 0 ? "text-red-600 dark:text-red-400" : total < LOW_BALANCE ? "text-amber-600 dark:text-amber-400" : "text-neutral-600 dark:text-neutral-300";
   const compact = new Intl.NumberFormat(locale, { notation: total >= 10_000 ? "compact" : "standard", maximumFractionDigits: 1 }).format(total);
@@ -52,12 +52,12 @@ export default function CreditBadge() {
         <CoinIcon />
         {compact}
       </button>
-      {open && <CreditMenu total={total} onClose={() => setOpen(false)} />}
+      {open && <CreditMenu total={total} active={data.enabled} onClose={() => setOpen(false)} />}
     </div>
   );
 }
 
-function CreditMenu({ total, onClose }: { total: number; onClose: () => void }) {
+function CreditMenu({ total, active, onClose }: { total: number; active: boolean; onClose: () => void }) {
   const { t, locale } = useT();
   const { data } = useApiData("billing:usage:30", () => api.billing.usage(30));
   const fmt = (n: number) => new Intl.NumberFormat(locale).format(n);
@@ -68,6 +68,11 @@ function CreditMenu({ total, onClose }: { total: number; onClose: () => void }) 
     >
       <p className="text-xs font-medium text-neutral-400 dark:text-neutral-500">{t("Kredi bakiyesi", "Credit balance")}</p>
       <p className="text-2xl font-semibold tabular-nums text-neutral-900 dark:text-neutral-100">{fmt(total)}</p>
+      {!active && (
+        <p className="mt-2 rounded-lg bg-neutral-50 px-2.5 py-1.5 text-xs text-neutral-600 dark:bg-neutral-950 dark:text-neutral-300">
+          {t("Kredi sistemi henüz aktif değil; harcamalar bakiyenden düşmüyor.", "The credit system is not active yet; usage is not deducted from your balance.")}
+        </p>
+      )}
       <p className="mt-3 text-xs font-medium text-neutral-400 dark:text-neutral-500">{t("Son 30 gün harcama", "Spent in the last 30 days")}</p>
       <ul className="mt-1.5 space-y-1">
         {CREDIT_CATEGORIES.map((c) => (

@@ -183,8 +183,12 @@ function ProductList({
   );
 }
 
+/** Önce son 10 hareket görünür; "Daha fazla göster" 10'ar 10'ar açar (liste sayfayı uzatmasın). */
+const HISTORY_STEP = 10;
+
 function History({ rows }: { rows: BillingHistoryRow[] | null }) {
   const { t, locale } = useT();
+  const [shown, setShown] = useState(HISTORY_STEP);
   return (
     <section className={card}>
       <h2 className="mb-3 text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("Son hareketler", "Recent activity")}</h2>
@@ -194,7 +198,7 @@ function History({ rows }: { rows: BillingHistoryRow[] | null }) {
         <p className="text-sm text-neutral-400 dark:text-neutral-500">{t("Henüz hareket yok.", "No activity yet.")}</p>
       ) : (
         <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
-          {rows.map((r) => {
+          {rows.slice(0, shown).map((r) => {
             const kind = KIND_NAMES[r.kind];
             const task = r.task ? TASK_NAMES[r.task] : undefined;
             // Kredi sistemi kapalıyken kullanım ölçülür ama düşülmez (delta 0): "x kredi değerinde" gösterilir.
@@ -215,6 +219,11 @@ function History({ rows }: { rows: BillingHistoryRow[] | null }) {
             );
           })}
         </ul>
+      )}
+      {rows !== null && rows.length > shown && (
+        <button type="button" onClick={() => setShown((n) => n + HISTORY_STEP)} className="mt-3 text-sm font-medium text-[#A9502F] hover:underline dark:text-[#F48771]">
+          {t(`Daha fazla göster (${rows.length - shown})`, `Show more (${rows.length - shown})`)}
+        </button>
       )}
     </section>
   );

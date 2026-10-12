@@ -5,6 +5,7 @@ import ProductMock from "@/components/site/ProductMock";
 import { SiteFooter, SiteHeader } from "@/components/site/SiteChrome";
 import { display, sans } from "@/components/site/fonts";
 import { Lang } from "@/lib/i18n";
+import { PriceList } from "@/lib/pricing";
 import { ETSY_DISCLAIMER } from "@/lib/legal";
 import { LandingCopy } from "./copy";
 
@@ -21,7 +22,7 @@ const primary =
 const secondary =
   "inline-flex items-center rounded-full border border-black/15 bg-white/60 px-6 py-3.5 text-sm font-semibold text-neutral-800 transition hover:bg-white dark:border-white/20 dark:bg-white/5 dark:text-neutral-100 dark:hover:bg-white/10";
 
-export type NavKey = "features" | "how" | "data" | "faq";
+export type NavKey = "pricing" | "features" | "how" | "data" | "faq";
 
 /** Tanıtım sayfalarının ortak iskeleti: yazı tipi, üst menü (etkin sekme işaretli), içerik, kapanış çağrısı, alt bilgi. */
 export function SitePage({ lang, c, active, children }: { lang: Lang; c: LandingCopy; active?: NavKey; children: ReactNode }) {
@@ -198,6 +199,106 @@ export function Highlights({ c }: { c: LandingCopy }) {
             </Link>
           ))}
         </div>
+      </div>
+    </section>
+  );
+}
+
+/** Fiyatlandırma: kredi paketleri (kartlar) ve "neye kaç kredi" listesi. Paket yoksa hediye krediyle başlamaya çağırır; paketler açılınca kendiliğinden dolar. */
+export function Pricing({ lang, c, pricing, standalone }: { lang: Lang; c: LandingCopy; pricing: PriceList; standalone?: boolean }) {
+  const p = c.pricing;
+  const money = (cents: number, currency: string) => {
+    try {
+      return (cents / 100).toLocaleString(lang === "tr" ? "tr-TR" : "en-US", { style: "currency", currency, maximumFractionDigits: cents % 100 === 0 ? 0 : 2 });
+    } catch {
+      return `${(cents / 100).toFixed(2)} ${currency}`;
+    }
+  };
+  const number = (n: number) => n.toLocaleString(lang === "tr" ? "tr-TR" : "en-US");
+  const featured = pricing.packs.length >= 3 ? Math.floor(pricing.packs.length / 2) : -1;
+  const groups = (["text", "image", "video"] as const).map((kind) => ({ kind, items: pricing.actions.filter((a) => a.kind === kind) })).filter((g) => g.items.length > 0);
+
+  return (
+    <section id="pricing">
+      <div className={`mx-auto max-w-6xl px-4 sm:px-6 ${standalone ? "pb-4 pt-16 md:pt-20" : "py-24"}`}>
+        <div className="mx-auto max-w-2xl text-center">
+          <Eyebrow>{p.eyebrow}</Eyebrow>
+          <Heading standalone={standalone} className="mt-4">
+            {p.title}
+          </Heading>
+          <p className={`mt-5 ${muted}`}>{p.sub}</p>
+        </div>
+
+        {pricing.welcome_credits > 0 && (
+          <div className="mx-auto mt-10 flex max-w-2xl flex-col items-center gap-1 rounded-2xl border border-[#D97757]/30 bg-[#FBF1EA] px-6 py-5 text-center dark:border-[#D97757]/30 dark:bg-[#2A1D15]">
+            <p className={`${display.className} text-xl font-semibold text-neutral-900 dark:text-neutral-50`}>{p.welcome(pricing.welcome_credits)}</p>
+            <p className="text-sm text-neutral-600 dark:text-neutral-300">{p.welcomeSub}</p>
+          </div>
+        )}
+
+        {pricing.packs.length > 0 ? (
+          <div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {pricing.packs.map((pack, i) => (
+              <div
+                key={pack.id}
+                className={`${card} relative flex flex-col p-7 ${i === featured ? "border-[#D97757] shadow-[0_20px_50px_-28px_rgba(217,119,87,0.7)] dark:border-[#D97757]" : ""}`}
+              >
+                {pack.bonus_pct > 0 && (
+                  <span className="absolute right-5 top-5 rounded-full bg-[#D97757] px-2.5 py-1 text-[11px] font-semibold text-white">{p.bonus(pack.bonus_pct)}</span>
+                )}
+                <p className="text-sm font-semibold text-neutral-500 dark:text-neutral-400">{lang === "tr" ? pack.name_tr : pack.name_en}</p>
+                <p className={`${display.className} mt-3 text-5xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50`}>{money(pack.price_cents, pack.currency)}</p>
+                <p className="mt-2 text-lg font-semibold text-[#A9502F] dark:text-[#F48771]">
+                  {number(pack.credits)} {p.credits}
+                </p>
+                <ul className={`mt-6 flex-1 space-y-2.5 text-sm ${muted}`}>
+                  {p.perks.map((perk) => (
+                    <li key={perk} className="flex items-start gap-2">
+                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#D97757]" />
+                      {perk}
+                    </li>
+                  ))}
+                </ul>
+                <Link href="/login?mode=register" className={`${i === featured ? primary : secondary} mt-7 justify-center`}>
+                  {p.buy}
+                </Link>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className={`${card} mx-auto mt-10 max-w-2xl p-8 text-center`}>
+            <p className={h3}>{p.soonTitle}</p>
+            <p className={`mx-auto mt-2 max-w-md text-sm ${muted}`}>{p.soonText}</p>
+            <Link href="/login?mode=register" className={`${primary} mt-6`}>
+              {p.buy}
+              <Arrow />
+            </Link>
+          </div>
+        )}
+
+        {groups.length > 0 && (
+          <div className="mt-16">
+            <h3 className={`${h3} text-center`}>{p.priceListTitle}</h3>
+            <div className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-3">
+              {groups.map((g) => (
+                <div key={g.kind} className={`${card} p-6`}>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-500 dark:text-neutral-400">{p.groups[g.kind]}</p>
+                  <ul className="mt-4 divide-y divide-black/5 dark:divide-white/10">
+                    {g.items.map((a) => (
+                      <li key={a.key} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                        <span className="text-neutral-700 dark:text-neutral-200">{lang === "tr" ? a.label_tr : a.label_en}</span>
+                        <span className="shrink-0 font-semibold tabular-nums text-neutral-900 dark:text-neutral-50">
+                          {number(a.credits)} {p.credits}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+            <p className="mt-5 text-center text-xs text-neutral-500 dark:text-neutral-400">{p.priceListNote}</p>
+          </div>
+        )}
       </div>
     </section>
   );

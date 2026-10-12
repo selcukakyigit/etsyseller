@@ -8,7 +8,8 @@ import { BRAND, ETSY_DISCLAIMER, LEGAL_LINKS } from "@/lib/legal";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 /** Tanıtım sekmeleri; `key` sayfanın etkin sekme işaretiyle (SiteHeader `active`) eşleşir. */
-const NAV: { key: "features" | "how" | "data" | "faq"; href: string; label: Record<Lang, string> }[] = [
+const NAV: { key: "pricing" | "features" | "how" | "data" | "faq"; href: string; label: Record<Lang, string> }[] = [
+  { key: "pricing", href: "/pricing", label: { en: "Pricing", tr: "Fiyatlar" } },
   { key: "features", href: "/features", label: { en: "What it does", tr: "Neler yapar" } },
   { key: "how", href: "/how-it-works", label: { en: "How it works", tr: "Nasıl çalışır" } },
   { key: "data", href: "/your-data", label: { en: "Your data", tr: "Verilerin" } },
