@@ -22,3 +22,13 @@ Do this from the start, for every new page, component, message or notification. 
 - Loading states: `PageSpinner` / `BlockSpinner` / `Spinner` from `@/components/ui/Spinner`, not "Yükleniyor…" text.
 - Page data that is shown again when the user comes back: `useCached(key)` from `@/lib/pageCache`.
 - The demo shop (`shops.is_demo`) never calls Etsy; `EtsyClient` raises `DemoShopError`.
+
+## Account isolation (multi-tenant) — check on every new route, query and screen
+
+Shops and workspaces of different customers must never see each other's data, and an invited supplier (guest) must never see shop, order,
+finance, cost-split, external-share or profit data.
+
+- Shop routes: `Depends(get_owned_shop)`. Module-entity routes: `entity_access(module)`, and `access.require_member()` for anything internal.
+- Any sub-resource fetched by an id from the request (`db.get(Model, id)`) is checked against `entity_id` / `shop_id` / `workspace_id`; mismatch = 404.
+- Reports, summaries and lists must not return internal fields to guests (`access.internal`).
+- New table: enable RLS in its migration and tie it to `workspace_id` / `entity_id`.
