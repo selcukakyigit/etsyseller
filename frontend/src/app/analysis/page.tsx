@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect } from "react";
 import { api, ShopProfile } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
@@ -88,19 +87,11 @@ export default function AnalysisPage() {
               />
             </div>
 
-            {/* Yapılacak işler: boşsa kartlar kendini gizler. */}
-            <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+            {/* Yapılacak işler: boşsa kartlar kendini gizler. Kartlar yan yana aynı yüksekliktedir. */}
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <AttentionTile shopId={shopId} className={card} />
               <ChangesTile shopId={shopId} className={card} />
             </div>
-
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">
-              {t("Ayrıntılı satış, kâr ve ücret dökümü için ", "For a detailed breakdown of sales, profit and fees see ")}
-              <Link href="/finance" className="font-medium text-[#B4553A] underline-offset-2 hover:underline dark:text-[#E89A7F]">
-                {t("Finans", "Finance")}
-              </Link>
-              {t("; bir listing'in neden düştüğünü Ulagg'a da sorabilirsin.", "; you can also ask Ulagg why a listing is declining.")}
-            </p>
           </>
         )}
       </div>
