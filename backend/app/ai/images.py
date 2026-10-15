@@ -2,14 +2,14 @@
 
 Claude resim başına en fazla 5 MB (base64 hâliyle) kabul eder ve 1568 pikselden büyük kenarı zaten küçültür; telefon
 fotoğrafları ve taranmış faturalar bunu kolayca aşar. Kullanıcı büyük dosya yükleyebilsin diye dosyanın kendisi olduğu
-gibi saklanır, yalnızca yapay zekâya giden kopya küçültülür (en uzun kenar 2000 px, JPEG)."""
+gibi saklanır, yalnızca yapay zekâya giden kopya küçültülür (en uzun kenar 1568 px, JPEG)."""
 import io
 import logging
 
 log = logging.getLogger("app.ai.images")
 
 IMAGE_TYPES = ("image/jpeg", "image/png", "image/webp", "image/gif")
-MAX_SIDE = 2000
+MAX_SIDE = 1568
 MAX_BYTES = 3_600_000  # base64 ~%33 büyütür: 3,6 MB → ~4,8 MB, 5 MB sınırının altında
 
 

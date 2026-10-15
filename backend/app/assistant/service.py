@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core import blobstore
 from app.core.i18n import tr
-from app.listings import templates
+from app.listings import creation, templates
 from app.ai import catalog
 from app.assistant import cleanup, context, llm, memory, prompt, tools
 from app.assistant.models import AssistantUsage, ChatImage, ChatMessage, ChatSession
@@ -38,7 +38,9 @@ DOC_TYPES = {
 }
 # Dosyanın kendisi bu boyuta kadar saklanır; yapay zekâya giden resim kopyası 5 MB sınırına göre küçültülür (ai/images.py).
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024
-MAX_IMAGES_PER_MESSAGE = 6
+MAX_IMAGES_PER_MESSAGE = creation.MAX_LISTING_IMAGES
+# Modele en fazla bu kadar resim gösterilir (maliyet ve bellek); geri kalanı yalnızca listing'e eklenir.
+MODEL_IMAGES_PER_MESSAGE = 4
 
 
 # ------------------------------------------------------------------ ilerleme (asistan şu an ne yapıyor)
@@ -228,7 +230,7 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
     try:
         result = llm.run_agent(
             model, prompt.STATIC_RULES, dynamic, history, _with_attachments(message, current),
-            [{"path": i.path, "content_type": i.content_type} for i in current if i.content_type in IMAGE_TYPES],
+            [{"path": i.path, "content_type": i.content_type} for i in current if i.content_type in IMAGE_TYPES][:MODEL_IMAGES_PER_MESSAGE],
             tools.TOOLS, run_tool,
         )
     except llm.AssistantError:

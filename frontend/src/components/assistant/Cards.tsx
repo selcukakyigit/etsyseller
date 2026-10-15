@@ -340,8 +340,14 @@ export default function Card({ card, shopId }: { card: ChatCard; shopId: number 
             <div className="mb-0.5 inline-block rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">{t("YEREL TASLAK · Etsy'ye gönderilmedi", "LOCAL DRAFT · not sent to Etsy")}</div>
             <div className="text-sm font-semibold">{card.title}</div>
             <div className="mt-1 text-neutral-500">
-              {card.price[0] === card.price[1] ? `$${card.price[0].toFixed(2)}` : `$${card.price[0].toFixed(2)} – $${card.price[1].toFixed(2)}`}
-              {card.price_assumed && <span className="text-amber-600"> {t("(tahmini)", "(estimated)")}</span>} · {card.quantity} {t("adet", "in stock")}
+              {card.price_missing ? (
+                <span className="text-amber-600">{t("Fiyat yok", "No price yet")}</span>
+              ) : card.price[0] === card.price[1] ? (
+                `$${card.price[0].toFixed(2)}`
+              ) : (
+                `$${card.price[0].toFixed(2)} – $${card.price[1].toFixed(2)}`
+              )}{" "}
+              · {card.quantity} {t("adet", "in stock")}
               {card.quantity_assumed && <span className="text-amber-600"> {t("(tahmini)", "(estimated)")}</span>}
               {card.combos > 0 && ` · ${t(`${card.combos} seçenek kombinasyonu`, `${card.combos} variation combinations`)}`} ·{" "}
               {t(`${card.images} resim · ${card.tags.length} etiket`, `${card.images} images · ${card.tags.length} tags`)}

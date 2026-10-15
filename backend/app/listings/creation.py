@@ -161,6 +161,10 @@ def local_summaries(db: Session, shop: Shop) -> list[dict]:
     return out
 
 
+# Etsy bir listing'e en fazla 20 fotoğraf kabul eder.
+MAX_LISTING_IMAGES = 20
+
+
 def validate_new(work: dict, activate: bool) -> list[str]:
     problems = []
     if not (work.get("title") or "").strip():
@@ -174,6 +178,8 @@ def validate_new(work: dict, activate: bool) -> list[str]:
     offerings = [o for p in work.get("inventory", {}).get("products", []) for o in p.get("offerings", [])]
     if not offerings:
         problems.append("En az bir fiyat/stok satırı gerekli.")
+    elif any(_price(o) <= 0 for o in offerings if o.get("is_enabled", True)):
+        problems.append("Fiyat gir.")
     if activate:
         if not work.get("shipping_profile_id"):
             problems.append("Aktif etmek için kargo profili gerekli.")

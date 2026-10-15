@@ -655,11 +655,12 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     problems_pre = quality.all_problems(title, tags_checked, str(a.get("description") or ""), others)
     if problems_pre:
         return {"error": "Taslak henüz oluşturulmadı. Önce şunları düzelt ve create_listing_draft'ı tekrar çağır (mağazanın diğer listing'lerinin kopyası olmamalı): " + " ".join(problems_pre)}
-    norm_price, norm_qty = _shop_norms(ctx)
-    price_assumed = a.get("price_source", "typical") != "user" or not a.get("price")  # yalnızca kullanıcının verdiği fiyat kesin sayılır
+    _, norm_qty = _shop_norms(ctx)
     qty_assumed = not a.get("quantity")
-    price = float(a["price"]) if a.get("price") else norm_price  # verilmediyse mağazanın tipik fiyatı (kullanıcıya bildirilir)
-    if price < bulk.MIN_PRICE:
+    # Fiyat yalnızca kullanıcının söylediği değerdir: verilmediyse 0 kalır ve taslak "Fiyat gir." ile yayına hazır sayılmaz.
+    price_missing = not a.get("price")
+    price = 0.0 if price_missing else float(a["price"])
+    if not price_missing and price < bulk.MIN_PRICE:
         return {"error": f"Fiyat en az {bulk.MIN_PRICE} olmalı."}
     created = creation.create_local_new(ctx.db, ctx.shop, None)
     lid = created["listing_id"]
@@ -697,11 +698,11 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         work["description"] = templates.applier(ctx.db, ctx.shop, tpl)(work)
 
     # Alt metinler: model resimleri zaten gördüğü için image_ids ile aynı sırada verir (en fazla 500 karakter, önerilen 125).
-    ids_in = [str(i) for i in (a.get("image_ids") or [])[:10]]
+    ids_in = [str(i) for i in (a.get("image_ids") or [])[:creation.MAX_LISTING_IMAGES]]
     alts = [" ".join(str(t).split())[:500] for t in (a.get("image_alt_texts") or [])]
     alt_by_image = {iid: alts[i] for i, iid in enumerate(ids_in) if i < len(alts) and alts[i]}
     attached = 0
-    for n, image_id in enumerate((a.get("image_ids") or [])[:10], start=1):
+    for n, image_id in enumerate((a.get("image_ids") or [])[: creation.MAX_LISTING_IMAGES], start=1):
         img = ctx.db.get(ChatImage, str(image_id))
         if img is None or img.shop_id != ctx.shop.id:
             continue
@@ -721,7 +722,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         "price": [min(prices), max(prices)], "quantity": offers[0]["quantity"] if offers else 0, "tags": tags,
         "combos": len(work["inventory"]["products"]) if work["inventory"]["products"][0]["property_values"] else 0,
         "image": work["images"][0]["url_170x135"] if work["images"] else None, "images": attached, "problems": problems,
-        "price_assumed": price_assumed, "quantity_assumed": qty_assumed,
+        "price_missing": price_missing, "quantity_assumed": qty_assumed,
     })
     return {
         "listing_id": lid, "duzenleyici_baglantisi": f"/listings/{lid}/edit", "eklenen_resim": attached,
@@ -729,7 +730,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         "kisaltilan_etiketler": shortened, "yayin_icin_eksikler": problems,
         "mağaza_sabit_bolumleri_eklendi": std_count, "kullanilan_aciklama_sablonu": tpl.name if tpl is not None else None,
         "acilmayan_tek_secenekli_varyasyon": dropped_variations,
-        "varsayilanlar": {"fiyat_mağaza_tipik_degeri_kullanildi": price_assumed, "adet_mağaza_tipik_degeri_kullanildi": qty_assumed, "fiyat": price},
+        "varsayilanlar": {"fiyat_verilmedi": price_missing, "adet_mağaza_tipik_degeri_kullanildi": qty_assumed, "fiyat": None if price_missing else price},
         "not": "Bu yalnızca yerel taslaktır; Etsy'ye gitmedi. Kullanıcı düzenleyicide kontrol edip 'Etsy'de yayınla' düğmesine basmalı.",
     }
 
@@ -1469,12 +1470,11 @@ TOOLS: list[dict] = [
     {"name": "shop_defaults", "description": "Yeni listing için mağazanın en çok kullanılan kategorileri, kargo profili ve iade politikası.", "input_schema": _obj({})},
     {"name": "similar_listings", "description": "Mağazadaki benzer listing'leri bulur (İngilizce anahtar kelimelerle): fiyatlarını, etiketlerini, başlık üslubunu ve açıklama örneğini verir. Yeni listing'de fiyat ve üslup için MUTLAKA bak.", "input_schema": _obj({"query": {"type": "string", "description": "İngilizce ürün anahtar kelimeleri, ör. 'mountain metal wall art'"}, "limit": {"type": "integer"}}, ["query"])},
     {"name": "find_category", "description": "Etsy kategori ağacında ada göre arar ve kategori kimliği (taxonomy_id) bulur.", "input_schema": _obj({"query": {"type": "string"}}, ["query"])},
-    {"name": "create_listing_draft", "description": "Yeni listing YEREL TASLAĞI oluşturur (Etsy'ye göndermez). Kullanıcının verdiği bilgileri ve sohbete yüklediği resimleri (image_ids) kullanır; verilmeyen fiyat/adet mağazanın tipik değerleriyle doldurulur. Kullanıcı SEO uyumlu yazmanı isterse ya da bilgi kabaysa başlık, 13 etiket ve açıklamayı sen üret; ürünün gerçek özelliklerini uydurma.", "input_schema": _obj({
+    {"name": "create_listing_draft", "description": "Yeni listing YEREL TASLAĞI oluşturur (Etsy'ye göndermez). Kullanıcının verdiği bilgileri ve sohbete yüklediği resimleri (image_ids) kullanır; verilmeyen adet mağazanın tipik değeriyle doldurulur; verilmeyen fiyat BOŞ kalır ve taslak yayına hazır sayılmaz. Kullanıcı SEO uyumlu yazmanı isterse ya da bilgi kabaysa başlık, 13 etiket ve açıklamayı sen üret; ürünün gerçek özelliklerini uydurma.", "input_schema": _obj({
         "title": {"type": "string", "description": "En fazla 140 karakter, doğal okunan, ilk 40 karakterde ana anahtar kelime"},
         "description": {"type": "string", "description": "YALNIZCA ürüne özel kısım (satış paragrafı + özellik maddeleri). Mağazanın sabit bölümleri otomatik eklenir; onları yazma"},
         "tags": {"type": "array", "items": {"type": "string"}, "description": "En fazla 13 etiket, her biri en fazla 20 karakter"},
-        "price": {"type": "number", "description": "Mağaza para biriminde birim fiyat. Kullanıcı vermediyse similar_listings fiyatlarından mantıklı bir değer seç (boyut/malzeme farkını düşün); hiç veri yoksa boş bırak"},
-        "price_source": {"type": "string", "enum": ["user", "similar", "typical"], "description": "Fiyatın kaynağı: user = kullanıcı verdi, similar = benzer listing'lerden çıkardım, typical = mağaza medyanı"},
+        "price": {"type": "number", "description": "Mağaza para biriminde birim fiyat. YALNIZCA kullanıcı söylediyse ver; söylemediyse BOŞ BIRAK (tahmin etme, benzer listing'lerden çıkarma). Boşsa taslak 'Fiyat gir.' eksiğiyle oluşur ve yayınlanamaz."},
         "dimensions": _obj({"length": {"type": "number"}, "width": {"type": "number"}, "height": {"type": "number"}, "unit": {"type": "string", "enum": ["mm", "cm", "m", "in", "ft"]}}),
         "description_template_id": {"type": "integer", "description": "Kullanılacak hazır açıklama metni. Verilmezse mağazanın VARSAYILAN şablonu kullanılır; 0 = şablon kullanma. Şablon kullanılırken description'a kargo/garanti/iletişim gibi sabit kısımları YAZMA."},
         "use_standard_sections": {"type": "boolean", "description": "Mağazanın sabit açıklama bölümlerini (iletişim, işleme/teslimat, garanti, yasal uyarı) açıklamaya otomatik ekle. Varsayılan true"},
