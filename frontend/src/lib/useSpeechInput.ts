@@ -26,7 +26,7 @@ function ctor(): RecognitionCtor | null {
 
 /** Konuşulanı `onText(taban + konuşma)` olarak verir; `taban` dinlemeye başlarken kutuda yazılı olan metindir. */
 export function useSpeechInput(onText: (text: string) => void) {
-  const { t, locale } = useT();
+  const { t, locale } = useT(); // locale: "tr-TR" ya da "en-US" (tanıma diliyle aynı biçim)
   const [supported, setSupported] = useState(false);
   const [listening, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +45,7 @@ export function useSpeechInput(onText: (text: string) => void) {
       if (!C) return;
       setError(null);
       const r = new C();
-      r.lang = locale === "tr" ? "tr-TR" : "en-US";
+      r.lang = locale;
       r.continuous = true;
       r.interimResults = true;
       const base = current.trim();

@@ -25,6 +25,17 @@ RISKY_CLAIMS = re.compile(
 )
 
 
+# Etsy'de telif/marka ihlali sayılan, en sık görülen karakter ve marka adları: başlıkta/etiketlerde geçerse listing kaldırılabilir,
+# tekrarında hesap kısıtlanabilir. Kısa, bilerek temkinli bir liste (tam bir marka denetimi değildir); lisansı olan satıcı
+# düzenleyicide elle yazabilir.
+PROTECTED_NAMES = re.compile(
+    r"\b(spider[- ]?man|marvel|avengers|iron man|captain america|batman|superman|dc comics|wonder woman|disney|mickey mouse|"
+    r"pixar|star wars|mandalorian|baby yoda|harry potter|hogwarts|pokemon|pok[eé]mon|pikachu|nintendo|super mario|zelda|minecraft|"
+    r"hello kitty|sanrio|barbie|lego|stranger things|game of thrones|lord of the rings|naruto|one piece|dragon ball|"
+    r"nike|adidas|gucci|louis vuitton|chanel|rolex|coca[- ]?cola|harley[- ]?davidson|taylor swift|nfl|nba|mlb)\b", re.I
+)
+
+
 def _words(text: str) -> set[str]:
     return {w for w in (m.lower() for m in _WORD.findall(text)) if w not in _STOP and len(w) > 1}
 
@@ -234,6 +245,9 @@ def basic_problems(title: str, tags: list[str], product_description: str = "", s
     claims = sorted({c for c in (m.group(0).lower() for m in RISKY_CLAIMS.finditer(product_description)) if not re.search(rf"\b{re.escape(c)}\b", src)})
     if claims:
         out.append(f"Açıklamada doğrulanmamış iddialar var ({', '.join(claims)}); yalnızca kullanıcının verdiği ya da görselde görünen bilgiyi yaz.")
+    names = sorted({m.group(0).lower() for m in PROTECTED_NAMES.finditer(" ".join([title, *tags]))} - {m.group(0).lower() for m in PROTECTED_NAMES.finditer(src)})
+    if names:
+        out.append(f"Başlık/etiketlerde marka ya da karakter adı var ({', '.join(names)}); Etsy bunu telif/marka ihlali sayar. Genel bir ifade kullan (ör. süper kahraman, çizgi film karakteri yerine tarzı anlat).")
     return out
 
 

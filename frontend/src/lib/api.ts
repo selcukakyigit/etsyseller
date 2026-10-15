@@ -1482,10 +1482,10 @@ export type ChatCard =
   | { type: "products"; title: string; currency: string; rows: { title: string; listing_id: number; units: number; sales: number; profit: number; margin: number; image: string; prev_units?: number; prev_sales?: number }[] }
   | { type: "movers"; title: string; currency: string; rows: { title: string; listing_id: number; units: number; prev_units: number; sales: number; prev_sales: number; change: number }[] }
   | { type: "orders"; title: string; rows: { receipt_id: number; buyer: string; country: string; date: string; ship_by: string | null; total: number; items: string[] }[] }
-  | { type: "listing_draft"; listing_id: number; title: string; edit_url: string; price: [number, number]; quantity: number; tags: string[]; combos: number; image: string | null; images: number; problems: string[]; price_missing?: boolean; quantity_assumed?: boolean }
+  | { type: "listing_draft"; listing_id: number; title: string; edit_url: string; price: [number, number]; quantity: number; tags: string[]; combos: number; image: string | null; images: number; problems: string[]; category?: string | null; price_missing?: boolean; quantity_assumed?: boolean }
   | { type: "status"; title: string; rows: { label: string; value: number }[] }
   | { type: "listing_update"; listing_id: number; title: string; edit_url: string; changes: string[]; tags: string[] }
-  | { type: "chat_image_edited"; image_url: string; listing_id: number | null; edit_url: string | null }
+  | { type: "chat_image_edited"; image_id: string; image_url: string; source_image_id: string | null; prompt: string; listing_id: number | null; edit_url: string | null }
   | { type: "image_regenerated" | "alt_texts_generated" | "listing_deactivated" | "listing_published" | "order_shipped"; listing_id?: number; receipt_id?: number; edit_url?: string; ok?: boolean; count?: number; activated?: boolean }
   | { type: "invoice_review"; source: string; currency: string; candidates: InvoiceCandidate[] }
   | ({ type: "etsy_data_review"; listing_id: number | null } & EtsyDataParsed)

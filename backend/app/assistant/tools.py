@@ -35,6 +35,7 @@ from app.taxonomy import service as taxonomy_service
 CUSTOM_VARIATION_IDS = [513, 514, 516]  # Etsy'nin serbest isimli varyasyon kimlikleri
 MAX_COMBOS = 400
 _taxonomy_cache: dict[int, str] | None = None  # kategori kimliği -> "Ev & Yaşam > Duvar Dekoru > ..." (bir kez yüklenir)
+_taxonomy_leaves: set[int] = set()  # alt kategorisi olmayan (ürünün atanabileceği) düğümler
 
 
 def _taxonomy() -> dict[int, str]:
@@ -46,6 +47,8 @@ def _taxonomy() -> dict[int, str]:
             for n in nodes:
                 p = [*path, n.get("name", "")]
                 flat[n["id"]] = " > ".join(p)
+                if not n.get("children"):
+                    _taxonomy_leaves.add(n["id"])
                 walk(n.get("children") or [], p)
 
         walk(taxonomy_service.get_seller_taxonomy_nodes(), [])
@@ -563,6 +566,40 @@ def shop_defaults(ctx: Ctx, a: dict) -> dict:
     return {"tipik_fiyat_medyan": typical_price, "tipik_stok_adedi": typical_qty, "sabit_aciklama_bolumu_sayisi": len(std["blocks"]), "en_cok_kullanilan_kategoriler": cats[:8], "en_cok_kullanilan_kargo_profili_id": ship.most_common(1)[0][0] if ship else None, "en_cok_kullanilan_iade_politikasi_id": ret.most_common(1)[0][0] if ret else None}
 
 
+_CAT_STOP = {"the", "and", "for", "with", "your", "custom", "personalized", "gift", "gifts", "modern", "unique", "design", "style", "set"}
+_CAT_WORD = re.compile(r"[a-z]+")
+
+
+def _cat_words(text: str) -> set[str]:
+    """Küçük harfli, basit tekilleştirilmiş kelimeler ("signs" → "sign")."""
+    return {w[:-1] if len(w) > 3 and w.endswith("s") else w for w in _CAT_WORD.findall(text.lower()) if len(w) > 2 and w not in _CAT_STOP}
+
+
+def _auto_category(ctx: Ctx, text: str) -> tuple[int, str, str] | None:
+    """Model kategori vermediyse Etsy'nin sabit kategori ağacından ürüne en uygun (alt kategorisi olmayan) düğümü seçer:
+    başlık/etiket kelimeleriyle yol adı örtüşmesi, mağazanın zaten kullandığı kategoriler ve derinlik puanlanır. Hiç örtüşme
+    yoksa mağazanın en çok kullandığı kategori. Döner: (kimlik, yol, neden) ya da None."""
+    names = _taxonomy()
+    used = {c["taxonomy_id"] for c in listing_service.get_top_categories(ctx.db, ctx.shop, limit=50)}
+    words = _cat_words(text)
+    best: tuple[float, int] | None = None
+    for tid, path in names.items():
+        if tid not in _taxonomy_leaves:
+            continue
+        overlap = len(words & _cat_words(path))
+        if not overlap:
+            continue
+        score = overlap * 3 + (2 if tid in used else 0) + path.count(">") * 0.3
+        if best is None or score > best[0]:
+            best = (score, tid)
+    if best is not None:
+        return best[1], names[best[1]], "başlık/etiketlerle eşleşti"
+    top = listing_service.get_top_categories(ctx.db, ctx.shop, limit=1)
+    if top and top[0]["taxonomy_id"] in names:
+        return top[0]["taxonomy_id"], names[top[0]["taxonomy_id"]], "mağazanın en çok kullandığı kategori"
+    return None
+
+
 def find_category(ctx: Ctx, a: dict) -> dict:
     """Etsy kategori ağacında ada göre arar (kategori kimliği bulmak için)."""
     q = str(a.get("query", "")).strip().lower()
@@ -692,6 +729,17 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         work["when_made"] = a["when_made"]
     defaults = shop_defaults(ctx, {})
     work["taxonomy_id"] = int(a["taxonomy_id"]) if a.get("taxonomy_id") else None
+    category_note = None
+    if work["taxonomy_id"] is None:  # model vermediyse sunucu en uygun kategoriyi seçer; kullanıcıya gösterilir, değiştirilebilir
+        try:
+            auto = _auto_category(ctx, " ".join([title, *tags, *(str(m) for m in a.get("materials") or [])]))
+        except Exception:  # noqa: BLE001 - kategori ağacı alınamazsa taslak kategorisiz kalır ("Kategori seç." eksiği çıkar)
+            auto = None
+        if auto is not None:
+            work["taxonomy_id"], category_path, why = auto
+            category_note = {"yol": category_path, "neden": why, "otomatik_secildi": True}
+    elif work["taxonomy_id"] in _taxonomy():
+        category_note = {"yol": _taxonomy()[work["taxonomy_id"]], "otomatik_secildi": False}
     work["shipping_profile_id"] = int(a["shipping_profile_id"]) if a.get("shipping_profile_id") else defaults["en_cok_kullanilan_kargo_profili_id"]
     work["return_policy_id"] = int(a["return_policy_id"]) if a.get("return_policy_id") else defaults["en_cok_kullanilan_iade_politikasi_id"]
     if tpl is not None:
@@ -722,10 +770,11 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         "price": [min(prices), max(prices)], "quantity": offers[0]["quantity"] if offers else 0, "tags": tags,
         "combos": len(work["inventory"]["products"]) if work["inventory"]["products"][0]["property_values"] else 0,
         "image": work["images"][0]["url_170x135"] if work["images"] else None, "images": attached, "problems": problems,
+        "category": category_note["yol"] if category_note else None,
         "price_missing": price_missing, "quantity_assumed": qty_assumed,
     })
     return {
-        "listing_id": lid, "duzenleyici_baglantisi": f"/listings/{lid}/edit", "eklenen_resim": attached,
+        "listing_id": lid, "duzenleyici_baglantisi": f"/listings/{lid}/edit", "eklenen_resim": attached, "kategori": category_note,
         "varyasyon_kombinasyonu": len(work["inventory"]["products"]) if work["inventory"]["products"][0]["property_values"] else 0,
         "kisaltilan_etiketler": shortened, "yayin_icin_eksikler": problems,
         "mağaza_sabit_bolumleri_eklendi": std_count, "kullanilan_aciklama_sablonu": tpl.name if tpl is not None else None,
@@ -1325,31 +1374,76 @@ def edit_chat_image(ctx: Ctx, a: dict) -> dict:
     if bad:
         return {"error": bad}
     lid = int(a["listing_id"]) if a.get("listing_id") else None
-    work = None
     if lid is not None:
-        try:
-            work = _draft_work(ctx, lid)
-        except Exception:  # noqa: BLE001 - listing bulunamadı gibi durumlar kullanıcıya düz hata olarak döner
-            return {"error": "Listing bulunamadı."}
-        if len(work.get("images") or []) >= creation.MAX_LISTING_IMAGES:
-            return {"error": f"Listing'de zaten {creation.MAX_LISTING_IMAGES} fotoğraf var (Etsy sınırı)."}
+        err = _photo_slot_error(ctx, lid)
+        if err:
+            return {"error": err}
     try:
         new_bytes, mime = regenerate_image(blobstore.read(img.path), img.content_type, a.get("prompt"), None, camera_prompt, distance_prompt, None)
     except (ImageGenError, ValueError, FileNotFoundError) as exc:
         return {"error": str(exc)}
-    saved = chat_service.save_image(ctx.db, ctx.shop, img.session_id, f"ai-edit{guess_extension(mime)}", mime, new_bytes)
-    added = False
-    if lid is not None and work is not None:
-        images = work.get("images") or []
-        file = drafts.save_file(ctx.db, ctx.shop, lid, "image", f"ai-edit{guess_extension(mime)}", mime, new_bytes)
-        work["images"] = images + [_image_entry(ctx.shop.id, lid, file["file_id"], None, len(images) + 1)]
-        _save_draft_work(ctx, lid, work)
-        added = True
-    ctx.cards.append({"type": "chat_image_edited", "image_url": saved["url"], "listing_id": lid if added else None, "edit_url": f"/listings/{lid}/edit" if added else None})
+    name = f"ai-edit{guess_extension(mime)}"
+    saved = chat_service.save_image(ctx.db, ctx.shop, img.session_id, name, mime, new_bytes)
+    added = lid is not None and _add_photo(ctx, lid, name, mime, new_bytes) is None
+    ctx.cards.append({
+        "type": "chat_image_edited", "image_id": saved["id"], "image_url": saved["url"], "source_image_id": img.id, "prompt": str(a.get("prompt") or "")[:200],
+        "listing_id": lid if added else None, "edit_url": f"/listings/{lid}/edit" if added else None,
+    })
     return {
         "ok": True, "yeni_resim_id": saved["id"], "listinge_eklendi": added,
-        "not": "Düzenlenen resim sohbette gösterildi; orijinal yerinde duruyor." + (" Listing taslağına yeni fotoğraf olarak eklendi (Etsy'ye gitmedi)." if added else " Bir listing'e eklenmesi için kullanıcı hangi listing'e eklenmesini söylemeli (listing_id)."),
+        "not": "Düzenlenen resim sohbette gösterildi; orijinal yerinde duruyor." + (" Listing taslağına yeni fotoğraf olarak eklendi (Etsy'ye gitmedi)." if added else " Kullanıcı bir listing'e eklenmesini isterse add_chat_image_to_listing'i çağır (yeni resim kimliğiyle; yeniden üretme)."),
     }
+
+
+def _photo_slot_error(ctx: Ctx, listing_id: int) -> str | None:
+    """Taslağa yeni fotoğraf eklenebilir mi? Hata metni ya da None."""
+    try:
+        work = _draft_work(ctx, listing_id)
+    except Exception:  # noqa: BLE001 - listing bulunamadı gibi durumlar kullanıcıya düz hata olarak döner
+        return "Listing bulunamadı."
+    if len(work.get("images") or []) >= creation.MAX_LISTING_IMAGES:
+        return f"Listing'de zaten {creation.MAX_LISTING_IMAGES} fotoğraf var (Etsy sınırı)."
+    return None
+
+
+def _add_photo(ctx: Ctx, listing_id: int, filename: str, mime: str, content: bytes) -> str | None:
+    """Resmi listing taslağına yeni (son sıradaki) fotoğraf olarak ekler (Etsy'ye gitmez). Hata metni ya da None."""
+    err = _photo_slot_error(ctx, listing_id)
+    if err:
+        return err
+    work = _draft_work(ctx, listing_id)
+    images = work.get("images") or []
+    file = drafts.save_file(ctx.db, ctx.shop, listing_id, "image", filename, mime, content)
+    work["images"] = images + [_image_entry(ctx.shop.id, listing_id, file["file_id"], None, len(images) + 1)]
+    _save_draft_work(ctx, listing_id, work)
+    return None
+
+
+def _latest_new_draft(ctx: Ctx) -> int | None:
+    """Henüz Etsy'ye gitmemiş en son yerel listing taslağı (sohbette "az önce oluşturduğumuz listing")."""
+    row = ctx.db.scalars(select(ListingLocal).where(ListingLocal.shop_id == ctx.shop.id, ListingLocal.listing_id < 0).order_by(ListingLocal.updated_at.desc())).first()
+    return row.listing_id if row is not None else None
+
+
+def add_chat_image_to_listing(ctx: Ctx, a: dict) -> dict:
+    """Sohbetteki bir resmi (ör. az önce düzenlenmiş olanı) bir listing taslağına yeni fotoğraf olarak ekler. Yeniden üretmez, kredi
+    harcamaz. listing_id verilmezse sohbetteki en son oluşturulan yeni taslak kullanılır."""
+    from app.assistant.models import ChatImage
+
+    img = ctx.db.get(ChatImage, str(a.get("image_id") or ""))
+    if img is None or img.shop_id != ctx.shop.id or not img.path or not img.content_type.startswith("image/"):
+        return {"error": "Resim bulunamadı; sistem mesajındaki resim listesinden bir kimlik ver."}
+    lid = int(a["listing_id"]) if a.get("listing_id") else _latest_new_draft(ctx)
+    if lid is None:
+        return {"error": "Eklenecek bir listing taslağı yok; önce taslak oluştur ya da listing_id ver."}
+    try:
+        err = _add_photo(ctx, lid, img.filename, img.content_type, blobstore.read(img.path))
+    except FileNotFoundError:
+        return {"error": "Resim depoda bulunamadı."}
+    if err:
+        return {"error": err}
+    ctx.cards.append({"type": "chat_image_edited", "image_id": img.id, "image_url": f"/api/shops/{ctx.shop.id}/assistant/images/{img.id}", "source_image_id": None, "prompt": "", "listing_id": lid, "edit_url": f"/listings/{lid}/edit"})
+    return {"ok": True, "listing_id": lid, "not": "Resim listing taslağına yeni fotoğraf olarak eklendi (Etsy'ye gitmedi)."}
 
 
 def generate_missing_alt_texts(ctx: Ctx, a: dict) -> dict:
@@ -1585,6 +1679,7 @@ TOOLS: list[dict] = [
         **_CAMERA_SCHEMA,
         "listing_id": {"type": "integer", "description": "Yalnızca kullanıcı bir listing'e eklenmesini söylediyse: yeni ya da mevcut listing taslağı"},
     }, ["image_id"])},
+    {"name": "add_chat_image_to_listing", "description": "Sohbetteki mevcut bir resmi (ör. edit_chat_image'ın ürettiği, yeni_resim_id) listing taslağına yeni fotoğraf olarak ekler; yeniden üretmez, kredi harcamaz. listing_id verilmezse sohbetteki en son oluşturulan yeni taslak kullanılır ('az önce oluşturduğumuz listeye ekle').", "input_schema": _obj({"image_id": {"type": "string"}, "listing_id": {"type": "integer"}}, ["image_id"])},
     {"name": "generate_missing_alt_texts", "description": "Bir listing'in alt metni olmayan (yalnızca YENİ/taslak) fotoğrafları için yapay zekâyla alt metin yazar.", "input_schema": _obj({"listing_id": {"type": "integer"}}, ["listing_id"])},
     {"name": "listing_health_status", "description": "Listing'in optimizasyon durumu: yeterli veri var mı, performansı mağaza medyanına göre nasıl, hangi alan zayıf, durdurmayı değerlendirmeli mi. listing_id vermezsen dikkat isteyen tüm listing'leri döner.", "input_schema": _obj({"listing_id": {"type": "integer"}})},
     {"name": "keep_watching_listing", "description": "Bir listing için 'durdurmayı değerlendir' önerisini reddedip izlemeye devam eder (sayaç sıfırlanır). Etsy'ye hiçbir şey göndermez.", "input_schema": _obj({"listing_id": {"type": "integer"}}, ["listing_id"])},
@@ -1637,6 +1732,7 @@ TOOL_LABELS = {
     "bulk_update_listings": "Toplu taslak hazırlıyor",
     "regenerate_listing_image": "Fotoğrafı yeniden oluşturuyor",
     "edit_chat_image": "Resmi düzenliyor",
+    "add_chat_image_to_listing": "Resmi listing'e ekliyor",
     "generate_missing_alt_texts": "Alt metinleri yazıyor",
     "listing_health_status": "Listing sağlığına bakıyor",
     "keep_watching_listing": "İzlemeye devam ediyor",
@@ -1681,6 +1777,7 @@ TOOL_LABELS_EN = {
     "bulk_update_listings": "Preparing bulk drafts",
     "regenerate_listing_image": "Regenerating the photo",
     "edit_chat_image": "Editing the image",
+    "add_chat_image_to_listing": "Adding the image to the listing",
     "generate_missing_alt_texts": "Writing alt texts",
     "listing_health_status": "Checking listing health",
     "keep_watching_listing": "Keeping the listing under watch",
@@ -1702,7 +1799,7 @@ EXECUTORS = {
     "create_listing_draft": create_listing_draft, "update_listing": update_listing,
     "shop_options": shop_options, "workspace_status": workspace_status, "orders_overview": orders_overview, "order_detail": order_detail,
     "orders_missing_costs": orders_missing_costs, "keyword_pool": keyword_pool, "shipping_invoices": shipping_invoices, "bulk_update_listings": bulk_update_listings,
-    "regenerate_listing_image": regenerate_listing_image, "edit_chat_image": edit_chat_image, "generate_missing_alt_texts": generate_missing_alt_texts,
+    "regenerate_listing_image": regenerate_listing_image, "edit_chat_image": edit_chat_image, "add_chat_image_to_listing": add_chat_image_to_listing, "generate_missing_alt_texts": generate_missing_alt_texts,
     "listing_health_status": listing_health_status, "keep_watching_listing": keep_watching_listing,
     "publish_listing_draft": publish_listing_draft, "deactivate_listing": deactivate_listing, "mark_order_shipped": mark_order_shipped,
     "read_shipping_invoice": read_shipping_invoice, "listing_diagnosis": listing_diagnosis, "track_keywords": track_keywords, "read_etsy_keyword_data": read_etsy_keyword_data,

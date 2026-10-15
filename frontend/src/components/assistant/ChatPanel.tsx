@@ -395,7 +395,7 @@ export default function ChatPanel({
                 </div>
               )}
               {m.cards.map((c, i) => (
-                <Card key={i} card={c} shopId={shopId} />
+                <Card key={i} card={c} shopId={shopId} onAsk={(text) => void send(text)} />
               ))}
             </div>
           </div>

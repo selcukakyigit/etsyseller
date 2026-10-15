@@ -30,7 +30,8 @@ function Delta({ cur, prev, invert }: { cur: number; prev: number; invert?: bool
 }
 
 /** Asistanın araç sonuçlarını gösteren görsel kartlar. */
-export default function Card({ card, shopId }: { card: ChatCard; shopId: number }) {
+/** `onAsk`: karttaki düğmeler sohbete kullanıcı mesajı olarak bir istek gönderir (ör. "Listing'e ekle"). */
+export default function Card({ card, shopId, onAsk }: { card: ChatCard; shopId: number; onAsk?: (text: string) => void }) {
   const [preview, setPreview] = useState(false);
   const { t, lang, locale } = useT();
   const fmt = currencyFormatter(locale);
@@ -352,6 +353,7 @@ export default function Card({ card, shopId }: { card: ChatCard; shopId: number 
               {card.combos > 0 && ` · ${t(`${card.combos} seçenek kombinasyonu`, `${card.combos} variation combinations`)}`} ·{" "}
               {t(`${card.images} resim · ${card.tags.length} etiket`, `${card.images} images · ${card.tags.length} tags`)}
             </div>
+            {card.category && <div className="mt-1 text-neutral-500">{t("Kategori:", "Category:")} {card.category}</div>}
             {card.tags.length > 0 && <div className="mt-1 line-clamp-2 text-neutral-400">{card.tags.join(", ")}</div>}
             {card.problems.length > 0 && <div className="mt-1 text-amber-600">{t("Yayın için eksik:", "Missing before publishing:")} {card.problems.join(" ")}</div>}
           </div>
@@ -384,6 +386,26 @@ export default function Card({ card, shopId }: { card: ChatCard; shopId: number 
             </Link>
           )}
         </div>
+        {!card.edit_url && onAsk && (
+          <div className="flex justify-end gap-2 border-t border-neutral-100 bg-neutral-50 px-3 py-2 dark:border-neutral-800 dark:bg-neutral-950">
+            {card.source_image_id && (
+              <button
+                type="button"
+                onClick={() => onAsk(t(`Bu resmi yeniden üret (kaynak resim id: ${card.source_image_id}): ${card.prompt}`, `Regenerate this image (source image id: ${card.source_image_id}): ${card.prompt}`))}
+                className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
+              >
+                {t("Yeniden üret", "Regenerate")}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => onAsk(t(`Bu resmi listing'e ekle (resim id: ${card.image_id})`, `Add this image to the listing (image id: ${card.image_id})`))}
+              className="rounded-lg bg-[#D97757] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#C6613F]"
+            >
+              {t("Listing'e ekle", "Add to listing")}
+            </button>
+          </div>
+        )}
       </div>
     );
   }
