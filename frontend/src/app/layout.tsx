@@ -17,11 +17,21 @@ const geistMono = Geist_Mono({
 });
 
 // viewportFit "cover": iPhone'da alt çubuk/çentik için env(safe-area-inset-*) değerleri gelsin (mobil alt sekme çubuğu).
-export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  // Yüklenmiş uygulamada ve mobil tarayıcıda durum çubuğu rengi temaya uyar.
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
+};
 
 export const metadata: Metadata = {
   title: BRAND,
   description: "Etsy satıcıları için AI destekli operasyon ve kârlılık platformu",
+  appleWebApp: { capable: true, title: BRAND, statusBarStyle: "default" },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
