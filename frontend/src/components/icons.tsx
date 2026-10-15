@@ -126,5 +126,6 @@ export const PulseIcon = navIcon("M3 12h4l2.5-6 5 12L17 12h4");
 export const PlusIcon = navIcon("M12 5v14M5 12h14");
 export const ArrowUpIcon = navIcon("M12 19V5M5 12l7-7 7 7");
 export const CameraIcon = navIcon("M4 8h3l2-3h6l2 3h3a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1zM12 17a4 4 0 100-8 4 4 0 000 8z");
+export const MicIcon = navIcon("M12 3a3 3 0 013 3v6a3 3 0 01-6 0V6a3 3 0 013-3zM6 11a6 6 0 0012 0M12 17v4M9 21h6");
 export const ImageIcon = navIcon("M4 4h16a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1zM3 16l5-5 5 5 3-3 5 5M15.5 8.5h.01");
 export const PaperclipIcon = navIcon("M21 11.5l-8.6 8.6a5 5 0 01-7.1-7.1l8.6-8.6a3.3 3.3 0 014.7 4.7l-8.6 8.6a1.7 1.7 0 01-2.4-2.4l7.9-7.9");

@@ -253,6 +253,13 @@ export function AiDataEn() {
         strictly needs them.
       </P>
 
+      <H2>Voice typing</H2>
+      <P>
+        The microphone button in the chat uses your browser&apos;s own speech recognition. Your speech is not sent to our servers
+        or stored; it is converted to text by your browser&apos;s provider (for example Google in Chrome). The microphone only
+        turns on when you press the button and allow it, and you can edit the text before sending it.
+      </P>
+
       <H2>Our commitments</H2>
       <UL>
         <li>We do not use Etsy data to train AI models, and we use provider API terms under which API data is not used for training.</li>

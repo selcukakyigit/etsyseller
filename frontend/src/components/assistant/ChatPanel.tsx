@@ -1,5 +1,6 @@
 "use client";
 
+import { shrinkImage } from "@/lib/shrinkImage";
 import { ChangeEvent, ClipboardEvent, DragEvent, Fragment, KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import { api, API_URL, ChatMessageOut, ChatSessionInfo } from "@/lib/api";
 import Card from "./Cards";
@@ -7,7 +8,8 @@ import { useConfirm } from "@/components/ui/ConfirmDialog";
 import UlaggMark from "@/components/brand/UlaggMark";
 import { useT } from "@/lib/i18n-client";
 import { Spinner } from "@/components/ui/Spinner";
-import { ArrowUpIcon, CameraIcon, ImageIcon, PaperclipIcon, PlusIcon } from "@/components/icons";
+import { ArrowUpIcon, CameraIcon, ImageIcon, MicIcon, PaperclipIcon, PlusIcon } from "@/components/icons";
+import { useSpeechInput } from "@/lib/useSpeechInput";
 
 const SUGGESTIONS: [string, string][] = [
   ["Bu ayın kâr-zarar durumu nedir?", "What is this month's profit and loss?"],
@@ -58,6 +60,8 @@ type Pending = { id: string; url: string; name: string; isImage: boolean };
 // Sohbete eklenebilen belgeler (kargo/gümrük faturası); resimler ayrıca kabul edilir. Sunucu sınırı 15 MB.
 const DOC_EXT = [".pdf", ".csv", ".xlsx", ".xls", ".html", ".htm"];
 const MAX_FILE_MB = 15;
+// Etsy bir listing'e en fazla 20 fotoğraf kabul eder (backend: assistant/service.py MAX_IMAGES_PER_MESSAGE).
+const MAX_IMAGES = 20;
 const isDoc = (f: File) => DOC_EXT.some((ext) => f.name.toLowerCase().endsWith(ext));
 
 /** Resim olmayan ekin (PDF, Excel…) küçük kutusu. */
@@ -100,6 +104,7 @@ export default function ChatPanel({
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [sessions, setSessions] = useState<ChatSessionInfo[]>([]);
   const [input, setInput] = useState("");
+  const voice = useSpeechInput(setInput);
   const [pending, setPending] = useState<Pending[]>([]);
   const [uploading, setUploading] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -152,15 +157,17 @@ export default function ChatPanel({
   }, [messages, busy]);
 
   async function addFiles(files: File[]) {
-    const accepted = files.filter((f) => f.type.startsWith("image/") || isDoc(f));
-    if (accepted.length < files.length) {
+    const valid = files.filter((f) => f.type.startsWith("image/") || isDoc(f));
+    // Büyük fotoğraflar yüklenmeden önce telefonda küçültülür; 15 MB denetimi küçültülmüş hâle bakar.
+    const accepted = await Promise.all(valid.map((f) => shrinkImage(f)));
+    if (valid.length < files.length) {
       setError(t("Yalnızca resim, PDF, Excel/CSV ya da HTML dosyası eklenebilir.", "Only images, PDF, Excel/CSV or HTML files can be attached."));
     }
     const tooBig = accepted.filter((f) => f.size > MAX_FILE_MB * 1024 * 1024);
     if (tooBig.length) setError(t(`Dosya ${MAX_FILE_MB} MB'dan büyük olamaz: ${tooBig[0].name}`, `The file cannot be larger than ${MAX_FILE_MB} MB: ${tooBig[0].name}`));
-    const images = accepted.filter((f) => f.size <= MAX_FILE_MB * 1024 * 1024).slice(0, 6 - pending.length);
+    const images = accepted.filter((f) => f.size <= MAX_FILE_MB * 1024 * 1024).slice(0, MAX_IMAGES - pending.length);
     if (images.length === 0) return;
-    if (!tooBig.length && accepted.length === files.length) setError(null);
+    if (!tooBig.length && valid.length === files.length) setError(null);
     setUploading((n) => n + images.length);
     for (const f of images) {
       try {
@@ -204,6 +211,7 @@ export default function ChatPanel({
   }
 
   async function send(text?: string) {
+    voice.stop();
     const message = (text ?? input).trim();
     if ((!message && pending.length === 0) || busy || uploading > 0) return;
     setBusy(true);
@@ -396,8 +404,8 @@ export default function ChatPanel({
         <div ref={bottom} />
       </div>
 
-      {error && (
-        <div className="mx-4 mb-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950 dark:text-red-300">{error}</div>
+      {(error || voice.error) && (
+        <div className="mx-4 mb-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950 dark:text-red-300">{error ?? voice.error}</div>
       )}
 
       <div className="border-t border-neutral-100 p-3 dark:border-neutral-800">
@@ -484,6 +492,22 @@ export default function ChatPanel({
             title={t("Enter gönderir, Shift+Enter satır atlar", "Enter sends, Shift+Enter adds a line")}
             className="max-h-40 min-w-0 flex-1 resize-none bg-transparent px-1 py-2 text-base leading-5 text-neutral-900 sm:text-sm placeholder:text-neutral-400 focus:outline-none dark:text-neutral-100 dark:placeholder:text-neutral-500"
           />
+          {voice.supported && (
+            <button
+              type="button"
+              onClick={() => voice.toggle(input)}
+              aria-label={voice.listening ? t("Dinlemeyi durdur", "Stop listening") : t("Sesle yaz", "Dictate")}
+              aria-pressed={voice.listening}
+              title={voice.listening ? t("Dinlemeyi durdur", "Stop listening") : t("Sesle yaz", "Dictate")}
+              className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full transition ${
+                voice.listening
+                  ? "animate-pulse bg-red-500 text-white hover:bg-red-600"
+                  : "text-neutral-600 hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-700"
+              }`}
+            >
+              <MicIcon />
+            </button>
+          )}
           <button
             type="button"
             onClick={() => void send()}

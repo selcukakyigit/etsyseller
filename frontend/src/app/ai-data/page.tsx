@@ -41,6 +41,13 @@ export default async function AiDataPage() {
         özellik için gerekmedikçe bu veriler isteğe dahil edilmez.
       </P>
 
+      <H2>Sesle yazma</H2>
+      <P>
+        Sohbetteki mikrofon düğmesi tarayıcınızın kendi konuşma tanımasını kullanır. Konuşmanız sunucularımıza gönderilmez ve
+        kaydedilmez; metne çevrilmesi tarayıcınızın sağlayıcısı tarafından yapılır (ör. Chrome'da Google). Mikrofon yalnızca
+        düğmeye bastığınızda ve siz izin verdiğinizde açılır; yazıya çevrilen metni göndermeden önce düzenleyebilirsiniz.
+      </P>
+
       <H2>Taahhütlerimiz</H2>
       <UL>
         <li>Etsy'den aldığımız verileri yapay zekâ modellerini eğitmek için kullanmayız ve sağlayıcılarla eğitim için kullanılmamasını esas alan API koşullarıyla çalışırız.</li>
