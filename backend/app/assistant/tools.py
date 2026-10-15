@@ -423,6 +423,8 @@ def get_listing(ctx: Ctx, a: dict) -> dict:
         "listing_id": work["listing_id"], "baslik": work["title"], "etiketler": work["tags"], "aciklama_ilk_600": (work.get("description") or "")[:600],
         "fiyat_aralik": [min(prices), max(prices)] if prices else None, "urun_kombinasyonu": len(work.get("inventory", {}).get("products", [])),
         "fotograf_sayisi": len(work.get("images") or []), "durum": work.get("state"),
+        # Fotoğraf araçları (regenerate_listing_image) için: sıra kullanıcının "birinci resim" dediği numaradır.
+        "fotograflar": [{"sira": n, "image_id": i.get("listing_image_id"), "alt_text": i.get("alt_text")} for n, i in enumerate(sorted(work.get("images") or [], key=lambda x: x.get("rank") or 0), start=1)],
     }
 
 
@@ -683,6 +685,31 @@ def _build_inventory(work: dict, price: float, quantity: int, variations: list[d
     return None
 
 
+def _listing_card(ctx: Ctx, lid: int, work: dict, changes: list[str] | None = None, *, category: str | None = None, price_missing: bool | None = None, qty_assumed: bool = False) -> dict:
+    """Listing'in güncel hâlini gösteren kart (küçük resim, fiyat, adet, etiketler, eksikler). Oluşturma ve her düzenleme aynı kartı
+    gösterir; `changes` o işlemde değişen alanlardır."""
+    offers = [o for p in (work.get("inventory") or {}).get("products", []) for o in p.get("offerings", [])]
+    prices = [o["price"]["amount"] / o["price"]["divisor"] for o in offers if isinstance(o.get("price"), dict) and o["price"].get("divisor")]
+    products = (work.get("inventory") or {}).get("products", [])
+    images = sorted(work.get("images") or [], key=lambda i: i.get("rank") or 0)
+    if category is None and work.get("taxonomy_id"):
+        try:
+            category = _taxonomy().get(work["taxonomy_id"])
+        except Exception:  # noqa: BLE001 - kategori adı alınamazsa kartta gösterilmez
+            category = None
+    card = {
+        "type": "listing_draft", "listing_id": lid, "title": work.get("title") or "", "edit_url": f"/listings/{lid}/edit",
+        "price": [min(prices), max(prices)] if prices else [0, 0], "quantity": offers[0].get("quantity", 0) if offers else 0, "tags": work.get("tags") or [],
+        "combos": len(products) if products and products[0].get("property_values") else 0,
+        "image": images[0].get("url_170x135") if images else None, "images": len(images),
+        "problems": creation.validate_new(work, activate=True) if lid < 0 else [],
+        "category": category, "price_missing": (not any(p > 0 for p in prices)) if price_missing is None else price_missing, "quantity_assumed": qty_assumed,
+    }
+    if changes:
+        card["changes"] = changes
+    return card
+
+
 def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     title = " ".join(str(a.get("title", "")).split())[: bulk.TITLE_MAX]
     if not title:
@@ -763,16 +790,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         })
     drafts.save_local(ctx.db, ctx.shop, lid, work, None)
     problems = creation.validate_new(work, activate=True)
-    offers = [o for p in work["inventory"]["products"] for o in p["offerings"]]
-    prices = [o["price"]["amount"] / 100 for o in offers]
-    ctx.cards.append({
-        "type": "listing_draft", "listing_id": lid, "title": title, "edit_url": f"/listings/{lid}/edit",
-        "price": [min(prices), max(prices)], "quantity": offers[0]["quantity"] if offers else 0, "tags": tags,
-        "combos": len(work["inventory"]["products"]) if work["inventory"]["products"][0]["property_values"] else 0,
-        "image": work["images"][0]["url_170x135"] if work["images"] else None, "images": attached, "problems": problems,
-        "category": category_note["yol"] if category_note else None,
-        "price_missing": price_missing, "quantity_assumed": qty_assumed,
-    })
+    ctx.cards.append(_listing_card(ctx, lid, work, category=category_note["yol"] if category_note else None, price_missing=price_missing, qty_assumed=qty_assumed))
     return {
         "listing_id": lid, "duzenleyici_baglantisi": f"/listings/{lid}/edit", "eklenen_resim": attached, "kategori": category_note,
         "varyasyon_kombinasyonu": len(work["inventory"]["products"]) if work["inventory"]["products"][0]["property_values"] else 0,
@@ -988,10 +1006,7 @@ def update_listing(ctx: Ctx, a: dict) -> dict:
         if not result["ok"]:
             return {"error": result["error"]}
     after = _current_work(ctx, lid) or work
-    ctx.cards.append({
-        "type": "listing_update", "listing_id": lid, "title": after["title"], "edit_url": f"/listings/{lid}/edit",
-        "changes": [k for k in ch], "tags": after["tags"],
-    })
+    ctx.cards.append(_listing_card(ctx, lid, after, [k for k in ch]))
     return {"ok": True, "degisti": result["changed"], "duzenleyici_baglantisi": f"/listings/{lid}/edit", "yeni_baslik": after["title"],
             "not": "Değişiklik yalnızca yerel taslak olarak kaydedildi; Etsy'ye gitmedi. Kullanıcı düzenleyicide 'Etsy'de yayınla' ile gönderir."}
 
@@ -1034,10 +1049,7 @@ def _update_variations(ctx: Ctx, lid: int, work: dict, ch: dict, a: dict, variat
             return {"error": str(exc)}
         ch["description_template_id"] = tpl_id
     drafts.save_local(ctx.db, ctx.shop, lid, work, live)
-    ctx.cards.append({
-        "type": "listing_update", "listing_id": lid, "title": work["title"], "edit_url": f"/listings/{lid}/edit",
-        "changes": ["variations", *ch.keys()], "tags": work["tags"],
-    })
+    ctx.cards.append(_listing_card(ctx, lid, work, ["variations", *ch.keys()]))
     return {"ok": True, "listing_id": lid, "varyasyon_kombinasyonu": len(inv["products"]), "fiyat": price, "adet": quantity,
             "not": "Aynı listing'in yerel taslağı güncellendi (yeni taslak açılmadı); Etsy'ye gitmedi."}
 
@@ -1333,12 +1345,21 @@ def regenerate_listing_image(ctx: Ctx, a: dict) -> dict:
     art arda üretimlerde sapma birikmesin diye (bkz. drafts.regenerate_image). Yalnızca taslağa yazar."""
     from app.ai.image_gen import ImageGenError
 
-    lid, image_id = int(a["listing_id"]), int(a["image_id"])
+    lid = int(a["listing_id"])
     work = _draft_work(ctx, lid)
     images = work.get("images") or []
-    img = next((i for i in images if i.get("listing_image_id") == image_id), None)
+    if a.get("photo_number"):  # "birinci resim" = sıra numarası (1'den başlar, get_listing.fotograflar.sira ile aynı)
+        ordered = sorted(images, key=lambda x: x.get("rank") or 0)
+        n = int(a["photo_number"])
+        img = ordered[n - 1] if 1 <= n <= len(ordered) else None
+        image_id = img.get("listing_image_id") if img else None
+    elif a.get("image_id"):
+        image_id = int(a["image_id"])
+        img = next((i for i in images if i.get("listing_image_id") == image_id), None)
+    else:
+        return {"error": "Hangi fotoğraf? photo_number (1'den başlayan sıra) ya da image_id ver."}
     if img is None:
-        return {"error": "Fotoğraf bulunamadı; get_listing ya da workspace_status ile listing'in güncel fotoğraf id'lerine bak."}
+        return {"error": f"Fotoğraf bulunamadı; listing'de {len(images)} fotoğraf var. get_listing'in fotograflar listesine bak."}
     camera_prompt, distance_prompt, bad = _camera_prompts(a)
     if bad:
         return {"error": bad}
@@ -1353,7 +1374,7 @@ def regenerate_listing_image(ctx: Ctx, a: dict) -> dict:
     new_entry = _image_entry(ctx.shop.id, lid, result["file_id"], img.get("alt_text"), img.get("rank", 0))
     work["images"] = [new_entry if i.get("listing_image_id") == image_id else i for i in images]
     _save_draft_work(ctx, lid, work)
-    ctx.cards.append({"type": "image_regenerated", "listing_id": lid, "edit_url": f"/listings/{lid}/edit"})
+    ctx.cards.append(_listing_card(ctx, lid, work, ["photo"]))
     return {"ok": True, "not": "Yeni görsel taslağa kaydedildi; Etsy'ye gitmesi için yayınlanması gerekiyor."}
 
 
@@ -1419,6 +1440,28 @@ def _add_photo(ctx: Ctx, listing_id: int, filename: str, mime: str, content: byt
     return None
 
 
+def move_listing_photo(ctx: Ctx, a: dict) -> dict:
+    """Listing taslağındaki bir fotoğrafı başka bir sıraya taşır (ana fotoğraf = 1. sıra). Yalnızca taslağa yazar."""
+    lid = int(a["listing_id"])
+    try:
+        work = _draft_work(ctx, lid)
+    except Exception:  # noqa: BLE001
+        return {"error": "Listing bulunamadı."}
+    ordered = sorted(work.get("images") or [], key=lambda i: i.get("rank") or 0)
+    n, to = int(a["photo_number"]), int(a.get("to_position") or 1)
+    if not (1 <= n <= len(ordered)) or not (1 <= to <= len(ordered)):
+        return {"error": f"Listing'de {len(ordered)} fotoğraf var; sıra 1 ile {len(ordered)} arasında olmalı."}
+    moved = ordered.pop(n - 1)
+    ordered.insert(to - 1, moved)
+    for rank, img in enumerate(ordered, start=1):
+        img["rank"] = rank
+    work["images"] = ordered
+    _save_draft_work(ctx, lid, work)
+    ctx.cards.append(_listing_card(ctx, lid, work, ["photo_order"]))
+    return {"ok": True, "yeni_sira": [{"sira": r, "image_id": i.get("listing_image_id")} for r, i in enumerate(ordered, start=1)],
+            "not": "Fotoğraf sırası yalnızca yerel taslakta değişti; Etsy'ye gitmedi."}
+
+
 def _latest_new_draft(ctx: Ctx) -> int | None:
     """Henüz Etsy'ye gitmemiş en son yerel listing taslağı (sohbette "az önce oluşturduğumuz listing")."""
     row = ctx.db.scalars(select(ListingLocal).where(ListingLocal.shop_id == ctx.shop.id, ListingLocal.listing_id < 0).order_by(ListingLocal.updated_at.desc())).first()
@@ -1442,7 +1485,7 @@ def add_chat_image_to_listing(ctx: Ctx, a: dict) -> dict:
         return {"error": "Resim depoda bulunamadı."}
     if err:
         return {"error": err}
-    ctx.cards.append({"type": "chat_image_edited", "image_id": img.id, "image_url": f"/api/shops/{ctx.shop.id}/assistant/images/{img.id}", "source_image_id": None, "prompt": "", "listing_id": lid, "edit_url": f"/listings/{lid}/edit"})
+    ctx.cards.append(_listing_card(ctx, lid, _draft_work(ctx, lid), ["photo"]))
     return {"ok": True, "listing_id": lid, "not": "Resim listing taslağına yeni fotoğraf olarak eklendi (Etsy'ye gitmedi)."}
 
 
@@ -1668,11 +1711,13 @@ TOOLS: list[dict] = [
         "quantity": {"type": "integer", "description": "set_variations ile birlikte: her kombinasyonun stoğu (verilmezse mevcut stok korunur)"},
     }, ["listing_id"])},
     {"name": "regenerate_listing_image", "description": "Bir listing fotoğrafını AI ile yeniden oluşturur (yalnızca taslağa yazar, Etsy'ye göndermez). Kamera açısı ve/veya mesafe/kadraj ve/veya serbest sahne talimatı verilebilir, hepsi birlikte uygulanır. subject_image_id: sahnede birden fazla obje olduğunda 'ürün bu' diye işaret eden, aynı listing'in başka bir fotoğrafı.", "input_schema": _obj({
-        "listing_id": {"type": "integer"}, "image_id": {"type": "integer", "description": "Değiştirilecek fotoğrafın listing_image_id'si (get_listing/workspace_status'tan)"},
+        "listing_id": {"type": "integer"}, "photo_number": {"type": "integer", "description": "Değiştirilecek fotoğrafın sırası, 1'den başlar (kullanıcı 'birinci/ikinci resim' derse bunu ver)"},
+        "image_id": {"type": "integer", "description": "Alternatif: fotoğrafın listing_image_id'si (get_listing.fotograflar.image_id)"},
         **_CAMERA_SCHEMA,
         "prompt": {"type": "string", "description": "Sahne talimatı, ör. 'oturma odasında göster', 'arka planı beyaz yap'"},
         "subject_image_id": {"type": "integer"},
-    }, ["listing_id", "image_id"])},
+    }, ["listing_id"])},
+    {"name": "move_listing_photo", "description": "Listing taslağındaki bir fotoğrafın sırasını değiştirir. 'Üçüncü resmi ana resim yap' = photo_number 3, to_position 1 (ana fotoğraf birinci sıradadır). Fotoğraf sırası için update_listing KULLANMA.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer", "description": "Taşınacak fotoğrafın şimdiki sırası (1'den başlar)"}, "to_position": {"type": "integer", "description": "Hedef sıra (varsayılan 1 = ana fotoğraf)"}}, ["listing_id", "photo_number"])},
     {"name": "edit_chat_image", "description": "Sohbete eklenen bir resmi AI ile düzenler (arka plan temizle/değiştir, 'oturma odasında göster', kamera açısı). Sonuç sohbette yeni resim olarak görünür, orijinal kalır. Kullanıcı bir listing belirtirse (ör. 'bu listing'e ekle') listing_id ver: sonuç o taslağa yeni fotoğraf olarak eklenir; belirtmediyse listing_id verme, yalnızca göster. Etsy'ye hiçbir şey göndermez; kredi harcar.", "input_schema": _obj({
         "image_id": {"type": "string", "description": "Sohbete eklenen resmin kimliği (sistem mesajındaki listeden)"},
         "prompt": {"type": "string", "description": "Ne yapılacağı, ör. 'arka planı beyaz yap', 'oturma odasında duvara asılı göster'"},
@@ -1732,6 +1777,7 @@ TOOL_LABELS = {
     "bulk_update_listings": "Toplu taslak hazırlıyor",
     "regenerate_listing_image": "Fotoğrafı yeniden oluşturuyor",
     "edit_chat_image": "Resmi düzenliyor",
+    "move_listing_photo": "Fotoğraf sırasını değiştiriyor",
     "add_chat_image_to_listing": "Resmi listing'e ekliyor",
     "generate_missing_alt_texts": "Alt metinleri yazıyor",
     "listing_health_status": "Listing sağlığına bakıyor",
@@ -1777,6 +1823,7 @@ TOOL_LABELS_EN = {
     "bulk_update_listings": "Preparing bulk drafts",
     "regenerate_listing_image": "Regenerating the photo",
     "edit_chat_image": "Editing the image",
+    "move_listing_photo": "Reordering the photos",
     "add_chat_image_to_listing": "Adding the image to the listing",
     "generate_missing_alt_texts": "Writing alt texts",
     "listing_health_status": "Checking listing health",
@@ -1799,7 +1846,7 @@ EXECUTORS = {
     "create_listing_draft": create_listing_draft, "update_listing": update_listing,
     "shop_options": shop_options, "workspace_status": workspace_status, "orders_overview": orders_overview, "order_detail": order_detail,
     "orders_missing_costs": orders_missing_costs, "keyword_pool": keyword_pool, "shipping_invoices": shipping_invoices, "bulk_update_listings": bulk_update_listings,
-    "regenerate_listing_image": regenerate_listing_image, "edit_chat_image": edit_chat_image, "add_chat_image_to_listing": add_chat_image_to_listing, "generate_missing_alt_texts": generate_missing_alt_texts,
+    "regenerate_listing_image": regenerate_listing_image, "edit_chat_image": edit_chat_image, "move_listing_photo": move_listing_photo, "add_chat_image_to_listing": add_chat_image_to_listing, "generate_missing_alt_texts": generate_missing_alt_texts,
     "listing_health_status": listing_health_status, "keep_watching_listing": keep_watching_listing,
     "publish_listing_draft": publish_listing_draft, "deactivate_listing": deactivate_listing, "mark_order_shipped": mark_order_shipped,
     "read_shipping_invoice": read_shipping_invoice, "listing_diagnosis": listing_diagnosis, "track_keywords": track_keywords, "read_etsy_keyword_data": read_etsy_keyword_data,

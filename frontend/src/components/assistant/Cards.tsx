@@ -353,6 +353,14 @@ export default function Card({ card, shopId, onAsk }: { card: ChatCard; shopId: 
               {card.combos > 0 && ` · ${t(`${card.combos} seçenek kombinasyonu`, `${card.combos} variation combinations`)}`} ·{" "}
               {t(`${card.images} resim · ${card.tags.length} etiket`, `${card.images} images · ${card.tags.length} tags`)}
             </div>
+            {card.changes && card.changes.length > 0 && (
+              <div className="mt-1 text-emerald-700 dark:text-emerald-400">
+                {t("Değişen:", "Changed:")}{" "}
+                {card.changes
+                  .map((c) => ({ title: t("başlık", "title"), description: t("açıklama", "description"), tags: t("etiketler", "tags"), price: t("fiyat", "price"), variations: t("varyasyonlar", "variations"), photo: t("fotoğraf", "photo"), photo_order: t("fotoğraf sırası", "photo order") })[c] ?? c)
+                  .join(", ")}
+              </div>
+            )}
             {card.category && <div className="mt-1 text-neutral-500">{t("Kategori:", "Category:")} {card.category}</div>}
             {card.tags.length > 0 && <div className="mt-1 line-clamp-2 text-neutral-400">{card.tags.join(", ")}</div>}
             {card.problems.length > 0 && <div className="mt-1 text-amber-600">{t("Yayın için eksik:", "Missing before publishing:")} {card.problems.join(" ")}</div>}
