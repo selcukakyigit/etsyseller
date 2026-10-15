@@ -45,24 +45,26 @@ MODEL_IMAGES_PER_MESSAGE = 4
 
 # ------------------------------------------------------------------ ilerleme (asistan şu an ne yapıyor)
 
-_progress: dict[tuple[int, str], tuple[str, float, str | None]] = {}  # (adım metni, zaman, iş türü: "image" | "video" | None)
+# (adım metni, zaman, iş türü: "image" | "video" | None, şimdiye kadar üretilen kartlar). Kartlar yanıt bitmeden gösterilir:
+# üretilen resim, asistanın son cümlesini yazmasını beklemez.
+_progress: dict[tuple[int, str], tuple[str, float, str | None, list[dict]]] = {}
 _progress_lock = threading.Lock()
 
 
-def set_progress(shop_id: int, request_id: str | None, text: str, kind: str | None = None) -> None:
+def set_progress(shop_id: int, request_id: str | None, text: str, kind: str | None = None, cards: list[dict] | None = None) -> None:
     if not request_id:
         return
     with _progress_lock:
         now = time.time()
-        for k in [k for k, (_, ts, _k) in _progress.items() if now - ts > 600]:  # 10 dakikadan eski kayıtları temizle
+        for k in [k for k, (_, ts, _k, _c) in _progress.items() if now - ts > 600]:  # 10 dakikadan eski kayıtları temizle
             del _progress[k]
-        _progress[(shop_id, request_id)] = (text, now, kind)
+        _progress[(shop_id, request_id)] = (text, now, kind, list(cards) if cards is not None else _progress.get((shop_id, request_id), ("", 0.0, None, []))[3])
 
 
 def get_progress(shop_id: int, request_id: str) -> dict:
     with _progress_lock:
-        text, _, kind = _progress.get((shop_id, request_id), ("", 0.0, None))
-    return {"step": text, "kind": kind}
+        text, _, kind, cards = _progress.get((shop_id, request_id), ("", 0.0, None, []))
+    return {"step": text, "kind": kind, "cards": cards}
 
 
 def clear_progress(shop_id: int, request_id: str | None) -> None:
@@ -222,7 +224,7 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
     db.commit()
 
     session_images = db.scalars(select(ChatImage).where(ChatImage.session_id == session.id).order_by(ChatImage.created_at)).all()
-    ctx = tools.Ctx(db=db, shop=shop, user_id=user_id, today=today, message=message)
+    ctx = tools.Ctx(db=db, shop=shop, user_id=user_id, today=today, message=message, session_id=session.id)
     dynamic = prompt.shop_context(
         shop_name=shop.shop_name, today=today.isoformat(), currency=_currency(db, shop), sections=_sections_summary(db, shop),
         examples=_title_examples(db, shop), files=_images_prompt(session_images), notes=memory.notes_for_prompt(db, shop.id), lang=lang,
@@ -238,7 +240,7 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
             tool_lines.append(context.summarize_tool_call(name, args, result))
             return result
         finally:
-            set_progress(shop.id, request_id, "Reviewing the result" if en else "Sonucu değerlendiriyor")
+            set_progress(shop.id, request_id, "Reviewing the result" if en else "Sonucu değerlendiriyor", None, ctx.cards)
 
     try:
         result = llm.run_agent(

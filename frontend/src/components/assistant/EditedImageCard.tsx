@@ -35,7 +35,14 @@ export default function EditedImageCard({ card, shopId, onAsk }: { card: Edited;
   const [gone, setGone] = useState(false); // silindi ya da saklama süresi doldu
   const [zoom, setZoom] = useState(false);
   const src = `${API_URL}${card.image_url}`;
-  const canAct = !card.edit_url && !gone && onAsk;
+  const canAct = !card.added && !gone && onAsk;
+  const target = card.listing_id !== null ? t(`, listing id: ${card.listing_id}`, `, listing id: ${card.listing_id}`) : "";
+  // Yeniden üretme isteği: kaynak sohbet resmi ya da listing fotoğrafı olabilir.
+  const source = card.source_image_id
+    ? t(`kaynak resim id: ${card.source_image_id}`, `source image id: ${card.source_image_id}`)
+    : card.source_listing_id !== null
+      ? t(`listing id: ${card.source_listing_id}, fotoğraf ${card.source_photo}`, `listing id: ${card.source_listing_id}, photo ${card.source_photo}`)
+      : null;
 
   async function remove() {
     try {
@@ -64,9 +71,9 @@ export default function EditedImageCard({ card, shopId, onAsk }: { card: Edited;
       )}
       <div className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
         <span className="text-neutral-600 dark:text-neutral-300">
-          {card.edit_url ? t("Düzenlendi ve listing taslağına eklendi", "Edited and added to the listing draft") : t("Düzenlendi · orijinal sohbette duruyor", "Edited · the original is still in the chat")}
+          {card.added ? t("Oluşturuldu ve listing taslağına eklendi", "Created and added to the listing draft") : t("Oluşturuldu · listing'e eklenmedi", "Created · not added to the listing")}
         </span>
-        {card.edit_url && (
+        {card.added && card.edit_url && (
           <Link href={card.edit_url} className="flex-shrink-0 font-semibold text-[#B4553A] hover:underline dark:text-[#E89A7F]">
             {t("Aç →", "Open →")}
           </Link>
@@ -74,10 +81,10 @@ export default function EditedImageCard({ card, shopId, onAsk }: { card: Edited;
       </div>
       {canAct && (
         <div className="flex items-center justify-end gap-2 border-t border-neutral-100 bg-neutral-50 px-3 py-2 dark:border-neutral-800 dark:bg-neutral-950">
-          {card.source_image_id && (
+          {source && (
             <IconButton
               label={t("Yeniden üret", "Regenerate")}
-              onClick={() => onAsk(t(`Bu resmi yeniden üret (kaynak resim id: ${card.source_image_id}): ${card.prompt}`, `Regenerate this image (source image id: ${card.source_image_id}): ${card.prompt}`))}
+              onClick={() => onAsk(t(`Bu görseli yeniden üret, listing'e ekleme (${source}): ${card.prompt}`, `Regenerate this image without adding it to the listing (${source}): ${card.prompt}`))}
             >
               <RefreshIcon className="!h-4 !w-4" />
             </IconButton>
@@ -88,7 +95,7 @@ export default function EditedImageCard({ card, shopId, onAsk }: { card: Edited;
           <IconButton
             primary
             label={t("Listing'e ekle", "Add to listing")}
-            onClick={() => onAsk(t(`Bu resmi listing'e ekle (resim id: ${card.image_id})`, `Add this image to the listing (image id: ${card.image_id})`))}
+            onClick={() => onAsk(t(`Bu resmi listing'e ekle (resim id: ${card.image_id}${target})`, `Add this image to the listing (image id: ${card.image_id}${target})`))}
           >
             <ImagePlusIcon className="!h-4 !w-4" />
           </IconButton>

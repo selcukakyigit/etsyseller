@@ -70,6 +70,7 @@ class Ctx:
     today: dt.date
     message: str = ""  # kullanıcının bu mesajı (yapıştırılan fatura metni gibi, modele yeniden yazdırmadan okumak için)
     cards: list[dict] = field(default_factory=list)
+    session_id: int | None = None  # sohbet oturumu: üretilen resimler bu oturuma kaydedilir
 
 
 def _d(value: str | None, default: dt.date) -> dt.date:
@@ -714,6 +715,17 @@ def _listing_card(ctx: Ctx, lid: int, work: dict, changes: list[str] | None = No
     return card
 
 
+def _show_listing(ctx: Ctx, lid: int, work: dict, changes: list[str] | None = None, **kw) -> None:
+    """Listing kartını gösterir. Aynı yanıtta aynı listing için birden çok işlem yapılırsa tek kart kalır: en güncel hâli, tüm değişenlerle."""
+    card = _listing_card(ctx, lid, work, changes, **kw)
+    for earlier in [c for c in ctx.cards if c.get("type") == "listing_draft" and c.get("listing_id") == lid]:
+        ctx.cards.remove(earlier)
+        merged = list(dict.fromkeys([*earlier.get("changes", []), *card.get("changes", [])]))
+        if merged:
+            card["changes"] = merged
+    ctx.cards.append(card)
+
+
 def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     title = " ".join(str(a.get("title", "")).split())[: bulk.TITLE_MAX]
     if not title:
@@ -794,7 +806,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         })
     drafts.save_local(ctx.db, ctx.shop, lid, work, None)
     problems = creation.validate_new(work, activate=True)
-    ctx.cards.append(_listing_card(ctx, lid, work, category=category_note["yol"] if category_note else None, price_missing=price_missing, qty_assumed=qty_assumed))
+    _show_listing(ctx, lid, work, category=category_note["yol"] if category_note else None, price_missing=price_missing, qty_assumed=qty_assumed)
     return {
         "listing_id": lid, "duzenleyici_baglantisi": f"/listings/{lid}/edit", "eklenen_resim": attached, "kategori": category_note,
         "varyasyon_kombinasyonu": len(work["inventory"]["products"]) if work["inventory"]["products"][0]["property_values"] else 0,
@@ -1010,7 +1022,7 @@ def update_listing(ctx: Ctx, a: dict) -> dict:
         if not result["ok"]:
             return {"error": result["error"]}
     after = _current_work(ctx, lid) or work
-    ctx.cards.append(_listing_card(ctx, lid, after, [k for k in ch]))
+    _show_listing(ctx, lid, after, [k for k in ch])
     return {"ok": True, "degisti": result["changed"], "duzenleyici_baglantisi": f"/listings/{lid}/edit", "yeni_baslik": after["title"],
             "not": "Değişiklik yalnızca yerel taslak olarak kaydedildi; Etsy'ye gitmedi. Kullanıcı düzenleyicide 'Etsy'de yayınla' ile gönderir."}
 
@@ -1053,7 +1065,7 @@ def _update_variations(ctx: Ctx, lid: int, work: dict, ch: dict, a: dict, variat
             return {"error": str(exc)}
         ch["description_template_id"] = tpl_id
     drafts.save_local(ctx.db, ctx.shop, lid, work, live)
-    ctx.cards.append(_listing_card(ctx, lid, work, ["variations", *ch.keys()]))
+    _show_listing(ctx, lid, work, ["variations", *ch.keys()])
     return {"ok": True, "listing_id": lid, "varyasyon_kombinasyonu": len(inv["products"]), "fiyat": price, "adet": quantity,
             "not": "Aynı listing'in yerel taslağı güncellendi (yeni taslak açılmadı); Etsy'ye gitmedi."}
 
@@ -1386,48 +1398,65 @@ def regenerate_listing_image(ctx: Ctx, a: dict) -> dict:
     new_entry = _image_entry(ctx.shop.id, lid, result["file_id"], img.get("alt_text"), img.get("rank", 0))
     work["images"] = [new_entry if i.get("listing_image_id") == image_id else i for i in images]
     _save_draft_work(ctx, lid, work)
-    ctx.cards.append(_listing_card(ctx, lid, work, ["photo"]))
+    _show_listing(ctx, lid, work, ["photo"])
     return {"ok": True, "not": "Yeni görsel taslağa kaydedildi; Etsy'ye gitmesi için yayınlanması gerekiyor."}
 
 
 def edit_chat_image(ctx: Ctx, a: dict) -> dict:
-    """Sohbete eklenen bir resmi AI ile düzenler (arka plan, sahne, kamera açısı…). Sonuç sohbete yeni bir resim olarak
-    gelir; orijinal yerinde kalır. listing_id verilirse sonuç o listing taslağına YENİ FOTOĞRAF olarak da eklenir
-    (yalnızca taslak, Etsy'ye gitmez)."""
+    """AI ile YENİ bir görsel üretir: kaynak sohbetteki bir resim (image_id) ya da bir listing fotoğrafı (listing_id + photo_number).
+    Sonuç sohbette gösterilir; kaynak olduğu gibi kalır. Listing'e YALNIZCA add_to_listing=true ise eklenir (yeni fotoğraf olarak,
+    yalnızca taslak, Etsy'ye gitmez); kullanıcı görmeden eklenmez."""
     from app.ai.image_gen import ImageGenError, guess_extension, regenerate_image
     from app.assistant import service as chat_service
     from app.assistant.models import ChatImage
 
-    img = ctx.db.get(ChatImage, str(a.get("image_id") or ""))
-    if img is None or img.shop_id != ctx.shop.id or not img.path or not img.content_type.startswith("image/"):
-        return {"error": "Resim bulunamadı; sistem mesajındaki resim listesinden bir kimlik ver."}
     if not (a.get("prompt") or a.get("azimuth") or a.get("elevation") or a.get("distance")):
         return {"error": "Resimde ne yapılacağını yaz (ör. arka planı beyaz yap, oturma odasında göster)."}
     camera_prompt, distance_prompt, bad = _camera_prompts(a)
     if bad:
         return {"error": bad}
     lid = int(a["listing_id"]) if a.get("listing_id") else None
-    if lid is not None:
-        err = _photo_slot_error(ctx, lid)
-        if err:
-            return {"error": err}
+    source_chat_id = source_photo = None
     try:
+        if a.get("image_id"):
+            img = ctx.db.get(ChatImage, str(a["image_id"]))
+            if img is None or img.shop_id != ctx.shop.id or not img.path or not img.content_type.startswith("image/"):
+                return {"error": "Resim bulunamadı; sistem mesajındaki resim listesinden bir kimlik ver."}
+            source, source_chat_id = (blobstore.read(img.path), img.content_type), img.id
+        elif lid is not None and a.get("photo_number"):
+            work, err = _work_or_error(ctx, lid)
+            if err:
+                return err
+            ordered, photo = _photo_at(work, int(a["photo_number"]))
+            if photo is None:
+                return {"error": f"Fotoğraf bulunamadı; listing'de {len(ordered)} fotoğraf var."}
+            source, source_photo = drafts._source_image_bytes(ctx.db, ctx.shop, lid, photo["listing_image_id"], photo.get("draft_file_id")), int(a["photo_number"])
+        else:
+            return {"error": "Kaynak belirt: sohbetteki resim için image_id, listing fotoğrafı için listing_id + photo_number."}
+        add = bool(a.get("add_to_listing"))
+        if add:
+            lid = lid if lid is not None else _latest_new_draft(ctx)
+            err = _photo_slot_error(ctx, lid) if lid is not None else "Eklenecek bir listing taslağı yok; listing_id ver."
+            if err:
+                return {"error": err}
         new_bytes, mime = regenerate_image(
-            blobstore.read(img.path), img.content_type, a.get("prompt"), None, camera_prompt, distance_prompt, None,
+            source[0], source[1], a.get("prompt"), None, camera_prompt, distance_prompt, None,
             int(a["model_id"]) if a.get("model_id") else None, a.get("variant"),
         )
     except (ImageGenError, ValueError, FileNotFoundError) as exc:
         return {"error": str(exc)}
     name = f"ai-edit{guess_extension(mime)}"
-    saved = chat_service.save_image(ctx.db, ctx.shop, img.session_id, name, mime, new_bytes)
-    added = lid is not None and _add_photo(ctx, lid, name, mime, new_bytes) is None
+    saved = chat_service.save_image(ctx.db, ctx.shop, ctx.session_id, name, mime, new_bytes)
+    added = add and lid is not None and _add_photo(ctx, lid, name, mime, new_bytes) is None
     ctx.cards.append({
-        "type": "chat_image_edited", "image_id": saved["id"], "image_url": saved["url"], "source_image_id": img.id, "prompt": str(a.get("prompt") or "")[:200],
-        "listing_id": lid if added else None, "edit_url": f"/listings/{lid}/edit" if added else None,
+        "type": "chat_image_edited", "image_id": saved["id"], "image_url": saved["url"], "prompt": str(a.get("prompt") or "")[:200],
+        "source_image_id": source_chat_id, "source_listing_id": lid if source_photo else None, "source_photo": source_photo,
+        "listing_id": lid, "added": added, "edit_url": f"/listings/{lid}/edit" if added else None,
     })
     return {
         "ok": True, "yeni_resim_id": saved["id"], "listinge_eklendi": added,
-        "not": "Düzenlenen resim sohbette gösterildi; orijinal yerinde duruyor." + (" Listing taslağına yeni fotoğraf olarak eklendi (Etsy'ye gitmedi)." if added else " Kullanıcı bir listing'e eklenmesini isterse add_chat_image_to_listing'i çağır (yeni resim kimliğiyle; yeniden üretme)."),
+        "not": "Yeni görsel sohbette gösterildi (kartta yeniden üret / sil / listing'e ekle simgeleri var); kaynak yerinde duruyor."
+               + (" Listing taslağına yeni fotoğraf olarak eklendi (Etsy'ye gitmedi)." if added else " Listing'e EKLENMEDİ: kullanıcı 'ekle' derse ya da karttaki düğmeye basarsa add_chat_image_to_listing'i yeni resim kimliğiyle çağır (yeniden üretme)."),
     }
 
 
@@ -1472,7 +1501,7 @@ def move_listing_photo(ctx: Ctx, a: dict) -> dict:
         img["rank"] = rank
     work["images"] = ordered
     _save_draft_work(ctx, lid, work)
-    ctx.cards.append(_listing_card(ctx, lid, work, ["photo_order"]))
+    _show_listing(ctx, lid, work, ["photo_order"])
     return {"ok": True, "yeni_sira": [{"sira": r, "image_id": i.get("listing_image_id")} for r, i in enumerate(ordered, start=1)],
             "not": "Fotoğraf sırası yalnızca yerel taslakta değişti; Etsy'ye gitmedi."}
 
@@ -1486,7 +1515,7 @@ def _save_fields(ctx: Ctx, lid: int, work: dict, changed: list[str], errors: lis
     """Alan araçlarının ortak sonucu: değişen alanlar yazılır, güncel kart gösterilir, hatalar olduğu gibi döner."""
     if changed:
         _save_draft_work(ctx, lid, work)
-        ctx.cards.append(_listing_card(ctx, lid, work, changed))
+        _show_listing(ctx, lid, work, changed)
     out = {"degisenler": changed, "hatalar": errors, **extra}
     if errors:
         out["not"] = "Hatalı olanlar YAZILMADI; hataları kullanıcıya olduğu gibi söyle, olmayan bir şeyi yaptım deme."
@@ -1586,7 +1615,7 @@ def delete_listing_photo(ctx: Ctx, a: dict) -> dict:
         kept["rank"] = rank
     work["images"] = ordered
     _save_draft_work(ctx, lid, work)
-    ctx.cards.append(_listing_card(ctx, lid, work, ["photo"]))
+    _show_listing(ctx, lid, work, ["photo"])
     return {"ok": True, "kalan_fotograf": len(ordered), "not": "Fotoğraf yalnızca yerel taslaktan kaldırıldı; Etsy'deki, yayınlayınca silinir." + (" Listing'de hiç fotoğraf kalmadı; aktif edilemez." if not ordered else "")}
 
 
@@ -1604,7 +1633,7 @@ def set_photo_alt_text(ctx: Ctx, a: dict) -> dict:
     img["alt_text"] = " ".join(str(a.get("alt_text") or "").split())[:500] or None
     work["images"] = ordered
     _save_draft_work(ctx, lid, work)
-    ctx.cards.append(_listing_card(ctx, lid, work, ["photo"]))
+    _show_listing(ctx, lid, work, ["photo"])
     return {"ok": True, "not": "Alt metin yerel taslağa yazıldı."}
 
 
@@ -1706,7 +1735,7 @@ def add_video_to_listing(ctx: Ctx, a: dict) -> dict:
         "video_url": _draft_file_url(ctx.shop.id, lid, file.id), "video_state": "draft",
     }]
     _save_draft_work(ctx, lid, work)
-    ctx.cards.append(_listing_card(ctx, lid, work, ["video"]))
+    _show_listing(ctx, lid, work, ["video"])
     return {"ok": True, "not": "Video yerel taslağa eklendi; Etsy'ye gitmedi."}
 
 
@@ -1803,7 +1832,7 @@ def copy_listing(ctx: Ctx, a: dict) -> dict:
     except ValueError as exc:
         return {"error": str(exc)}
     lid = created["listing_id"]
-    ctx.cards.append(_listing_card(ctx, lid, _draft_work(ctx, lid), ["copied"]))
+    _show_listing(ctx, lid, _draft_work(ctx, lid), ["copied"])
     return {"ok": True, "yeni_listing_id": lid, "uyarilar": created["warnings"],
             "not": "Kopya yerel taslak (başlığa ' (kopya)' eklendi). Etsy'de aynı başlık ve etiketler tekrar olmasın: başlığı, etiketleri ve açıklamayı ürüne göre değiştir."}
 
@@ -1825,7 +1854,7 @@ def discard_listing_changes(ctx: Ctx, a: dict) -> dict:
     work, err = _work_or_error(ctx, lid)
     if err:
         return err
-    ctx.cards.append(_listing_card(ctx, lid, work, ["discarded"]))
+    _show_listing(ctx, lid, work, ["discarded"])
     return {"ok": True, "not": "Yerel değişiklikler atıldı; listing Etsy'deki hâlinde."}
 
 
@@ -1876,7 +1905,7 @@ def add_chat_image_to_listing(ctx: Ctx, a: dict) -> dict:
         return {"error": "Resim depoda bulunamadı."}
     if err:
         return {"error": err}
-    ctx.cards.append(_listing_card(ctx, lid, _draft_work(ctx, lid), ["photo"]))
+    _show_listing(ctx, lid, _draft_work(ctx, lid), ["photo"])
     return {"ok": True, "listing_id": lid, "not": "Resim listing taslağına yeni fotoğraf olarak eklendi (Etsy'ye gitmedi)."}
 
 
@@ -2157,12 +2186,14 @@ TOOLS: list[dict] = [
     {"name": "generate_listing_video", "description": "Bir fotoğraftan ürün videosu üretir (5–15 sn, kredi harcar). photo_number: listing'in o sıradaki fotoğrafı (varsayılan 1) ya da chat_image_id: sohbetteki bir resim (ör. az önce ürettiğin). Model TEK resimden video üretir; 'listedeki 4 resimden video' istenirse tek bir fotoğrafı seç ya da her fotoğraf için ayrı video önerip maliyeti söyle. confirm vermeden yalnızca kredi bedelini döner: kullanıcıya söyle, AÇIKÇA onay al, onaylarsa confirm=true ile tekrar çağır. listing_id verilmezse sohbetteki en son yeni taslak kullanılır.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer"}, "chat_image_id": {"type": "string"}, "prompt": {"type": "string", "description": "Hareket tarifi, İngilizce (ör. 'slow camera move around the product'); verilmezse sakin bir ürün videosu"}, "duration": {"type": "integer", "description": "Saniye, 5 ile 15 arası (varsayılan 5)"}, **_QUALITY_SCHEMA, "confirm": {"type": "boolean"}}, [])},
     {"name": "add_video_to_listing", "description": "Üretilmiş bir videoyu listing taslağına ekler. file_id: videonun taslak dosya kimliği (kullanıcının 'listing'e ekle' mesajında yazar). listing_id verilmezse sohbetteki en son yeni taslak. Bir listing'e en fazla 2 video.", "input_schema": _obj({"file_id": {"type": "string"}, "listing_id": {"type": "integer"}}, ["file_id"])},
     {"name": "move_listing_photo", "description": "Listing taslağındaki bir fotoğrafın sırasını değiştirir. 'Üçüncü resmi ana resim yap' = photo_number 3, to_position 1 (ana fotoğraf birinci sıradadır). Fotoğraf sırası için update_listing KULLANMA.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer", "description": "Taşınacak fotoğrafın şimdiki sırası (1'den başlar)"}, "to_position": {"type": "integer", "description": "Hedef sıra (varsayılan 1 = ana fotoğraf)"}}, ["listing_id", "photo_number"])},
-    {"name": "edit_chat_image", "description": "Sohbete eklenen bir resmi AI ile düzenler (arka plan temizle/değiştir, 'oturma odasında göster', kamera açısı). Sonuç sohbette yeni resim olarak görünür, orijinal kalır. Kullanıcı bir listing belirtirse (ör. 'bu listing'e ekle') listing_id ver: sonuç o taslağa yeni fotoğraf olarak eklenir; belirtmediyse listing_id verme, yalnızca göster. Etsy'ye hiçbir şey göndermez; kredi harcar.", "input_schema": _obj({
-        "image_id": {"type": "string", "description": "Sohbete eklenen resmin kimliği (sistem mesajındaki listeden)"},
+    {"name": "edit_chat_image", "description": "AI ile YENİ bir görsel üretir (arka plan temizle/değiştir, 'ürünü kullanımda / oturma odasında göster', kamera açısı). Kaynak: sohbetteki bir resim (image_id) YA DA bir listing fotoğrafı (listing_id + photo_number). Sonuç sohbette simgeli bir kartla gösterilir, kaynak değişmez. Listing'e YALNIZCA kullanıcı 'ekle' dediyse add_to_listing=true ver; vermezsen sadece gösterilir ve kullanıcı beğenirse ekler ya da yeniden ürettirir. Etsy'ye hiçbir şey göndermez; kredi harcar.", "input_schema": _obj({
+        "image_id": {"type": "string", "description": "Kaynak: sohbete eklenen resmin kimliği (sistem mesajındaki listeden)"},
+        "photo_number": {"type": "integer", "description": "Kaynak: listing_id ile birlikte, listing'in o sıradaki fotoğrafı (1'den başlar)"},
+        "add_to_listing": {"type": "boolean", "description": "Yalnızca kullanıcı açıkça eklenmesini istediyse true"},
         "prompt": {"type": "string", "description": "Ne yapılacağı, ör. 'arka planı beyaz yap', 'oturma odasında duvara asılı göster'"},
         **_CAMERA_SCHEMA,
         **_QUALITY_SCHEMA,
-        "listing_id": {"type": "integer", "description": "Yalnızca kullanıcı bir listing'e eklenmesini söylediyse: yeni ya da mevcut listing taslağı"},
+        "listing_id": {"type": "integer", "description": "Kaynak fotoğrafın listing'i; add_to_listing ile sonucun ekleneceği listing de budur (vermezsen en son yeni taslak)"},
     }, ["image_id"])},
     {"name": "add_chat_image_to_listing", "description": "Sohbetteki mevcut bir resmi (ör. edit_chat_image'ın ürettiği, yeni_resim_id) listing taslağına yeni fotoğraf olarak ekler; yeniden üretmez, kredi harcamaz. listing_id verilmezse sohbetteki en son oluşturulan yeni taslak kullanılır ('az önce oluşturduğumuz listeye ekle').", "input_schema": _obj({"image_id": {"type": "string"}, "listing_id": {"type": "integer"}}, ["image_id"])},
     {"name": "generate_missing_alt_texts", "description": "Bir listing'in alt metni olmayan (yalnızca YENİ/taslak) fotoğrafları için yapay zekâyla alt metin yazar.", "input_schema": _obj({"listing_id": {"type": "integer"}}, ["listing_id"])},

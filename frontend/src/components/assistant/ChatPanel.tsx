@@ -2,7 +2,7 @@
 
 import { shrinkImage } from "@/lib/shrinkImage";
 import { ChangeEvent, ClipboardEvent, DragEvent, Fragment, KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
-import { api, API_URL, ChatMessageOut, ChatSessionInfo } from "@/lib/api";
+import { api, API_URL, ChatCard, ChatMessageOut, ChatSessionInfo } from "@/lib/api";
 import Card from "./Cards";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import UlaggMark from "@/components/brand/UlaggMark";
@@ -133,6 +133,7 @@ export default function ChatPanel({
   const [historyOpen, setHistoryOpen] = useState(false); // geçmiş paneli varsayılan olarak kapalı
   const [step, setStep] = useState("");
   const [stepKind, setStepKind] = useState<"image" | "video" | null>(null); // resim/video üretilirken ilerleme kartı için
+  const [liveCards, setLiveCards] = useState<ChatCard[]>([]); // yanıt bitmeden gösterilen kartlar (üretilen resim son cümleyi beklemez)
   const kindSince = useRef(0); // bu türdeki işin başladığı an (tahmini yüzde için)
   const lastKind = useRef<"image" | "video" | null>(null);
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
@@ -220,6 +221,7 @@ export default function ChatPanel({
         .then((p) => {
           if (stop) return;
           setStep(p.step);
+          setLiveCards((prev) => (p.cards.length === prev.length ? prev : p.cards));
           if (p.kind !== lastKind.current) {
             lastKind.current = p.kind;
             if (p.kind) kindSince.current = Date.now();
@@ -276,7 +278,8 @@ export default function ChatPanel({
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-  }, [input]);
+    if (voice.listening) el.scrollTop = el.scrollHeight; // sesle yazarken son söylenen hep görünsün
+  }, [input, voice.listening]);
 
   function onPaste(e: ClipboardEvent<HTMLTextAreaElement>) {
     const files = Array.from(e.clipboardData.files);
@@ -299,6 +302,7 @@ export default function ChatPanel({
     setBusy(true);
     lastKind.current = null;
     setStepKind(null);
+    setLiveCards([]);
     setError(null);
     setStep("");
     const rid = crypto.randomUUID();
@@ -486,6 +490,13 @@ export default function ChatPanel({
               {m.cards.map((c, i) => (
                 <Card key={i} card={c} shopId={shopId} onAsk={(text) => void send(text)} />
               ))}
+            </div>
+          </div>
+        ))}
+        {busy && liveCards.map((c, i) => (
+          <div key={`live-${i}`} className="flex justify-start">
+            <div className="w-full max-w-[92%]">
+              <Card card={c} shopId={shopId} />
             </div>
           </div>
         ))}
