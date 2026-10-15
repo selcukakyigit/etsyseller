@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useLang } from "@/lib/i18n-client";
 
-const KEY = "ulagg_cookie_notice";
+export const COOKIE_NOTICE_KEY = "ulagg_cookie_notice";
+const KEY = COOKIE_NOTICE_KEY;
 
 // Şu an yalnızca zorunlu/işlevsel çerez kullanılıyor, bu yüzden bilgilendirme yeterli. Analitik/reklam çerezi
 // eklendiğinde bu bileşen aktif "Kabul et / Reddet" seçimine ve kategori ayarlarına çevrilmeli.
