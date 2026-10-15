@@ -24,6 +24,10 @@ from app.shops.models import Shop
 
 # Etsy ilan videosu 5–15 saniye olmalı; katalogdaki süreler bu aralığa göre süzülür.
 ETSY_VIDEO_SECONDS = (5, 15)
+# Bir listing'e en fazla bu kadar video eklenebilir (düzenleyicideki MAX_VIDEOS ile aynı).
+MAX_LISTING_VIDEOS = 2
+# Hareket tarifi verilmezse: ürünü değiştirmeden, sakin bir ürün videosu (düzenleyicideki varsayılanla aynı).
+DEFAULT_VIDEO_PROMPT = "A smooth, slow cinematic camera move around the product, soft natural light, the product itself stays exactly the same."
 VIDEO_JOB_SECONDS = 3600  # bilet bu süreden sonra geçersiz (sağlayıcı da çıktıyı bir saat tutuyor)
 
 _video_locks: dict[str, threading.Lock] = {}
@@ -76,17 +80,24 @@ def video_durations(model: catalog.ResolvedModel) -> list[int]:
     return [d for d in video_gen.durations(model) if lo <= d <= hi]
 
 
+def quote_video(duration: int, model_db_id: int | None = None, variant_key: str | None = None):
+    """(model, varyant, fiyat): süre desteklenmiyorsa ValueError. Başlatma ve kullanıcıya önceden fiyat söyleme aynı hesabı kullanır."""
+    model, variant = video_gen.choose(model_db_id, variant_key)
+    allowed = video_durations(model)
+    if duration not in allowed:
+        raise ValueError(tr(f"Bu model bu süreyi desteklemiyor; seçenekler: {', '.join(str(d) for d in allowed)} sn.", f"This model does not support this duration; options: {', '.join(str(d) for d in allowed)} s."))
+    return model, variant, pricing.for_units(variant, duration)
+
+
 def start_video(
     db: Session, shop: Shop, listing_id: int, prompt: str, duration: int, ref: Reference,
-    model_db_id: int | None = None, variant_key: str | None = None,
+    model_db_id: int | None = None, variant_key: str | None = None, image: tuple[bytes, str] | None = None,
 ) -> dict:
-    model, variant = video_gen.choose(model_db_id, variant_key)
-    if duration not in video_durations(model):
-        raise ValueError(tr("Bu model bu süreyi desteklemiyor.", "This model does not support this duration."))
-    price = pricing.for_units(variant, duration)
+    """`image` verilirse başlangıç resmi odur (ör. sohbetteki bir resim); yoksa `ref`'teki listing fotoğrafı/dosyası."""
+    model, variant, price = quote_video(duration, model_db_id, variant_key)
     if not credits.can_afford(shop.workspace_id, price.credits):
         raise InsufficientCredits(price.credits)
-    prediction_id = video_gen.start(model, variant, prompt, duration, _reference_bytes(db, shop, listing_id, ref))
+    prediction_id = video_gen.start(model, variant, prompt, duration, image if image is not None else _reference_bytes(db, shop, listing_id, ref))
     job = crypto.seal({
         "p": prediction_id, "s": shop.id, "l": listing_id, "m": model.id, "pr": model.provider, "mi": model.model_id,
         "v": variant.key if variant else None, "d": duration, "c": price.credits, "u": price.cost_usd,
@@ -99,10 +110,10 @@ def _job_lock(prediction_id: str) -> threading.Lock:
         return _video_locks.setdefault(prediction_id, threading.Lock())
 
 
-def _saved_video(db: Session, shop: Shop, listing_id: int, filename: str) -> DraftFile | None:
-    return db.scalar(
-        select(DraftFile).where(DraftFile.shop_id == shop.id, DraftFile.listing_id == listing_id, DraftFile.kind == "video", DraftFile.filename == filename)
-    )
+def _saved_video(db: Session, shop: Shop, filename: str) -> DraftFile | None:
+    """Bu işin (dosya adında sağlayıcı iş kimliği var) kayıtlı videosu. Listing'e bakılmaz: yeni taslak yayınlanınca listing
+    kimliği değişir ve aynı bilet yeniden sorulursa video ikinci kez kaydedilip kredisi iki kez düşülmesin."""
+    return db.scalar(select(DraftFile).where(DraftFile.shop_id == shop.id, DraftFile.kind == "video", DraftFile.filename == filename))
 
 
 def poll_video(db: Session, shop: Shop, listing_id: int, token: str) -> dict:
@@ -111,7 +122,7 @@ def poll_video(db: Session, shop: Shop, listing_id: int, token: str) -> dict:
     if not job or job.get("s") != shop.id or job.get("l") != listing_id:
         raise LookupError(tr("Video işi bulunamadı ya da süresi doldu.", "The video job was not found or has expired."))
     filename = f"ai-video-{job['p']}.mp4"
-    saved = _saved_video(db, shop, listing_id, filename)
+    saved = _saved_video(db, shop, filename)
     if saved is not None:
         return {"status": "done", "file_id": saved.id}
 
@@ -122,7 +133,7 @@ def poll_video(db: Session, shop: Shop, listing_id: int, token: str) -> dict:
         raise video_gen.VideoGenError(prediction.error or tr("Video üretilemedi.", "Could not generate the video."))
 
     with _job_lock(job["p"]):
-        saved = _saved_video(db, shop, listing_id, filename)  # aynı anda gelen ikinci sorgu kaydetmiş olabilir
+        saved = _saved_video(db, shop, filename)  # aynı anda gelen ikinci sorgu kaydetmiş olabilir
         if saved is not None:
             return {"status": "done", "file_id": saved.id}
         data, mime = video_gen.download(prediction.output_url)

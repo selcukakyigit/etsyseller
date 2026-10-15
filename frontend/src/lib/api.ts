@@ -1485,6 +1485,7 @@ export type ChatCard =
   | { type: "listing_draft"; listing_id: number; title: string; edit_url: string; price: [number, number]; quantity: number; tags: string[]; combos: number; image: string | null; images: number; problems: string[]; category?: string | null; changes?: string[]; price_missing?: boolean; quantity_assumed?: boolean }
   | { type: "status"; title: string; rows: { label: string; value: number }[] }
   | { type: "listing_update"; listing_id: number; title: string; edit_url: string; changes: string[]; tags: string[] }
+  | { type: "video_job"; job: string; listing_id: number; credits: number; prompt: string; duration: number; started_at: number; source: "chat" | "listing" }
   | { type: "chat_image_edited"; image_id: string; image_url: string; source_image_id: string | null; prompt: string; listing_id: number | null; edit_url: string | null }
   | { type: "image_regenerated" | "alt_texts_generated" | "listing_deactivated" | "listing_published" | "order_shipped"; listing_id?: number; receipt_id?: number; edit_url?: string; ok?: boolean; count?: number; activated?: boolean }
   | { type: "invoice_review"; source: string; currency: string; candidates: InvoiceCandidate[] }

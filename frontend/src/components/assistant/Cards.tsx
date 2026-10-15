@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ChatCard } from "@/lib/api";
 import EditedImageCard from "./EditedImageCard";
+import VideoJobCard from "./VideoJobCard";
 import ListingPreviewModal from "@/components/listings/ListingPreviewModal";
 import InvoiceReviewCard from "./InvoiceReviewCard";
 import EtsyDataReviewCard from "./EtsyDataReviewCard";
@@ -34,7 +35,7 @@ function Delta({ cur, prev, invert }: { cur: number; prev: number; invert?: bool
 const changeLabel = (c: string, t: (tr: string, en: string) => string): string =>
   ({
     title: t("başlık", "title"), description: t("açıklama", "description"), tags: t("etiketler", "tags"), price: t("fiyat", "price"),
-    variations: t("varyasyonlar", "variations"), photo: t("fotoğraf", "photo"), photo_order: t("fotoğraf sırası", "photo order"),
+    variations: t("varyasyonlar", "variations"), photo: t("fotoğraf", "photo"), photo_order: t("fotoğraf sırası", "photo order"), video: t("video", "video"),
     materials: t("malzemeler", "materials"), style: t("stil", "style"), taxonomy_id: t("kategori", "category"),
     who_made: t("kim yaptı", "who made it"), when_made: t("ne zaman yapıldı", "when it was made"), is_supply: t("tedarik ürünü", "supply item"),
     is_taxable: t("vergilendirme", "taxable"), item_weight: t("ağırlık", "weight"), item_weight_unit: t("ağırlık birimi", "weight unit"),
@@ -391,6 +392,7 @@ export default function Card({ card, shopId, onAsk }: { card: ChatCard; shopId: 
   }
 
   if (card.type === "chat_image_edited") return <EditedImageCard card={card} shopId={shopId} onAsk={onAsk} />;
+  if (card.type === "video_job") return <VideoJobCard card={card} shopId={shopId} onAsk={onAsk} />;
 
   if (card.type !== "listing_update") {
     // İşlem sonucu kartları: asistanın bir şeyi yaptığını kısa bir satırla gösterir.
