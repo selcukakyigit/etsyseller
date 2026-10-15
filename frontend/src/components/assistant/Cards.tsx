@@ -3,7 +3,7 @@
 import { countryName } from "@/lib/countries";
 import Link from "next/link";
 import { useState } from "react";
-import { ChatCard } from "@/lib/api";
+import { API_URL, ChatCard } from "@/lib/api";
 import ListingPreviewModal from "@/components/listings/ListingPreviewModal";
 import InvoiceReviewCard from "./InvoiceReviewCard";
 import EtsyDataReviewCard from "./EtsyDataReviewCard";
@@ -365,6 +365,51 @@ export default function Card({ card, shopId }: { card: ChatCard; shopId: number 
           </Link>
         </div>
         {preview && <ListingPreviewModal shopId={shopId} listingId={card.listing_id} onClose={() => setPreview(false)} />}
+      </div>
+    );
+  }
+
+  if (card.type === "chat_image_edited") {
+    return (
+      <div className={`${box} border-emerald-300 dark:border-emerald-800`}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={`${API_URL}${card.image_url}`} alt="" className="max-h-80 w-full bg-neutral-100 object-contain dark:bg-neutral-800" />
+        <div className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
+          <span className="text-neutral-600 dark:text-neutral-300">
+            {card.edit_url ? t("Düzenlendi ve listing taslağına eklendi", "Edited and added to the listing draft") : t("Düzenlendi · orijinal sohbette duruyor", "Edited · the original is still in the chat")}
+          </span>
+          {card.edit_url && (
+            <Link href={card.edit_url} className="flex-shrink-0 font-semibold text-[#B4553A] hover:underline dark:text-[#E89A7F]">
+              {t("Aç →", "Open →")}
+            </Link>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (card.type !== "listing_update") {
+    // İşlem sonucu kartları: asistanın bir şeyi yaptığını kısa bir satırla gösterir.
+    const text: Record<string, string> = {
+      image_regenerated: t("Fotoğraf taslakta yenilendi", "Photo regenerated in the draft"),
+      alt_texts_generated: t(`${card.count ?? 0} alt metin yazıldı`, `${card.count ?? 0} alt texts written`),
+      listing_deactivated: t("Listing pasife alındı", "Listing deactivated"),
+      order_shipped: t("Sipariş kargoya verildi olarak işaretlendi", "Order marked as shipped"),
+      listing_published:
+        card.ok === false
+          ? t("Yayın tamamlanamadı", "Publishing did not finish")
+          : card.activated
+            ? t("Etsy'de yayınlandı ve aktif edildi", "Published and activated on Etsy")
+            : t("Etsy'ye gönderildi", "Sent to Etsy"),
+    };
+    return (
+      <div className={`${box} flex items-center justify-between gap-3 px-3 py-2 text-xs ${card.type === "listing_published" && card.ok === false ? "border-amber-300 dark:border-amber-800" : "border-emerald-300 dark:border-emerald-800"}`}>
+        <span className="text-neutral-700 dark:text-neutral-200">{text[card.type] ?? card.type}</span>
+        {card.edit_url && (
+          <Link href={card.edit_url} className="flex-shrink-0 font-semibold text-[#B4553A] hover:underline dark:text-[#E89A7F]">
+            {t("Aç →", "Open →")}
+          </Link>
+        )}
       </div>
     );
   }

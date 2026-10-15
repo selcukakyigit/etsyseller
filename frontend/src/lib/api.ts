@@ -1485,6 +1485,8 @@ export type ChatCard =
   | { type: "listing_draft"; listing_id: number; title: string; edit_url: string; price: [number, number]; quantity: number; tags: string[]; combos: number; image: string | null; images: number; problems: string[]; price_missing?: boolean; quantity_assumed?: boolean }
   | { type: "status"; title: string; rows: { label: string; value: number }[] }
   | { type: "listing_update"; listing_id: number; title: string; edit_url: string; changes: string[]; tags: string[] }
+  | { type: "chat_image_edited"; image_url: string; listing_id: number | null; edit_url: string | null }
+  | { type: "image_regenerated" | "alt_texts_generated" | "listing_deactivated" | "listing_published" | "order_shipped"; listing_id?: number; receipt_id?: number; edit_url?: string; ok?: boolean; count?: number; activated?: boolean }
   | { type: "invoice_review"; source: string; currency: string; candidates: InvoiceCandidate[] }
   | ({ type: "etsy_data_review"; listing_id: number | null } & EtsyDataParsed)
   | { type: "performance"; title: string; listing_id: number; period: { start: string; end: string }; previous_period: { start: string; end: string }; sales: { units: number; revenue: number; prev_units: number; prev_revenue: number }; views_now: ListingPerformance["views_now"]; conversion_percent: number | null; freshness: ListingPerformance["freshness"]; lifetime: { views: number; favorites: number }; price: number | null }

@@ -1262,6 +1262,21 @@ def _image_entry(shop_id: int, listing_id: int, file_id: str, alt_text: str | No
             "url_170x135": url, "url_570xN": url, "url_fullxfull": url, "alt_text": alt_text}
 
 
+def _camera_prompts(a: dict) -> tuple[str | None, str | None, str | None]:
+    """Kamera açısı ve mesafe seçeneklerini görsel üretim talimatına çevirir: (kamera, mesafe, hata)."""
+    camera = distance = None
+    if a.get("azimuth") or a.get("elevation"):
+        az, el = a.get("azimuth", "front"), a.get("elevation", "eye")
+        if az not in _AZIMUTH_PHRASE or el not in _ELEVATION_PHRASE:
+            return None, None, "azimuth front/front_right/right/back_right/back/back_left/left/front_left; elevation low/eye/high olmalı."
+        camera = f"Kamera açısı: {_AZIMUTH_PHRASE[az]}, {_ELEVATION_PHRASE[el]} çek."
+    if a.get("distance"):
+        if a["distance"] not in _DISTANCE_PHRASE:
+            return None, None, "distance close/medium/wide olmalı."
+        distance = _DISTANCE_PHRASE[a["distance"]]
+    return camera, distance, None
+
+
 def regenerate_listing_image(ctx: Ctx, a: dict) -> dict:
     """Bir listing fotoğrafını AI ile yeniden oluşturur — kamera açısı/mesafe/sahne talimatı/özne referansı
     (bkz. frontend'deki kamera küpü/kadraj seçici/ürün referansı ile birebir aynı mekanizma). Kaynak piksel
@@ -1275,17 +1290,9 @@ def regenerate_listing_image(ctx: Ctx, a: dict) -> dict:
     img = next((i for i in images if i.get("listing_image_id") == image_id), None)
     if img is None:
         return {"error": "Fotoğraf bulunamadı; get_listing ya da workspace_status ile listing'in güncel fotoğraf id'lerine bak."}
-    camera_prompt = None
-    if a.get("azimuth") or a.get("elevation"):
-        az, el = a.get("azimuth", "front"), a.get("elevation", "eye")
-        if az not in _AZIMUTH_PHRASE or el not in _ELEVATION_PHRASE:
-            return {"error": "azimuth front/front_right/right/back_right/back/back_left/left/front_left; elevation low/eye/high olmalı."}
-        camera_prompt = f"Kamera açısı: {_AZIMUTH_PHRASE[az]}, {_ELEVATION_PHRASE[el]} çek."
-    distance_prompt = None
-    if a.get("distance"):
-        if a["distance"] not in _DISTANCE_PHRASE:
-            return {"error": "distance close/medium/wide olmalı."}
-        distance_prompt = _DISTANCE_PHRASE[a["distance"]]
+    camera_prompt, distance_prompt, bad = _camera_prompts(a)
+    if bad:
+        return {"error": bad}
     try:
         result = drafts.regenerate_image(
             ctx.db, ctx.shop, lid, image_id, img.get("draft_file_id"), a.get("prompt"),
@@ -1299,6 +1306,50 @@ def regenerate_listing_image(ctx: Ctx, a: dict) -> dict:
     _save_draft_work(ctx, lid, work)
     ctx.cards.append({"type": "image_regenerated", "listing_id": lid, "edit_url": f"/listings/{lid}/edit"})
     return {"ok": True, "not": "Yeni görsel taslağa kaydedildi; Etsy'ye gitmesi için yayınlanması gerekiyor."}
+
+
+def edit_chat_image(ctx: Ctx, a: dict) -> dict:
+    """Sohbete eklenen bir resmi AI ile düzenler (arka plan, sahne, kamera açısı…). Sonuç sohbete yeni bir resim olarak
+    gelir; orijinal yerinde kalır. listing_id verilirse sonuç o listing taslağına YENİ FOTOĞRAF olarak da eklenir
+    (yalnızca taslak, Etsy'ye gitmez)."""
+    from app.ai.image_gen import ImageGenError, guess_extension, regenerate_image
+    from app.assistant import service as chat_service
+    from app.assistant.models import ChatImage
+
+    img = ctx.db.get(ChatImage, str(a.get("image_id") or ""))
+    if img is None or img.shop_id != ctx.shop.id or not img.path or not img.content_type.startswith("image/"):
+        return {"error": "Resim bulunamadı; sistem mesajındaki resim listesinden bir kimlik ver."}
+    if not (a.get("prompt") or a.get("azimuth") or a.get("elevation") or a.get("distance")):
+        return {"error": "Resimde ne yapılacağını yaz (ör. arka planı beyaz yap, oturma odasında göster)."}
+    camera_prompt, distance_prompt, bad = _camera_prompts(a)
+    if bad:
+        return {"error": bad}
+    lid = int(a["listing_id"]) if a.get("listing_id") else None
+    work = None
+    if lid is not None:
+        try:
+            work = _draft_work(ctx, lid)
+        except Exception:  # noqa: BLE001 - listing bulunamadı gibi durumlar kullanıcıya düz hata olarak döner
+            return {"error": "Listing bulunamadı."}
+        if len(work.get("images") or []) >= creation.MAX_LISTING_IMAGES:
+            return {"error": f"Listing'de zaten {creation.MAX_LISTING_IMAGES} fotoğraf var (Etsy sınırı)."}
+    try:
+        new_bytes, mime = regenerate_image(blobstore.read(img.path), img.content_type, a.get("prompt"), None, camera_prompt, distance_prompt, None)
+    except (ImageGenError, ValueError, FileNotFoundError) as exc:
+        return {"error": str(exc)}
+    saved = chat_service.save_image(ctx.db, ctx.shop, img.session_id, f"ai-edit{guess_extension(mime)}", mime, new_bytes)
+    added = False
+    if lid is not None and work is not None:
+        images = work.get("images") or []
+        file = drafts.save_file(ctx.db, ctx.shop, lid, "image", f"ai-edit{guess_extension(mime)}", mime, new_bytes)
+        work["images"] = images + [_image_entry(ctx.shop.id, lid, file["file_id"], None, len(images) + 1)]
+        _save_draft_work(ctx, lid, work)
+        added = True
+    ctx.cards.append({"type": "chat_image_edited", "image_url": saved["url"], "listing_id": lid if added else None, "edit_url": f"/listings/{lid}/edit" if added else None})
+    return {
+        "ok": True, "yeni_resim_id": saved["id"], "listinge_eklendi": added,
+        "not": "Düzenlenen resim sohbette gösterildi; orijinal yerinde duruyor." + (" Listing taslağına yeni fotoğraf olarak eklendi (Etsy'ye gitmedi)." if added else " Bir listing'e eklenmesi için kullanıcı hangi listing'e eklenmesini söylemeli (listing_id)."),
+    }
 
 
 def generate_missing_alt_texts(ctx: Ctx, a: dict) -> dict:
@@ -1450,6 +1501,13 @@ def _obj(props: dict, required: list[str] | None = None) -> dict:
 
 DATE = {"type": "string", "description": "YYYY-MM-DD"}
 
+# Kamera açısı seçenekleri: regenerate_listing_image ve edit_chat_image ortak kullanır.
+_CAMERA_SCHEMA = {
+    "azimuth": {"type": "string", "enum": ["front", "front_right", "right", "back_right", "back", "back_left", "left", "front_left"]},
+    "elevation": {"type": "string", "enum": ["low", "eye", "high"]},
+    "distance": {"type": "string", "enum": ["close", "medium", "wide"]},
+}
+
 TOOLS: list[dict] = [
     {"name": "finance_summary", "description": "Belirli bir dönem için finans özeti: satış, Etsy ücretleri, reklam, ürün maliyeti, net kâr, marj, iade, geçen yılla karşılaştırma ve en çok satış yapılan ülkeler. Tarih verilmezse bu yıl başından bugüne.", "input_schema": _obj({"start_date": DATE, "end_date": DATE, "country": {"type": "string", "description": "İsteğe bağlı 2 harfli ülke kodu (US, DE...)"}})},
     {"name": "monthly_pnl", "description": "Bir yılın aylık kâr-zarar tablosu (satış, ücretler, reklam, ürün maliyeti, net kâr, sipariş).", "input_schema": _obj({"year": {"type": "integer"}})},
@@ -1517,12 +1575,16 @@ TOOLS: list[dict] = [
     }, ["listing_id"])},
     {"name": "regenerate_listing_image", "description": "Bir listing fotoğrafını AI ile yeniden oluşturur (yalnızca taslağa yazar, Etsy'ye göndermez). Kamera açısı ve/veya mesafe/kadraj ve/veya serbest sahne talimatı verilebilir, hepsi birlikte uygulanır. subject_image_id: sahnede birden fazla obje olduğunda 'ürün bu' diye işaret eden, aynı listing'in başka bir fotoğrafı.", "input_schema": _obj({
         "listing_id": {"type": "integer"}, "image_id": {"type": "integer", "description": "Değiştirilecek fotoğrafın listing_image_id'si (get_listing/workspace_status'tan)"},
-        "azimuth": {"type": "string", "enum": ["front", "front_right", "right", "back_right", "back", "back_left", "left", "front_left"]},
-        "elevation": {"type": "string", "enum": ["low", "eye", "high"]},
-        "distance": {"type": "string", "enum": ["close", "medium", "wide"]},
+        **_CAMERA_SCHEMA,
         "prompt": {"type": "string", "description": "Sahne talimatı, ör. 'oturma odasında göster', 'arka planı beyaz yap'"},
         "subject_image_id": {"type": "integer"},
     }, ["listing_id", "image_id"])},
+    {"name": "edit_chat_image", "description": "Sohbete eklenen bir resmi AI ile düzenler (arka plan temizle/değiştir, 'oturma odasında göster', kamera açısı). Sonuç sohbette yeni resim olarak görünür, orijinal kalır. Kullanıcı bir listing belirtirse (ör. 'bu listing'e ekle') listing_id ver: sonuç o taslağa yeni fotoğraf olarak eklenir; belirtmediyse listing_id verme, yalnızca göster. Etsy'ye hiçbir şey göndermez; kredi harcar.", "input_schema": _obj({
+        "image_id": {"type": "string", "description": "Sohbete eklenen resmin kimliği (sistem mesajındaki listeden)"},
+        "prompt": {"type": "string", "description": "Ne yapılacağı, ör. 'arka planı beyaz yap', 'oturma odasında duvara asılı göster'"},
+        **_CAMERA_SCHEMA,
+        "listing_id": {"type": "integer", "description": "Yalnızca kullanıcı bir listing'e eklenmesini söylediyse: yeni ya da mevcut listing taslağı"},
+    }, ["image_id"])},
     {"name": "generate_missing_alt_texts", "description": "Bir listing'in alt metni olmayan (yalnızca YENİ/taslak) fotoğrafları için yapay zekâyla alt metin yazar.", "input_schema": _obj({"listing_id": {"type": "integer"}}, ["listing_id"])},
     {"name": "listing_health_status", "description": "Listing'in optimizasyon durumu: yeterli veri var mı, performansı mağaza medyanına göre nasıl, hangi alan zayıf, durdurmayı değerlendirmeli mi. listing_id vermezsen dikkat isteyen tüm listing'leri döner.", "input_schema": _obj({"listing_id": {"type": "integer"}})},
     {"name": "keep_watching_listing", "description": "Bir listing için 'durdurmayı değerlendir' önerisini reddedip izlemeye devam eder (sayaç sıfırlanır). Etsy'ye hiçbir şey göndermez.", "input_schema": _obj({"listing_id": {"type": "integer"}}, ["listing_id"])},
@@ -1574,6 +1636,7 @@ TOOL_LABELS = {
     "shipping_invoices": "Kargo faturalarına bakıyor",
     "bulk_update_listings": "Toplu taslak hazırlıyor",
     "regenerate_listing_image": "Fotoğrafı yeniden oluşturuyor",
+    "edit_chat_image": "Resmi düzenliyor",
     "generate_missing_alt_texts": "Alt metinleri yazıyor",
     "listing_health_status": "Listing sağlığına bakıyor",
     "keep_watching_listing": "İzlemeye devam ediyor",
@@ -1617,6 +1680,7 @@ TOOL_LABELS_EN = {
     "shipping_invoices": "Checking shipping invoices",
     "bulk_update_listings": "Preparing bulk drafts",
     "regenerate_listing_image": "Regenerating the photo",
+    "edit_chat_image": "Editing the image",
     "generate_missing_alt_texts": "Writing alt texts",
     "listing_health_status": "Checking listing health",
     "keep_watching_listing": "Keeping the listing under watch",
@@ -1638,7 +1702,7 @@ EXECUTORS = {
     "create_listing_draft": create_listing_draft, "update_listing": update_listing,
     "shop_options": shop_options, "workspace_status": workspace_status, "orders_overview": orders_overview, "order_detail": order_detail,
     "orders_missing_costs": orders_missing_costs, "keyword_pool": keyword_pool, "shipping_invoices": shipping_invoices, "bulk_update_listings": bulk_update_listings,
-    "regenerate_listing_image": regenerate_listing_image, "generate_missing_alt_texts": generate_missing_alt_texts,
+    "regenerate_listing_image": regenerate_listing_image, "edit_chat_image": edit_chat_image, "generate_missing_alt_texts": generate_missing_alt_texts,
     "listing_health_status": listing_health_status, "keep_watching_listing": keep_watching_listing,
     "publish_listing_draft": publish_listing_draft, "deactivate_listing": deactivate_listing, "mark_order_shipped": mark_order_shipped,
     "read_shipping_invoice": read_shipping_invoice, "listing_diagnosis": listing_diagnosis, "track_keywords": track_keywords, "read_etsy_keyword_data": read_etsy_keyword_data,
