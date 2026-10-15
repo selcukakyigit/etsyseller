@@ -134,6 +134,58 @@ export default function ChatPanel({
     refreshSessions();
   }, [shopId, refreshSessions]);
 
+  // Başka sayfaya gidip dönünce sohbet boşalmasın: açık sohbet mağaza bazında hatırlanır ve geri yüklenir.
+  const lastKey = `ulagg_chat_last:${shopId}`;
+  useEffect(() => {
+    if (sessionId === null) return;
+    try {
+      localStorage.setItem(lastKey, String(sessionId));
+    } catch {}
+  }, [sessionId, lastKey]);
+  useEffect(() => {
+    let cancelled = false;
+    let saved = 0;
+    try {
+      saved = Number(localStorage.getItem(lastKey));
+    } catch {}
+    if (!saved) return;
+    api.assistant
+      .session(shopId, saved)
+      .then((s) => {
+        if (cancelled) return;
+        setSessionId(s.id);
+        setMessages(s.messages);
+      })
+      .catch(() => {
+        try {
+          localStorage.removeItem(lastKey); // sohbet silinmiş
+        } catch {}
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [shopId, lastKey]);
+
+  // Yanıt beklerken sayfadan çıkıldıysa: sunucu işi bitirip yanıtı kaydeder; dönünce son mesaj kullanıcınınsa yanıt gelene kadar yokla.
+  useEffect(() => {
+    const last = messages[messages.length - 1];
+    if (busy || sessionId === null || !last || last.role !== "user" || last.id < 0) return;
+    let tries = 0;
+    const timer = setInterval(async () => {
+      tries += 1;
+      try {
+        const s = await api.assistant.session(shopId, sessionId);
+        const tail = s.messages[s.messages.length - 1];
+        if (tail && tail.role !== "user") {
+          setMessages(s.messages);
+          clearInterval(timer);
+        }
+      } catch {}
+      if (tries >= 45) clearInterval(timer);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [messages, busy, sessionId, shopId]);
+
   // Bekleme sırasında asistanın ne yaptığını yokla (ör. "Benzer listing'leri inceliyor").
   useEffect(() => {
     if (!busy || !requestId) return;
@@ -264,6 +316,9 @@ export default function ChatPanel({
   }
 
   function newChat() {
+    try {
+      localStorage.removeItem(lastKey);
+    } catch {}
     setSessionId(null);
     setMessages([]);
     setPending([]);
