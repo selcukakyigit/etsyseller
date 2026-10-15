@@ -30,6 +30,18 @@ function Delta({ cur, prev, invert }: { cur: number; prev: number; invert?: bool
   );
 }
 
+// Kartın "Değişen:" satırı: backend alan adı → okunur ad (listede olmayan, ör. kategori özelliği adları olduğu gibi gösterilir).
+const changeLabel = (c: string, t: (tr: string, en: string) => string): string =>
+  ({
+    title: t("başlık", "title"), description: t("açıklama", "description"), tags: t("etiketler", "tags"), price: t("fiyat", "price"),
+    variations: t("varyasyonlar", "variations"), photo: t("fotoğraf", "photo"), photo_order: t("fotoğraf sırası", "photo order"),
+    materials: t("malzemeler", "materials"), style: t("stil", "style"), taxonomy_id: t("kategori", "category"),
+    who_made: t("kim yaptı", "who made it"), when_made: t("ne zaman yapıldı", "when it was made"), is_supply: t("tedarik ürünü", "supply item"),
+    is_taxable: t("vergilendirme", "taxable"), item_weight: t("ağırlık", "weight"), item_weight_unit: t("ağırlık birimi", "weight unit"),
+    item_length: t("uzunluk", "length"), item_width: t("genişlik", "width"), item_height: t("yükseklik", "height"),
+    item_dimensions_unit: t("boyut birimi", "dimension unit"), sku: "SKU", personalization_questions: t("kişiselleştirme soruları", "personalization questions"),
+  } as Record<string, string>)[c] ?? c;
+
 /** Asistanın araç sonuçlarını gösteren görsel kartlar. */
 /** `onAsk`: karttaki düğmeler sohbete kullanıcı mesajı olarak bir istek gönderir (ör. "Listing'e ekle"). */
 export default function Card({ card, shopId, onAsk }: { card: ChatCard; shopId: number; onAsk?: (text: string) => void }) {
@@ -357,9 +369,7 @@ export default function Card({ card, shopId, onAsk }: { card: ChatCard; shopId: 
             {card.changes && card.changes.length > 0 && (
               <div className="mt-1 text-emerald-700 dark:text-emerald-400">
                 {t("Değişen:", "Changed:")}{" "}
-                {card.changes
-                  .map((c) => ({ title: t("başlık", "title"), description: t("açıklama", "description"), tags: t("etiketler", "tags"), price: t("fiyat", "price"), variations: t("varyasyonlar", "variations"), photo: t("fotoğraf", "photo"), photo_order: t("fotoğraf sırası", "photo order") })[c] ?? c)
-                  .join(", ")}
+                {card.changes.map((c) => changeLabel(c, t)).join(", ")}
               </div>
             )}
             {card.category && <div className="mt-1 text-neutral-500">{t("Kategori:", "Category:")} {card.category}</div>}

@@ -12,7 +12,9 @@ from dataclasses import dataclass, field
 
 from sqlalchemy import func, select
 
+from app.assistant import fields
 from app.core import blobstore
+from app.core.ttl_cache import cached
 from app.core.i18n import tr
 from sqlalchemy.orm import Session
 
@@ -1462,6 +1464,137 @@ def move_listing_photo(ctx: Ctx, a: dict) -> dict:
             "not": "Fotoğraf sırası yalnızca yerel taslakta değişti; Etsy'ye gitmedi."}
 
 
+def _category_defs(taxonomy_id: int) -> list[dict]:
+    """Etsy'nin bir kategori için tanımladığı özellikler (önbellekli; düzenleyici aynı veriyi kullanır)."""
+    return cached(("tax", "props", taxonomy_id), lambda: taxonomy_service.get_properties_by_taxonomy_id(taxonomy_id))
+
+
+def _save_fields(ctx: Ctx, lid: int, work: dict, changed: list[str], errors: list[str], **extra) -> dict:
+    """Alan araçlarının ortak sonucu: değişen alanlar yazılır, güncel kart gösterilir, hatalar olduğu gibi döner."""
+    if changed:
+        _save_draft_work(ctx, lid, work)
+        ctx.cards.append(_listing_card(ctx, lid, work, changed))
+    out = {"degisenler": changed, "hatalar": errors, **extra}
+    if errors:
+        out["not"] = "Hatalı olanlar YAZILMADI; hataları kullanıcıya olduğu gibi söyle, olmayan bir şeyi yaptım deme."
+    elif changed:
+        out["not"] = "Yalnızca yerel taslağa yazıldı; Etsy'ye gitmedi."
+    else:
+        out["not"] = "Değişiklik yok (değerler zaten böyleydi)."
+    return out
+
+
+def _work_or_error(ctx: Ctx, lid: int) -> tuple[dict | None, dict | None]:
+    try:
+        return _draft_work(ctx, lid), None
+    except Exception:  # noqa: BLE001 - listing bulunamadı gibi durumlar kullanıcıya düz hata olarak döner
+        return None, {"error": "Listing bulunamadı."}
+
+
+def get_category_attributes(ctx: Ctx, a: dict) -> dict:
+    """Listing'in kategorisinin özellikleri (renk, malzeme, kullanım yeri…): zorunlu olanlar, izin verilen değerler ve şu anki seçimler."""
+    lid = int(a["listing_id"])
+    work, err = _work_or_error(ctx, lid)
+    if err:
+        return err
+    tid = work.get("taxonomy_id")
+    if not tid:
+        return {"error": "Listing'in kategorisi yok; önce set_listing_fields ile kategori seç (find_category)."}
+    try:
+        defs = _category_defs(int(tid))
+    except Exception as exc:  # noqa: BLE001
+        return {"error": f"Kategori özellikleri alınamadı: {exc}"}
+    return {"kategori": _taxonomy().get(int(tid)), **fields.describe(defs, work)}
+
+
+def set_listing_fields(ctx: Ctx, a: dict) -> dict:
+    """Listing taslağının malzeme, stil, kategori, kim yaptı/ne zaman, tedarik, vergi, boyut/ağırlık, SKU ve kişiselleştirme
+    alanlarını doğrulayarak yazar (yalnızca yerel taslak)."""
+    lid = int(a["listing_id"])
+    work, err = _work_or_error(ctx, lid)
+    if err:
+        return err
+    given = {k: v for k, v in a.items() if k != "listing_id" and v is not None}
+    if not given:
+        return {"error": "Değişiklik belirtilmedi."}
+    names = None
+    if "taxonomy_id" in given:
+        try:
+            names = _taxonomy()
+        except Exception as exc:  # noqa: BLE001
+            return {"error": f"Kategori ağacı alınamadı: {exc}"}
+    changed, errors = fields.apply_fields(work, given, category_names=names, leaf_ids=_taxonomy_leaves if names is not None else None)
+    extra: dict = {}
+    if "taxonomy_id" in changed:
+        try:
+            dropped = fields.keep_applicable_properties(work, _category_defs(int(work["taxonomy_id"])))
+        except Exception as exc:  # noqa: BLE001 - özellikler alınamazsa mevcutlar korunur, kullanıcıya söylenir
+            extra["uyari"] = f"Yeni kategorinin özellikleri alınamadı ({exc}); eski özellikler duruyor, düzenleyiciden kontrol et."
+        else:
+            if dropped:
+                extra["kaldirilan_ozellikler"] = dropped
+            extra["sonraki_adim"] = "Yeni kategorinin zorunlu özelliklerini get_category_attributes ile kontrol et."
+    return _save_fields(ctx, lid, work, changed, errors, **extra)
+
+
+def set_listing_attributes(ctx: Ctx, a: dict) -> dict:
+    """Kategorinin özelliklerini (renk, malzeme, kullanım yeri…) izin verilen değerlere göre yazar. Boş values özelliği kaldırır."""
+    lid = int(a["listing_id"])
+    work, err = _work_or_error(ctx, lid)
+    if err:
+        return err
+    tid = work.get("taxonomy_id")
+    if not tid:
+        return {"error": "Listing'in kategorisi yok; önce kategori seç."}
+    try:
+        defs = _category_defs(int(tid))
+    except Exception as exc:  # noqa: BLE001
+        return {"error": f"Kategori özellikleri alınamadı: {exc}"}
+    changed, errors = fields.apply_attributes(work, defs, list(a.get("attributes") or []))
+    return _save_fields(ctx, lid, work, changed, errors, **{k: v for k, v in fields.describe(defs, work).items() if k == "eksik_zorunlu"})
+
+
+def _photo_at(work: dict, number: int) -> tuple[list[dict], dict | None]:
+    ordered = sorted(work.get("images") or [], key=lambda i: i.get("rank") or 0)
+    return ordered, (ordered[number - 1] if 1 <= number <= len(ordered) else None)
+
+
+def delete_listing_photo(ctx: Ctx, a: dict) -> dict:
+    """Listing taslağından bir fotoğrafı kaldırır (sıra numarasıyla). Etsy'deki fotoğraf yayınlayınca silinir."""
+    lid = int(a["listing_id"])
+    work, err = _work_or_error(ctx, lid)
+    if err:
+        return err
+    ordered, img = _photo_at(work, int(a["photo_number"]))
+    if img is None:
+        return {"error": f"Fotoğraf bulunamadı; listing'de {len(ordered)} fotoğraf var."}
+    ordered.remove(img)
+    for rank, kept in enumerate(ordered, start=1):
+        kept["rank"] = rank
+    work["images"] = ordered
+    _save_draft_work(ctx, lid, work)
+    ctx.cards.append(_listing_card(ctx, lid, work, ["photo"]))
+    return {"ok": True, "kalan_fotograf": len(ordered), "not": "Fotoğraf yalnızca yerel taslaktan kaldırıldı; Etsy'deki, yayınlayınca silinir." + (" Listing'de hiç fotoğraf kalmadı; aktif edilemez." if not ordered else "")}
+
+
+def set_photo_alt_text(ctx: Ctx, a: dict) -> dict:
+    """Taslak fotoğrafın alt metnini yazar. Etsy yayındaki fotoğrafların alt metnini API'den değiştirtmez; yalnızca yeni/taslak fotoğraflar."""
+    lid = int(a["listing_id"])
+    work, err = _work_or_error(ctx, lid)
+    if err:
+        return err
+    ordered, img = _photo_at(work, int(a["photo_number"]))
+    if img is None:
+        return {"error": f"Fotoğraf bulunamadı; listing'de {len(ordered)} fotoğraf var."}
+    if (img.get("listing_image_id") or 0) > 0:
+        return {"error": "Bu fotoğraf Etsy'de yayında; Etsy yayındaki fotoğrafın alt metnini API'den değiştirmeye izin vermiyor. Yeni eklenen (taslak) fotoğraflarda çalışır."}
+    img["alt_text"] = " ".join(str(a.get("alt_text") or "").split())[:500] or None
+    work["images"] = ordered
+    _save_draft_work(ctx, lid, work)
+    ctx.cards.append(_listing_card(ctx, lid, work, ["photo"]))
+    return {"ok": True, "not": "Alt metin yerel taslağa yazıldı."}
+
+
 def _latest_new_draft(ctx: Ctx) -> int | None:
     """Henüz Etsy'ye gitmemiş en son yerel listing taslağı (sohbette "az önce oluşturduğumuz listing")."""
     row = ctx.db.scalars(select(ListingLocal).where(ListingLocal.shop_id == ctx.shop.id, ListingLocal.listing_id < 0).order_by(ListingLocal.updated_at.desc())).first()
@@ -1720,6 +1853,26 @@ TOOLS: list[dict] = [
         "prompt": {"type": "string", "description": "Sahne talimatı, ör. 'oturma odasında göster', 'arka planı beyaz yap'"},
         "subject_image_id": {"type": "integer"},
     }, ["listing_id"])},
+    {"name": "get_category_attributes", "description": "Listing'in kategorisinin özelliklerini (renk, malzeme, kullanım yeri, ölçü…) verir: hangileri ZORUNLU, izin verilen değerler, birimler ve şu anki seçimler. Özellik yazmadan ve kategori değişince çağır; kullanıcının söylediklerinden (ör. 'metal') ve varyasyon renklerinden uygun olanları set_listing_attributes ile kendin doldur, yalnızca bilmediğin ZORUNLU olanları kullanıcıya sor.", "input_schema": _obj({"listing_id": {"type": "integer"}}, ["listing_id"])},
+    {"name": "set_listing_attributes", "description": "Kategori özelliklerini izin verilen değerlere göre yazar (yerel taslak). attributes: [{name: 'Primary color', values: ['Black']}, {name: 'Width', values: ['30'], unit: 'cm'}]. İzin verilen listede olmayan değer yazılmaz ve hata olarak döner (uydurma). Boş values özelliği kaldırır. Önce get_category_attributes'e bak.", "input_schema": _obj({"listing_id": {"type": "integer"}, "attributes": {"type": "array", "items": _obj({"name": {"type": "string"}, "values": {"type": "array", "items": {"type": "string"}}, "unit": {"type": "string", "description": "Yalnızca ölçü özelliklerinde (cm, in…)"}}, ["name"])}}, ["listing_id", "attributes"])},
+    {"name": "set_listing_fields", "description": "Listing taslağının şu alanlarını doğrulayarak yazar: malzemeler, stil, kategori (taxonomy_id; find_category'den), kim yaptı / ne zaman yapıldı, tedarik ürünü mü, vergilendirme, ağırlık ve boyutlar (birimleriyle), SKU (varyasyonsuz listing) ve kişiselleştirme soruları. Yalnızca yerel taslak; Etsy'ye gitmez. Sonuçtaki hatalar yazılmamıştır: kullanıcıya olduğu gibi söyle.", "input_schema": _obj({
+        "listing_id": {"type": "integer"},
+        "materials": {"type": "array", "items": {"type": "string"}, "description": "En fazla 13; yalnızca harf, rakam, boşluk"},
+        "style": {"type": "array", "items": {"type": "string"}, "description": "En fazla 2, her biri en fazla 45 karakter"},
+        "taxonomy_id": {"type": "integer", "description": "En alttaki (alt kategorisi olmayan) kategori kimliği"},
+        "who_made": {"type": "string", "enum": list(fields.WHO_MADE)},
+        "when_made": {"type": "string", "enum": list(fields.WHEN_MADE)},
+        "is_supply": {"type": "boolean"}, "is_taxable": {"type": "boolean"},
+        "weight": {"type": "number"}, "weight_unit": {"type": "string", "enum": list(fields.WEIGHT_UNITS)},
+        "length": {"type": "number"}, "width": {"type": "number"}, "height": {"type": "number"}, "dimensions_unit": {"type": "string", "enum": list(fields.DIMENSION_UNITS)},
+        "sku": {"type": "string"},
+        "personalization_questions": {"type": "array", "description": "Kişiselleştirme (Custom options) sorularının TAMAMI; en fazla 5. Boş liste hepsini kaldırır.", "items": _obj({
+            "question_text": {"type": "string"}, "instructions": {"type": "string"}, "question_type": {"type": "string", "enum": list(fields.QUESTION_TYPES)},
+            "required": {"type": "boolean"}, "max_allowed_characters": {"type": "integer"}, "options": {"type": "array", "items": {"type": "string"}, "description": "Yalnızca dropdown için"},
+        }, ["question_text"])},
+    }, ["listing_id"])},
+    {"name": "delete_listing_photo", "description": "Listing taslağından bir fotoğrafı sıra numarasıyla (1'den başlar) kaldırır. Etsy'deki fotoğraf yayınlayınca silinir.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer"}}, ["listing_id", "photo_number"])},
+    {"name": "set_photo_alt_text", "description": "Taslak (henüz Etsy'ye yüklenmemiş) bir fotoğrafın alt metnini yazar; sıra numarasıyla. Etsy'de yayındaki fotoğrafların alt metni değiştirilemez.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer"}, "alt_text": {"type": "string", "description": "Resimde görüneni anlatan tek cümle, en fazla 125 karakter önerilir"}}, ["listing_id", "photo_number", "alt_text"])},
     {"name": "move_listing_photo", "description": "Listing taslağındaki bir fotoğrafın sırasını değiştirir. 'Üçüncü resmi ana resim yap' = photo_number 3, to_position 1 (ana fotoğraf birinci sıradadır). Fotoğraf sırası için update_listing KULLANMA.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer", "description": "Taşınacak fotoğrafın şimdiki sırası (1'den başlar)"}, "to_position": {"type": "integer", "description": "Hedef sıra (varsayılan 1 = ana fotoğraf)"}}, ["listing_id", "photo_number"])},
     {"name": "edit_chat_image", "description": "Sohbete eklenen bir resmi AI ile düzenler (arka plan temizle/değiştir, 'oturma odasında göster', kamera açısı). Sonuç sohbette yeni resim olarak görünür, orijinal kalır. Kullanıcı bir listing belirtirse (ör. 'bu listing'e ekle') listing_id ver: sonuç o taslağa yeni fotoğraf olarak eklenir; belirtmediyse listing_id verme, yalnızca göster. Etsy'ye hiçbir şey göndermez; kredi harcar.", "input_schema": _obj({
         "image_id": {"type": "string", "description": "Sohbete eklenen resmin kimliği (sistem mesajındaki listeden)"},
@@ -1781,6 +1934,11 @@ TOOL_LABELS = {
     "regenerate_listing_image": "Fotoğrafı yeniden oluşturuyor",
     "edit_chat_image": "Resmi düzenliyor",
     "move_listing_photo": "Fotoğraf sırasını değiştiriyor",
+    "get_category_attributes": "Kategori özelliklerine bakıyor",
+    "set_listing_attributes": "Özellikleri yazıyor",
+    "set_listing_fields": "Listing alanlarını güncelliyor",
+    "delete_listing_photo": "Fotoğrafı kaldırıyor",
+    "set_photo_alt_text": "Alt metni yazıyor",
     "add_chat_image_to_listing": "Resmi listing'e ekliyor",
     "generate_missing_alt_texts": "Alt metinleri yazıyor",
     "listing_health_status": "Listing sağlığına bakıyor",
@@ -1827,6 +1985,11 @@ TOOL_LABELS_EN = {
     "regenerate_listing_image": "Regenerating the photo",
     "edit_chat_image": "Editing the image",
     "move_listing_photo": "Reordering the photos",
+    "get_category_attributes": "Checking the category attributes",
+    "set_listing_attributes": "Setting attributes",
+    "set_listing_fields": "Updating listing fields",
+    "delete_listing_photo": "Removing the photo",
+    "set_photo_alt_text": "Writing the alt text",
     "add_chat_image_to_listing": "Adding the image to the listing",
     "generate_missing_alt_texts": "Writing alt texts",
     "listing_health_status": "Checking listing health",
@@ -1849,7 +2012,8 @@ EXECUTORS = {
     "create_listing_draft": create_listing_draft, "update_listing": update_listing,
     "shop_options": shop_options, "workspace_status": workspace_status, "orders_overview": orders_overview, "order_detail": order_detail,
     "orders_missing_costs": orders_missing_costs, "keyword_pool": keyword_pool, "shipping_invoices": shipping_invoices, "bulk_update_listings": bulk_update_listings,
-    "regenerate_listing_image": regenerate_listing_image, "edit_chat_image": edit_chat_image, "move_listing_photo": move_listing_photo, "add_chat_image_to_listing": add_chat_image_to_listing, "generate_missing_alt_texts": generate_missing_alt_texts,
+    "regenerate_listing_image": regenerate_listing_image, "edit_chat_image": edit_chat_image, "move_listing_photo": move_listing_photo, "get_category_attributes": get_category_attributes, "set_listing_attributes": set_listing_attributes,
+    "set_listing_fields": set_listing_fields, "delete_listing_photo": delete_listing_photo, "set_photo_alt_text": set_photo_alt_text, "add_chat_image_to_listing": add_chat_image_to_listing, "generate_missing_alt_texts": generate_missing_alt_texts,
     "listing_health_status": listing_health_status, "keep_watching_listing": keep_watching_listing,
     "publish_listing_draft": publish_listing_draft, "deactivate_listing": deactivate_listing, "mark_order_shipped": mark_order_shipped,
     "read_shipping_invoice": read_shipping_invoice, "listing_diagnosis": listing_diagnosis, "track_keywords": track_keywords, "read_etsy_keyword_data": read_etsy_keyword_data,
