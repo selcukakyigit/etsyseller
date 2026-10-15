@@ -69,7 +69,8 @@ export default async function TermsPage() {
       <P>
         Hizmetin yapay zekâ özellikleri kredi ile kullanılır. Krediler önceden satın alınır, harcandıkça bakiyenizden
         düşer ve süresizdir; abonelik yoktur. Kredi paketlerinin fiyatı ve her işlemin kredi karşılığı satın alma
-        sırasında ve kullanım öncesinde gösterilir. İade koşulları satın alma sayfasında belirtilecektir.
+        sırasında ve kullanım öncesinde gösterilir. İade koşulları için{" "}
+        <Link className="underline" href="/refunds">İade Politikası</Link> sayfasına bakın.
       </P>
 
       <H2>8. Veriler</H2>

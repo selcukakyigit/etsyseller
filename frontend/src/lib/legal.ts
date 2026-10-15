@@ -26,12 +26,16 @@ export const COMPANY = {
 export const LEGAL_VERSION = "2026-10-02";
 export const LEGAL_UPDATED: Record<Lang, string> = { tr: "2 Ekim 2026", en: "October 2, 2026" };
 
+// Kullanılmamış kredi paketleri için iade penceresi (gün).
+export const REFUND_DAYS = 14;
+
 export const ETSY_DISCLAIMER =
   "The term 'Etsy' is a trademark of Etsy, Inc. This application uses the Etsy API but is not endorsed or certified by Etsy, Inc.";
 
 export const LEGAL_LINKS: { href: string; label: Record<Lang, string> }[] = [
   { href: "/terms", label: { en: "Terms of Service", tr: "Kullanım Koşulları" } },
   { href: "/privacy", label: { en: "Privacy Policy", tr: "Gizlilik Politikası" } },
+  { href: "/refunds", label: { en: "Refund Policy", tr: "İade Politikası" } },
   { href: "/kvkk", label: { en: "KVKK Notice (Turkey)", tr: "KVKK Aydınlatma Metni" } },
   { href: "/cookies", label: { en: "Cookie Policy", tr: "Çerez Politikası" } },
   { href: "/ai-data", label: { en: "AI & Data Use", tr: "Yapay Zekâ ve Veri İşleme" } },

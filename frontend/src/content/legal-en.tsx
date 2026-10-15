@@ -52,7 +52,7 @@ export function TermsEn() {
       <P>
         The AI features of the service are used with credits. Credits are bought in advance, are deducted from your balance as
         you use them and never expire; there is no subscription. Credit pack prices and the credit cost of each action are shown
-        at purchase and before use. Refund terms will be shown at checkout.
+        at purchase and before use. See the <Link className="underline" href="/refunds">Refund Policy</Link> for refund terms.
       </P>
 
       <H2>8. Your data</H2>
