@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import func, select
 
 from app.assistant import fields
-from app.ai import video_gen
+from app.ai import catalog, video_gen
 from app.listings import generation
 from app.core import blobstore
 from app.core.ttl_cache import cached
@@ -1380,6 +1380,7 @@ def regenerate_listing_image(ctx: Ctx, a: dict) -> dict:
             ctx.db, ctx.shop, lid, image_id, img.get("draft_file_id"), a.get("prompt"),
             None, camera_prompt, distance_prompt,
             int(a["subject_image_id"]) if a.get("subject_image_id") else None, a.get("subject_draft_file_id"),
+            int(a["model_id"]) if a.get("model_id") else None, a.get("variant"),
         )
     except (ImageGenError, ValueError) as exc:
         return {"error": str(exc)}
@@ -1412,7 +1413,10 @@ def edit_chat_image(ctx: Ctx, a: dict) -> dict:
         if err:
             return {"error": err}
     try:
-        new_bytes, mime = regenerate_image(blobstore.read(img.path), img.content_type, a.get("prompt"), None, camera_prompt, distance_prompt, None)
+        new_bytes, mime = regenerate_image(
+            blobstore.read(img.path), img.content_type, a.get("prompt"), None, camera_prompt, distance_prompt, None,
+            int(a["model_id"]) if a.get("model_id") else None, a.get("variant"),
+        )
     except (ImageGenError, ValueError, FileNotFoundError) as exc:
         return {"error": str(exc)}
     name = f"ai-edit{guess_extension(mime)}"
@@ -1605,6 +1609,33 @@ def set_photo_alt_text(ctx: Ctx, a: dict) -> dict:
     return {"ok": True, "not": "Alt metin yerel taslağa yazıldı."}
 
 
+def _option_rows(options: dict) -> list[dict]:
+    """kind_options çıktısını modelin okuyacağı kısa listeye çevirir (kredi birim başınadır: görselde bir görsel, videoda bir saniye)."""
+    return [
+        {"model_id": m["id"], "model": m["label"], "varsayilan_model": m["id"] == options["default_model"],
+         **({"sureler_sn": m["durations"]} if "durations" in m else {}),
+         "kaliteler": [{"variant": v["key"], "ad": tr(v["label_tr"], v["label_en"]), "kredi_birim_basina": v["credits"], "varsayilan": v["is_default"]} for v in m["variants"]]}
+        for m in options["models"]
+    ]
+
+
+def _video_alternatives() -> list[dict]:
+    return _option_rows(generation.kind_options("video", generation.video_durations))
+
+
+def generation_options(ctx: Ctx, a: dict) -> dict:
+    """Görsel ve video için seçilebilir modeller, kalite/çözünürlük seçenekleri ve kredi bedelleri. 'Kaç kredi', 'hangi kaliteler var',
+    '4K olur mu' gibi sorularda ve üretimden önce seçenek sunarken kullan."""
+    from app.billing import settings as credit_settings
+
+    return {
+        "krediler_acik": credit_settings.enabled(),
+        "gorsel": _option_rows(generation.kind_options("image")),
+        "video": _video_alternatives(),
+        "not": "Kredi 'birim başına': görselde bir görsel, videoda bir saniye. Etsy en az ~2000 piksel önerir; görselde 2K bu yüzden uygun varsayılandır, daha yüksek çözünürlük yalnızca kullanıcı isterse.",
+    }
+
+
 def generate_listing_video(ctx: Ctx, a: dict) -> dict:
     """Bir fotoğraftan (listing fotoğrafı ya da sohbetteki resim) ürün videosu üretmeye başlar. Önce ücret söylenir ve onay istenir
     (confirm=true); onaydan sonra iş arka planda sürer, sohbette ilerleme ve oynatıcı olan bir kart görünür. Video önce taslak dosyası
@@ -1618,9 +1649,10 @@ def generate_listing_video(ctx: Ctx, a: dict) -> dict:
     if err:
         return err
     duration = int(a.get("duration") or 5)
+    model_id = int(a["model_id"]) if a.get("model_id") else None
     try:
-        _, _, price = generation.quote_video(duration)
-    except ValueError as exc:
+        model, variant, price = generation.quote_video(duration, model_id, a.get("variant"))
+    except (ValueError, catalog.NotConfigured) as exc:
         return {"error": str(exc)}
     image = ref = None
     if a.get("chat_image_id"):
@@ -1635,9 +1667,14 @@ def generate_listing_video(ctx: Ctx, a: dict) -> dict:
         ref, source = generation.Reference(image_id=photo["listing_image_id"], image_draft_file_id=photo.get("draft_file_id")), "listing"
     if not a.get("confirm"):
         return {"pending_confirmation": True, "kredi": price.credits, "sure_sn": duration, "listing_id": lid,
-                "not": "Kullanıcıya videonun KREDİ bedelini söyle ve AÇIKÇA onay iste (evet/yap/onaylıyorum). Onaylarsa aynı parametrelerle confirm=true ile TEKRAR çağır; onaylamadıysa asla çağırma."}
+                "secilen": {"model": model.label, "model_id": model.id, "kalite": tr(variant.label_tr, variant.label_en) if variant else None, "variant": variant.key if variant else None},
+                "diger_secenekler": _video_alternatives(),
+                "not": "Kullanıcıya SEÇİLEN modeli, kaliteyi ve KREDİ bedelini söyle; kullanıcı model/kalite belirtmediyse diger_secenekler'i kısaca sun ve hangisini istediğini sor (ya da varsayılanla devam). AÇIKÇA onay iste (evet/yap/onaylıyorum). Onaylarsa seçilen model_id ve variant ile confirm=true çağır; onaylamadıysa asla çağırma."}
     try:
-        job = generation.start_video(ctx.db, ctx.shop, lid, str(a.get("prompt") or "").strip() or generation.DEFAULT_VIDEO_PROMPT, duration, ref or generation.Reference(), image=image)
+        job = generation.start_video(
+            ctx.db, ctx.shop, lid, str(a.get("prompt") or "").strip() or generation.DEFAULT_VIDEO_PROMPT, duration, ref or generation.Reference(),
+            model_id, a.get("variant"), image=image,
+        )
     except generation.InsufficientCredits as exc:
         return {"error": tr(f"Bu video için {exc.needed} kredi gerekiyor; bakiye yetmiyor.", f"This video needs {exc.needed} credits; the balance is not enough.")}
     except (video_gen.VideoGenError, ValueError) as exc:
@@ -1853,6 +1890,12 @@ DATE = {"type": "string", "description": "YYYY-MM-DD"}
 # Uzun süren (resim/video üreten) araçlar: sohbet bekleme sırasında buna göre ilerleme kartı gösterir.
 TOOL_KIND = {"edit_chat_image": "image", "regenerate_listing_image": "image"}
 
+# Görsel/video model ve kalite seçimi (generation_options'taki id ve key değerleri). Verilmezse yönetim panelindeki varsayılan.
+_QUALITY_SCHEMA = {
+    "model_id": {"type": "integer", "description": "Model kimliği (generation_options). Yalnızca kullanıcı seçtiyse; yoksa varsayılan"},
+    "variant": {"type": "string", "description": "Kalite/çözünürlük seçeneği anahtarı (generation_options, ör. 2K). Yalnızca kullanıcı istediyse; yoksa varsayılan"},
+}
+
 # Kamera açısı seçenekleri: regenerate_listing_image ve edit_chat_image ortak kullanır.
 _CAMERA_SCHEMA = {
     "azimuth": {"type": "string", "enum": ["front", "front_right", "right", "back_right", "back", "back_left", "left", "front_left"]},
@@ -1931,6 +1974,7 @@ TOOLS: list[dict] = [
         **_CAMERA_SCHEMA,
         "prompt": {"type": "string", "description": "Sahne talimatı, ör. 'oturma odasında göster', 'arka planı beyaz yap'"},
         "subject_image_id": {"type": "integer"},
+        **_QUALITY_SCHEMA,
     }, ["listing_id"])},
     {"name": "get_category_attributes", "description": "Listing'in kategorisinin özelliklerini (renk, malzeme, kullanım yeri, ölçü…) verir: hangileri ZORUNLU, izin verilen değerler, birimler ve şu anki seçimler. Özellik yazmadan ve kategori değişince çağır; kullanıcının söylediklerinden (ör. 'metal') ve varyasyon renklerinden uygun olanları set_listing_attributes ile kendin doldur, yalnızca bilmediğin ZORUNLU olanları kullanıcıya sor.", "input_schema": _obj({"listing_id": {"type": "integer"}}, ["listing_id"])},
     {"name": "set_listing_attributes", "description": "Kategori özelliklerini izin verilen değerlere göre yazar (yerel taslak). attributes: [{name: 'Primary color', values: ['Black']}, {name: 'Width', values: ['30'], unit: 'cm'}]. İzin verilen listede olmayan değer yazılmaz ve hata olarak döner (uydurma). Boş values özelliği kaldırır. Önce get_category_attributes'e bak.", "input_schema": _obj({"listing_id": {"type": "integer"}, "attributes": {"type": "array", "items": _obj({"name": {"type": "string"}, "values": {"type": "array", "items": {"type": "string"}}, "unit": {"type": "string", "description": "Yalnızca ölçü özelliklerinde (cm, in…)"}}, ["name"])}}, ["listing_id", "attributes"])},
@@ -1952,13 +1996,15 @@ TOOLS: list[dict] = [
     }, ["listing_id"])},
     {"name": "delete_listing_photo", "description": "Listing taslağından bir fotoğrafı sıra numarasıyla (1'den başlar) kaldırır. Etsy'deki fotoğraf yayınlayınca silinir.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer"}}, ["listing_id", "photo_number"])},
     {"name": "set_photo_alt_text", "description": "Taslak (henüz Etsy'ye yüklenmemiş) bir fotoğrafın alt metnini yazar; sıra numarasıyla. Etsy'de yayındaki fotoğrafların alt metni değiştirilemez.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer"}, "alt_text": {"type": "string", "description": "Resimde görüneni anlatan tek cümle, en fazla 125 karakter önerilir"}}, ["listing_id", "photo_number", "alt_text"])},
-    {"name": "generate_listing_video", "description": "Bir fotoğraftan ürün videosu üretir (5–15 sn, kredi harcar). photo_number: listing'in o sıradaki fotoğrafı (varsayılan 1) ya da chat_image_id: sohbetteki bir resim (ör. az önce ürettiğin). Model TEK resimden video üretir; 'listedeki 4 resimden video' istenirse tek bir fotoğrafı seç ya da her fotoğraf için ayrı video önerip maliyeti söyle. confirm vermeden yalnızca kredi bedelini döner: kullanıcıya söyle, AÇIKÇA onay al, onaylarsa confirm=true ile tekrar çağır. listing_id verilmezse sohbetteki en son yeni taslak kullanılır.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer"}, "chat_image_id": {"type": "string"}, "prompt": {"type": "string", "description": "Hareket tarifi, İngilizce (ör. 'slow camera move around the product'); verilmezse sakin bir ürün videosu"}, "duration": {"type": "integer", "description": "Saniye, 5 ile 15 arası (varsayılan 5)"}, "confirm": {"type": "boolean"}}, [])},
+    {"name": "generation_options", "description": "Görsel ve video üretimi için seçilebilir modeller, kalite/çözünürlük seçenekleri (1K/2K/4K gibi) ve kredi bedelleri. Kullanıcı kredi/kalite sorarsa ya da üretimden önce seçenek sunarken çağır.", "input_schema": _obj({})},
+    {"name": "generate_listing_video", "description": "Bir fotoğraftan ürün videosu üretir (5–15 sn, kredi harcar). photo_number: listing'in o sıradaki fotoğrafı (varsayılan 1) ya da chat_image_id: sohbetteki bir resim (ör. az önce ürettiğin). Model TEK resimden video üretir; 'listedeki 4 resimden video' istenirse tek bir fotoğrafı seç ya da her fotoğraf için ayrı video önerip maliyeti söyle. confirm vermeden yalnızca kredi bedelini döner: kullanıcıya söyle, AÇIKÇA onay al, onaylarsa confirm=true ile tekrar çağır. listing_id verilmezse sohbetteki en son yeni taslak kullanılır.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer"}, "chat_image_id": {"type": "string"}, "prompt": {"type": "string", "description": "Hareket tarifi, İngilizce (ör. 'slow camera move around the product'); verilmezse sakin bir ürün videosu"}, "duration": {"type": "integer", "description": "Saniye, 5 ile 15 arası (varsayılan 5)"}, **_QUALITY_SCHEMA, "confirm": {"type": "boolean"}}, [])},
     {"name": "add_video_to_listing", "description": "Üretilmiş bir videoyu listing taslağına ekler. file_id: videonun taslak dosya kimliği (kullanıcının 'listing'e ekle' mesajında yazar). listing_id verilmezse sohbetteki en son yeni taslak. Bir listing'e en fazla 2 video.", "input_schema": _obj({"file_id": {"type": "string"}, "listing_id": {"type": "integer"}}, ["file_id"])},
     {"name": "move_listing_photo", "description": "Listing taslağındaki bir fotoğrafın sırasını değiştirir. 'Üçüncü resmi ana resim yap' = photo_number 3, to_position 1 (ana fotoğraf birinci sıradadır). Fotoğraf sırası için update_listing KULLANMA.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer", "description": "Taşınacak fotoğrafın şimdiki sırası (1'den başlar)"}, "to_position": {"type": "integer", "description": "Hedef sıra (varsayılan 1 = ana fotoğraf)"}}, ["listing_id", "photo_number"])},
     {"name": "edit_chat_image", "description": "Sohbete eklenen bir resmi AI ile düzenler (arka plan temizle/değiştir, 'oturma odasında göster', kamera açısı). Sonuç sohbette yeni resim olarak görünür, orijinal kalır. Kullanıcı bir listing belirtirse (ör. 'bu listing'e ekle') listing_id ver: sonuç o taslağa yeni fotoğraf olarak eklenir; belirtmediyse listing_id verme, yalnızca göster. Etsy'ye hiçbir şey göndermez; kredi harcar.", "input_schema": _obj({
         "image_id": {"type": "string", "description": "Sohbete eklenen resmin kimliği (sistem mesajındaki listeden)"},
         "prompt": {"type": "string", "description": "Ne yapılacağı, ör. 'arka planı beyaz yap', 'oturma odasında duvara asılı göster'"},
         **_CAMERA_SCHEMA,
+        **_QUALITY_SCHEMA,
         "listing_id": {"type": "integer", "description": "Yalnızca kullanıcı bir listing'e eklenmesini söylediyse: yeni ya da mevcut listing taslağı"},
     }, ["image_id"])},
     {"name": "add_chat_image_to_listing", "description": "Sohbetteki mevcut bir resmi (ör. edit_chat_image'ın ürettiği, yeni_resim_id) listing taslağına yeni fotoğraf olarak ekler; yeniden üretmez, kredi harcamaz. listing_id verilmezse sohbetteki en son oluşturulan yeni taslak kullanılır ('az önce oluşturduğumuz listeye ekle').", "input_schema": _obj({"image_id": {"type": "string"}, "listing_id": {"type": "integer"}}, ["image_id"])},
@@ -2016,6 +2062,7 @@ TOOL_LABELS = {
     "edit_chat_image": "Resmi düzenliyor",
     "move_listing_photo": "Fotoğraf sırasını değiştiriyor",
     "generate_listing_video": "Video üretimini başlatıyor",
+    "generation_options": "Üretim seçeneklerine bakıyor",
     "add_video_to_listing": "Videoyu listing'e ekliyor",
     "get_category_attributes": "Kategori özelliklerine bakıyor",
     "set_listing_attributes": "Özellikleri yazıyor",
@@ -2069,6 +2116,7 @@ TOOL_LABELS_EN = {
     "edit_chat_image": "Editing the image",
     "move_listing_photo": "Reordering the photos",
     "generate_listing_video": "Starting the video",
+    "generation_options": "Checking the generation options",
     "add_video_to_listing": "Adding the video to the listing",
     "get_category_attributes": "Checking the category attributes",
     "set_listing_attributes": "Setting attributes",
@@ -2097,7 +2145,7 @@ EXECUTORS = {
     "create_listing_draft": create_listing_draft, "update_listing": update_listing,
     "shop_options": shop_options, "workspace_status": workspace_status, "orders_overview": orders_overview, "order_detail": order_detail,
     "orders_missing_costs": orders_missing_costs, "keyword_pool": keyword_pool, "shipping_invoices": shipping_invoices, "bulk_update_listings": bulk_update_listings,
-    "regenerate_listing_image": regenerate_listing_image, "edit_chat_image": edit_chat_image, "move_listing_photo": move_listing_photo, "generate_listing_video": generate_listing_video, "add_video_to_listing": add_video_to_listing, "get_category_attributes": get_category_attributes, "set_listing_attributes": set_listing_attributes,
+    "regenerate_listing_image": regenerate_listing_image, "edit_chat_image": edit_chat_image, "move_listing_photo": move_listing_photo, "generate_listing_video": generate_listing_video, "generation_options": generation_options, "add_video_to_listing": add_video_to_listing, "get_category_attributes": get_category_attributes, "set_listing_attributes": set_listing_attributes,
     "set_listing_fields": set_listing_fields, "delete_listing_photo": delete_listing_photo, "set_photo_alt_text": set_photo_alt_text, "add_chat_image_to_listing": add_chat_image_to_listing, "generate_missing_alt_texts": generate_missing_alt_texts,
     "listing_health_status": listing_health_status, "keep_watching_listing": keep_watching_listing,
     "publish_listing_draft": publish_listing_draft, "deactivate_listing": deactivate_listing, "mark_order_shipped": mark_order_shipped,

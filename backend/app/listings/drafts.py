@@ -258,6 +258,8 @@ def regenerate_image(
     distance_prompt: str | None = None,
     subject_image_id: int | None = None,
     subject_draft_file_id: str | None = None,
+    model_db_id: int | None = None,
+    variant_key: str | None = None,
 ) -> dict:
     """Sihirli değnek: bir görseli (Etsy'de yayında ya da henüz taslakta) yapay zekâyla yeniden oluşturup
     yeni bir taslak dosyası olarak döner — orijinali silmez, düzenleyici ikisi arasında seçim sunar.
@@ -284,7 +286,7 @@ def regenerate_image(
     if subject_image_id is not None:
         subject_reference = _source_image_bytes(db, shop, listing_id, subject_image_id, subject_draft_file_id)
     new_bytes, mime = image_gen.regenerate_image(
-        content, content_type, prompt, reference, camera_prompt, distance_prompt, subject_reference
+        content, content_type, prompt, reference, camera_prompt, distance_prompt, subject_reference, model_db_id, variant_key
     )
     filename = f"ai-regen{image_gen.guess_extension(mime)}"
     return save_file(db, shop, listing_id, "image", filename, mime, new_bytes, origin_key=origin_key)

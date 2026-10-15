@@ -147,6 +147,8 @@ def regenerate_image(
     camera_prompt: str | None = None,
     distance_prompt: str | None = None,
     subject_reference: tuple[bytes, str] | None = None,
+    model_db_id: int | None = None,
+    variant_key: str | None = None,
 ) -> tuple[bytes, str]:
     """Tek bir ürün fotoğrafını yeniden oluşturur. `prompt` sahne talimatı, `camera_prompt` (kamera açısı
     küpünden) ve `distance_prompt` (mesafe/kadraj seçiciden) ayrı, öncelikli talimat katmanları olarak
@@ -172,7 +174,7 @@ def regenerate_image(
         ordinal = "üçüncü" if reference is not None else "ikinci"
         full_prompt += SUBJECT_REFERENCE_DIRECTIVE.format(ordinal=ordinal)
     parts.append(types.Part.from_text(text=full_prompt))
-    return _run(parts)
+    return _run(parts, None, model_db_id, variant_key)
 
 
 def generate_from_text(

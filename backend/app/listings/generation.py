@@ -80,6 +80,37 @@ def video_durations(model: catalog.ResolvedModel) -> list[int]:
     return [d for d in video_gen.durations(model) if lo <= d <= hi]
 
 
+def _variants(model: catalog.ResolvedModel) -> list[dict]:
+    return [
+        {"key": v.key, "label_tr": v.label_tr, "label_en": v.label_en, "credits": pricing.unit_credits(v), "is_default": v.is_default}
+        for v in model.variants
+    ]
+
+
+def kind_options(task: str, durations=None) -> dict:
+    """Kullanıcıya açık modeller: aktif, anahtarı tanımlı ve en az bir aktif fiyat seçeneği olan. Videoda yalnızca
+    Etsy'nin kabul ettiği süreler."""
+    kind = catalog.TASKS[task][0]
+    models = []
+    for m in catalog.choices(kind):
+        if not catalog.ready(m) or not m.variants:
+            continue
+        item = {"id": m.id, "label": m.label, "variants": _variants(m)}
+        if durations is not None:
+            allowed = durations(m)
+            if not allowed:
+                continue
+            default = m.options.get("default_duration")
+            item |= {"durations": allowed, "default_duration": default if default in allowed else allowed[0]}
+        models.append(item)
+    try:
+        default_model = catalog.resolve_choice(task)[0].id
+    except catalog.NotConfigured:
+        default_model = None
+    ids = [m["id"] for m in models]
+    return {"models": models, "default_model": default_model if default_model in ids else (ids[0] if ids else None)}
+
+
 def quote_video(duration: int, model_db_id: int | None = None, variant_key: str | None = None):
     """(model, varyant, fiyat): süre desteklenmiyorsa ValueError. Başlatma ve kullanıcıya önceden fiyat söyleme aynı hesabı kullanır."""
     model, variant = video_gen.choose(model_db_id, variant_key)

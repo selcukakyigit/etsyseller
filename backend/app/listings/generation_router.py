@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.ai import catalog, video_gen
 from app.ai.image_gen import ImageGenError
 from app.auth.models import User
-from app.billing import metering, pricing, settings as credit_settings
+from app.billing import metering, settings as credit_settings
 from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.core.i18n import tr
@@ -21,43 +21,12 @@ router = APIRouter(prefix="/api/shops/{shop_id}/listings/{listing_id}/draft", ta
 # ---- Seçenekler
 
 
-def _variants(model: catalog.ResolvedModel) -> list[dict]:
-    return [
-        {"key": v.key, "label_tr": v.label_tr, "label_en": v.label_en, "credits": pricing.unit_credits(v), "is_default": v.is_default}
-        for v in model.variants
-    ]
-
-
-def _kind_options(task: str, durations=None) -> dict:
-    """Kullanıcıya açık modeller: aktif, anahtarı tanımlı ve en az bir aktif fiyat seçeneği olan. Videoda yalnızca
-    Etsy'nin kabul ettiği süreler."""
-    kind = catalog.TASKS[task][0]
-    models = []
-    for m in catalog.choices(kind):
-        if not catalog.ready(m) or not m.variants:
-            continue
-        item = {"id": m.id, "label": m.label, "variants": _variants(m)}
-        if durations is not None:
-            allowed = durations(m)
-            if not allowed:
-                continue
-            default = m.options.get("default_duration")
-            item |= {"durations": allowed, "default_duration": default if default in allowed else allowed[0]}
-        models.append(item)
-    try:
-        default_model = catalog.resolve_choice(task)[0].id
-    except catalog.NotConfigured:
-        default_model = None
-    ids = [m["id"] for m in models]
-    return {"models": models, "default_model": default_model if default_model in ids else (ids[0] if ids else None)}
-
-
 @router.get("/generate/options", dependencies=[Depends(get_owned_shop)])
 def generation_options(listing_id: int):
     return {
         "credits_enabled": credit_settings.enabled(),
-        "image": _kind_options("image"),
-        "video": _kind_options("video", generation.video_durations),
+        "image": generation.kind_options("image"),
+        "video": generation.kind_options("video", generation.video_durations),
     }
 
 
