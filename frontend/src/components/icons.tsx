@@ -114,6 +114,8 @@ const navIcon = (d: string) =>
     );
   };
 
+export const RefreshIcon = navIcon("M20 11a8 8 0 10-2.3 5.7M20 4v7h-7");
+export const ImagePlusIcon = navIcon("M12 4H5a1 1 0 00-1 1v14a1 1 0 001 1h14a1 1 0 001-1v-7M4 16l5-5 4 4 2-2M18 3v6M15 6h6");
 export const HomeIcon = navIcon("M3 10.5L12 3l9 7.5V20a1 1 0 01-1 1h-5v-6h-6v6H4a1 1 0 01-1-1v-9.5z");
 export const BoxIcon = navIcon("M21 8l-9-5-9 5v8l9 5 9-5V8zM3 8l9 5 9-5M12 13v8");
 export const TagIcon = navIcon("M20.6 13.4l-7.2 7.2a2 2 0 01-2.8 0L3 13V3h10l7.6 7.6a2 2 0 010 2.8zM7.5 7.5h.01");

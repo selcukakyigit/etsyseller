@@ -39,7 +39,7 @@ def chat(body: ChatIn, shop: Shop = Depends(get_owned_shop), user: User = Depend
 @router.get("/progress/{request_id}")
 def progress(request_id: str, shop: Shop = Depends(get_owned_shop)):
     """Asistanın o an yaptığı işin kısa açıklaması (arayüz bekleme sırasında gösterir)."""
-    return {"step": service.get_progress(shop.id, request_id)}
+    return service.get_progress(shop.id, request_id)
 
 
 @router.get("/sessions")
@@ -86,6 +86,13 @@ async def upload_image(
         return service.save_image(db, shop, session_id, file.filename or "resim", file.content_type or "", content)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+
+
+@router.delete("/images/{image_id}")
+def delete_image(image_id: str, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    if not service.delete_image(db, shop, image_id):
+        raise HTTPException(404, "Resim bulunamadı")
+    return {"ok": True}
 
 
 @router.get("/images/{image_id}")

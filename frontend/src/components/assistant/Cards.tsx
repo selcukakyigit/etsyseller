@@ -3,7 +3,8 @@
 import { countryName } from "@/lib/countries";
 import Link from "next/link";
 import { useState } from "react";
-import { API_URL, ChatCard } from "@/lib/api";
+import { ChatCard } from "@/lib/api";
+import EditedImageCard from "./EditedImageCard";
 import ListingPreviewModal from "@/components/listings/ListingPreviewModal";
 import InvoiceReviewCard from "./InvoiceReviewCard";
 import EtsyDataReviewCard from "./EtsyDataReviewCard";
@@ -379,44 +380,7 @@ export default function Card({ card, shopId, onAsk }: { card: ChatCard; shopId: 
     );
   }
 
-  if (card.type === "chat_image_edited") {
-    return (
-      <div className={`${box} border-emerald-300 dark:border-emerald-800`}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={`${API_URL}${card.image_url}`} alt="" className="max-h-80 w-full bg-neutral-100 object-contain dark:bg-neutral-800" />
-        <div className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
-          <span className="text-neutral-600 dark:text-neutral-300">
-            {card.edit_url ? t("Düzenlendi ve listing taslağına eklendi", "Edited and added to the listing draft") : t("Düzenlendi · orijinal sohbette duruyor", "Edited · the original is still in the chat")}
-          </span>
-          {card.edit_url && (
-            <Link href={card.edit_url} className="flex-shrink-0 font-semibold text-[#B4553A] hover:underline dark:text-[#E89A7F]">
-              {t("Aç →", "Open →")}
-            </Link>
-          )}
-        </div>
-        {!card.edit_url && onAsk && (
-          <div className="flex justify-end gap-2 border-t border-neutral-100 bg-neutral-50 px-3 py-2 dark:border-neutral-800 dark:bg-neutral-950">
-            {card.source_image_id && (
-              <button
-                type="button"
-                onClick={() => onAsk(t(`Bu resmi yeniden üret (kaynak resim id: ${card.source_image_id}): ${card.prompt}`, `Regenerate this image (source image id: ${card.source_image_id}): ${card.prompt}`))}
-                className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
-              >
-                {t("Yeniden üret", "Regenerate")}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => onAsk(t(`Bu resmi listing'e ekle (resim id: ${card.image_id})`, `Add this image to the listing (image id: ${card.image_id})`))}
-              className="rounded-lg bg-[#D97757] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#C6613F]"
-            >
-              {t("Listing'e ekle", "Add to listing")}
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  }
+  if (card.type === "chat_image_edited") return <EditedImageCard card={card} shopId={shopId} onAsk={onAsk} />;
 
   if (card.type !== "listing_update") {
     // İşlem sonucu kartları: asistanın bir şeyi yaptığını kısa bir satırla gösterir.

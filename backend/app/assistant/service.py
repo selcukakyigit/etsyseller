@@ -45,23 +45,24 @@ MODEL_IMAGES_PER_MESSAGE = 4
 
 # ------------------------------------------------------------------ ilerleme (asistan şu an ne yapıyor)
 
-_progress: dict[tuple[int, str], tuple[str, float]] = {}
+_progress: dict[tuple[int, str], tuple[str, float, str | None]] = {}  # (adım metni, zaman, iş türü: "image" | "video" | None)
 _progress_lock = threading.Lock()
 
 
-def set_progress(shop_id: int, request_id: str | None, text: str) -> None:
+def set_progress(shop_id: int, request_id: str | None, text: str, kind: str | None = None) -> None:
     if not request_id:
         return
     with _progress_lock:
         now = time.time()
-        for k in [k for k, (_, ts) in _progress.items() if now - ts > 600]:  # 10 dakikadan eski kayıtları temizle
+        for k in [k for k, (_, ts, _k) in _progress.items() if now - ts > 600]:  # 10 dakikadan eski kayıtları temizle
             del _progress[k]
-        _progress[(shop_id, request_id)] = (text, now)
+        _progress[(shop_id, request_id)] = (text, now, kind)
 
 
-def get_progress(shop_id: int, request_id: str) -> str:
+def get_progress(shop_id: int, request_id: str) -> dict:
     with _progress_lock:
-        return _progress.get((shop_id, request_id), ("", 0.0))[0]
+        text, _, kind = _progress.get((shop_id, request_id), ("", 0.0, None))
+    return {"step": text, "kind": kind}
 
 
 def clear_progress(shop_id: int, request_id: str | None) -> None:
@@ -93,6 +94,18 @@ def save_image(db: Session, shop: Shop, session_id: int | None, filename: str, c
 def get_image(db: Session, shop: Shop, image_id: str) -> ChatImage | None:
     img = db.get(ChatImage, image_id)
     return img if img is not None and img.shop_id == shop.id else None
+
+
+def delete_image(db: Session, shop: Shop, image_id: str) -> bool:
+    """Sohbetteki bir resmi (ör. üretilen) siler. Bir listing taslağına eklenmişse oradaki kopya ayrıdır, etkilenmez."""
+    img = get_image(db, shop, image_id)
+    if img is None:
+        return False
+    if img.path:
+        blobstore.remove([img.path])
+    db.delete(img)
+    db.commit()
+    return True
 
 
 # ------------------------------------------------------------------ oturumlar
@@ -219,7 +232,7 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
     tool_lines: list[str] = []
 
     def run_tool(name: str, args: dict) -> dict:
-        set_progress(shop.id, request_id, (tools.TOOL_LABELS_EN.get(name, "Working") if en else tools.TOOL_LABELS.get(name, "Çalışıyor")))
+        set_progress(shop.id, request_id, (tools.TOOL_LABELS_EN.get(name, "Working") if en else tools.TOOL_LABELS.get(name, "Çalışıyor")), tools.TOOL_KIND.get(name))
         try:
             result = tools.execute(ctx, name, args)
             tool_lines.append(context.summarize_tool_call(name, args, result))

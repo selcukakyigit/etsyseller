@@ -82,6 +82,28 @@ body {
   @keyframes ulagg-pulse { 50% { opacity: 0.45; } }
 }
 
+/* Resim/video üretilirken sohbetteki yer tutucu (components/assistant/GeneratingTile.tsx): noktalı ızgara, üstten alta süzülen bir
+   ışık bandıyla canlanır. */
+@keyframes ulagg-sweep {
+  from { mask-position: 0 150%; -webkit-mask-position: 0 150%; }
+  to { mask-position: 0 -50%; -webkit-mask-position: 0 -50%; }
+}
+.ulagg-dots {
+  background-image: radial-gradient(circle, currentColor 1.2px, transparent 1.8px);
+  background-size: 16px 16px;
+  opacity: 0.55;
+  mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 65%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 65%, transparent);
+  mask-size: 100% 200%;
+  -webkit-mask-size: 100% 200%;
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  animation: ulagg-sweep 2.6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ulagg-dots { animation: none; mask-image: none; -webkit-mask-image: none; }
+}
+
 /* Dokunmatik cihazlarda 16px altı yazı alanına odaklanınca iOS sayfayı yakınlaştırır; form alanları en az 16px. */
 @media (pointer: coarse) and (max-width: 1023px) {
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),

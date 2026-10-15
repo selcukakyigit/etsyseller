@@ -1638,6 +1638,9 @@ def _obj(props: dict, required: list[str] | None = None) -> dict:
 
 DATE = {"type": "string", "description": "YYYY-MM-DD"}
 
+# Uzun süren (resim/video üreten) araçlar: sohbet bekleme sırasında buna göre ilerleme kartı gösterir.
+TOOL_KIND = {"edit_chat_image": "image", "regenerate_listing_image": "image"}
+
 # Kamera açısı seçenekleri: regenerate_listing_image ve edit_chat_image ortak kullanır.
 _CAMERA_SCHEMA = {
     "azimuth": {"type": "string", "enum": ["front", "front_right", "right", "back_right", "back", "back_left", "left", "front_left"]},

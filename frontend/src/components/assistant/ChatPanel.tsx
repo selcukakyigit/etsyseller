@@ -10,6 +10,8 @@ import { useT } from "@/lib/i18n-client";
 import { Spinner } from "@/components/ui/Spinner";
 import { ArrowUpIcon, CameraIcon, ImageIcon, MicIcon, PaperclipIcon, PlusIcon } from "@/components/icons";
 import { useSpeechInput } from "@/lib/useSpeechInput";
+import GeneratingTile from "./GeneratingTile";
+import ImageLightbox from "./ImageLightbox";
 
 const SUGGESTIONS: [string, string][] = [
   ["Bu ayın kâr-zarar durumu nedir?", "What is this month's profit and loss?"],
@@ -112,6 +114,10 @@ export default function ChatPanel({
   const [dragging, setDragging] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false); // geçmiş paneli varsayılan olarak kapalı
   const [step, setStep] = useState("");
+  const [stepKind, setStepKind] = useState<"image" | "video" | null>(null); // resim/video üretilirken ilerleme kartı için
+  const kindSince = useRef(0); // bu türdeki işin başladığı an (tahmini yüzde için)
+  const lastKind = useRef<"image" | "video" | null>(null);
+  const [zoomSrc, setZoomSrc] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -194,7 +200,13 @@ export default function ChatPanel({
       api.assistant
         .progress(shopId, requestId)
         .then((p) => {
-          if (!stop) setStep(p.step);
+          if (stop) return;
+          setStep(p.step);
+          if (p.kind !== lastKind.current) {
+            lastKind.current = p.kind;
+            if (p.kind) kindSince.current = Date.now();
+            setStepKind(p.kind);
+          }
         })
         .catch(() => undefined);
     const id = setInterval(tick, 800);
@@ -267,6 +279,8 @@ export default function ChatPanel({
     const message = (text ?? input).trim();
     if ((!message && pending.length === 0) || busy || uploading > 0) return;
     setBusy(true);
+    lastKind.current = null;
+    setStepKind(null);
     setError(null);
     setStep("");
     const rid = crypto.randomUUID();
@@ -439,7 +453,9 @@ export default function ChatPanel({
                       <FileChip key={i.id} name={i.filename ?? "dosya"} size="h-20 w-20" />
                     ) : (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img key={i.id} src={img(i.url)} alt="" className="h-20 w-20 rounded-lg object-cover" />
+                      <button key={i.id} type="button" onClick={() => setZoomSrc(img(i.url))} className="cursor-zoom-in" aria-label={t("Büyüt", "Enlarge")}>
+                        <img src={img(i.url)} alt="" className="h-20 w-20 rounded-lg object-cover" />
+                      </button>
                     ),
                   )}
                 </div>
@@ -455,9 +471,11 @@ export default function ChatPanel({
             </div>
           </div>
         ))}
-        {busy && <Thinking step={step} />}
+        {busy && stepKind ? <GeneratingTile key={kindSince.current} kind={stepKind} startedAt={kindSince.current} /> : busy && <Thinking step={step} />}
         <div ref={bottom} />
       </div>
+
+      {zoomSrc && <ImageLightbox src={zoomSrc} onClose={() => setZoomSrc(null)} />}
 
       {(error || voice.error) && (
         <div className="mx-4 mb-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950 dark:text-red-300">{error ?? voice.error}</div>

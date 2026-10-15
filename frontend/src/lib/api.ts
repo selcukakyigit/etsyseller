@@ -2025,7 +2025,8 @@ export const api = {
     recent: (shopId: number) => request<BannerImage[]>(`/api/shops/${shopId}/banners/recent`),
   },
   assistant: {
-    progress: (shopId: number, requestId: string) => request<{ step: string }>(`/api/shops/${shopId}/assistant/progress/${requestId}`),
+    progress: (shopId: number, requestId: string) => request<{ step: string; kind: "image" | "video" | null }>(`/api/shops/${shopId}/assistant/progress/${requestId}`),
+    deleteImage: (shopId: number, imageId: string) => request<{ ok: boolean }>(`/api/shops/${shopId}/assistant/images/${imageId}`, { method: "DELETE" }),
     chat: (shopId: number, body: { message: string; session_id?: number | null; image_ids: string[]; today: string; request_id?: string; lang?: "tr" | "en" }) =>
       request<ChatReply>(`/api/shops/${shopId}/assistant/chat`, { method: "POST", body: JSON.stringify(body) }),
     sessions: (shopId: number) => request<ChatSessionInfo[]>(`/api/shops/${shopId}/assistant/sessions`),
