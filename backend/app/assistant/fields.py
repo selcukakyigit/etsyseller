@@ -19,6 +19,8 @@ MAX_STYLES = 2
 MAX_STYLE_LEN = 45
 MAX_QUESTIONS = 5  # Etsy "Custom options"
 MAX_CHARACTERS = 1024
+ECGT_LIMITS = {"ecgt_garan_brand": 25, "ecgt_garan_model": 20, "ecgt_garan_guarantee_details": 255}
+ECGT_TEXT_LIMIT = 255  # diğer AB alanları
 MAX_MULTI = 5  # Etsy çok değerli özelliklerde en fazla 5 seçim (düzenleyicideki PropertyFields ile aynı)
 MAX_MULTI_BY_NAME = {"material features": 1}
 
@@ -34,6 +36,10 @@ def _clean_words(values: list, limit: int, max_len: int | None = None) -> list[s
         if text and text.lower() not in {o.lower() for o in out}:
             out.append(text)
     return out[:limit]
+
+
+def _norm_text(text) -> str:
+    return " ".join(str(text or "").lower().split())
 
 
 def _positive(value, name: str, errors: list[str]) -> float | None:
@@ -57,7 +63,7 @@ def _question(q: dict, errors: list[str]) -> dict | None:
     if kind not in QUESTION_TYPES:
         errors.append(f"Soru türü {', '.join(QUESTION_TYPES)} olmalı.")
         return None
-    labels = [" ".join(str(o).split()) for o in (q.get("options") or []) if str(o).strip()]
+    labels = [" ".join(str(o.get("label") if isinstance(o, dict) else o).split()) for o in (q.get("options") or []) if str(o.get("label") if isinstance(o, dict) else o).strip()]
     if kind == "dropdown" and len(labels) < 2:
         errors.append(f'"{text}" açılır liste sorusu için en az 2 seçenek gerekli.')
         return None
@@ -135,6 +141,37 @@ def apply_fields(work: dict, f: dict, *, category_names: dict[int, str] | None =
             questions = [q for q in (_question(q, errors) for q in raw) if q is not None]
             if len(questions) == len(raw):
                 put("personalization", {"questions": questions}, "personalization_questions")
+    if "add_personalization_questions" in f:  # mevcutlara ekler (ör. "daha önce kullanılanlar"dan seçilenler); aynı metinli soru atlanır
+        existing = (work.get("personalization") or {}).get("questions", [])
+        have = {_norm_text(q.get("question_text")) for q in existing}
+        added = [q for q in (_question(q, errors) for q in f["add_personalization_questions"] or []) if q is not None and _norm_text(q["question_text"]) not in have]
+        if len(existing) + len(added) > MAX_QUESTIONS:
+            errors.append(f"En fazla {MAX_QUESTIONS} kişiselleştirme sorusu olabilir (şu an {len(existing)}).")
+        elif added:
+            put("personalization", {"questions": [*existing, *added]}, "personalization_questions")
+    if "featured_rank" in f:
+        rank = f["featured_rank"]
+        if isinstance(rank, int) and rank >= 1:
+            put("featured_rank", rank)
+        else:
+            errors.append("featured_rank 1 ya da daha büyük bir sayı olmalı.")
+    for key in ("ecgt_garan_brand", "ecgt_garan_model", "ecgt_garan_guarantee_details", "ecgt_other_commercial_guarantee_details", "ecgt_after_sales_service_info", "ecgt_software_update_details"):
+        if key in f:
+            text = " ".join(str(f[key] or "").split())
+            limit = ECGT_LIMITS.get(key, ECGT_TEXT_LIMIT)
+            if len(text) > limit:
+                errors.append(f"{key}: en fazla {limit} karakter.")
+            else:
+                put(key, text or None)
+    if "ecgt_garan_years" in f:
+        years = f["ecgt_garan_years"]
+        if years is None or (isinstance(years, int) and 3 <= years <= 99):
+            put("ecgt_garan_years", years)
+        else:
+            errors.append("ecgt_garan_years 3 ile 99 arasında bir tam sayı olmalı.")
+    guarantee = ("ecgt_garan_brand", "ecgt_garan_model", "ecgt_garan_years", "ecgt_garan_guarantee_details")
+    if any(k in f for k in guarantee) and any(work.get(k) for k in guarantee) and not all(work.get(k) for k in guarantee):
+        errors.append("AB ticari garanti alanlarından biri doluysa dördü de (marka, model, yıl, ayrıntı) gerekli.")
     return changed, errors
 
 

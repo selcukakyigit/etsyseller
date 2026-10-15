@@ -41,6 +41,8 @@ const changeLabel = (c: string, t: (tr: string, en: string) => string): string =
     is_taxable: t("vergilendirme", "taxable"), item_weight: t("ağırlık", "weight"), item_weight_unit: t("ağırlık birimi", "weight unit"),
     item_length: t("uzunluk", "length"), item_width: t("genişlik", "width"), item_height: t("yükseklik", "height"),
     item_dimensions_unit: t("boyut birimi", "dimension unit"), sku: "SKU", personalization_questions: t("kişiselleştirme soruları", "personalization questions"),
+    quantity: t("stok", "stock"), enabled: t("kombinasyon durumu", "combination status"), variation_photo: t("varyasyon fotoğrafı", "variation photo"),
+    copied: t("kopyalandı", "copied"), discarded: t("değişiklikler atıldı", "changes discarded"), featured_rank: t("öne çıkan sıra", "featured rank"),
   } as Record<string, string>)[c] ?? c;
 
 /** Asistanın araç sonuçlarını gösteren görsel kartlar. */
@@ -401,6 +403,7 @@ export default function Card({ card, shopId, onAsk }: { card: ChatCard; shopId: 
       alt_texts_generated: t(`${card.count ?? 0} alt metin yazıldı`, `${card.count ?? 0} alt texts written`),
       listing_deactivated: t("Listing pasife alındı", "Listing deactivated"),
       order_shipped: t("Sipariş kargoya verildi olarak işaretlendi", "Order marked as shipped"),
+      listing_deleted: t("Listing silindi", "Listing deleted"),
       listing_published:
         card.ok === false
           ? t("Yayın tamamlanamadı", "Publishing did not finish")

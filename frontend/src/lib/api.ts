@@ -1487,7 +1487,7 @@ export type ChatCard =
   | { type: "listing_update"; listing_id: number; title: string; edit_url: string; changes: string[]; tags: string[] }
   | { type: "video_job"; job: string; listing_id: number; credits: number; prompt: string; duration: number; started_at: number; source: "chat" | "listing" }
   | { type: "chat_image_edited"; image_id: string; image_url: string; source_image_id: string | null; prompt: string; listing_id: number | null; edit_url: string | null }
-  | { type: "image_regenerated" | "alt_texts_generated" | "listing_deactivated" | "listing_published" | "order_shipped"; listing_id?: number; receipt_id?: number; edit_url?: string; ok?: boolean; count?: number; activated?: boolean }
+  | { type: "image_regenerated" | "alt_texts_generated" | "listing_deactivated" | "listing_published" | "order_shipped" | "listing_deleted"; listing_id?: number; receipt_id?: number; edit_url?: string; ok?: boolean; count?: number; activated?: boolean }
   | { type: "invoice_review"; source: string; currency: string; candidates: InvoiceCandidate[] }
   | ({ type: "etsy_data_review"; listing_id: number | null } & EtsyDataParsed)
   | { type: "performance"; title: string; listing_id: number; period: { start: string; end: string }; previous_period: { start: string; end: string }; sales: { units: number; revenue: number; prev_units: number; prev_revenue: number }; views_now: ListingPerformance["views_now"]; conversion_percent: number | null; freshness: ListingPerformance["freshness"]; lifetime: { views: number; favorites: number }; price: number | null }
