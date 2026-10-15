@@ -10,6 +10,8 @@ from app.billing import credits
 from app.billing.metering import Scope, set_scope
 from app.core.db import get_db
 from app.core.deps import get_current_user
+from app.core.i18n import tr
+from app.core.limits import Concurrency
 from app.shops.models import Shop
 
 
@@ -49,14 +51,24 @@ def _ai_allowed(shop: Shop = Depends(get_owned_shop), user: User = Depends(get_c
     return check_ai_allowed(db, shop.workspace_id, user)
 
 
-async def require_ai_enabled(scope: Scope = Depends(_ai_allowed)) -> None:
+async def require_ai_enabled(scope: Scope = Depends(_ai_allowed)):
     """Yapay zekâ kullanan uç noktalara `dependencies=[Depends(require_ai_enabled)]` olarak eklenir. Çalışma alanı AI'ı
     kapattıysa, istek sınırı aşıldıysa ya da kredi bittiyse içerik sağlayıcıya gitmeden reddeder. Geçerse isteğin
     çalışma alanını ölçüm bağlamına yazar (billing/metering.py): AI çağrıları kullanımı bu hesaba kaydeder. Async olması
     bilerek: bağlam değişkeni yalnızca olay döngüsünde atanınca senkron uç noktanın iş parçacığına geçer."""
     set_scope(scope)
+    # Aynı çalışma alanından aynı anda en fazla AI_MAX_CONCURRENT iş: görsel/PDF/video işleri belleği şişirir ve kredi
+    # istek bittikten sonra düşüldüğü için paralel istekler bakiyenin altına inebilir.
+    if not _ai_inflight.acquire(scope.workspace_id):
+        raise HTTPException(429, tr("Aynı anda çok fazla yapay zekâ işlemi çalışıyor. Biri bitince tekrar dene.", "Too many AI actions are running at once. Try again when one finishes."))
+    try:
+        yield
+    finally:
+        _ai_inflight.release(scope.workspace_id)
 
 
+AI_MAX_CONCURRENT = 4
+_ai_inflight = Concurrency(AI_MAX_CONCURRENT)
 AI_WINDOW_SECONDS = 600
 AI_MAX_CALLS = 60
 _ai_hits: dict[int, deque[float]] = defaultdict(deque)

@@ -22,6 +22,11 @@ def fingerprints(db: Session, tables: tuple[str, ...], shop_id: int) -> tuple | 
     return None if any(p is None for p in parts) else tuple(parts)
 
 
+# Tüm sipariş geçmişini belleğe kuran önbellek yapımları (finans, listing satış indeksi) aynı anda yalnızca bir tane
+# çalışsın: birkaç büyük mağaza aynı anda rapor açınca anlık bellek zirvesi 512 MB sınırını aşıyordu.
+build_slot = threading.BoundedSemaphore(1)
+
+
 class ResultCache:
     """İş parçacığı güvenli, boyutu sınırlı (en eski atılır) sonuç önbelleği."""
 

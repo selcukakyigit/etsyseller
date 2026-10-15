@@ -1,4 +1,5 @@
 import datetime as dt
+import functools
 import logging
 
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED, JobExecutionEvent
@@ -8,6 +9,7 @@ from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
+from app.core.memory import rss_mb
 from app.jobs.daily_stats import capture_daily_stats
 from app.jobs.demand_trends import refresh_demand
 from app.jobs.finance_sync import sync_all_shops as sync_finance
@@ -21,8 +23,13 @@ from app.jobs.shop_profile import sync_all_shops as sync_shop_profile
 
 logger = logging.getLogger(__name__)
 
-# En fazla 2 iş aynı anda çalışsın: hepsi aynı anda başlarsa bellek 512 MB sınırını aşıp servisi yeniden başlatabiliyor.
-_scheduler = BackgroundScheduler(timezone="UTC", executors={"default": ThreadPoolExecutor(2)})
+# Zamanlanmış işler sırayla, birer birer çalışır: aynı anda birkaçı başlarsa bellek 512 MB sınırını aşıp servisi yeniden
+# başlatabiliyor. Sıra bekleyen işler atlanmasın diye gecikme payı uzun, kaçırılan tekrarlar tek çalıştırmaya indirilir.
+_scheduler = BackgroundScheduler(
+    timezone="UTC",
+    executors={"default": ThreadPoolExecutor(1)},
+    job_defaults={"misfire_grace_time": 3 * 3600, "coalesce": True, "max_instances": 1},
+)
 
 INITIAL_RUN_SUFFIX = "_initial_run"
 MANUAL_RUN_SUFFIX = "_manual_run"
@@ -30,6 +37,20 @@ _ONE_OFF_SUFFIXES = (INITIAL_RUN_SUFFIX, MANUAL_RUN_SUFFIX)
 # İş kimliği -> son çalışmanın sonucu (yönetim panelindeki Sistem sayfası için). Bellek içidir; işler ayrı bir worker'a
 # taşınınca ortak bir depoya yazılmalı (bkz. admin/system.py).
 _last_runs: dict[str, dict] = {}
+
+
+def _measured(func):
+    """İşin başında ve sonunda süreç belleğini loglar; hangi işin belleği kabarttığı Render günlüklerinden okunur."""
+
+    @functools.wraps(func)
+    def run():
+        before = rss_mb()
+        try:
+            return func()
+        finally:
+            logger.info("Job %s: memory %s MB -> %s MB", func.__module__.rsplit(".", 1)[-1], before, rss_mb())
+
+    return run
 
 
 def _base_id(job_id: str) -> str:
@@ -60,94 +81,93 @@ def job_status() -> list[dict]:
 def start_scheduler() -> None:
     _scheduler.add_listener(_record_run, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
     _scheduler.add_job(
-        capture_daily_stats,
+        _measured(capture_daily_stats),
         trigger=CronTrigger(hour=3, minute=0),
         id="daily_stats",
         replace_existing=True,
     )
     _scheduler.add_job(
-        sync_all_shops,
+        _measured(sync_all_shops),
         trigger=IntervalTrigger(hours=2),
         id="order_sync",
         replace_existing=True,
     )
     _scheduler.add_job(
-        refresh_all_shops,
+        _measured(refresh_all_shops),
         trigger=IntervalTrigger(hours=4),
         id="listing_refresh",
         replace_existing=True,
     )
     _scheduler.add_job(
-        sync_finance,
+        _measured(sync_finance),
         trigger=IntervalTrigger(hours=4),
         id="finance_sync",
         replace_existing=True,
     )
     _scheduler.add_job(
-        evaluate_all_shops,
+        _measured(evaluate_all_shops),
         trigger=CronTrigger(hour=3, minute=15),
         id="listing_health",
         replace_existing=True,
     )
     _scheduler.add_job(
-        sync_shop_profile,
+        _measured(sync_shop_profile),
         trigger=IntervalTrigger(hours=4),
         id="shop_profile",
         replace_existing=True,
     )
     _scheduler.add_job(
-        purge_expired_records,
+        _measured(purge_expired_records),
         trigger=CronTrigger(hour=4, minute=0),
         id="retention_purge",
         replace_existing=True,
     )
     _scheduler.add_job(
-        sync_reviews,
+        _measured(sync_reviews),
         trigger=IntervalTrigger(hours=4),
         id="reviews",
         replace_existing=True,
     )
     _scheduler.add_job(
-        track_all_shops,
+        _measured(track_all_shops),
         trigger=CronTrigger(hour=5, minute=30),
         id="rank_tracking",
         replace_existing=True,
     )
     _scheduler.add_job(
-        refresh_demand,
+        _measured(refresh_demand),
         trigger=CronTrigger(day_of_week="mon", hour=6, minute=30),
         id="demand_trends",
         replace_existing=True,
     )
     _scheduler.start()
 
-    # Yeni süreç başlayınca her işi bir kez de çalıştır ki arayüz ilk günden veri görsün. Hepsi aynı anda değil, 45 sn
-    # arayla: yeniden başlatma döngüsünde (ör. bellek yetersizliği) hepsinin birden başlayıp durumu kötüleştirmesini önler.
+    # Yeni süreç başlayınca hafif/artımlı işleri bir kez çalıştır ki arayüz ilk günden veri görsün. 3 dakika arayla, tek
+    # tek: yeniden başlatma döngüsünde (ör. bellek yetersizliği) yükün tekrar tekrar üst üste binmesini önler.
+    # Sıra takibi ve listing sağlığı ağırdır, yalnızca kendi günlük saatlerinde çalışır.
     now = dt.datetime.now(dt.timezone.utc)
     for i, (func, job_id) in enumerate(
         [
-            (sync_all_shops, "order_sync_initial_run"),
             (sync_shop_profile, "shop_profile_initial_run"),
+            (sync_all_shops, "order_sync_initial_run"),
             (capture_daily_stats, "daily_stats_initial_run"),
             (sync_reviews, "reviews_initial_run"),
-            (evaluate_all_shops, "listing_health_initial_run"),
             (refresh_all_shops, "listing_refresh_initial_run"),
             (sync_finance, "finance_sync_initial_run"),
-            (track_all_shops, "rank_tracking_initial_run"),
         ],
         start=1,
     ):
-        _scheduler.add_job(func, trigger=DateTrigger(run_date=now + dt.timedelta(seconds=45 * i)), id=job_id, replace_existing=True)
+        _scheduler.add_job(_measured(func), trigger=DateTrigger(run_date=now + dt.timedelta(seconds=180 * i)), id=job_id, replace_existing=True)
 
     logger.info(
         "Scheduler started: daily_stats 03:00, listing_health 03:15 UTC; order_sync every 2h, "
-        "listing_refresh/shop_profile/reviews every 4h, finance_sync every 4h (all also run once shortly after start)."
+        "listing_refresh/shop_profile/reviews every 4h, finance_sync every 4h (the lighter ones also run once, minutes apart, after start)."
     )
 
 
 def run_now(job_id: str) -> bool:
     """Zamanlanmış bir işi hemen bir kez çalıştırır (yönetim paneli). İş yoksa ya da zaten elle başlatılmış ve henüz
-    başlamamışsa False. Aynı anda en fazla 2 iş çalıştığı için sırada bekleyebilir."""
+    başlamamışsa False. Aynı anda tek iş çalıştığı için sırada bekleyebilir."""
     if not _scheduler.running or _base_id(job_id) != job_id:
         return False
     job = _scheduler.get_job(job_id)

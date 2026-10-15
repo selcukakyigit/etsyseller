@@ -9,6 +9,8 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.core.errors import register_error_handlers
 from app.core.i18n import set_lang, tr, translate_detail
+from app.core.limits import SlidingWindow
+from app.core.net import client_ip
 from app.etsy.client import DemoShopError, EtsyApiError, EtsyAuthError
 
 # Uygulama logları (Etsy'ye giden yazma istekleri, yayın adımları) uvicorn çıktısıyla aynı yere düşsün.
@@ -92,9 +94,21 @@ SECURITY_HEADERS = {
 }
 
 
+# IP başına dakikada en fazla 600 istek (saniyede 10): sayfa açılışları onlarca istek yapar, bu sınıra bir kullanıcı takılmaz;
+# hatalı bir istemci ya da bot ise sunucuyu boğamaz. Webhook'lar (imzalı, sağlayıcıdan gelir) ve CORS ön isteği sayılmaz.
+_ip_window = SlidingWindow(limit=600, window=60)
+_UNLIMITED_PREFIXES = ("/webhooks", "/static", "/health")
+
+
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     set_lang(request.headers.get("x-lang"))  # arayüz dili; hata ve bildirim metinleri buna göre seçilir (core/i18n.py)
+    if request.method != "OPTIONS" and not request.url.path.startswith(_UNLIMITED_PREFIXES) and not _ip_window.hit(client_ip(request)):
+        return JSONResponse(
+            status_code=429,
+            content={"detail": tr("Çok fazla istek gönderildi. Biraz bekleyip tekrar dene.", "Too many requests. Wait a moment and try again."), "code": 429},
+            headers={"Retry-After": "30", **SECURITY_HEADERS},
+        )
     response = await call_next(request)
     for key, value in SECURITY_HEADERS.items():
         response.headers.setdefault(key, value)

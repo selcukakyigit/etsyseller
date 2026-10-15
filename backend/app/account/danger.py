@@ -59,7 +59,7 @@ def _wipe_shops(db: Session, shop_ids: list[int]) -> None:
 
     blobstore.remove(files)
     for sid in shop_ids:
-        finance_service._finance_cache.pop(sid, None)
+        finance_service._finance_cache.drop_shop(sid)
         for folder in SHOP_UPLOAD_FOLDERS:
             shutil.rmtree(UPLOADS / folder / str(sid), ignore_errors=True)
 

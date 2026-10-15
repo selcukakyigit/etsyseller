@@ -8,11 +8,11 @@ import datetime as dt
 import hashlib
 import html
 import json
-import threading
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.fingerprint import ResultCache, build_slot
 from app.finance import service as fin
 from app.finance.models import FinPayment
 from app.listings.models import ListingCache, ListingStatSnapshot
@@ -117,8 +117,8 @@ def metric_delta(snaps: list[ListingStatSnapshot], start: dt.date, end: dt.date)
 
 # Günlük satış indeksi: {listing_id: [(gün, adet, ciro), ...]} — tüm siparişler BİR kez taranarak kurulur, sonra herhangi bir
 # tarih aralığı toplama ile anında hesaplanır. Siparişler ya da ödeme kayıtları değişince (sürüm anahtarı) yeniden kurulur.
-_index_cache: dict[int, tuple[tuple, dict[int, list[tuple[dt.date, int, float]]]]] = {}
-_index_lock = threading.Lock()
+# Boyutu sınırlıdır; anahtar (mağaza,), değer (sürüm, indeks).
+_index_cache = ResultCache(max_items=6)
 
 
 def _orders_version(db: Session, shop: Shop) -> tuple:
@@ -129,10 +129,17 @@ def _orders_version(db: Session, shop: Shop) -> tuple:
 
 def _sales_index(db: Session, shop: Shop) -> dict[int, list[tuple[dt.date, int, float]]]:
     version = _orders_version(db, shop)
-    with _index_lock:
-        cached = _index_cache.get(shop.id)
+    cached = _index_cache.get((shop.id,))
+    if cached and cached[0] == version:
+        return cached[1]
+    with build_slot:
+        cached = _index_cache.get((shop.id,))  # sırada beklerken başka istek kurmuş olabilir
         if cached and cached[0] == version:
             return cached[1]
+        return _build_sales_index(db, shop, version)
+
+
+def _build_sales_index(db: Session, shop: Shop, version: tuple) -> dict[int, list[tuple[dt.date, int, float]]]:
     tbl = fin._fx_tables(db, shop)
     per: dict[int, dict[dt.date, list]] = {}
     # Yalnızca gereken sütunlar, parça parça: tüm siparişlerin ham JSON'u aynı anda belleğe alınmaz.
@@ -150,8 +157,7 @@ def _sales_index(db: Session, shop: Shop) -> dict[int, list[tuple[dt.date, int, 
             d[0] += qty
             d[1] += fin._money(t.get("price")) * qty * kc
     index = {lid: sorted((day, u, r) for day, (u, r) in days.items()) for lid, days in per.items()}
-    with _index_lock:
-        _index_cache[shop.id] = (version, index)
+    _index_cache.set((shop.id,), (version, index))
     return index
 
 

@@ -40,5 +40,5 @@ def disconnect_shop(db: Session, shop: Shop) -> None:
     sync_status.mark_done(shop.id)  # sürmekte olan senkron bayrağını temizle
     from app.finance import service as finance_service  # bellekteki rapor önbelleği
 
-    finance_service._finance_cache.pop(shop.id, None)
+    finance_service._finance_cache.drop_shop(shop.id)
     shutil.rmtree(UPLOADS / "image-cache" / str(shop.id), ignore_errors=True)

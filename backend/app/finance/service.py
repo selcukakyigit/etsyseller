@@ -17,7 +17,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal
-from app.core.fingerprint import ResultCache, fingerprints
+from app.core.fingerprint import ResultCache, build_slot, fingerprints
 from app.core.i18n import get_lang, tr
 import copy
 from app.etsy.client import EtsyClient
@@ -477,8 +477,9 @@ ORDER_FEE_BUCKETS = ("transaction", "processing_fee", "regulatory_fee", "offsite
 # tarih aralığı ne olursa olsun rapor her açılışta TÜM geçmişe göre yeniden hesaplanıyordu. Etsy'listing performansındaki
 # `_sales_index` ile aynı desen: veri (sipariş/ödeme) değişmediği sürece bir kere hesaplanır, sonraki her rapor isteği
 # yerelden (anında) döner; yalnızca "Etsy'den güncelle" ya da yeni bir sipariş gelince yeniden kurulur.
-_finance_cache: dict[int, tuple[tuple, tuple[list[dict], dict, dict]]] = {}
-_finance_lock = threading.Lock()
+# Tüm geçmişi taşıdığı için boyutu sınırlıdır (en az kullanılan mağaza atılır, ihtiyaç olunca yeniden kurulur).
+# Anahtar (mağaza,) — drop_shop ile mağaza bazlı silinir. Değer: (sürüm, sonuç).
+_finance_cache = ResultCache(max_items=6)
 
 
 def _finance_version(db: Session, shop: Shop) -> tuple:
@@ -516,11 +517,17 @@ def _slim_receipt(raw: dict) -> dict:
 def _order_finance(db: Session, shop: Shop) -> tuple[list[dict], dict, dict]:
     """Her sipariş için ledger toplamları ve para birimi çarpanları. Ayrıca rapor para biriminde aylık ortanca kur."""
     version = _finance_version(db, shop)
-    with _finance_lock:
-        cached = _finance_cache.get(shop.id)
+    cached = _finance_cache.get((shop.id,))
+    if cached and cached[0] == version:
+        return cached[1]
+    with build_slot:
+        cached = _finance_cache.get((shop.id,))  # sırada beklerken başka istek kurmuş olabilir
         if cached and cached[0] == version:
             return cached[1]
+        return _build_order_finance(db, shop, version)
 
+
+def _build_order_finance(db: Session, shop: Shop, version: tuple) -> tuple[list[dict], dict, dict]:
     tbl = _fx_tables(db, shop)
     pays = {
         r: (g, c, f)
@@ -564,8 +571,7 @@ def _order_finance(db: Session, shop: Shop) -> tuple[list[dict], dict, dict]:
     R = tbl["R"]
     med_r = {ym: v for (c, ym), v in tbl["med"].items() if c == R}
     result = (orders, med_r, {"R": R, "overall_r": tbl["overall"].get(R) or 1.0})
-    with _finance_lock:
-        _finance_cache[shop.id] = (version, result)
+    _finance_cache.set((shop.id,), (version, result))
     return result
 
 

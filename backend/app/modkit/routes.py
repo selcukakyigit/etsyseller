@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.net import client_ip
 from app.auth.models import User
 from app.core import blobstore
 from app.core.db import get_db
@@ -436,8 +437,7 @@ def list_currencies():
 
 @invite_router.get("/{token}")
 def invite_lookup(token: str, request: Request, db: Session = Depends(get_db)):
-    ip = (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "")).split(",")[0].strip()
-    return sharing.lookup(db, token, ip or "unknown")
+    return sharing.lookup(db, token, client_ip(request))
 
 
 @invite_router.post("/{token}/accept")
