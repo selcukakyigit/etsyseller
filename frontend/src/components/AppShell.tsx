@@ -1,5 +1,6 @@
 "use client";
 
+import InstallBanner from "@/components/InstallBanner";
 import { ReactNode, useCallback, useState } from "react";
 import { Shop, User } from "@/lib/api";
 import Sidebar from "@/components/layout/Sidebar";
@@ -49,6 +50,7 @@ export default function AppShell({
       <MobileDrawer {...shell} open={menuOpen} onClose={closeMenu} />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar activeShop={activeShop} onMenu={openMenu} />
+        <InstallBanner />
         {activeShop?.is_demo && (
           <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs leading-relaxed text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
             {t(
