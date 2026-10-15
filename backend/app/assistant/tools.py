@@ -373,24 +373,41 @@ def list_orders(ctx: Ctx, a: dict) -> dict:
     return {"filtre": kind, "sayi": len(out), "siparisler": out}
 
 
+_LISTING_STATES = ("active", "inactive", "draft", "sold_out", "expired")
+
+
+def _state_like(state: str):
+    return ListingCache.raw_json.like(f'%"state": "{state}"%')  # kaba süzgeç; kesin kontrol satır okunurken yapılır
+
+
 def search_listings(ctx: Ctx, a: dict) -> dict:
-    limit = max(1, min(int(a.get("limit") or 10), 20))
+    limit = max(1, min(int(a.get("limit") or 10), 50))
+    state = a.get("state") if a.get("state") in _LISTING_STATES else None
     q = select(ListingCache).where(ListingCache.shop_id == ctx.shop.id)
     if a.get("query"):
         q = q.where(ListingCache.title.like(f"%{str(a['query']).strip()}%"))
+    if state:
+        q = q.where(_state_like(state))
     rows = ctx.db.scalars(q.order_by(ListingCache.views.desc()).limit(limit)).all()
     out = []
     for r in rows:
         raw = json.loads(r.raw_json)
+        if state and raw.get("state") != state:
+            continue
         pr = raw.get("price") or {}
         out.append({"listing_id": r.listing_id, "baslik": html.unescape(r.title), "durum": raw.get("state"), "fiyat": _r(pr["amount"] / pr["divisor"]) if pr.get("divisor") else None, "goruntulenme": r.views, "favori": r.favorites})
-    if a.get("query") is None or len(out) < limit:
+    if (state is None or state == "draft") and (a.get("query") is None or len(out) < limit):
         needle = str(a.get("query") or "").strip().lower()
         for r in ctx.db.scalars(select(ListingLocal).where(ListingLocal.shop_id == ctx.shop.id, ListingLocal.listing_id < 0).order_by(ListingLocal.updated_at.desc())):
             title = html.unescape(json.loads(r.data_json).get("title") or "")
             if needle in title.lower():
                 out.append({"listing_id": r.listing_id, "baslik": title or "(başlıksız)", "durum": "yayınlanmamış yeni taslak", "fiyat": None, "goruntulenme": 0, "favori": 0})
-    return {"sayi": len(out), "listingler": out[: limit + 5]}
+    counts = {
+        st: ctx.db.scalar(select(func.count()).select_from(ListingCache).where(ListingCache.shop_id == ctx.shop.id, _state_like(st))) or 0
+        for st in _LISTING_STATES
+    }
+    counts["yayinlanmamis_yeni_taslak"] = ctx.db.scalar(select(func.count()).select_from(ListingLocal).where(ListingLocal.shop_id == ctx.shop.id, ListingLocal.listing_id < 0)) or 0
+    return {"sayi": len(out), "durum_sayilari": counts, "listingler": out[: limit + 5]}
 
 
 def get_listing(ctx: Ctx, a: dict) -> dict:
@@ -1344,24 +1361,56 @@ def keep_watching_listing(ctx: Ctx, a: dict) -> dict:
 # ------------------------------------------------------------------ ONAY GEREKTİREN araçlar: bunlar Etsy'ye GERÇEKTEN
 # gider, görünür ve geri alması zor. confirm=true verilmeden yalnızca ne yapılacağını özetler, YAPMAZ — bkz. SYSTEM_PROMPT.
 
+def _stage_activation(ctx: Ctx, lid: int) -> str | None:
+    """Listing'i yayınlanınca AKTİF olacak şekilde yerel sürümde işaretler (Etsy'de taslak olan ya da yeni listing).
+    Aktif etmek için gerekenler eksikse hiçbir şey değiştirmeden eksikleri yazan hata metnini döner."""
+    work = _current_work(ctx, lid)
+    if work is None:
+        return "Listing bulunamadı."
+    problems = creation.validate_new(work, activate=True)
+    if problems:
+        return " ".join(problems)
+    if work.get("state") == "active":
+        return None
+    work["state"] = "active"
+    live = None
+    if lid > 0 and drafts._local_row(ctx.db, ctx.shop, lid) is None:
+        live = listing_service.get_listing_for_edit(ctx.db, ctx.shop, lid).model_dump()
+    drafts.save_local(ctx.db, ctx.shop, lid, work, live)
+    return None
+
+
 def publish_listing_draft(ctx: Ctx, a: dict) -> dict:
     """Bir listing'in taslağını/yerel değişikliklerini Etsy'ye yayınlar — canlıya yansır. confirm=true
-    gerekir; aksi halde yalnızca ne yayınlanacağını özetler."""
+    gerekir; aksi halde yalnızca ne yayınlanacağını özetler. activate=true ise listing aynı işlemde AKTİF edilir
+    (satışa açılır, 0,20 $ listing ücreti); verilmezse yeni listing Etsy'de taslak olarak kalır."""
     lid = int(a["listing_id"])
+    activate = bool(a.get("activate"))
     if not a.get("confirm"):
         d = drafts.get_draft(ctx.db, ctx.shop, lid)
         loc = drafts.get_local(ctx.db, ctx.shop, lid)
-        if not (d["exists"] and d["data"]) and not (loc["exists"] and loc["data"]):
+        if not (d["exists"] and d["data"]) and not (loc["exists"] and loc["data"]) and not activate:
             return {"error": "Yayınlanacak bir değişiklik yok."}
-        return {"pending_confirmation": True, "listing_id": lid,
-                "not": "Bu, listing'i GERÇEKTEN Etsy'ye yayınlar (canlıya yansır, geri dönüşü zor). Kullanıcı sohbette AÇIKÇA onaylarsa (evet/yap/onaylıyorum vb.) confirm=true ile TEKRAR çağır; onaylamadıysa asla çağırma."}
+        out = {"pending_confirmation": True, "listing_id": lid, "aktif_edilecek": activate,
+               "not": "Bu, listing'i GERÇEKTEN Etsy'ye yayınlar (canlıya yansır, geri dönüşü zor). Kullanıcı sohbette AÇIKÇA onaylarsa (evet/yap/onaylıyorum vb.) confirm=true ile TEKRAR çağır; onaylamadıysa asla çağırma."}
+        if activate:
+            work = _current_work(ctx, lid)
+            problems = creation.validate_new(work, activate=True) if work is not None else ["Listing bulunamadı."]
+            out["aktif_etmek_icin_eksikler"] = problems
+            out["not"] += " Aktif edilecek: satışa açılır ve Etsy 0,20 $ listing ücreti alır. Eksik varsa onay isteme, önce eksikleri kullanıcıya söyle."
+        return out
     if lid > 0:
         d = drafts.get_draft(ctx.db, ctx.shop, lid)
         if d["exists"] and d["data"]:  # UI'daki "Yayınla" da aynısını yapar: taslağı önce yerel sürüme yükseltir
             live = listing_service.get_listing_for_edit(ctx.db, ctx.shop, lid).model_dump()
             drafts.save_local(ctx.db, ctx.shop, lid, d["data"], live)
+    if activate:
+        err = _stage_activation(ctx, lid)
+        if err:
+            return {"error": f"Aktif edilemedi, önce şunlar tamamlanmalı: {err}"}
     result = drafts.publish_local(ctx.db, ctx.shop, ctx.user_id, lid, bool(a.get("force")))
-    ctx.cards.append({"type": "listing_published", "listing_id": lid, "ok": result.get("ok"), "edit_url": f"/listings/{lid}/edit"})
+    new_id = result.get("listing_id", lid)
+    ctx.cards.append({"type": "listing_published", "listing_id": new_id, "ok": result.get("ok"), "edit_url": f"/listings/{new_id}/edit", "activated": activate and bool(result.get("ok"))})
     return result
 
 
@@ -1415,7 +1464,7 @@ TOOLS: list[dict] = [
     {"name": "ad_reports", "description": "Daha önce kaydedilmiş reklam raporları (isteğe bağlı listing'e göre), dönemler arası karşılaştırma için.", "input_schema": _obj({"listing_id": {"type": "integer"}, "limit": {"type": "integer"}})},
     {"name": "top_products", "description": "Dönemin en iyi ürünleri (satış, kâr, adet, marj) ve her ürünün geçen yılın AYNI dönemindeki adet/satışı.", "input_schema": _obj({"start_date": DATE, "end_date": DATE, "sort_by": {"type": "string", "enum": ["sales", "profit", "units"]}, "limit": {"type": "integer"}})},
     {"name": "list_orders", "description": "Siparişleri listeler: to_ship (gönderilecek), overdue (gecikmiş), recent (son siparişler) ya da search (alıcı/ürün/sipariş no arama).", "input_schema": _obj({"filter": {"type": "string", "enum": ["to_ship", "overdue", "recent", "search"]}, "query": {"type": "string"}, "limit": {"type": "integer"}})},
-    {"name": "search_listings", "description": "Mağazadaki listing'lerde başlığa göre arar (en çok görüntülenenden başlar).", "input_schema": _obj({"query": {"type": "string"}, "limit": {"type": "integer"}})},
+    {"name": "search_listings", "description": "Mağazadaki listing'lerde başlığa göre arar (en çok görüntülenenden başlar). state ile durumuna göre süzer (draft = Etsy'de yayında olmayan taslaklar, ayrıca henüz Etsy'ye hiç gitmemiş yeni taslaklar da gelir). Sonuçta durum_sayilari de döner: \"kaç taslak var\" sorusu için bunu kullan.", "input_schema": _obj({"query": {"type": "string"}, "limit": {"type": "integer"}, "state": {"type": "string", "enum": ["active", "inactive", "draft", "sold_out", "expired"]}})},
     {"name": "get_listing", "description": "Bir listing'in mevcut başlığı, etiketleri, açıklaması ve fiyatı (düzenlemeden önce bakmak için).", "input_schema": _obj({"listing_id": {"type": "integer"}}, ["listing_id"])},
     {"name": "shop_defaults", "description": "Yeni listing için mağazanın en çok kullanılan kategorileri, kargo profili ve iade politikası.", "input_schema": _obj({})},
     {"name": "similar_listings", "description": "Mağazadaki benzer listing'leri bulur (İngilizce anahtar kelimelerle): fiyatlarını, etiketlerini, başlık üslubunu ve açıklama örneğini verir. Yeni listing'de fiyat ve üslup için MUTLAKA bak.", "input_schema": _obj({"query": {"type": "string", "description": "İngilizce ürün anahtar kelimeleri, ör. 'mountain metal wall art'"}, "limit": {"type": "integer"}}, ["query"])},
@@ -1477,7 +1526,7 @@ TOOLS: list[dict] = [
     {"name": "generate_missing_alt_texts", "description": "Bir listing'in alt metni olmayan (yalnızca YENİ/taslak) fotoğrafları için yapay zekâyla alt metin yazar.", "input_schema": _obj({"listing_id": {"type": "integer"}}, ["listing_id"])},
     {"name": "listing_health_status", "description": "Listing'in optimizasyon durumu: yeterli veri var mı, performansı mağaza medyanına göre nasıl, hangi alan zayıf, durdurmayı değerlendirmeli mi. listing_id vermezsen dikkat isteyen tüm listing'leri döner.", "input_schema": _obj({"listing_id": {"type": "integer"}})},
     {"name": "keep_watching_listing", "description": "Bir listing için 'durdurmayı değerlendir' önerisini reddedip izlemeye devam eder (sayaç sıfırlanır). Etsy'ye hiçbir şey göndermez.", "input_schema": _obj({"listing_id": {"type": "integer"}}, ["listing_id"])},
-    {"name": "publish_listing_draft", "description": "ONAY GEREKİR. Bir listing'in taslağını/yerel değişikliklerini GERÇEKTEN Etsy'ye yayınlar (canlıya yansır). confirm=true verilmeden yalnızca ne yayınlanacağını özetler.", "input_schema": _obj({"listing_id": {"type": "integer"}, "confirm": {"type": "boolean"}, "force": {"type": "boolean", "description": "Etsy'de sonradan değişen alanları da ezer (çakışma varsa)"}}, ["listing_id"])},
+    {"name": "publish_listing_draft", "description": "ONAY GEREKİR. Bir listing'in taslağını/yerel değişikliklerini GERÇEKTEN Etsy'ye yayınlar (canlıya yansır). confirm=true verilmeden yalnızca ne yayınlanacağını özetler.", "input_schema": _obj({"listing_id": {"type": "integer"}, "confirm": {"type": "boolean"}, "force": {"type": "boolean", "description": "Etsy'de sonradan değişen alanları da ezer (çakışma varsa)"}, "activate": {"type": "boolean", "description": "true: listing aynı işlemde AKTİF edilir (satışa açılır, 0,20 $ ücret). Yeni listing'i ya da Etsy'deki taslağı canlıya almak için. Verilmezse yeni listing Etsy'de taslak olarak kalır."}}, ["listing_id"])},
     {"name": "deactivate_listing", "description": "ONAY GEREKİR. Listing'i Etsy'de INACTIVE yapar (satışa kapanır). confirm=true verilmeden yalnızca ne olacağını özetler.", "input_schema": _obj({"listing_id": {"type": "integer"}, "confirm": {"type": "boolean"}}, ["listing_id"])},
     {"name": "listing_diagnosis", "description": "Bir listing'in satış teşhisi: neden düştüğü (mağaza geneli mi listing'e özel mi, fiyat, içerik değişikliği, yorumlar, görünürlük/dönüşüm), düşüşün başladığı ay, mevsim (zirveye kaç hafta) ve önerilen tek hamle. 'Bu listing neden satmıyor/düştü' sorularında ve bir listing'i iyileştirmeden önce MUTLAKA kullan.", "input_schema": _obj({"listing_id": {"type": "integer"}}, ["listing_id"])},
     {"name": "track_keywords", "description": "Bir listing'in Etsy aramalarındaki sırasını takip etmeyi yönetir: arama ekle (add), çıkar (remove), measure_now=true ile hemen ölç. Argümansız çağrılırsa mevcut takibi ve önerileri döner. Listing başına en fazla 3 arama, mağaza başına 25 listing.", "input_schema": _obj({

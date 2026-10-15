@@ -22,7 +22,8 @@ const date = (ts?: number | null) =>
 
 /**
  * Listing'in durumu, türü ve tarihleri (Etsy editörünün başlığındaki "Active · Listed on … · View on Etsy").
- * Durum yalnızca Aktif/Pasif arasında değiştirilebilir (Etsy'nin API'si yalnızca bunlara izin verir).
+ * Durum Aktif/Pasif arasında değiştirilebilir; Etsy'de taslak olan listing Aktif edilebilir (Etsy API'si draft → active'e
+ * izin verir, en az bir fotoğraf ve kargo profili gerekir). Tükenmiş, süresi dolmuş ve kaldırılmış durumlar salt okunurdur.
  */
 export default function ListingStatusBar({
   state,
@@ -46,7 +47,8 @@ export default function ListingStatusBar({
   isNew?: boolean;
 }) {
   const current = state ?? liveState ?? null;
-  const editable = liveState === "active" || liveState === "inactive";
+  const isDraftOnEtsy = liveState === "draft";
+  const editable = liveState === "active" || liveState === "inactive" || isDraftOnEtsy;
   const listed = date(listedAt);
   const ends = date(endsAt);
 
@@ -79,15 +81,24 @@ export default function ListingStatusBar({
           {t("Durum", "Status")}
           <select
             value={current}
-            onChange={(e) => onStateChange(e.target.value as "active" | "inactive")}
+            onChange={(e) => onStateChange(e.target.value as "active" | "inactive" | "draft")}
             className={`rounded-lg border px-2 py-1 text-sm font-medium outline-none ${
               current === "active"
                 ? "border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950/40 dark:text-green-300"
                 : "border-neutral-300 bg-neutral-50 text-neutral-700 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
             }`}
           >
-            <option value="active">{t("Aktif", "Active")}</option>
-            <option value="inactive">{t("Pasif", "Inactive")}</option>
+            {isDraftOnEtsy ? (
+              <>
+                <option value="draft">{t("Taslak (Etsy'de yayında değil)", "Draft (not live on Etsy)")}</option>
+                <option value="active">{t("Aktif et (0,20 $ listing ücreti)", "Activate ($0.20 listing fee)")}</option>
+              </>
+            ) : (
+              <>
+                <option value="active">{t("Aktif", "Active")}</option>
+                <option value="inactive">{t("Pasif", "Inactive")}</option>
+              </>
+            )}
           </select>
         </label>
       ) : (

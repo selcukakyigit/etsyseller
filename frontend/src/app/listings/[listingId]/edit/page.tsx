@@ -126,10 +126,13 @@ export default function ListingEditPage() {
   }
 
   async function handlePublish() {
-    const activating = isNew && edit?.state === "active";
+    const activatingDraft = !isNew && wc.live?.state === "draft" && edit?.state === "active";
+    const activating = (isNew && edit?.state === "active") || activatingDraft;
     const ok = await confirm({
       title: isNew ? t("Etsy'de listing oluşturulsun mu?", "Create the listing on Etsy?") : t("Etsy'de yayınlansın mı?", "Publish to Etsy?"),
-      message: isNew
+      message: activatingDraft
+        ? t("Listing aktif edilip satışa açılacak; Etsy listing ücreti (0,20 $) alır.", "The listing will be made active and go on sale; Etsy charges the listing fee ($0.20).")
+        : isNew
         ? activating
           ? t("Listing Etsy'de oluşturulup aktif edilecek; Etsy listing ücreti (0,20 $) alır.", "The listing will be created on Etsy and made active; Etsy charges the listing fee ($0.20).")
           : t("Listing Etsy'de taslak olarak oluşturulacak (ücretsiz). Aktif etmeyi sonra sen yaparsın.", "The listing will be created on Etsy as a draft (free). You can activate it later.")
@@ -137,7 +140,7 @@ export default function ListingEditPage() {
             "Kaydettiğin tüm değişiklikler Etsy'deki canlı listing'e uygulanacak. Yayındaki listing hemen güncellenir.",
             "All your saved changes will be applied to the live listing on Etsy. The live listing updates immediately.",
           ),
-      confirmLabel: isNew ? t("Oluştur", "Create") : t("Etsy'de yayınla", "Publish to Etsy"),
+      confirmLabel: isNew ? t("Oluştur", "Create") : activatingDraft ? t("Aktif et", "Activate") : t("Etsy'de yayınla", "Publish to Etsy"),
     });
     if (!ok || !activeShop) return;
     if (wc.unsaved && !(await wc.saveLocal())) return;
