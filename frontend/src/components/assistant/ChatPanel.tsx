@@ -106,7 +106,25 @@ export default function ChatPanel({
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [sessions, setSessions] = useState<ChatSessionInfo[]>([]);
   const [input, setInput] = useState("");
-  const voice = useSpeechInput(setInput);
+  // Yazılıp gönderilmemiş metin de sayfa değişince kaybolmasın: mağaza bazında tarayıcıda tutulur.
+  const draftKey = `ulagg_chat_draft:${shopId}`;
+  const changeInput = useCallback(
+    (value: string) => {
+      setInput(value);
+      try {
+        if (value) localStorage.setItem(draftKey, value);
+        else localStorage.removeItem(draftKey);
+      } catch {}
+    },
+    [draftKey],
+  );
+  const voice = useSpeechInput(changeInput);
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(draftKey);
+      if (saved) setInput((current) => current || saved);
+    } catch {}
+  }, [draftKey]);
   const [pending, setPending] = useState<Pending[]>([]);
   const [uploading, setUploading] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -292,7 +310,7 @@ export default function ChatPanel({
       images: imgs.map((i) => ({ id: i.id, url: i.url, filename: i.name, content_type: i.isImage ? "image/*" : "application/octet-stream" })), cards: [],
     };
     setMessages((m) => [...m, temp]);
-    setInput("");
+    changeInput("");
     setPending([]);
     try {
       const reply = await api.assistant.chat(shopId, { message, session_id: sessionId, image_ids: imgs.map((i) => i.id), today: localToday(), request_id: rid, lang });
@@ -302,7 +320,7 @@ export default function ChatPanel({
       onSent?.();
     } catch (e) {
       setMessages((m) => m.filter((x) => x.id !== temp.id));
-      setInput(message);
+      changeInput(message);
       setPending(imgs);
       setError(e instanceof Error ? e.message : t("Mesaj gönderilemedi", "Message could not be sent"));
     } finally {
@@ -336,7 +354,7 @@ export default function ChatPanel({
     setSessionId(null);
     setMessages([]);
     setPending([]);
-    setInput("");
+    changeInput("");
     setError(null);
     setHistoryOpen(false);
   }
@@ -556,7 +574,7 @@ export default function ChatPanel({
           <textarea
             ref={textArea}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => changeInput(e.target.value)}
             onKeyDown={onKey}
             onPaste={onPaste}
             rows={1}
