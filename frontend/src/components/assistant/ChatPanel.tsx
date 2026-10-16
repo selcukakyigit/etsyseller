@@ -41,18 +41,29 @@ function isStale(messages: ChatMessageOut[]): boolean {
   return Number.isFinite(at) && Date.now() - at > CHAT_IDLE_MS;
 }
 
-/** **kalın** ve satır sonlarını destekleyen basit metin gösterimi (HTML enjekte etmez). */
+/** **kalın** ve satır sonlarını destekleyen basit metin gösterimi (HTML enjekte etmez). "### Başlık" satırları kalın başlık olur. */
 function Text({ text }: { text: string }) {
   return (
     <>
-      {text.split("\n").map((line, i) => (
-        <Fragment key={i}>
-          {i > 0 && <br />}
-          {line.split(/(\*\*[^*]+\*\*)/g).map((part, j) => (part.startsWith("**") && part.endsWith("**") ? <b key={j}>{part.slice(2, -2)}</b> : <Fragment key={j}>{part}</Fragment>))}
-        </Fragment>
-      ))}
+      {text.split("\n").map((raw, i) => {
+        const heading = /^#{1,6}\s+/.test(raw);
+        const line = heading ? raw.replace(/^#{1,6}\s+/, "") : raw;
+        return (
+          <Fragment key={i}>
+            {i > 0 && <br />}
+            {line.split(/(\*\*[^*]+\*\*)/g).map((part, j) =>
+              part.startsWith("**") && part.endsWith("**") ? <b key={j}>{part.slice(2, -2)}</b> : heading ? <b key={j}>{part}</b> : <Fragment key={j}>{part}</Fragment>,
+            )}
+          </Fragment>
+        );
+      })}
     </>
   );
+}
+
+/** Sohbetteki video eki: oynatılabilir küçük önizleme (dokununca tam kontrollerle oynar). */
+function VideoThumb({ src, size = "h-20 w-20" }: { src: string; size?: string }) {
+  return <video src={src} muted playsInline preload="metadata" controls className={`${size} rounded-lg bg-black object-cover`} />;
 }
 
 /** "Düşünüyor" göstergesi: çizilen Ulagg işareti + asistanın o an yaptığı iş (sunucudan gelir). */
@@ -297,7 +308,8 @@ export default function ChatPanel({
       try {
         const up = await api.assistant.uploadImage(shopId, f);
         const isImage = up.content_type.startsWith("image/");
-        setPending((p) => [...p, { id: up.id, url: isImage ? URL.createObjectURL(f) : "", name: f.name, isImage, isVideo: up.content_type.startsWith("video/") }]);
+        const isMovie = up.content_type.startsWith("video/");
+        setPending((p) => [...p, { id: up.id, url: isImage || isMovie ? URL.createObjectURL(f) : "", name: f.name, isImage, isVideo: isMovie }]);
       } catch (e) {
         setError(e instanceof Error && e.message ? e.message : t("Dosya yüklenemedi", "File upload failed"));
       } finally {
@@ -351,7 +363,7 @@ export default function ChatPanel({
     // Kullanıcı mesajı hemen görünsün (sunucudan cevap gelince gerçek kayıtla değişir).
     const temp: ChatMessageOut = {
       id: --tempSeq.current, role: "user", content: message, created_at: "",
-      images: imgs.map((i) => ({ id: i.id, url: i.url, filename: i.name, content_type: i.isImage ? "image/*" : "application/octet-stream" })), cards: [],
+      images: imgs.map((i) => ({ id: i.id, url: i.url, filename: i.name, content_type: i.isImage ? "image/*" : i.isVideo ? "video/mp4" : "application/octet-stream" })), cards: [],
     };
     setMessages((m) => [...m, temp]);
     changeInput("");
@@ -511,6 +523,8 @@ export default function ChatPanel({
                   {m.images.map((i) =>
                     i.expired ? (
                       <ExpiredChip key={i.id} name={i.filename ?? t("dosya", "file")} />
+                    ) : i.content_type?.startsWith("video/") ? (
+                      <VideoThumb key={i.id} src={img(i.url)} />
                     ) : i.content_type && !i.content_type.startsWith("image/") ? (
                       <FileChip key={i.id} name={i.filename ?? "dosya"} size="h-20 w-20" />
                     ) : (
@@ -558,6 +572,8 @@ export default function ChatPanel({
                 {p.isImage ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={p.url} alt={p.name} className="h-14 w-14 rounded-lg object-cover" />
+                ) : p.isVideo && p.url ? (
+                  <VideoThumb src={p.url} size="h-14 w-14" />
                 ) : (
                   <FileChip name={p.name} />
                 )}

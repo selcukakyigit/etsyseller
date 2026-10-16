@@ -235,8 +235,8 @@ def add_option(work: dict, name: str, option: str, price=None, quantity=None, co
     reference = copy_from or options(work, name)[0]
     sources = [p for p in products if _match(p, {name: reference})]
     price_vary = pv0["property_id"] in ((work.get("inventory") or {}).get("price_on_property") or [])
-    if price_vary and price is None:
-        return 0, f'"{name}" varyasyonu fiyata göre değişiyor; yeni seçenek için price ver.'
+    if price_vary and price is None and not copy_from:
+        return 0, f'"{name}" varyasyonu fiyata göre değişiyor; yeni seçenek için price ver ya da fiyatı hangi seçenekten kopyalayacağını copy_from ile söyle (ör. inç karşılığı için copy_from: cm seçeneği).'
     added = []
     for src in sources:
         clone = copy.deepcopy(src)

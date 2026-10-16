@@ -51,6 +51,7 @@ export default function ListingPreviewModal({ shopId, listingId, shopName, onClo
   const { t } = useT();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [active, setActive] = useState(0);
+  const [videoIdx, setVideoIdx] = useState<number | null>(null); // seçiliyse ana alanda video oynar
   const [choice, setChoice] = useState<Record<number, string>>({});
   const [moreDesc, setMoreDesc] = useState(false);
   const [moreMaterials, setMoreMaterials] = useState(false);
@@ -76,6 +77,12 @@ export default function ListingPreviewModal({ shopId, listingId, shopName, onClo
     let cancelled = false;
     (async () => {
       try {
+        // Editördeki ekranla aynı kaynak: otomatik taslak (asistanın fotoğraf/video işlemleri buraya yazar) > kaydedilmiş yerel sürüm > Etsy.
+        const draft = await api.listings.getDraft(shopId, listingId).catch(() => null);
+        if (draft?.exists && draft.data) {
+          if (!cancelled) setLoaded({ id: listingId, data: draft.data, local: true });
+          return;
+        }
         const local = await api.listings.getLocal(shopId, listingId);
         if (local.exists && local.data) {
           if (!cancelled) setLoaded({ id: listingId, data: local.data, local: true });
@@ -133,7 +140,11 @@ export default function ListingPreviewModal({ shopId, listingId, shopName, onClo
   const dims = data && (data.item_length || data.item_width || data.item_height) ? [data.item_length, data.item_width, data.item_height].filter(Boolean).join(" × ") + ` ${units[data.item_dimensions_unit ?? ""] ?? data.item_dimensions_unit ?? ""}` : null;
   const questions = data?.personalization?.questions ?? [];
   const maker = shopName || fetchedName || t("mağaza", "shop");
-  const next = (d: number) => setActive((i) => (images.length ? (i + d + images.length) % images.length : 0));
+  const videos = data?.videos ?? [];
+  const next = (d: number) => {
+    setVideoIdx(null);
+    setActive((i) => (images.length ? (i + d + images.length) % images.length : 0));
+  };
   const materialsText = data ? data.materials.join(", ") : "";
   const descLong = (data?.description.length ?? 0) > 420 || (data?.description.split("\n").length ?? 0) > 7;
 
@@ -167,18 +178,25 @@ export default function ListingPreviewModal({ shopId, listingId, shopName, onClo
           <div className="grid grid-cols-1 items-start gap-8 p-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
             {/* Galeri: solda dikey küçük resimler, ortada 1:1 kare içinde ortalanmış fotoğraf (açıklama uzayınca gerilmez) */}
             <div className="flex flex-col-reverse gap-3 md:flex-row md:items-start lg:sticky lg:top-4 lg:self-start">
-              {images.length > 1 && (
+              {(images.length > 1 || videos.length > 0) && (
                 <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] md:max-h-[34rem] md:flex-col md:overflow-y-auto md:overflow-x-visible [&::-webkit-scrollbar]:hidden">
                   {images.map((img, i) => (
-                    <button key={img.listing_image_id} type="button" onClick={() => setActive(i)} className={`h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg border-2 ${i === active ? "border-neutral-900 dark:border-neutral-100" : "border-transparent opacity-80 hover:opacity-100"}`}>
+                    <button key={img.listing_image_id} type="button" onClick={() => { setVideoIdx(null); setActive(i); }} className={`h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg border-2 ${videoIdx === null && i === active ? "border-neutral-900 dark:border-neutral-100" : "border-transparent opacity-80 hover:opacity-100"}`}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={img.url_170x135 || img.url_570xN} alt={img.alt_text ?? ""} className="h-full w-full object-cover" />
+                    </button>
+                  ))}
+                  {videos.map((v, i) => (
+                    <button key={v.video_id} type="button" onClick={() => setVideoIdx(i)} aria-label={t("Videoyu oynat", "Play video")} className={`relative flex h-14 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border-2 bg-neutral-900 text-lg text-white ${videoIdx === i ? "border-neutral-900 dark:border-neutral-100" : "border-transparent opacity-80 hover:opacity-100"}`}>
+                      <span aria-hidden>▶</span>
                     </button>
                   ))}
                 </div>
               )}
               <div className="relative aspect-square min-w-0 flex-1 self-start overflow-hidden rounded-2xl bg-neutral-200 dark:bg-neutral-900">
-                {images[active] ? (
+                {videoIdx !== null && videos[videoIdx] ? (
+                  <video key={videos[videoIdx].video_id} src={videos[videoIdx].video_url} controls autoPlay muted playsInline className="absolute inset-0 h-full w-full bg-black object-contain" />
+                ) : images[active] ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={images[active].url_570xN || images[active].url_fullxfull} alt={images[active].alt_text ?? ""} className="absolute inset-0 h-full w-full object-contain" />
                 ) : (

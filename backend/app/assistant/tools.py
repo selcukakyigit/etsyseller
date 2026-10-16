@@ -603,10 +603,14 @@ def _auto_category(ctx: Ctx, text: str) -> tuple[int, str, str] | None:
     for tid, path in names.items():
         if tid not in _taxonomy_leaves:
             continue
-        overlap = len(words & _cat_words(path))
-        if not overlap:
+        leaf = path.rsplit(">", 1)[-1]
+        leaf_overlap = len(words & _cat_words(leaf))
+        rest_overlap = len(words & _cat_words(path)) - leaf_overlap
+        if not leaf_overlap and not rest_overlap:
             continue
-        score = overlap * 3 + (2 if tid in used else 0) + path.count(">") * 0.3
+        # Yaprak adı eşleşmesi ağır basar (uzun yolun üst düğümleri kelime toplayıp kazanmasın); mağazanın zaten kullandığı
+        # kategori, ürünle en az bir kelime örtüşüyorsa öne geçer (aynı tür ürün aynı kategoriye girer).
+        score = leaf_overlap * 4 + rest_overlap + (5 if tid in used else 0)
         if best is None or score > best[0]:
             best = (score, tid)
     if best is not None:
@@ -661,18 +665,19 @@ def _tags(raw: list[str]) -> tuple[list[str], list[str]]:
 def _build_inventory(work: dict, price: float, quantity: int, variations: list[dict]) -> str | None:
     cur = work["inventory"]["products"][0]["offerings"][0]["price"]["currency_code"]
 
-    def offering(p: float) -> dict:
-        return {"price": {"amount": round(p * 100), "divisor": 100, "currency_code": cur}, "quantity": quantity, "is_enabled": True}
+    def offering(p: float, q: int = quantity) -> dict:
+        return {"price": {"amount": round(p * 100), "divisor": 100, "currency_code": cur}, "quantity": q, "is_enabled": True}
 
     if not variations:
         work["inventory"]["products"] = [{"sku": "", "property_values": [], "offerings": [offering(price)]}]
+        work["inventory"]["price_on_property"], work["inventory"]["quantity_on_property"], work["inventory"]["sku_on_property"] = [], [], []
         return None
     if len(variations) > 3:
         return "En fazla 3 varyasyon tanımlanabilir."
     props = []
     for i, v in enumerate(variations):
         vals = [x if isinstance(x, dict) else {"value": x} for x in v.get("values", [])]
-        vals = [{"value": str(x["value"]).strip(), "price": x.get("price")} for x in vals if str(x.get("value", "")).strip()]
+        vals = [{"value": str(x["value"]).strip(), "price": x.get("price"), "quantity": x.get("quantity")} for x in vals if str(x.get("value", "")).strip()]
         if not vals:
             return f'"{v.get("name")}" varyasyonunda seçenek yok.'
         props.append({"id": CUSTOM_VARIATION_IDS[i], "name": str(v["name"]).strip()[:50], "values": vals})
@@ -686,18 +691,20 @@ def _build_inventory(work: dict, price: float, quantity: int, variations: list[d
         return f"Kombinasyon sayısı çok fazla ({n}); en fazla {MAX_COMBOS}."
     products = []
     for combo in itertools.product(*[p["values"] for p in props]):
-        p_val = price
+        p_val, q_val = price, quantity
         for prop, val in zip(props, combo):
             if prop in varying and val["price"] is not None:
                 p_val = float(val["price"])
+            if val.get("quantity"):  # "100 cm: 10 adet, 50 cm: 5 adet": seçenek başına stok
+                q_val = max(1, min(int(val["quantity"]), inventory_edit.MAX_QUANTITY))
         products.append({
             "sku": "",
             "property_values": [{"property_id": prop["id"], "property_name": prop["name"], "scale_id": None, "value_ids": [], "values": [val["value"]]} for prop, val in zip(props, combo)],
-            "offerings": [offering(p_val)],
+            "offerings": [offering(p_val, q_val)],
         })
     work["inventory"]["products"] = products
     work["inventory"]["price_on_property"] = [varying[0]["id"]] if varying else []
-    return None
+    return inventory_edit.recompute_dependencies(work)  # stok/SKU hangi varyasyona göre değişiyorsa Etsy kuralına uygun işaretlenir
 
 
 def _listing_card(ctx: Ctx, lid: int, work: dict, changes: list[str] | None = None, *, category: str | None = None, price_missing: bool | None = None, qty_assumed: bool = False) -> dict:
@@ -836,6 +843,19 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     wanted = int(a.get("wanted_image_count") or 0)
     if wanted > attached:
         completion["eksik_resim"] = min(wanted, creation.MAX_LISTING_IMAGES) - attached
+    for spec in a.get("crop_photos") or []:  # "birinci resmi 1:1 kırp": taslakla birlikte, resimler eklendikten sonra
+        bad = _crop_in_work(ctx, lid, work, int(spec.get("photo_number") or 1), spec)
+        if bad:
+            completion.setdefault("kirpma_hatalari", []).append(bad)
+    text_all = " ".join([title, str(a.get("description") or ""), *tags]).lower()
+    if not (work.get("personalization") or {}).get("questions") and re.search(r"personali[sz]|custom (name|text)|engrav|monogram|your name", text_all):
+        completion["kisisellestirme_eksik"] = (
+            "Başlık/açıklama kişiselleştirmeden söz ediyor ama listing'de kişiselleştirme (Özel seçenekler) sorusu yok. Kullanıcı isim/yazı istediyse "
+            "set_listing_fields.add_personalization_questions ile ekle (açıklamaya gömme); 'Can be personalized' özelliğini de Yes yap."
+        )
+    missing_alt = sum(1 for i in work.get("images") or [] if not i.get("alt_text"))
+    if missing_alt:
+        completion["alt_metni_eksik_resim"] = missing_alt
     videos_attached = 0
     for chat_video_id in (a.get("video_ids") or [])[: generation.MAX_LISTING_VIDEOS]:
         file, bad = _chat_video_file(ctx, lid, chat_video_id)
@@ -848,10 +868,11 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     drafts.save_local(ctx.db, ctx.shop, lid, work, None)
     problems = creation.validate_new(work, activate=True)
     _show_listing(ctx, lid, work, category=category_note["yol"] if category_note else None, price_missing=price_missing, qty_assumed=qty_assumed)
-    if completion.get("eksik_resim") or completion.get("ozellik_hatalari") or completion.get("kisisellestirme_hatalari") or completion.get("eksik_zorunlu_ozellikler") or completion.get("video_hatalari"):
+    if completion.get("eksik_resim") or completion.get("kisisellestirme_eksik") or completion.get("kirpma_hatalari") or completion.get("ozellik_hatalari") or completion.get("kisisellestirme_hatalari") or completion.get("eksik_zorunlu_ozellikler") or completion.get("video_hatalari"):
         completion["sonraki_adim"] = (
             "Taslak EKSİK; kullanıcıya yazmadan önce tamamla: eksik_resim>0 ise edit_chat_image ile (add_to_listing=true, listing_id) o kadar FARKLI görsel üret; "
-            "hatalı ya da eksik özellikleri set_listing_attributes ile, kişiselleştirme hatalarını set_listing_fields ile düzelt; "
+            "hatalı ya da eksik özellikleri set_listing_attributes ile, kişiselleştirme hatalarını/eksikliğini set_listing_fields ile düzelt; "
+            "yeni üretilen görsellerin alt metni için resimler eklendikten sonra generate_missing_alt_texts çağır; "
             "doldurulabilecek_bos_ozellikler'den ürüne uyanları doldur."
         )
     return {
@@ -1109,7 +1130,7 @@ def _update_variations(ctx: Ctx, lid: int, work: dict, ch: dict, a: dict, variat
     if err:
         return {"error": err}
     inv = work["inventory"]
-    inv["quantity_on_property"], inv["sku_on_property"], inv["readiness_state_on_property"] = [], [], []
+    inv["readiness_state_on_property"] = []  # stok/SKU bağımlılıkları _build_inventory'de verilerden kuruldu
     if first.get("readiness_state_id"):  # Etsy fiziksel ürünlerde her teklifte işlem profili ister
         for p in inv["products"]:
             for o in p["offerings"]:
@@ -1508,11 +1529,14 @@ def edit_chat_image(ctx: Ctx, a: dict) -> dict:
         return {"error": str(exc)}
     name = f"ai-edit{guess_extension(mime)}"
     saved = chat_service.save_image(ctx.db, ctx.shop, ctx.session_id, name, mime, new_bytes)
-    added = add and lid is not None and _add_photo(ctx, lid, name, mime, new_bytes) is None
+    photo_id = None
+    if add and lid is not None:
+        _bad, photo_id = _add_photo(ctx, lid, name, mime, new_bytes, a.get("alt_text"))
+    added = photo_id is not None
     ctx.cards.append({
         "type": "chat_image_edited", "image_id": saved["id"], "image_url": saved["url"], "prompt": str(a.get("prompt") or "")[:200],
         "source_image_id": source_chat_id, "source_listing_id": lid if source_photo else None, "source_photo": source_photo,
-        "listing_id": lid, "added": added, "edit_url": f"/listings/{lid}/edit" if added else None,
+        "listing_id": lid, "added": added, "edit_url": f"/listings/{lid}/edit" if added else None, "listing_image_id": photo_id,
     })
     return {
         "ok": True, "yeni_resim_id": saved["id"], "listinge_eklendi": added,
@@ -1532,17 +1556,19 @@ def _photo_slot_error(ctx: Ctx, listing_id: int) -> str | None:
     return None
 
 
-def _add_photo(ctx: Ctx, listing_id: int, filename: str, mime: str, content: bytes) -> str | None:
-    """Resmi listing taslağına yeni (son sıradaki) fotoğraf olarak ekler (Etsy'ye gitmez). Hata metni ya da None."""
+def _add_photo(ctx: Ctx, listing_id: int, filename: str, mime: str, content: bytes, alt_text: str | None = None) -> tuple[str | None, int | None]:
+    """Resmi listing taslağına yeni (son sıradaki) fotoğraf olarak ekler (Etsy'ye gitmez). Döner: (hata metni ya da None, eklenen fotoğrafın kimliği)."""
     err = _photo_slot_error(ctx, listing_id)
     if err:
-        return err
+        return err, None
     work = _draft_work(ctx, listing_id)
     images = work.get("images") or []
     file = drafts.save_file(ctx.db, ctx.shop, listing_id, "image", filename, mime, content)
-    work["images"] = images + [_image_entry(ctx.shop.id, listing_id, file["file_id"], None, len(images) + 1)]
+    alt = " ".join(str(alt_text or "").split())[:500] or None
+    entry = _image_entry(ctx.shop.id, listing_id, file["file_id"], alt, len(images) + 1)
+    work["images"] = images + [entry]
     _save_draft_work(ctx, listing_id, work)
-    return None
+    return None, entry["listing_image_id"]
 
 
 def move_listing_photo(ctx: Ctx, a: dict) -> dict:
@@ -1567,23 +1593,18 @@ def move_listing_photo(ctx: Ctx, a: dict) -> dict:
             "not": "Fotoğraf sırası yalnızca yerel taslakta değişti; Etsy'ye gitmedi."}
 
 
-def crop_listing_photo(ctx: Ctx, a: dict) -> dict:
-    """Bir listing fotoğrafını kırpar (oran + yakınlaştırma + odak noktası); düzenleyicideki Kırp ile aynı: kırpılan görsel o fotoğrafın
-    yerine yeni taslak dosyası olarak girer (alt metin ve sıra korunur). Küçük resim ana fotoğraftan üretildiği için ana fotoğrafı kırpmak yeter."""
+def _crop_in_work(ctx: Ctx, lid: int, work: dict, number: int, spec: dict) -> str | None:
+    """`work` içindeki number. fotoğrafı kırpıp yerine koyar (kaydetmez); hata metni ya da None. crop_listing_photo ve yeni taslak ortak kullanır."""
     from app.assistant import crop
 
-    lid = int(a["listing_id"])
-    work, err = _work_or_error(ctx, lid)
-    if err:
-        return err
-    ordered, photo = _photo_at(work, int(a["photo_number"]))
+    ordered, photo = _photo_at(work, number)
     if photo is None:
-        return {"error": f"Fotoğraf bulunamadı; listing'de {len(ordered)} fotoğraf var."}
+        return f"Fotoğraf bulunamadı; listing'de {len(ordered)} fotoğraf var."
     try:
         source, _mime = drafts._source_image_bytes(ctx.db, ctx.shop, lid, photo["listing_image_id"], photo.get("draft_file_id"))
-        data, mime = crop.crop_image(source, a.get("ratio") or "1:1", a.get("zoom") or 1.0, a.get("center_x", 0.5), a.get("center_y", 0.5))
+        data, mime = crop.crop_image(source, spec.get("ratio") or "1:1", spec.get("zoom") or 1.0, spec.get("center_x", 0.5), spec.get("center_y", 0.5))
     except (ValueError, FileNotFoundError, OSError) as exc:
-        return {"error": f"Kırpılamadı: {exc}"}
+        return f"Kırpılamadı: {exc}"
     saved = drafts.save_file(ctx.db, ctx.shop, lid, "image", "kirpilmis.jpg", mime, data)
     old_id = photo["listing_image_id"]
     entry = _image_entry(ctx.shop.id, lid, saved["file_id"], photo.get("alt_text"), photo.get("rank") or 0)
@@ -1591,6 +1612,19 @@ def crop_listing_photo(ctx: Ctx, a: dict) -> dict:
     links = work.get("variation_links")
     if links and links.get("images"):  # varyasyona bağlı fotoğraf kırpıldıysa bağ yeni görsele geçer
         links["images"] = {k: (entry["listing_image_id"] if v == old_id else v) for k, v in links["images"].items()}
+    return None
+
+
+def crop_listing_photo(ctx: Ctx, a: dict) -> dict:
+    """Bir listing fotoğrafını kırpar (oran + yakınlaştırma + odak noktası); düzenleyicideki Kırp ile aynı: kırpılan görsel o fotoğrafın
+    yerine yeni taslak dosyası olarak girer (alt metin ve sıra korunur). Küçük resim ana fotoğraftan üretildiği için ana fotoğrafı kırpmak yeter."""
+    lid = int(a["listing_id"])
+    work, err = _work_or_error(ctx, lid)
+    if err:
+        return err
+    bad = _crop_in_work(ctx, lid, work, int(a["photo_number"]), a)
+    if bad:
+        return {"error": bad}
     _save_draft_work(ctx, lid, work)
     _show_listing(ctx, lid, work, ["photo"])
     return {"ok": True, "not": "Kırpılan görsel yerel taslağa kaydedildi (Etsy'ye gitmedi); eski sürüm düzenleyicide dosya olarak durur. Sonucu kullanıcıya kartta göster."}
@@ -1710,7 +1744,13 @@ def delete_listing_photo(ctx: Ctx, a: dict) -> dict:
     work, err = _work_or_error(ctx, lid)
     if err:
         return err
-    ordered, img = _photo_at(work, int(a["photo_number"]))
+    if a.get("image_id") is not None:  # sohbetteki karttan: sıra numarası değişmiş olabilir, fotoğraf kimliğiyle bulunur
+        ordered = sorted(work.get("images") or [], key=lambda i: i.get("rank") or 0)
+        img = next((i for i in ordered if i.get("listing_image_id") == int(a["image_id"])), None)
+    elif a.get("photo_number") is not None:
+        ordered, img = _photo_at(work, int(a["photo_number"]))
+    else:
+        return {"error": "photo_number ya da image_id ver."}
     if img is None:
         return {"error": f"Fotoğraf bulunamadı; listing'de {len(ordered)} fotoğraf var."}
     ordered.remove(img)
@@ -2062,7 +2102,7 @@ def add_chat_image_to_listing(ctx: Ctx, a: dict) -> dict:
     if lid is None:
         return {"error": "Eklenecek bir listing taslağı yok; önce taslak oluştur ya da listing_id ver."}
     try:
-        err = _add_photo(ctx, lid, img.filename, img.content_type, blobstore.read(img.path))
+        err, _photo_id = _add_photo(ctx, lid, img.filename, img.content_type, blobstore.read(img.path), a.get("alt_text"))
     except FileNotFoundError:
         return {"error": "Resim depoda bulunamadı."}
     if err:
@@ -2266,13 +2306,14 @@ TOOLS: list[dict] = [
         "use_standard_sections": {"type": "boolean", "description": "Mağazanın sabit açıklama bölümlerini (iletişim, işleme/teslimat, garanti, yasal uyarı) açıklamaya otomatik ekle. Varsayılan true"},
         "quantity": {"type": "integer", "description": "Stok adedi. Kullanıcı vermediyse BOŞ BIRAK: mağazanın tipik adedi kullanılır"},
         "materials": {"type": "array", "items": {"type": "string"}},
-        "variations": {"type": "array", "description": "En fazla 3 varyasyon. Fiyat yalnızca bir varyasyona göre değişebilir.", "items": _obj({"name": {"type": "string"}, "values": {"type": "array", "items": _obj({"value": {"type": "string"}, "price": {"type": "number", "description": "Bu seçeneğin fiyatı (isteğe bağlı)"}}, ["value"])}}, ["name", "values"])},
+        "variations": {"type": "array", "description": "En fazla 3 varyasyon. Fiyat yalnızca bir varyasyona göre değişebilir. Kullanıcı seçenek başına stok verdiyse (100 cm: 10 adet, 50 cm: 5 adet) her seçeneğe quantity yaz.", "items": _obj({"name": {"type": "string"}, "values": {"type": "array", "items": _obj({"value": {"type": "string"}, "price": {"type": "number", "description": "Bu seçeneğin fiyatı (isteğe bağlı)"}, "quantity": {"type": "integer", "description": "Bu seçeneğin stoğu (isteğe bağlı; yoksa genel quantity)"}}, ["value"])}}, ["name", "values"])},
         "image_ids": {"type": "array", "items": {"type": "string"}, "description": "Sohbete yüklenen resimlerin kimlikleri (sistem mesajındaki listeden)"},
         "image_alt_texts": {"type": "array", "items": {"type": "string"}, "description": "Her resim için, image_ids ile AYNI SIRADA alt metin: resimde gerçekten görünenin tek cümlelik betimlemesi (en fazla 125 karakter, 'image of' ile başlama, anahtar kelime doldurma), başlıkla aynı dilde"},
         "taxonomy_id": {"type": "integer", "description": "Kategori kimliği (shop_defaults'tan)"},
         "attributes": {"type": "array", "description": "Kategori özellikleri (malzeme, kullanım yeri/occasion, renk, kişiselleştirilebilir mi…): [{name, values, unit?}]. İzin verilen değerler get_category_attributes'tedir; bilmiyorsan ver, sonuçtaki hata/eksik listesine göre set_listing_attributes ile tamamla.", "items": _obj({"name": {"type": "string"}, "values": {"type": "array", "items": {"type": "string"}}, "unit": {"type": "string"}}, ["name"])},
         "personalization_questions": {"type": "array", "description": "Kullanıcı kişiselleştirme (isim/yazı vb.) istediyse sorular, en fazla 5: {question_text, question_type (text_input|dropdown), required, max_allowed_characters, instructions, options}", "items": _obj({"question_text": {"type": "string"}, "instructions": {"type": "string"}, "question_type": {"type": "string", "enum": list(fields.QUESTION_TYPES)}, "required": {"type": "boolean"}, "max_allowed_characters": {"type": "integer"}, "options": {"type": "array", "items": {"type": "string"}}}, ["question_text"])},
         "video_ids": {"type": "array", "items": {"type": "string"}, "description": "Kullanıcının sohbete yüklediği VİDEOLARIN kimlikleri (sistem mesajındaki KULLANICI VİDEOLARI listesinden), en fazla 2. Kullanıcı video yüklediyse mutlaka ver."},
+        "crop_photos": {"type": "array", "description": "Kullanıcı kırpma istediyse (ör. ana resmi 1:1 kırp): [{photo_number, ratio 1:1|4:3|3:4|original, zoom, center_x, center_y}]; taslakla birlikte uygulanır.", "items": _obj({"photo_number": {"type": "integer"}, "ratio": {"type": "string", "enum": ["1:1", "4:3", "3:4", "original"]}, "zoom": {"type": "number"}, "center_x": {"type": "number"}, "center_y": {"type": "number"}}, ["photo_number"])},
         "wanted_image_count": {"type": "integer", "description": "Kullanıcı 'N resim olsun / N farklı resim oluştur' dediyse N (en çok 20). Yüklenen resim bundan azsa sonuçta eksik_resim döner ve sen o kadarını edit_chat_image ile üretip eklersin."},
         "who_made": {"type": "string", "enum": ["i_did", "someone_else", "collective"]},
         "when_made": {"type": "string"},
@@ -2339,7 +2380,7 @@ TOOLS: list[dict] = [
         }, ["question_text"])},
     }, ["listing_id"])},
     {"name": "edit_personalization_question", "description": "Listing'deki TEK bir kişiselleştirme (Özel seçenekler) sorusunu sıra numarasıyla (get_listing.kisisellestirme sırası, 1'den başlar) düzenler: metni, açıklamasını, zorunlu/isteğe bağlı olmasını, en fazla karakterini, seçenek listesi seçeneklerini değiştirir; delete=true siler; move_to ile sırasını değiştirir. Diğer sorulara dokunmaz ve kimlikleri korur; sorular için personalization_questions (hepsini baştan yazar) KULLANMA. Yeni soru eklemek için set_listing_fields.add_personalization_questions.", "input_schema": _obj({"listing_id": {"type": "integer"}, "number": {"type": "integer"}, "question_text": {"type": "string"}, "instructions": {"type": "string"}, "required": {"type": "boolean"}, "max_allowed_characters": {"type": "integer"}, "options": {"type": "array", "items": {"type": "string"}, "description": "Yalnızca seçenek listesi sorusunda: seçeneklerin TAMAMI, istenen sırayla"}, "delete": {"type": "boolean"}, "move_to": {"type": "integer"}}, ["listing_id", "number"])},
-    {"name": "delete_listing_photo", "description": "Listing taslağından bir fotoğrafı sıra numarasıyla (1'den başlar) kaldırır. Etsy'deki fotoğraf yayınlayınca silinir.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer"}}, ["listing_id", "photo_number"])},
+    {"name": "delete_listing_photo", "description": "Listing taslağından bir fotoğrafı kaldırır: sıra numarasıyla (photo_number, 1'den başlar) ya da fotoğraf kimliğiyle (image_id; sohbetteki resim kartından). Etsy'deki fotoğraf yayınlayınca silinir.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer"}, "image_id": {"type": "integer"}}, ["listing_id"])},
     {"name": "set_photo_alt_text", "description": "Taslak (henüz Etsy'ye yüklenmemiş) bir fotoğrafın alt metnini yazar; sıra numarasıyla. Etsy'de yayındaki fotoğrafların alt metni değiştirilemez.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer"}, "alt_text": {"type": "string", "description": "Resimde görüneni anlatan tek cümle, en fazla 125 karakter önerilir"}}, ["listing_id", "photo_number", "alt_text"])},
     {"name": "edit_inventory", "description": "Stok, fiyat, SKU ve açık/kapalı durumunu değiştirir. Varyasyonsuz listing'de where verme ('stok 50 olsun' = quantity 50). Varyasyonlu listing'de where ile kombinasyon seç ({'Size': 'XL', 'Color': 'Red'}; kısmi seçim eşleşen TÜM kombinasyonları etkiler) ya da where vermeden hepsini değiştir. quantity 1–999; kombinasyonu satıştan kaldırmak için enabled=false. Fiyat aynı anda yalnızca tek varyasyona göre değişebilir (Etsy). Önce get_listing ile mevcut seçeneklere bak. Hata varsa hiçbir şey yazılmaz.", "input_schema": _obj({"listing_id": {"type": "integer"}, "where": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Varyasyon adı → seçenek"}, "quantity": {"type": "integer"}, "price": {"type": "number"}, "sku": {"type": "string"}, "auto_sku": {"type": "string", "description": "Seçilen TÜM kombinasyonlara okunur SKU üretir (önek + seçenekler, ör. önek GLS → GLS-15X20CM). Önek boş string de olabilir. 'Otomatik SKU ekle' için bunu kullan; tek tek sku verme."}, "enabled": {"type": "boolean"}}, ["listing_id"])},
     {"name": "add_variation_option", "description": "Var olan bir varyasyona YENİ SEÇENEK ekler (ör. Size varyasyonuna '15x20 cm'); mevcut stok, SKU, fiyat ve fotoğraf bağları korunur. Seçenek eklemek için set_variations ile baştan kurma. Yeni satırlar copy_from seçeneğinin (verilmezse ilkinin) satırlarından kopyalanır; varyasyon fiyata göre değişiyorsa price ver. Etsy'nin hazır değerleriyle kurulu (standart) varyasyonlarda da çalışır: ad hazır listedekilerden biriyse standart değer olarak, değilse özel değer olarak eklenir. Önce get_listing ile mevcut seçeneklere bak. Hata varsa hiçbir şey yazılmaz.", "input_schema": _obj({"listing_id": {"type": "integer"}, "variation": {"type": "string"}, "option": {"type": "string"}, "price": {"type": "number"}, "quantity": {"type": "integer"}, "copy_from": {"type": "string", "description": "Hangi mevcut seçeneğin ayarları kopyalansın"}}, ["listing_id", "variation", "option"])},
@@ -2358,13 +2399,13 @@ TOOLS: list[dict] = [
     {"name": "edit_chat_image", "description": "AI ile YENİ bir görsel üretir (arka plan temizle/değiştir, 'ürünü kullanımda / oturma odasında göster', kamera açısı). Kaynak: sohbetteki bir resim (image_id) YA DA bir listing fotoğrafı (listing_id + photo_number). Sonuç sohbette simgeli bir kartla gösterilir, kaynak değişmez. Listing'e YALNIZCA kullanıcı 'ekle' dediyse add_to_listing=true ver; vermezsen sadece gösterilir ve kullanıcı beğenirse ekler ya da yeniden ürettirir. Etsy'ye hiçbir şey göndermez; kredi harcar.", "input_schema": _obj({
         "image_id": {"type": "string", "description": "Kaynak: sohbete eklenen resmin kimliği (sistem mesajındaki listeden)"},
         "photo_number": {"type": "integer", "description": "Kaynak: listing_id ile birlikte, listing'in o sıradaki fotoğrafı (1'den başlar)"},
-        "add_to_listing": {"type": "boolean", "description": "Yalnızca kullanıcı açıkça eklenmesini istediyse true"},
+        "alt_text": {"type": "string", "description": "add_to_listing=true ise eklenen fotoğrafın alt metni: görselde görünenin tek cümlelik betimlemesi (en fazla 125 karakter), başlıkla aynı dil. MUTLAKA ver."}, "add_to_listing": {"type": "boolean", "description": "Yalnızca kullanıcı açıkça eklenmesini istediyse true"},
         "prompt": {"type": "string", "description": "Ne yapılacağı, ör. 'arka planı beyaz yap', 'oturma odasında duvara asılı göster'"},
         **_CAMERA_SCHEMA,
         **_QUALITY_SCHEMA,
         "listing_id": {"type": "integer", "description": "Kaynak fotoğrafın listing'i; add_to_listing ile sonucun ekleneceği listing de budur (vermezsen en son yeni taslak)"},
     }, ["image_id"])},
-    {"name": "add_chat_image_to_listing", "description": "Sohbetteki mevcut bir resmi (ör. edit_chat_image'ın ürettiği, yeni_resim_id) listing taslağına yeni fotoğraf olarak ekler; yeniden üretmez, kredi harcamaz. listing_id verilmezse sohbetteki en son oluşturulan yeni taslak kullanılır ('az önce oluşturduğumuz listeye ekle').", "input_schema": _obj({"image_id": {"type": "string"}, "listing_id": {"type": "integer"}}, ["image_id"])},
+    {"name": "add_chat_image_to_listing", "description": "Sohbetteki mevcut bir resmi (ör. edit_chat_image'ın ürettiği, yeni_resim_id) listing taslağına yeni fotoğraf olarak ekler; yeniden üretmez, kredi harcamaz. listing_id verilmezse sohbetteki en son oluşturulan yeni taslak kullanılır ('az önce oluşturduğumuz listeye ekle').", "input_schema": _obj({"image_id": {"type": "string"}, "alt_text": {"type": "string", "description": "Eklenen fotoğrafın alt metni (görselde görünenin tek cümlelik betimlemesi)"}, "listing_id": {"type": "integer"}}, ["image_id"])},
     {"name": "generate_missing_alt_texts", "description": "Bir listing'in alt metni olmayan (yalnızca YENİ/taslak) fotoğrafları için yapay zekâyla alt metin yazar.", "input_schema": _obj({"listing_id": {"type": "integer"}}, ["listing_id"])},
     {"name": "listing_health_status", "description": "Listing'in optimizasyon durumu: yeterli veri var mı, performansı mağaza medyanına göre nasıl, hangi alan zayıf, durdurmayı değerlendirmeli mi. listing_id vermezsen dikkat isteyen tüm listing'leri döner.", "input_schema": _obj({"listing_id": {"type": "integer"}})},
     {"name": "keep_watching_listing", "description": "Bir listing için 'durdurmayı değerlendir' önerisini reddedip izlemeye devam eder (sayaç sıfırlanır). Etsy'ye hiçbir şey göndermez.", "input_schema": _obj({"listing_id": {"type": "integer"}}, ["listing_id"])},

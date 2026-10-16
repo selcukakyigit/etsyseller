@@ -36,6 +36,8 @@ export default function EditedImageCard({ card, shopId, onAsk }: { card: Edited;
   const [zoom, setZoom] = useState(false);
   const src = `${API_URL}${card.image_url}`;
   const canAct = !card.added && !gone && onAsk;
+  // Listing'e eklenmiş görsel: düğmeler listing'deki fotoğrafı yeniden üretir ya da listing'den kaldırır (asistan aracılığıyla).
+  const inListing = card.added && card.listing_id !== null && card.listing_image_id != null && !gone && onAsk;
   const target = card.listing_id !== null ? t(`, listing id: ${card.listing_id}`, `, listing id: ${card.listing_id}`) : "";
   // Yeniden üretme isteği: kaynak sohbet resmi ya da listing fotoğrafı olabilir.
   const source = card.source_image_id
@@ -98,6 +100,36 @@ export default function EditedImageCard({ card, shopId, onAsk }: { card: Edited;
             onClick={() => onAsk(t(`Bu resmi listing'e ekle (resim id: ${card.image_id}${target})`, `Add this image to the listing (image id: ${card.image_id}${target})`))}
           >
             <ImagePlusIcon className="!h-4 !w-4" />
+          </IconButton>
+        </div>
+      )}
+      {inListing && (
+        <div className="flex items-center justify-end gap-2 border-t border-neutral-100 bg-neutral-50 px-3 py-2 dark:border-neutral-800 dark:bg-neutral-950">
+          <IconButton
+            label={t("Yeniden üret (listing'deki yerine)", "Regenerate (replaces it in the listing)")}
+            onClick={() =>
+              onAsk(
+                t(
+                  `Listing'deki bu fotoğrafı yeniden üret ve yerine koy (listing id: ${card.listing_id}, fotoğraf image id: ${card.listing_image_id}): ${card.prompt}`,
+                  `Regenerate this listing photo and replace it in place (listing id: ${card.listing_id}, photo image id: ${card.listing_image_id}): ${card.prompt}`,
+                ),
+              )
+            }
+          >
+            <RefreshIcon className="!h-4 !w-4" />
+          </IconButton>
+          <IconButton
+            label={t("Listing'den kaldır", "Remove from listing")}
+            onClick={() =>
+              onAsk(
+                t(
+                  `Bu fotoğrafı listing'den kaldır (listing id: ${card.listing_id}, fotoğraf image id: ${card.listing_image_id})`,
+                  `Remove this photo from the listing (listing id: ${card.listing_id}, photo image id: ${card.listing_image_id})`,
+                ),
+              )
+            }
+          >
+            <TrashIcon />
           </IconButton>
         </div>
       )}
