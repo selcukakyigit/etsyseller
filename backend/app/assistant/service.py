@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core import blobstore
 from app.core.i18n import tr
+from app.core.uploads import MAX_VIDEO_BYTES
 from app.listings import creation, templates
 from app.ai import catalog
 from app.assistant import cleanup, context, llm, memory, prompt, tools
@@ -27,6 +28,9 @@ from app.orders.models import OrderCache
 from app.shops.models import Shop
 
 IMAGE_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif"}
+# Kullanıcının kendi videosu: yapay zekâya gitmez, yalnızca listing taslağına eklenir (Etsy: en fazla 100 MB).
+VIDEO_TYPES = {"video/mp4": ".mp4", "video/quicktime": ".mov", "video/webm": ".webm", "video/x-m4v": ".m4v"}
+VIDEO_EXT = {".mp4": "video/mp4", ".mov": "video/quicktime", ".webm": "video/webm", ".m4v": "video/x-m4v"}
 # Resim dışı ekler (kargo/gümrük faturası): yapay zekâya resim olarak gitmez, read_shipping_invoice aracıyla okunur.
 DOC_TYPES = {
     ".pdf": "application/pdf",
@@ -78,14 +82,18 @@ def clear_progress(shop_id: int, request_id: str | None) -> None:
 def save_image(db: Session, shop: Shop, session_id: int | None, filename: str, content_type: str, content: bytes) -> dict:
     """Sohbete eklenen resim ya da belge (fatura PDF'i, Excel/CSV, HTML). Tablo adı tarihsel olarak "chat_images"."""
     suffix = Path(filename or "").suffix.lower()
+    limit = MAX_UPLOAD_BYTES
     if content_type in IMAGE_TYPES:
         ext = IMAGE_TYPES[content_type]
+    elif content_type in VIDEO_TYPES or suffix in VIDEO_EXT:
+        ext = VIDEO_TYPES.get(content_type) or suffix
+        content_type, limit = content_type if content_type in VIDEO_TYPES else VIDEO_EXT[suffix], MAX_VIDEO_BYTES
     elif suffix in DOC_TYPES:  # tarayıcılar CSV/Excel için farklı türler gönderebiliyor; uzantı esas alınır
         ext, content_type = suffix, DOC_TYPES[suffix]
     else:
-        raise ValueError(tr("Yalnızca resim (JPEG, PNG, WEBP, GIF), PDF, Excel/CSV ya da HTML dosyası eklenebilir.", "Only images (JPEG, PNG, WEBP, GIF), PDF, Excel/CSV or HTML files can be attached."))
-    if len(content) > MAX_UPLOAD_BYTES:
-        raise ValueError(tr("Dosya 15 MB'dan büyük olamaz.", "The file cannot be larger than 15 MB."))
+        raise ValueError(tr("Yalnızca resim (JPEG, PNG, WEBP, GIF), video (MP4, MOV, WEBM), PDF, Excel/CSV ya da HTML dosyası eklenebilir.", "Only images (JPEG, PNG, WEBP, GIF), videos (MP4, MOV, WEBM), PDF, Excel/CSV or HTML files can be attached."))
+    if len(content) > limit:
+        raise ValueError(tr(f"Dosya {limit // (1024 * 1024)} MB'dan büyük olamaz.", f"The file cannot be larger than {limit // (1024 * 1024)} MB."))
     image_id = str(uuid.uuid4())
     path = blobstore.put(f"chat/{shop.id}/{image_id}{ext}", content, content_type)
     db.add(ChatImage(id=image_id, shop_id=shop.id, session_id=session_id, filename=(filename or "dosya")[:255], content_type=content_type, path=path))
@@ -172,8 +180,12 @@ def delete_sessions(db: Session, shop: Shop, user_id: int, ids: list[int] | None
 def _images_prompt(imgs: list[ChatImage]) -> str:
     imgs = [i for i in imgs if i.path]  # süresi dolmuş ekler araçlara verilemez
     pics = [i for i in imgs if i.content_type in IMAGE_TYPES]
-    docs = [i for i in imgs if i.content_type not in IMAGE_TYPES]
+    vids = [i for i in imgs if i.content_type in VIDEO_TYPES]
+    docs = [i for i in imgs if i.content_type not in IMAGE_TYPES and i.content_type not in VIDEO_TYPES]
     out = ""
+    if vids:
+        lines = "\n".join(f'  - id="{i.id}" dosya="{i.filename}"' for i in vids)
+        out += f"\nBu sohbette yüklenmiş KULLANICI VİDEOLARI (içeriğini göremezsin; yeni taslakta create_listing_draft'ın video_ids alanına, var olan listing'e add_video_to_listing'in chat_video_id alanına ver; en fazla 2 video):\n{lines}"
     if pics:
         lines = "\n".join(f'  - id="{i.id}" dosya="{i.filename}"' for i in pics)
         out += f"\nBu sohbette yüklenmiş resimler (yeni listing taslağına eklemek için create_listing_draft'ta image_ids olarak bu kimlikleri kullan; resim bir fatura ise read_shipping_invoice'a file_id olarak ver):\n{lines}"
@@ -281,8 +293,11 @@ def _record_usage(db: Session, shop_id: int, user_id: int, session_id: int, u: l
 
 def _with_attachments(message: str, current: list[ChatImage]) -> str:
     """Bu mesajın belgeleri (resim dışı) modele görünmez; adlarını ve kimliklerini mesaja not olarak ekler."""
-    docs = [i for i in current if i.content_type not in IMAGE_TYPES]
-    text = message or ("(dosya gönderildi)" if docs else "(resim gönderildi)")
+    vids = [i for i in current if i.content_type in VIDEO_TYPES]
+    docs = [i for i in current if i.content_type not in IMAGE_TYPES and i.content_type not in VIDEO_TYPES]
+    text = message or ("(dosya gönderildi)" if docs else "(video gönderildi)" if vids and len(vids) == len(current) else "(resim gönderildi)")
+    if vids:
+        text += "\n\n[Eklenen videolar: " + ", ".join(f'id="{v.id}" dosya="{v.filename}"' for v in vids) + "]"
     if docs:
         text += "\n\n[Eklenen belgeler: " + ", ".join(f'id="{d.id}" dosya="{d.filename}"' for d in docs) + "]"
     return text

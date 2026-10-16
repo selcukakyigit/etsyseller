@@ -81,7 +81,7 @@ async def upload_image(
     shop: Shop = Depends(get_owned_shop),
     db: Session = Depends(get_db),
 ):
-    content = await file.read(service.MAX_UPLOAD_BYTES + 1)
+    content = await file.read(service.MAX_VIDEO_BYTES + 1)  # videolar 100 MB'a kadar; diğer dosyaların sınırı save_image'da
     try:
         return service.save_image(db, shop, session_id, file.filename or "resim", file.content_type or "", content)
     except ValueError as exc:

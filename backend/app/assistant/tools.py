@@ -826,10 +826,18 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     wanted = int(a.get("wanted_image_count") or 0)
     if wanted > attached:
         completion["eksik_resim"] = min(wanted, creation.MAX_LISTING_IMAGES) - attached
+    videos_attached = 0
+    for chat_video_id in (a.get("video_ids") or [])[: generation.MAX_LISTING_VIDEOS]:
+        file, bad = _chat_video_file(ctx, lid, chat_video_id)
+        if bad or _attach_video(ctx, lid, work, file):
+            completion.setdefault("video_hatalari", []).append(bad or "Video eklenemedi.")
+        else:
+            videos_attached += 1
+    completion["eklenen_video"] = videos_attached
     drafts.save_local(ctx.db, ctx.shop, lid, work, None)
     problems = creation.validate_new(work, activate=True)
     _show_listing(ctx, lid, work, category=category_note["yol"] if category_note else None, price_missing=price_missing, qty_assumed=qty_assumed)
-    if completion.get("eksik_resim") or completion.get("ozellik_hatalari") or completion.get("kisisellestirme_hatalari") or completion.get("eksik_zorunlu_ozellikler"):
+    if completion.get("eksik_resim") or completion.get("ozellik_hatalari") or completion.get("kisisellestirme_hatalari") or completion.get("eksik_zorunlu_ozellikler") or completion.get("video_hatalari"):
         completion["sonraki_adim"] = (
             "Taslak EKSİK; kullanıcıya yazmadan önce tamamla: eksik_resim>0 ise edit_chat_image ile (add_to_listing=true, listing_id) o kadar FARKLI görsel üret; "
             "hatalı ya da eksik özellikleri set_listing_attributes ile, kişiselleştirme hatalarını set_listing_fields ile düzelt; "
@@ -1535,6 +1543,35 @@ def move_listing_photo(ctx: Ctx, a: dict) -> dict:
             "not": "Fotoğraf sırası yalnızca yerel taslakta değişti; Etsy'ye gitmedi."}
 
 
+def crop_listing_photo(ctx: Ctx, a: dict) -> dict:
+    """Bir listing fotoğrafını kırpar (oran + yakınlaştırma + odak noktası); düzenleyicideki Kırp ile aynı: kırpılan görsel o fotoğrafın
+    yerine yeni taslak dosyası olarak girer (alt metin ve sıra korunur). Küçük resim ana fotoğraftan üretildiği için ana fotoğrafı kırpmak yeter."""
+    from app.assistant import crop
+
+    lid = int(a["listing_id"])
+    work, err = _work_or_error(ctx, lid)
+    if err:
+        return err
+    ordered, photo = _photo_at(work, int(a["photo_number"]))
+    if photo is None:
+        return {"error": f"Fotoğraf bulunamadı; listing'de {len(ordered)} fotoğraf var."}
+    try:
+        source, _mime = drafts._source_image_bytes(ctx.db, ctx.shop, lid, photo["listing_image_id"], photo.get("draft_file_id"))
+        data, mime = crop.crop_image(source, a.get("ratio") or "1:1", a.get("zoom") or 1.0, a.get("center_x", 0.5), a.get("center_y", 0.5))
+    except (ValueError, FileNotFoundError, OSError) as exc:
+        return {"error": f"Kırpılamadı: {exc}"}
+    saved = drafts.save_file(ctx.db, ctx.shop, lid, "image", "kirpilmis.jpg", mime, data)
+    old_id = photo["listing_image_id"]
+    entry = _image_entry(ctx.shop.id, lid, saved["file_id"], photo.get("alt_text"), photo.get("rank") or 0)
+    work["images"] = [entry if i.get("listing_image_id") == old_id else i for i in work["images"]]
+    links = work.get("variation_links")
+    if links and links.get("images"):  # varyasyona bağlı fotoğraf kırpıldıysa bağ yeni görsele geçer
+        links["images"] = {k: (entry["listing_image_id"] if v == old_id else v) for k, v in links["images"].items()}
+    _save_draft_work(ctx, lid, work)
+    _show_listing(ctx, lid, work, ["photo"])
+    return {"ok": True, "not": "Kırpılan görsel yerel taslağa kaydedildi (Etsy'ye gitmedi); eski sürüm düzenleyicide dosya olarak durur. Sonucu kullanıcıya kartta göster."}
+
+
 def _category_defs(taxonomy_id: int) -> list[dict]:
     """Etsy'nin bir kategori için tanımladığı özellikler (önbellekli; düzenleyici aynı veriyi kullanır)."""
     return cached(("tax", "props", taxonomy_id), lambda: taxonomy_service.get_properties_by_taxonomy_id(taxonomy_id))
@@ -1741,8 +1778,36 @@ def generate_listing_video(ctx: Ctx, a: dict) -> dict:
             "not": "Video üretimi başladı; sohbette ilerleme gösteren bir kart var, video hazır olunca orada oynatılır ve kredi o zaman düşer. Bekleme, kullanıcıya kısaca söyle. Hazır olunca kullanıcı 'listing'e ekle' derse add_video_to_listing'i çağır (video dosya kimliğini kullanıcı mesajı verir)."}
 
 
+def _attach_video(ctx: Ctx, lid: int, work: dict, file) -> str | None:
+    """Taslak video dosyasını (DraftFile) listing'in çalışma kopyasına ekler; hata metni ya da None. Kaydetmez."""
+    videos = work.get("videos") or []
+    if any(v.get("draft_file_id") == file.id for v in videos):
+        return None
+    if len(videos) >= generation.MAX_LISTING_VIDEOS:
+        return f"Listing'de zaten {generation.MAX_LISTING_VIDEOS} video var (Etsy sınırı); önce birini kaldır."
+    work["videos"] = videos + [{
+        "video_id": _draft_entry_id(file.id), "draft_file_id": file.id, "height": 0, "width": 0, "thumbnail_url": "",
+        "video_url": _draft_file_url(ctx.shop.id, lid, file.id), "video_state": "draft",
+    }]
+    return None
+
+
+def _chat_video_file(ctx: Ctx, lid: int, chat_video_id: str):
+    """Kullanıcının sohbete yüklediği videoyu listing'in taslak dosyasına kopyalar (DraftFile) ya da (None, hata) döner."""
+    from app.assistant.models import ChatImage
+    from app.assistant.service import VIDEO_TYPES
+
+    vid = ctx.db.get(ChatImage, str(chat_video_id))
+    if vid is None or vid.shop_id != ctx.shop.id or not vid.path or vid.content_type not in VIDEO_TYPES:
+        return None, "Video bulunamadı; sistem mesajındaki KULLANICI VİDEOLARI listesinden bir kimlik ver."
+    saved = drafts.save_file(ctx.db, ctx.shop, lid, "video", vid.filename, vid.content_type, blobstore.read(vid.path))
+    from app.listings.models import DraftFile
+
+    return ctx.db.get(DraftFile, saved["file_id"]), None
+
+
 def add_video_to_listing(ctx: Ctx, a: dict) -> dict:
-    """Üretilmiş bir taslak videoyu (generate_listing_video'nun dosyası) listing taslağına ekler."""
+    """Listing taslağına video ekler: üretilmiş video (file_id) ya da kullanıcının sohbete yüklediği video (chat_video_id)."""
     from app.listings.models import DraftFile
 
     lid = int(a["listing_id"]) if a.get("listing_id") else _latest_new_draft(ctx)
@@ -1751,18 +1816,21 @@ def add_video_to_listing(ctx: Ctx, a: dict) -> dict:
     work, err = _work_or_error(ctx, lid)
     if err:
         return err
-    file = ctx.db.get(DraftFile, str(a.get("file_id") or ""))
-    if file is None or file.shop_id != ctx.shop.id or file.listing_id != lid or file.kind != "video":
-        return {"error": "Video dosyası bulunamadı (bu listing'e ait olmalı)."}
-    videos = work.get("videos") or []
-    if any(v.get("draft_file_id") == file.id for v in videos):
-        return {"ok": True, "not": "Video zaten listing'de."}
-    if len(videos) >= generation.MAX_LISTING_VIDEOS:
-        return {"error": f"Listing'de zaten {generation.MAX_LISTING_VIDEOS} video var (Etsy sınırı); önce birini kaldır."}
-    work["videos"] = videos + [{
-        "video_id": _draft_entry_id(file.id), "draft_file_id": file.id, "height": 0, "width": 0, "thumbnail_url": "",
-        "video_url": _draft_file_url(ctx.shop.id, lid, file.id), "video_state": "draft",
-    }]
+    if a.get("chat_video_id"):
+        if len(work.get("videos") or []) >= generation.MAX_LISTING_VIDEOS:
+            return {"error": f"Listing'de zaten {generation.MAX_LISTING_VIDEOS} video var (Etsy sınırı); önce birini kaldır."}
+        file, bad = _chat_video_file(ctx, lid, a["chat_video_id"])
+        if bad:
+            return {"error": bad}
+    else:
+        file = ctx.db.get(DraftFile, str(a.get("file_id") or ""))
+        if file is None or file.shop_id != ctx.shop.id or file.listing_id != lid or file.kind != "video":
+            return {"error": "Video dosyası bulunamadı (bu listing'e ait olmalı)."}
+        if any(v.get("draft_file_id") == file.id for v in work.get("videos") or []):
+            return {"ok": True, "not": "Video zaten listing'de."}
+    bad = _attach_video(ctx, lid, work, file)
+    if bad:
+        return {"error": bad}
     _save_draft_work(ctx, lid, work)
     _show_listing(ctx, lid, work, ["video"])
     return {"ok": True, "not": "Video yerel taslağa eklendi; Etsy'ye gitmedi."}
@@ -2139,6 +2207,7 @@ TOOLS: list[dict] = [
         "taxonomy_id": {"type": "integer", "description": "Kategori kimliği (shop_defaults'tan)"},
         "attributes": {"type": "array", "description": "Kategori özellikleri (malzeme, kullanım yeri/occasion, renk, kişiselleştirilebilir mi…): [{name, values, unit?}]. İzin verilen değerler get_category_attributes'tedir; bilmiyorsan ver, sonuçtaki hata/eksik listesine göre set_listing_attributes ile tamamla.", "items": _obj({"name": {"type": "string"}, "values": {"type": "array", "items": {"type": "string"}}, "unit": {"type": "string"}}, ["name"])},
         "personalization_questions": {"type": "array", "description": "Kullanıcı kişiselleştirme (isim/yazı vb.) istediyse sorular, en fazla 5: {question_text, question_type (text_input|dropdown), required, max_allowed_characters, instructions, options}", "items": _obj({"question_text": {"type": "string"}, "instructions": {"type": "string"}, "question_type": {"type": "string", "enum": list(fields.QUESTION_TYPES)}, "required": {"type": "boolean"}, "max_allowed_characters": {"type": "integer"}, "options": {"type": "array", "items": {"type": "string"}}}, ["question_text"])},
+        "video_ids": {"type": "array", "items": {"type": "string"}, "description": "Kullanıcının sohbete yüklediği VİDEOLARIN kimlikleri (sistem mesajındaki KULLANICI VİDEOLARI listesinden), en fazla 2. Kullanıcı video yüklediyse mutlaka ver."},
         "wanted_image_count": {"type": "integer", "description": "Kullanıcı 'N resim olsun / N farklı resim oluştur' dediyse N (en çok 20). Yüklenen resim bundan azsa sonuçta eksik_resim döner ve sen o kadarını edit_chat_image ile üretip eklersin."},
         "who_made": {"type": "string", "enum": ["i_did", "someone_else", "collective"]},
         "when_made": {"type": "string"},
@@ -2216,7 +2285,8 @@ TOOLS: list[dict] = [
     {"name": "personalization_library", "description": "Mağazanın diğer listing'lerinde daha önce kullanılan kişiselleştirme (Özel seçenekler / 'Recently used') soruları, kullanım sayısına göre. Kullanıcı kişiselleştirme isterse ya da ürün kişiselleştirilebilir görünüyorsa buradan öneri sun.", "input_schema": _obj({})},
     {"name": "generation_options", "description": "Görsel ve video üretimi için seçilebilir modeller, kalite/çözünürlük seçenekleri (1K/2K/4K gibi) ve kredi bedelleri. Kullanıcı kredi/kalite sorarsa ya da üretimden önce seçenek sunarken çağır.", "input_schema": _obj({})},
     {"name": "generate_listing_video", "description": "Bir fotoğraftan ürün videosu üretir (5–15 sn, kredi harcar). photo_number: listing'in o sıradaki fotoğrafı (varsayılan 1) ya da chat_image_id: sohbetteki bir resim (ör. az önce ürettiğin). Model TEK resimden video üretir; 'listedeki 4 resimden video' istenirse tek bir fotoğrafı seç ya da her fotoğraf için ayrı video önerip maliyeti söyle. confirm vermeden yalnızca kredi bedelini döner: kullanıcıya söyle, AÇIKÇA onay al, onaylarsa confirm=true ile tekrar çağır. listing_id verilmezse sohbetteki en son yeni taslak kullanılır.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer"}, "chat_image_id": {"type": "string"}, "prompt": {"type": "string", "description": "Hareket tarifi, İngilizce (ör. 'slow camera move around the product'); verilmezse sakin bir ürün videosu"}, "duration": {"type": "integer", "description": "Saniye, 5 ile 15 arası (varsayılan 5)"}, **_QUALITY_SCHEMA, "confirm": {"type": "boolean"}}, [])},
-    {"name": "add_video_to_listing", "description": "Üretilmiş bir videoyu listing taslağına ekler. file_id: videonun taslak dosya kimliği (kullanıcının 'listing'e ekle' mesajında yazar). listing_id verilmezse sohbetteki en son yeni taslak. Bir listing'e en fazla 2 video.", "input_schema": _obj({"file_id": {"type": "string"}, "listing_id": {"type": "integer"}}, ["file_id"])},
+    {"name": "add_video_to_listing", "description": "Listing taslağına video ekler: ÜRETİLMİŞ video için file_id (kullanıcının 'listing'e ekle' mesajında yazar) ya da kullanıcının sohbete YÜKLEDİĞİ kendi videosu için chat_video_id (KULLANICI VİDEOLARI listesinden). Ya biri ya öbürü. listing_id verilmezse sohbetteki en son yeni taslak. Bir listing'e en fazla 2 video.", "input_schema": _obj({"file_id": {"type": "string"}, "chat_video_id": {"type": "string"}, "listing_id": {"type": "integer"}}, [])},
+    {"name": "crop_listing_photo", "description": "Listing fotoğrafını kırpar: ratio 1:1 (kare, küçük resim için ideal), 4:3, 3:4 ya da original; zoom 1–4 (1 = tam kadraj, büyüdükçe yakınlaşır); center_x/center_y 0–1 odak noktası (0.5, 0.5 = orta; sol-üst 0,0). 'Ana resmi kırp, ürün ortada olsun' = photo_number 1, ratio 1:1. Resim kırpmak için edit_chat_image KULLANMA (o yeni görsel üretir, kredi harcar); kırpma ücretsizdir. Yalnızca yerel taslağa yazar.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer"}, "ratio": {"type": "string", "enum": ["1:1", "4:3", "3:4", "original"]}, "zoom": {"type": "number"}, "center_x": {"type": "number"}, "center_y": {"type": "number"}}, ["listing_id", "photo_number"])},
     {"name": "move_listing_photo", "description": "Listing taslağındaki bir fotoğrafın sırasını değiştirir. 'Üçüncü resmi ana resim yap' = photo_number 3, to_position 1 (ana fotoğraf birinci sıradadır). Fotoğraf sırası için update_listing KULLANMA.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer", "description": "Taşınacak fotoğrafın şimdiki sırası (1'den başlar)"}, "to_position": {"type": "integer", "description": "Hedef sıra (varsayılan 1 = ana fotoğraf)"}}, ["listing_id", "photo_number"])},
     {"name": "edit_chat_image", "description": "AI ile YENİ bir görsel üretir (arka plan temizle/değiştir, 'ürünü kullanımda / oturma odasında göster', kamera açısı). Kaynak: sohbetteki bir resim (image_id) YA DA bir listing fotoğrafı (listing_id + photo_number). Sonuç sohbette simgeli bir kartla gösterilir, kaynak değişmez. Listing'e YALNIZCA kullanıcı 'ekle' dediyse add_to_listing=true ver; vermezsen sadece gösterilir ve kullanıcı beğenirse ekler ya da yeniden ürettirir. Etsy'ye hiçbir şey göndermez; kredi harcar.", "input_schema": _obj({
         "image_id": {"type": "string", "description": "Kaynak: sohbete eklenen resmin kimliği (sistem mesajındaki listeden)"},
@@ -2281,6 +2351,7 @@ TOOL_LABELS = {
     "regenerate_listing_image": "Fotoğrafı yeniden oluşturuyor",
     "edit_chat_image": "Resmi düzenliyor",
     "move_listing_photo": "Fotoğraf sırasını değiştiriyor",
+    "crop_listing_photo": "Fotoğrafı kırpıyor",
     "generate_listing_video": "Video üretimini başlatıyor",
     "generation_options": "Üretim seçeneklerine bakıyor",
     "edit_inventory": "Stok ve fiyatı güncelliyor",
@@ -2343,6 +2414,7 @@ TOOL_LABELS_EN = {
     "regenerate_listing_image": "Regenerating the photo",
     "edit_chat_image": "Editing the image",
     "move_listing_photo": "Reordering the photos",
+    "crop_listing_photo": "Cropping the photo",
     "generate_listing_video": "Starting the video",
     "generation_options": "Checking the generation options",
     "edit_inventory": "Updating stock and price",
@@ -2381,7 +2453,7 @@ EXECUTORS = {
     "create_listing_draft": create_listing_draft, "update_listing": update_listing,
     "shop_options": shop_options, "workspace_status": workspace_status, "orders_overview": orders_overview, "order_detail": order_detail,
     "orders_missing_costs": orders_missing_costs, "keyword_pool": keyword_pool, "shipping_invoices": shipping_invoices, "bulk_update_listings": bulk_update_listings,
-    "regenerate_listing_image": regenerate_listing_image, "edit_chat_image": edit_chat_image, "move_listing_photo": move_listing_photo, "generate_listing_video": generate_listing_video, "generation_options": generation_options, "edit_inventory": edit_inventory, "remove_variation_option": remove_variation_option,
+    "regenerate_listing_image": regenerate_listing_image, "edit_chat_image": edit_chat_image, "move_listing_photo": move_listing_photo, "crop_listing_photo": crop_listing_photo, "generate_listing_video": generate_listing_video, "generation_options": generation_options, "edit_inventory": edit_inventory, "remove_variation_option": remove_variation_option,
     "set_variation_photo": set_variation_photo, "remove_listing_video": remove_listing_video, "copy_listing": copy_listing,
     "discard_listing_changes": discard_listing_changes, "delete_listing": delete_listing, "personalization_library": personalization_library, "add_video_to_listing": add_video_to_listing, "get_category_attributes": get_category_attributes, "set_listing_attributes": set_listing_attributes,
     "set_listing_fields": set_listing_fields, "delete_listing_photo": delete_listing_photo, "set_photo_alt_text": set_photo_alt_text, "add_chat_image_to_listing": add_chat_image_to_listing, "generate_missing_alt_texts": generate_missing_alt_texts,

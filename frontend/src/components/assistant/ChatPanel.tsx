@@ -68,7 +68,7 @@ function Thinking({ step }: { step: string }) {
   );
 }
 
-type Pending = { id: string; url: string; name: string; isImage: boolean };
+type Pending = { id: string; url: string; name: string; isImage: boolean; isVideo?: boolean };
 
 // Sohbete eklenebilen belgeler (kargo/gümrük faturası); resimler ayrıca kabul edilir. Sunucu sınırı 15 MB.
 const DOC_EXT = [".pdf", ".csv", ".xlsx", ".xls", ".html", ".htm"];
@@ -76,13 +76,20 @@ const MAX_FILE_MB = 15;
 // Etsy bir listing'e en fazla 20 fotoğraf kabul eder (backend: assistant/service.py MAX_IMAGES_PER_MESSAGE).
 const MAX_IMAGES = 20;
 const isDoc = (f: File) => DOC_EXT.some((ext) => f.name.toLowerCase().endsWith(ext));
+// Kullanıcının kendi videosu (listing'e eklenir; Etsy sınırı 100 MB, en fazla 2 video).
+const VIDEO_EXT = [".mp4", ".mov", ".webm", ".m4v"];
+const MAX_VIDEO_MB = 100;
+const MAX_VIDEOS = 2;
+const isVideo = (f: File) => f.type.startsWith("video/") || VIDEO_EXT.some((ext) => f.name.toLowerCase().endsWith(ext));
+const maxMb = (f: File) => (isVideo(f) ? MAX_VIDEO_MB : MAX_FILE_MB);
 
 /** Resim olmayan ekin (PDF, Excel…) küçük kutusu. */
 function FileChip({ name, size = "h-14 w-14" }: { name: string; size?: string }) {
   const ext = name.split(".").pop()?.toUpperCase().slice(0, 4) ?? "";
+  const icon = VIDEO_EXT.includes(`.${ext.toLowerCase()}`) ? "🎬" : "📄";
   return (
     <div title={name} className={`flex ${size} flex-col items-center justify-center gap-0.5 rounded-lg border border-neutral-200 bg-neutral-50 px-1 text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300`}>
-      <span className="text-lg leading-none">📄</span>
+      <span className="text-lg leading-none">{icon}</span>
       <span className="text-[10px] font-semibold">{ext}</span>
     </div>
   );
@@ -269,15 +276,20 @@ export default function ChatPanel({
   }, [messages, busy]);
 
   async function addFiles(files: File[]) {
-    const valid = files.filter((f) => f.type.startsWith("image/") || isDoc(f));
-    // Büyük fotoğraflar yüklenmeden önce telefonda küçültülür; 15 MB denetimi küçültülmüş hâle bakar.
+    const valid = files.filter((f) => f.type.startsWith("image/") || isVideo(f) || isDoc(f));
+    // Büyük fotoğraflar yüklenmeden önce telefonda küçültülür; boyut denetimi küçültülmüş hâle bakar.
     const accepted = await Promise.all(valid.map((f) => shrinkImage(f)));
     if (valid.length < files.length) {
-      setError(t("Yalnızca resim, PDF, Excel/CSV ya da HTML dosyası eklenebilir.", "Only images, PDF, Excel/CSV or HTML files can be attached."));
+      setError(t("Yalnızca resim, video, PDF, Excel/CSV ya da HTML dosyası eklenebilir.", "Only images, videos, PDF, Excel/CSV or HTML files can be attached."));
     }
-    const tooBig = accepted.filter((f) => f.size > MAX_FILE_MB * 1024 * 1024);
-    if (tooBig.length) setError(t(`Dosya ${MAX_FILE_MB} MB'dan büyük olamaz: ${tooBig[0].name}`, `The file cannot be larger than ${MAX_FILE_MB} MB: ${tooBig[0].name}`));
-    const images = accepted.filter((f) => f.size <= MAX_FILE_MB * 1024 * 1024).slice(0, MAX_IMAGES - pending.length);
+    const tooBig = accepted.filter((f) => f.size > maxMb(f) * 1024 * 1024);
+    if (tooBig.length) setError(t(`Dosya ${maxMb(tooBig[0])} MB'dan büyük olamaz: ${tooBig[0].name}`, `The file cannot be larger than ${maxMb(tooBig[0])} MB: ${tooBig[0].name}`));
+    let videoSlots = MAX_VIDEOS - pending.filter((p) => p.isVideo).length;
+    const images = accepted
+      .filter((f) => f.size <= maxMb(f) * 1024 * 1024)
+      .filter((f) => !isVideo(f) || videoSlots-- > 0)
+      .slice(0, MAX_IMAGES - pending.length);
+    if (accepted.some(isVideo) && videoSlots < 0) setError(t(`En fazla ${MAX_VIDEOS} video eklenebilir.`, `You can attach at most ${MAX_VIDEOS} videos.`));
     if (images.length === 0) return;
     if (!tooBig.length && valid.length === files.length) setError(null);
     setUploading((n) => n + images.length);
@@ -285,7 +297,7 @@ export default function ChatPanel({
       try {
         const up = await api.assistant.uploadImage(shopId, f);
         const isImage = up.content_type.startsWith("image/");
-        setPending((p) => [...p, { id: up.id, url: isImage ? URL.createObjectURL(f) : "", name: f.name, isImage }]);
+        setPending((p) => [...p, { id: up.id, url: isImage ? URL.createObjectURL(f) : "", name: f.name, isImage, isVideo: up.content_type.startsWith("video/") }]);
       } catch (e) {
         setError(e instanceof Error && e.message ? e.message : t("Dosya yüklenemedi", "File upload failed"));
       } finally {
@@ -563,7 +575,7 @@ export default function ChatPanel({
         )}
         {/* Kamera / fotoğraflar / dosyalar ayrı seçicilerle açılır; "capture" telefonda doğrudan kamerayı açar. */}
         <input ref={cameraInput} type="file" accept="image/*" capture="environment" hidden onChange={onPick} />
-        <input ref={photoInput} type="file" accept="image/*" multiple hidden onChange={onPick} />
+        <input ref={photoInput} type="file" accept="image/*,video/*" multiple hidden onChange={onPick} />
         <input ref={fileInput} type="file" accept={DOC_EXT.join(",")} multiple hidden onChange={onPick} />
         <div className="relative flex items-end gap-1.5 rounded-3xl border border-neutral-200 bg-neutral-50 p-1.5 transition-colors focus-within:border-neutral-300 dark:border-neutral-700 dark:bg-neutral-800/70 dark:focus-within:border-neutral-600">
           <button
@@ -574,7 +586,7 @@ export default function ChatPanel({
             }}
             aria-label={t("Ekle", "Add")}
             aria-expanded={menuOpen}
-            title={t("Resim ya da dosya ekle (en fazla 15 MB)", "Add an image or file (up to 15 MB)")}
+            title={t("Resim, video ya da dosya ekle (resim 15 MB, video 100 MB'a kadar)", "Add an image, video or file (images up to 15 MB, videos up to 100 MB)")}
             className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-neutral-600 transition hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-700 ${menuOpen ? "rotate-45 bg-neutral-200 dark:bg-neutral-700" : ""}`}
           >
             <PlusIcon />
@@ -586,7 +598,7 @@ export default function ChatPanel({
                 {(
                   [
                     ...(touch ? [[cameraInput, CameraIcon, t("Kamera", "Camera")] as const] : []),
-                    [photoInput, ImageIcon, t("Fotoğraflar", "Photos")] as const,
+                    [photoInput, ImageIcon, t("Fotoğraf ve video", "Photos & videos")] as const,
                     [fileInput, PaperclipIcon, t("Dosyalar", "Files")] as const,
                   ] as const
                 ).map(([ref, Icon, label]) => (
