@@ -21,8 +21,8 @@ from app.core.i18n import tr
 log = logging.getLogger(__name__)
 
 MAX_ROUNDS = 9
-# gpt-5/o-serisi modellerde akıl yürütme düzeyi: çok adımlı araç kullanımı ve uzun kuralları izlemek için "minimal" yetmez (diğer AI işlerinde minimal kalır).
-ASSISTANT_REASONING = "low"
+# gpt-5/o-serisi modellerde akıl yürütme düzeyi (maliyet): "minimal" en ucuz; gerekirse "low"a çıkarılır (gizli düşünme token'ları çıktı olarak faturalanır).
+ASSISTANT_REASONING = "minimal"
 MAX_TOKENS = 2500
 _CACHE = {"type": "ephemeral"}
 
