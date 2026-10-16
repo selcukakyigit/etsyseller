@@ -62,7 +62,8 @@ export function useSummaryStrip(activeShop: Shop | null): SummaryStripState {
 type Entry = { key: string; href: string; title?: string; urgent?: boolean; body: ReactNode };
 
 /** Şeridin öğeleri (gönderilecek, bugün, ayın en çok satanı): masaüstü şeridi ve mobildeki döngü aynı listeyi kullanır. */
-function useEntries(data: SummaryStripData | null): Entry[] {
+/** `compact` (mobil döngü): ayrıntı etiketleri çıkar, ürün adı kalan genişliğe sığacak kadar görünür. */
+function useEntries(data: SummaryStripData | null, compact = false): Entry[] {
   const { t, locale } = useT();
   if (!data) return [];
   const money = (n: number, currency: string) => {
@@ -106,9 +107,9 @@ function useEntries(data: SummaryStripData | null): Entry[] {
       body: (
         <>
           <span aria-hidden>🏆</span>
-          <span>{t("Bu ay en çok satan", "Top seller this month")}:</span>
-          <span className="min-w-0 max-w-[12rem] truncate font-medium text-neutral-900 dark:text-neutral-100 sm:max-w-[20rem]">{data.top_product.title}</span>
-          <span>({data.top_product.units})</span>
+          {!compact && <span>{t("Bu ay en çok satan", "Top seller this month")}:</span>}
+          <span className={`min-w-0 truncate font-medium text-neutral-900 dark:text-neutral-100 ${compact ? "" : "max-w-[12rem] sm:max-w-[20rem]"}`}>{data.top_product.title}</span>
+          <span className="shrink-0">({data.top_product.units})</span>
         </>
       ),
     });
@@ -141,7 +142,7 @@ const FADE_MS = 180;
  * sıradakine geçer. Hareket azaltma ayarı açıksa solma olmaz. */
 export function SummaryRotator({ data }: { data: SummaryStripData | null }) {
   const { t } = useT();
-  const entries = useEntries(data);
+  const entries = useEntries(data, true);
   const [index, setIndex] = useState(0);
   const [shown, setShown] = useState(true);
   const [tick, setTick] = useState(0); // elle geçişte süre baştan başlasın
@@ -176,7 +177,7 @@ export function SummaryRotator({ data }: { data: SummaryStripData | null }) {
       <Link
         href={current.href}
         title={current.title}
-        className={`${entryClass(current)} min-w-0 transition-opacity motion-reduce:transition-none ${shown ? "opacity-100" : "opacity-0"}`}
+        className={`${entryClass(current)} !shrink min-w-0 overflow-hidden transition-opacity motion-reduce:transition-none ${shown ? "opacity-100" : "opacity-0"}`}
         style={{ transitionDuration: `${FADE_MS}ms` }}
       >
         {current.body}
