@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Fragment, ReactNode, useEffect, useState } from "react";
 import { api, Shop, SummaryStripData } from "@/lib/api";
 import { localToday } from "@/components/dashboard/stats";
 import { useCached } from "@/lib/pageCache";
@@ -59,11 +59,12 @@ export function useSummaryStrip(activeShop: Shop | null): SummaryStripState {
   return { visible: enabled && !(failed && !data), data, enabled: mode === "on", setEnabled: (on) => setMode(on ? "on" : "off") };
 }
 
-/** Şeridin öğeleri (gönderilecek, bugün, ayın en çok satanı): masaüstünde şeritte, mobilde üst çubukta aynı görünür. */
-export function SummaryItems({ data }: { data: SummaryStripData | null }) {
-  const { t, locale } = useT();
-  if (!data) return null;
+type Entry = { key: string; href: string; title?: string; urgent?: boolean; body: ReactNode };
 
+/** Şeridin öğeleri (gönderilecek, bugün, ayın en çok satanı): masaüstü şeridi ve mobildeki döngü aynı listeyi kullanır. */
+function useEntries(data: SummaryStripData | null): Entry[] {
+  const { t, locale } = useT();
+  if (!data) return [];
   const money = (n: number, currency: string) => {
     try {
       return new Intl.NumberFormat(locale, { style: "currency", currency, maximumFractionDigits: n >= 100 ? 0 : 2 }).format(n);
@@ -71,33 +72,132 @@ export function SummaryItems({ data }: { data: SummaryStripData | null }) {
       return `${n.toFixed(2)} ${currency}`; // geçersiz para birimi kodu
     }
   };
+  const entries: Entry[] = [
+    {
+      key: "ship",
+      href: "/orders?tab=toship",
+      urgent: data.overdue > 0,
+      body: (
+        <>
+          <span aria-hidden>{data.to_ship > 0 ? "📦" : "✓"}</span>
+          {data.to_ship > 0
+            ? t(`${data.to_ship} sipariş gönderilecek`, `${data.to_ship} ${data.to_ship === 1 ? "order" : "orders"} to ship`)
+            : t("Gönderilecek sipariş yok", "Nothing to ship")}
+          {data.overdue > 0 && <span>{t(`· ${data.overdue} gecikmiş`, `· ${data.overdue} overdue`)}</span>}
+        </>
+      ),
+    },
+    {
+      key: "today",
+      href: "/orders?tab=all",
+      body: (
+        <>
+          <span aria-hidden>💰</span>
+          {t("Bugün", "Today")}: {data.today.orders} {t("sipariş", data.today.orders === 1 ? "order" : "orders")} · {money(data.today.sales, data.currency)}
+        </>
+      ),
+    },
+  ];
+  if (data.top_product) {
+    entries.push({
+      key: "top",
+      href: `/listings/${data.top_product.listing_id}/edit`,
+      title: data.top_product.title,
+      body: (
+        <>
+          <span aria-hidden>🏆</span>
+          <span>{t("Bu ay en çok satan", "Top seller this month")}:</span>
+          <span className="min-w-0 max-w-[12rem] truncate font-medium text-neutral-900 dark:text-neutral-100 sm:max-w-[20rem]">{data.top_product.title}</span>
+          <span>({data.top_product.units})</span>
+        </>
+      ),
+    });
+  }
+  return entries;
+}
 
+const entryClass = (e: Entry) => `${item} ${e.urgent ? "font-medium text-red-600 dark:text-red-400" : ""}`;
+
+/** Masaüstü: hepsi yan yana. */
+export function SummaryItems({ data }: { data: SummaryStripData | null }) {
   return (
     <>
-      <Link href="/orders?tab=toship" className={`${item} ${data.overdue > 0 ? "font-medium text-red-600 dark:text-red-400" : ""}`}>
-        <span aria-hidden>{data.to_ship > 0 ? "📦" : "✓"}</span>
-        {data.to_ship > 0
-          ? t(`${data.to_ship} sipariş gönderilecek`, `${data.to_ship} ${data.to_ship === 1 ? "order" : "orders"} to ship`)
-          : t("Gönderilecek sipariş yok", "Nothing to ship")}
-        {data.overdue > 0 && <span>{t(`· ${data.overdue} gecikmiş`, `· ${data.overdue} overdue`)}</span>}
-      </Link>
-      {divider}
-      <Link href="/orders?tab=all" className={item}>
-        <span aria-hidden>💰</span>
-        {t("Bugün", "Today")}: {data.today.orders} {t("sipariş", data.today.orders === 1 ? "order" : "orders")} · {money(data.today.sales, data.currency)}
-      </Link>
-      {data.top_product && (
-        <>
-          {divider}
-          <Link href={`/listings/${data.top_product.listing_id}/edit`} className={item} title={data.top_product.title}>
-            <span aria-hidden>🏆</span>
-            <span>{t("Bu ay en çok satan", "Top seller this month")}:</span>
-            <span className="max-w-[12rem] truncate font-medium text-neutral-900 dark:text-neutral-100 sm:max-w-[20rem]">{data.top_product.title}</span>
-            <span>({data.top_product.units})</span>
+      {useEntries(data).map((e, i) => (
+        <Fragment key={e.key}>
+          {i > 0 && divider}
+          <Link href={e.href} title={e.title} className={entryClass(e)}>
+            {e.body}
           </Link>
-        </>
-      )}
+        </Fragment>
+      ))}
     </>
+  );
+}
+
+const ROTATE_MS = 4000;
+const FADE_MS = 180;
+
+/** Mobil: aynı öğeler tek tek, kendiliğinden değişir (solarak); öğeye dokununca ilgili sayfaya gider, sağdaki noktalara dokununca
+ * sıradakine geçer. Hareket azaltma ayarı açıksa solma olmaz. */
+export function SummaryRotator({ data }: { data: SummaryStripData | null }) {
+  const { t } = useT();
+  const entries = useEntries(data);
+  const [index, setIndex] = useState(0);
+  const [shown, setShown] = useState(true);
+  const [tick, setTick] = useState(0); // elle geçişte süre baştan başlasın
+  const count = entries.length;
+
+  useEffect(() => {
+    if (count < 2) return;
+    const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let swap: ReturnType<typeof setTimeout> | undefined;
+    const timer = setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      if (calm) {
+        setIndex((i) => (i + 1) % count);
+        return;
+      }
+      setShown(false);
+      swap = setTimeout(() => {
+        setIndex((i) => (i + 1) % count);
+        setShown(true);
+      }, FADE_MS);
+    }, ROTATE_MS);
+    return () => {
+      clearInterval(timer);
+      clearTimeout(swap);
+    };
+  }, [count, tick]);
+
+  if (count === 0) return null;
+  const current = entries[index % count];
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-1 text-xs">
+      <Link
+        href={current.href}
+        title={current.title}
+        className={`${entryClass(current)} min-w-0 transition-opacity motion-reduce:transition-none ${shown ? "opacity-100" : "opacity-0"}`}
+        style={{ transitionDuration: `${FADE_MS}ms` }}
+      >
+        {current.body}
+      </Link>
+      {count > 1 && (
+        <button
+          type="button"
+          aria-label={t("Sonraki özet", "Next summary")}
+          onClick={() => {
+            setShown(true);
+            setIndex((i) => (i + 1) % count);
+            setTick((n) => n + 1);
+          }}
+          className="ml-auto flex shrink-0 items-center gap-1 px-2 py-2"
+        >
+          {entries.map((e, i) => (
+            <span key={e.key} aria-hidden className={`h-1.5 w-1.5 rounded-full ${i === index % count ? "bg-[#D97757]" : "bg-neutral-300 dark:bg-neutral-700"}`} />
+          ))}
+        </button>
+      )}
+    </div>
   );
 }
 

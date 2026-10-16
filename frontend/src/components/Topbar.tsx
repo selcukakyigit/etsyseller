@@ -8,7 +8,7 @@ import CreditBadge from "@/components/billing/CreditBadge";
 import LangSwitch from "@/components/LangSwitch";
 import { useT } from "@/lib/i18n-client";
 import { BellIcon, SyncIcon } from "@/components/icons";
-import { SUMMARY_SCROLL, SummaryItems, SummaryStripState } from "@/components/layout/SummaryStrip";
+import { SummaryRotator, SummaryStripState } from "@/components/layout/SummaryStrip";
 import Logo from "@/components/Logo";
 import { emitSyncDone } from "@/lib/syncEvents";
 import { emitOrderFocus, focusForNotification, OrderFocus, orderFocusHref } from "@/lib/orderFocus";
@@ -180,8 +180,8 @@ export default function Topbar({ activeShop, strip }: { activeShop: Shop | null;
     <header className="sticky top-0 z-40 box-border flex h-[49px] items-center justify-end gap-1 border-b border-neutral-200 bg-white px-3 py-2 dark:border-neutral-800 dark:bg-neutral-900 sm:px-4">
       <div className="mr-auto flex min-w-0 flex-1 items-center lg:hidden">
         {strip.visible ? (
-          <div className={`${SUMMARY_SCROLL} flex-1 text-xs text-neutral-700 dark:text-neutral-300`} aria-label={t("Günlük özet", "Daily summary")}>
-            <SummaryItems data={strip.data} />
+          <div className="flex min-w-0 flex-1 text-neutral-700 dark:text-neutral-300" aria-label={t("Günlük özet", "Daily summary")}>
+            <SummaryRotator data={strip.data} />
           </div>
         ) : (
           <Link href="/dashboard" aria-label={t("Ana sayfa", "Home")}>
