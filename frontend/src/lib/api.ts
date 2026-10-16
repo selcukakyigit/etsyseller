@@ -345,6 +345,8 @@ export interface ShopAttention {
   items: AttentionItem[];
   declining_ids: number[];
   declining_count: number;
+  /** Yakın zamanda güncellenip etkisi ölçülen (listede gösterilmeyen) düşen listing sayısı. */
+  measuring_count?: number;
 }
 
 export type EtsyDataSource = "marketplace_insights" | "search_terms" | "ads";
@@ -1544,6 +1546,15 @@ export interface ChatSessionInfo {
   title: string;
   updated_at: string;
 }
+/** Üst çubuğun altındaki özet şeridi (bkz. components/layout/SummaryStrip.tsx). */
+export interface SummaryStripData {
+  currency: string;
+  to_ship: number;
+  overdue: number;
+  today: { orders: number; sales: number };
+  month: { sales: number; prev_sales: number };
+  top_product: { listing_id: number; title: string; units: number } | null;
+}
 export interface DashboardData {
   currency: string;
   today: { orders: number; sales: number };
@@ -2000,6 +2011,7 @@ export const api = {
   },
   notifications: {
     list: (shopId: number) => request<NotificationsOut>(`/api/shops/${shopId}/notifications`),
+    summary: (shopId: number, today: string) => request<SummaryStripData>(`/api/shops/${shopId}/notifications/summary?today=${today}`),
     markRead: (shopId: number) => request<{ ok: boolean }>(`/api/shops/${shopId}/notifications/read`, { method: "POST" }),
   },
   orders: {

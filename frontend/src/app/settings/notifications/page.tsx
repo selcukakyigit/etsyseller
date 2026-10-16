@@ -6,11 +6,13 @@ import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import SettingsSubpage from "@/components/SettingsSubpage";
 import { useT } from "@/lib/i18n-client";
 import { BlockSpinner } from "@/components/ui/Spinner";
+import { useSummaryStripEnabled } from "@/components/layout/SummaryStrip";
 
 export default function NotificationSettingsPage() {
   const { user, shops, activeShop, setActiveShopId, error: bootError } = useAuthAndShop();
   const { t } = useT();
   const [orderEmail, setOrderEmail] = useState<boolean | null>(null);
+  const [stripMode, setStripMode] = useSummaryStripEnabled();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,6 +42,32 @@ export default function NotificationSettingsPage() {
     <SettingsSubpage user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} title={t("Bildirimler", "Notifications")}>
       {(bootError || error) && <p className="text-sm text-red-600 dark:text-red-400">{bootError ?? error}</p>}
       {user && orderEmail === null && !error && <BlockSpinner />}
+
+      {user && (
+        <section className="space-y-4 rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("Günlük özet şeridi", "Daily summary strip")}</h2>
+              <p className="mt-1 text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
+                {t(
+                  "Üst çubuğun altında tek satırlık özet gösterir: kaç sipariş gönderilecek (geciken varsa vurgulanır), bugünün siparişi ve satışı, bu ayın en çok satan ürünü. Bu tercih yalnızca bu tarayıcıda geçerlidir.",
+                  "Shows a one-line summary under the top bar: how many orders to ship (overdue ones are highlighted), today's orders and sales, and this month's top seller. This preference applies to this browser only.",
+                )}
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={stripMode === "on"}
+              aria-label={t("Günlük özet şeridi", "Daily summary strip")}
+              onClick={() => setStripMode(stripMode === "on" ? "off" : "on")}
+              className={`relative mt-1 h-6 w-11 shrink-0 rounded-full transition ${stripMode === "on" ? "bg-[#D97757]" : "bg-neutral-300 dark:bg-neutral-700"}`}
+            >
+              <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${stripMode === "on" ? "left-[22px]" : "left-0.5"}`} />
+            </button>
+          </div>
+        </section>
+      )}
 
       {user && orderEmail !== null && (
         <section className="space-y-4 rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">

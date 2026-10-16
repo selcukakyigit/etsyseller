@@ -11,6 +11,7 @@ import { PageSpinner } from "@/components/ui/Spinner";
 import { useShopState } from "@/lib/useShopState";
 import { BOTTOM_NAV_SPACE } from "@/components/layout/constants";
 import Topbar from "@/components/Topbar";
+import SummaryStrip from "@/components/layout/SummaryStrip";
 import CreditRequiredModal from "@/components/billing/CreditRequiredModal";
 import { useT } from "@/lib/i18n-client";
 import { usePresence } from "@/lib/usePresence";
@@ -50,6 +51,7 @@ export default function AppShell({
       <MobileDrawer {...shell} open={menuOpen} onClose={closeMenu} />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar activeShop={activeShop} onMenu={openMenu} />
+        {!!user && <SummaryStrip activeShop={activeShop} />}
         <InstallBanner />
         {activeShop?.is_demo && (
           <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs leading-relaxed text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">

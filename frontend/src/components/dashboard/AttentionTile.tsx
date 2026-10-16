@@ -52,6 +52,11 @@ export default function AttentionTile({ shopId, className }: { shopId: number; c
               </li>
             ))}
           </ul>
+          {!!data.measuring_count && (
+            <p className="mt-3 text-[11px] text-neutral-500 dark:text-neutral-400">
+              {t(`${data.measuring_count} düşen listing yakın zamanda güncellendi, etkisi ölçülüyor; şimdilik dokunma.`, `${data.measuring_count} declining listing(s) were updated recently and are being measured; leave them for now.`)}
+            </p>
+          )}
           <p className="mt-3 text-[11px] text-neutral-500 dark:text-neutral-400">
             {t("Listing'ler sayfasında \"Düşüşte\" filtresiyle hepsini görebilir, Analiz panelinden ayrıntıya bakabilirsin.", "See them all with the \"Declining\" filter on the Listings page; open Analysis for details.")}
           </p>

@@ -638,6 +638,7 @@ def _change_brief(lc: dict) -> str:
 # ------------------------------------------------------------------ mağaza geneli: dikkat isteyen listing'ler
 
 _attention_cache = ResultCache(max_items=50)
+MAX_DIAGNOSED = 15  # dikkat listesi için en fazla bu kadar düşen listing'in teşhisi çıkarılır
 
 
 def attention(db: Session, shop: Shop, today: dt.date | None = None, limit: int = 5) -> dict:
@@ -660,11 +661,20 @@ def attention(db: Session, shop: Shop, today: dt.date | None = None, limit: int 
             declining.append((lid, m["prev12"] - m["last12"], html.unescape(title or "")))
     declining.sort(key=lambda x: -x[1])
     items = []
-    for lid, lost, title in declining[:limit]:
+    measuring = 0
+    # Yakın zamanda güncellenip etkisi ölçülen listing'de yapılacak bir şey yok (sıradaki adım "bekle"): "dikkat isteyen"
+    # listesine girmez, yerine sıradaki düşen listing gelir. Teşhis pahalı olduğundan en fazla MAX_DIAGNOSED tane bakılır.
+    for lid, lost, title in declining[:MAX_DIAGNOSED]:
+        if len(items) >= limit:
+            break
         d = diagnose(db, shop, lid, today)
-        if d:
-            items.append({"listing_id": lid, "title": title, "lost_units": lost, "headline": d["headline"], "action": d["action"], "season": d["season"]})
-    result = {"items": items, "declining_ids": [lid for lid, _, _ in declining], "declining_count": len(declining)}
+        if not d:
+            continue
+        if d["action"]["key"] == "wait":
+            measuring += 1
+            continue
+        items.append({"listing_id": lid, "title": title, "lost_units": lost, "headline": d["headline"], "action": d["action"], "season": d["season"]})
+    result = {"items": items, "declining_ids": [lid for lid, _, _ in declining], "declining_count": len(declining), "measuring_count": measuring}
     _attention_cache.set(key, result)
     return result
 

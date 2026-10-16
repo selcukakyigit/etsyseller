@@ -8,7 +8,7 @@ import { useCached } from "@/lib/pageCache";
 
 // Ana sayfa (Ulagg) ve Analiz sayfasının ortak parçaları: özet verisi, sayı kutusu, geçen yıla göre değişim.
 
-const localToday = () => {
+export const localToday = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };

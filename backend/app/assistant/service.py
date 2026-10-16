@@ -24,6 +24,7 @@ from app.assistant.models import AssistantUsage, ChatImage, ChatMessage, ChatSes
 from app.billing import metering
 from app.finance import service as fin
 from app.listings.models import ListingCache
+from app.notifications.summary import order_snapshot
 from app.orders.models import OrderCache
 from app.shops.models import Shop
 
@@ -335,28 +336,13 @@ def _currency(db: Session, shop: Shop) -> str:
 # ------------------------------------------------------------------ dashboard kartları
 
 def dashboard(db: Session, shop: Shop, today: dt.date) -> dict:
-    day_start = dt.datetime.combine(today, dt.time.min)
-    to_ship = db.scalar(
-        select(func.count()).select_from(OrderCache).where(OrderCache.shop_id == shop.id, OrderCache.is_paid.is_(True), OrderCache.is_shipped.is_(False), OrderCache.is_canceled.is_(False))
-    ) or 0
-    overdue = db.scalar(
-        select(func.count()).select_from(OrderCache).where(
-            OrderCache.shop_id == shop.id, OrderCache.is_paid.is_(True), OrderCache.is_shipped.is_(False), OrderCache.is_canceled.is_(False), OrderCache.expected_ship_date < day_start
-        )
-    ) or 0
-    todays = db.execute(
-        select(func.count(), func.coalesce(func.sum(OrderCache.grandtotal_amount / OrderCache.grandtotal_divisor), 0.0)).where(
-            OrderCache.shop_id == shop.id, OrderCache.created_at >= day_start, OrderCache.is_canceled.is_(False)
-        )
-    ).one()
+    snapshot = order_snapshot(db, shop, today)
     month_start = today.replace(day=1)
     r = fin.report(db, shop, month_start, today, compare=[1])
     k, p = r["kpi"], r["prev_kpi"]
     return {
         "currency": r["currency"],
-        "today": {"orders": todays[0], "sales": round(float(todays[1]), 2)},
-        "to_ship": to_ship,
-        "overdue": overdue,
+        **snapshot,
         "month": {
             "label": month_start.strftime("%Y-%m"), "sales": round(k["sales"], 2), "orders": k["orders"], "profit": round(k["profit"], 2),
             "fees": round(k["fees"], 2), "cogs": round(k["cogs"], 2), "prev_sales": round(p["sales"], 2), "prev_orders": p["orders"], "prev_profit": round(p["profit"], 2),
