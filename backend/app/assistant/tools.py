@@ -528,6 +528,15 @@ def _quality_problems(title: str, tags: list[str], product_description: str) -> 
 _STOP = {"the", "and", "for", "with", "your", "our", "you", "from", "this", "that", "custom", "personalized"}
 
 
+def _variations_of(row: ListingCache) -> list[dict]:
+    """Önbellekteki listing'in varyasyonları (ad + ilk seçenekler); benzer listing'lerden varyasyon önerisi için."""
+    try:
+        work = bulk.snapshot_cached(row)
+        return [{"ad": n, "secenekler": inventory_edit.options(work, n)[:8]} for n in inventory_edit.variation_names(work)]
+    except Exception:  # noqa: BLE001 - envanter okunamazsa varyasyon bilgisi verilmez
+        return []
+
+
 def similar_listings(ctx: Ctx, a: dict) -> dict:
     """Mağazanın benzer listing'leri (fiyat, etiket, başlık üslubu ve açıklama örneği için)."""
     words = {w for w in re.findall(r"[a-z0-9]+", str(a.get("query", "")).lower()) if len(w) > 2 and w not in _STOP}
@@ -548,6 +557,7 @@ def similar_listings(ctx: Ctx, a: dict) -> dict:
             "listing_id": row.listing_id, "baslik": html.unescape(row.title), "etiketler": j.get("tags") or [],
             "fiyat": _r(pr["amount"] / pr["divisor"]) if pr.get("divisor") else None, "goruntulenme": row.views, "favori": row.favorites,
             "aciklama_ilk_500": html.unescape(j.get("description") or "")[:500],
+            "varyasyonlar": _variations_of(row),
         })
     prices = [x["fiyat"] for x in out if x["fiyat"]]
     return {"benzer_sayisi": len(out), "fiyat_araligi": [min(prices), max(prices)] if prices else None, "listingler": out}
