@@ -848,7 +848,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         except Exception as exc:  # noqa: BLE001 - özellikler alınamazsa taslak yine oluşur, model get_category_attributes ile yeniden dener
             completion["ozellikler_alinamadi"] = str(exc)
         else:
-            wanted_attrs = list(a.get("attributes") or [])
+            wanted_attrs = [x for x in (a.get("attributes") or []) if not _covered_by_variation(work, str(x.get("name", "")))]  # renk/boyut varyasyondaysa özelliğe yazılmaz
             if a.get("personalizable") and not any("personali" in str(x.get("name", "")).lower() for x in wanted_attrs):
                 wanted_attrs.append({"name": "Can be personalized", "values": ["Yes"]})  # kategoride yoksa hata verir, taslağı bozmaz
             if wanted_attrs:
@@ -1693,7 +1693,12 @@ def get_category_attributes(ctx: Ctx, a: dict) -> dict:
         defs = _category_defs(int(tid))
     except Exception as exc:  # noqa: BLE001
         return {"error": f"Kategori özellikleri alınamadı: {exc}"}
-    return {"kategori": _taxonomy().get(int(tid)), **fields.describe(defs, work)}
+    variations = [{"ad": n, "secenekler": inventory_edit.options(work, n)[:8]} for n in inventory_edit.variation_names(work)]
+    return {
+        "kategori": _taxonomy().get(int(tid)), **fields.describe(defs, work),
+        "listing_varyasyonlari": variations,
+        "not": "Listing'in varyasyonları yukarıda: aynı bilgiyi anlatan özelliği (ör. Color varyasyonu varken Primary color, Size varken boyut seçeneği) tek bir değerle DOLDURMA; varyasyonda olmayan renk/ölçü/malzeme gibi özellikleri doldur." if variations else None,
+    }
 
 
 def set_listing_fields(ctx: Ctx, a: dict) -> dict:
@@ -1726,6 +1731,21 @@ def set_listing_fields(ctx: Ctx, a: dict) -> dict:
     return _save_fields(ctx, lid, work, changed, errors, **extra)
 
 
+# Aynı bilgiyi anlatan sözcükler: varyasyon "Renk", özellik "Primary color" ise ikisi aynı şeydir (mağaza dili ne olursa olsun).
+_VARIATION_WORD_GROUPS = (("color", "colour", "renk"), ("size", "boyut", "beden", "ölçü"))
+
+
+def _covered_by_variation(work: dict, attr_name: str) -> bool:
+    """Özellik (ör. Primary color) listing'in bir varyasyonuyla (ör. Color) zaten karşılanıyorsa True: renk/boyut seçenekleri varyasyonda
+    durur, aynı bilgiyi tek bir değerle özelliğe yazmak (ör. Silver) yanıltıcı olur."""
+    n = " ".join(str(attr_name).lower().split())
+    for v in inventory_edit.variation_names(work):
+        vn = " ".join(v.lower().split())
+        if vn == n or any(any(w in vn for w in words) and any(w in n for w in words) for words in _VARIATION_WORD_GROUPS):
+            return True
+    return False
+
+
 def set_listing_attributes(ctx: Ctx, a: dict) -> dict:
     """Kategorinin özelliklerini (renk, malzeme, kullanım yeri…) izin verilen değerlere göre yazar. Boş values özelliği kaldırır."""
     lid = int(a["listing_id"])
@@ -1739,8 +1759,12 @@ def set_listing_attributes(ctx: Ctx, a: dict) -> dict:
         defs = _category_defs(int(tid))
     except Exception as exc:  # noqa: BLE001
         return {"error": f"Kategori özellikleri alınamadı: {exc}"}
-    changed, errors = fields.apply_attributes(work, defs, list(a.get("attributes") or []))
-    return _save_fields(ctx, lid, work, changed, errors, **{k: v for k, v in fields.describe(defs, work).items() if k == "eksik_zorunlu"})
+    items = list(a.get("attributes") or [])
+    skipped = [str(x.get("name")) for x in items if (x.get("values") and _covered_by_variation(work, str(x.get("name", ""))))]
+    items = [x for x in items if str(x.get("name")) not in skipped]
+    changed, errors = fields.apply_attributes(work, defs, items)
+    extra = {"atlanan_ozellikler": skipped, "atlama_nedeni": "Bu bilgi zaten bir varyasyonla (renk/boyut seçenekleri) karşılanıyor; özelliğe tek bir değer yazılmadı."} if skipped else {}
+    return _save_fields(ctx, lid, work, changed, errors, **{k: v for k, v in fields.describe(defs, work).items() if k == "eksik_zorunlu"}, **extra)
 
 
 def _photo_at(work: dict, number: int) -> tuple[list[dict], dict | None]:

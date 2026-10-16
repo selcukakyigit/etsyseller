@@ -21,6 +21,8 @@ from app.core.i18n import tr
 log = logging.getLogger(__name__)
 
 MAX_ROUNDS = 9
+# gpt-5/o-serisi modellerde akıl yürütme düzeyi: çok adımlı araç kullanımı ve uzun kuralları izlemek için "minimal" yetmez (diğer AI işlerinde minimal kalır).
+ASSISTANT_REASONING = "low"
 MAX_TOKENS = 2500
 _CACHE = {"type": "ephemeral"}
 
@@ -122,7 +124,7 @@ def _run_openai(static, dynamic, history, user_text, images, tools, execute, usa
     messages = [{"role": "system", "content": f"{static}\n\n{dynamic}"}, *history, {"role": "user", "content": content}]
     oa_tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in tools]
     for _ in range(MAX_ROUNDS):
-        resp = client.chat.completions.create(model=usage.model, messages=messages, tools=oa_tools, **openai_limits(usage.model, MAX_TOKENS))
+        resp = client.chat.completions.create(model=usage.model, messages=messages, tools=oa_tools, **openai_limits(usage.model, MAX_TOKENS, ASSISTANT_REASONING))
         _add_openai_usage(usage, resp)
         msg = resp.choices[0].message
         if not msg.tool_calls:
