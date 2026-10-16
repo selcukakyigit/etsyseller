@@ -7,13 +7,15 @@ import ThemeToggle from "@/components/ThemeToggle";
 import CreditBadge from "@/components/billing/CreditBadge";
 import LangSwitch from "@/components/LangSwitch";
 import { useT } from "@/lib/i18n-client";
-import { BellIcon, MenuIcon, SyncIcon } from "@/components/icons";
+import { BellIcon, SyncIcon } from "@/components/icons";
+import { SUMMARY_SCROLL, SummaryItems, SummaryStripState } from "@/components/layout/SummaryStrip";
 import Logo from "@/components/Logo";
 import { emitSyncDone } from "@/lib/syncEvents";
 import { emitOrderFocus, focusForNotification, OrderFocus, orderFocusHref } from "@/lib/orderFocus";
 
-/** Üst bar. `onMenu`: mobilde (lg altı) ☰ düğmesi menü çekmecesini açar. */
-export default function Topbar({ activeShop, onMenu }: { activeShop: Shop | null; onMenu?: () => void }) {
+/** Üst bar. Mobilde (lg altı) sade: solda günlük özet (kapalıysa logo), sağda bildirim ve ⋯ menüsü (kredi, senkron, dil, tema, özet
+ * anahtarı); menü zaten alt çubuktaki "Menü"dedir. Masaüstünde tüm denetimler çubukta görünür, özet ayrı şeritte (bkz. AppShell). */
+export default function Topbar({ activeShop, strip }: { activeShop: Shop | null; strip: SummaryStripState }) {
   const { t, locale } = useT();
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -21,6 +23,8 @@ export default function Topbar({ activeShop, onMenu }: { activeShop: Shop | null
   const [insights, setInsights] = useState<OrderInsights | null>(null);
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLDivElement>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [events, setEvents] = useState<AppNotification[]>([]);
   const [unread, setUnread] = useState(0);
 
@@ -139,6 +143,7 @@ export default function Topbar({ activeShop, onMenu }: { activeShop: Shop | null
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false);
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false);
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -173,18 +178,16 @@ export default function Topbar({ activeShop, onMenu }: { activeShop: Shop | null
 
   return (
     <header className="sticky top-0 z-40 box-border flex h-[49px] items-center justify-end gap-1 border-b border-neutral-200 bg-white px-3 py-2 dark:border-neutral-800 dark:bg-neutral-900 sm:px-4">
-      <div className="mr-auto flex items-center gap-1 lg:hidden">
-        <button
-          type="button"
-          onClick={onMenu}
-          aria-label={t("Menüyü aç", "Open menu")}
-          className="-ml-1 flex h-9 w-9 items-center justify-center rounded-lg text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
-        >
-          <MenuIcon />
-        </button>
-        <Link href="/dashboard" aria-label={t("Ana sayfa", "Home")}>
-          <Logo height={20} />
-        </Link>
+      <div className="mr-auto flex min-w-0 flex-1 items-center lg:hidden">
+        {strip.visible ? (
+          <div className={`${SUMMARY_SCROLL} flex-1 text-xs text-neutral-700 dark:text-neutral-300`} aria-label={t("Günlük özet", "Daily summary")}>
+            <SummaryItems data={strip.data} />
+          </div>
+        ) : (
+          <Link href="/dashboard" aria-label={t("Ana sayfa", "Home")}>
+            <Logo height={20} />
+          </Link>
+        )}
       </div>
 
       {syncError && <span className="mr-2 hidden truncate text-xs text-red-600 dark:text-red-400 sm:inline">{syncError}</span>}
@@ -202,7 +205,7 @@ export default function Topbar({ activeShop, onMenu }: { activeShop: Shop | null
         onClick={handleSync}
         disabled={!activeShop || syncing}
         title={t("Etsy ile senkronize et", "Sync with Etsy")}
-        className="w-8 h-8 flex items-center justify-center rounded-lg text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition disabled:opacity-40"
+        className="hidden h-8 w-8 items-center justify-center rounded-lg text-neutral-500 transition hover:bg-neutral-100 disabled:opacity-40 dark:text-neutral-400 dark:hover:bg-neutral-800 lg:flex"
       >
         {/* animate-spin (saat yönü) bu iki oklu ikonda tersine dönüyormuş gibi bir yanılsama yaratıyordu; okların
             kendi yönüyle tutarlı olsun diye tersine (reverse) döndürüyoruz. */}
@@ -274,9 +277,66 @@ export default function Topbar({ activeShop, onMenu }: { activeShop: Shop | null
         )}
       </div>
 
-      <CreditBadge />
-      <LangSwitch className="mx-1.5" />
-      <ThemeToggle />
+      <div className="hidden items-center lg:flex">
+        <CreditBadge />
+        <LangSwitch className="mx-1.5" />
+        <ThemeToggle />
+      </div>
+
+      {/* Mobil: seyrek kullanılanlar tek menüde */}
+      <div className="relative lg:hidden" ref={moreRef}>
+        <button
+          type="button"
+          onClick={() => setMoreOpen((v) => !v)}
+          aria-label={t("Daha fazla", "More")}
+          aria-expanded={moreOpen}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 transition hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+        >
+          <span aria-hidden className="text-lg font-bold leading-none">⋯</span>
+        </button>
+        {moreOpen && (
+          <div style={{ zIndex: 60 }} className="fixed inset-x-3 top-[53px] space-y-1 rounded-xl border border-neutral-200 bg-white p-2 shadow-lg dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="flex items-center justify-between rounded-lg px-2 py-1 text-sm text-neutral-700 dark:text-neutral-200">
+              <span>{t("Kredi", "Credits")}</span>
+              <CreditBadge />
+            </div>
+            <button
+              type="button"
+              onClick={handleSync}
+              disabled={!activeShop || syncing}
+              className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-100 disabled:opacity-50 dark:text-neutral-200 dark:hover:bg-neutral-800"
+            >
+              <span>{t("Etsy ile senkronize et", "Sync with Etsy")}</span>
+              <span className="flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                {syncing && pct !== null && <span className="tabular-nums">%{pct}</span>}
+                <SyncIcon className={syncing ? "animate-spin" : ""} style={syncing ? { animationDirection: "reverse" } : undefined} />
+              </span>
+            </button>
+            {syncError && <p className="px-2 text-xs text-red-600 dark:text-red-400">{syncError}</p>}
+            <div className="flex items-center justify-between rounded-lg px-2 py-1.5 text-sm text-neutral-700 dark:text-neutral-200">
+              <span>{t("Dil", "Language")}</span>
+              <LangSwitch />
+            </div>
+            <div className="flex items-center justify-between rounded-lg px-2 py-0.5 text-sm text-neutral-700 dark:text-neutral-200">
+              <span>{t("Tema", "Theme")}</span>
+              <ThemeToggle />
+            </div>
+            <div className="flex items-center justify-between rounded-lg px-2 py-2 text-sm text-neutral-700 dark:text-neutral-200">
+              <span>{t("Günlük özet", "Daily summary")}</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={strip.enabled}
+                aria-label={t("Günlük özet", "Daily summary")}
+                onClick={() => strip.setEnabled(!strip.enabled)}
+                className={`relative h-6 w-11 shrink-0 rounded-full transition ${strip.enabled ? "bg-[#D97757]" : "bg-neutral-300 dark:bg-neutral-700"}`}
+              >
+                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${strip.enabled ? "left-[22px]" : "left-0.5"}`} />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </header>
   );
 }
