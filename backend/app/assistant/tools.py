@@ -601,7 +601,7 @@ def _auto_category(ctx: Ctx, text: str) -> tuple[int, str, str] | None:
     words = _cat_words(text)
     best: tuple[float, int] | None = None
     for tid, path in names.items():
-        if tid not in _taxonomy_leaves:
+        if tid not in _taxonomy_leaves and tid not in used:  # mağazanın zaten kullandığı kategori (ör. Wall Decor) yaprak olmasa da uygundur
             continue
         leaf = path.rsplit(">", 1)[-1]
         leaf_overlap = len(words & _cat_words(leaf))
@@ -743,6 +743,25 @@ def _show_listing(ctx: Ctx, lid: int, work: dict, changes: list[str] | None = No
     ctx.cards.append(card)
 
 
+def _latest_message_media(ctx: Ctx) -> tuple[list[str], list[str]]:
+    """Kullanıcının bu sohbetteki SON mesajına eklediği resim ve video kimlikleri (sırayla). Yeni taslakta model bunları eksik verirse tamamlanır."""
+    from app.assistant.models import ChatMessage
+    from app.assistant.service import IMAGE_TYPES, VIDEO_TYPES
+
+    msg = ctx.db.scalars(select(ChatMessage).where(ChatMessage.session_id == ctx.session_id, ChatMessage.role == "user").order_by(ChatMessage.id.desc())).first()
+    images: list[str] = []
+    videos: list[str] = []
+    for file_id in json.loads(msg.image_ids_json or "[]") if msg is not None else []:
+        f = ctx.db.get(ChatImage, str(file_id))
+        if f is None or f.shop_id != ctx.shop.id or not f.path:
+            continue
+        if f.content_type in IMAGE_TYPES:
+            images.append(f.id)
+        elif f.content_type in VIDEO_TYPES:
+            videos.append(f.id)
+    return images, videos
+
+
 def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     title = " ".join(str(a.get("title", "")).split())[: bulk.TITLE_MAX]
     if not title:
@@ -814,11 +833,14 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         work["description"] = templates.applier(ctx.db, ctx.shop, tpl)(work)
 
     # Alt metinler: model resimleri zaten gördüğü için image_ids ile aynı sırada verir (en fazla 500 karakter, önerilen 125).
-    ids_in = [str(i) for i in (a.get("image_ids") or [])[:creation.MAX_LISTING_IMAGES]]
+    latest_images, latest_videos = _latest_message_media(ctx)
+    given_ids = [str(i) for i in (a.get("image_ids") or [])]
+    image_ids = (given_ids + [i for i in latest_images if i not in given_ids])[: creation.MAX_LISTING_IMAGES]  # kullanıcının yüklediği hiçbir resim dışarıda kalmaz
+    ids_in = image_ids
     alts = [" ".join(str(t).split())[:500] for t in (a.get("image_alt_texts") or [])]
     alt_by_image = {iid: alts[i] for i, iid in enumerate(ids_in) if i < len(alts) and alts[i]}
     attached = 0
-    for n, image_id in enumerate((a.get("image_ids") or [])[: creation.MAX_LISTING_IMAGES], start=1):
+    for n, image_id in enumerate(image_ids, start=1):
         img = ctx.db.get(ChatImage, str(image_id))
         if img is None or img.shop_id != ctx.shop.id:
             continue
@@ -879,7 +901,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     if missing_alt:
         completion["alt_metni_eksik_resim"] = missing_alt
     videos_attached = 0
-    for chat_video_id in (a.get("video_ids") or [])[: generation.MAX_LISTING_VIDEOS]:
+    for chat_video_id in (list(a.get("video_ids") or []) + [v for v in latest_videos if v not in (a.get("video_ids") or [])])[: generation.MAX_LISTING_VIDEOS]:
         file, bad = _chat_video_file(ctx, lid, chat_video_id)
         if bad or _attach_video(ctx, lid, work, file):
             completion.setdefault("video_hatalari", []).append(bad or "Video eklenemedi.")
@@ -1717,7 +1739,13 @@ def set_listing_fields(ctx: Ctx, a: dict) -> dict:
             names = _taxonomy()
         except Exception as exc:  # noqa: BLE001
             return {"error": f"Kategori ağacı alınamadı: {exc}"}
-    changed, errors = fields.apply_fields(work, given, category_names=names, leaf_ids=_taxonomy_leaves if names is not None else None)
+    selectable = _taxonomy_leaves
+    if names is not None:
+        try:  # mağazanın zaten kullandığı kategori yaprak olmasa da seçilebilir
+            selectable = _taxonomy_leaves | {c["taxonomy_id"] for c in listing_service.get_top_categories(ctx.db, ctx.shop, limit=50)}
+        except Exception:  # noqa: BLE001 - mağaza kategorileri alınamazsa yalnızca yapraklar
+            pass
+    changed, errors = fields.apply_fields(work, given, category_names=names, leaf_ids=selectable if names is not None else None)
     extra: dict = {}
     if "taxonomy_id" in changed:
         try:

@@ -202,8 +202,12 @@ _EDIT_LINK = re.compile(r"\[([^\]]+)\]\((?:https?://[^)\s]*)?/listings/-?\d+/edi
 _BARE_EDIT_URL = re.compile(r"https?://\S*/listings/-?\d+/edit\S*")
 
 
+# Bazı modeller istemin "MAĞAZA BİLGİLERİ" bölümünü cevabın sonuna kopyalıyor; kullanıcıya gösterilmez.
+_LEAKED_CONTEXT = re.compile(r"\n[ \t]*(?:MAĞAZA BİLGİLERİ|STORE INFORMATION|SHOP INFORMATION)\b.*\Z", re.DOTALL | re.IGNORECASE)
+
+
 def _strip_app_links(text: str) -> str:
-    return _BARE_EDIT_URL.sub("", _EDIT_LINK.sub(r"\1", text)).strip()
+    return _LEAKED_CONTEXT.sub("", _BARE_EDIT_URL.sub("", _EDIT_LINK.sub(r"\1", text))).strip()
 
 
 def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message: str, image_ids: list[str], today: dt.date, request_id: str | None = None, lang: str = "tr") -> dict:
