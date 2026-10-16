@@ -834,6 +834,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         else:
             videos_attached += 1
     completion["eklenen_video"] = videos_attached
+    completion["standart_varyasyona_cevrilen"] = _standardize(work)
     drafts.save_local(ctx.db, ctx.shop, lid, work, None)
     problems = creation.validate_new(work, activate=True)
     _show_listing(ctx, lid, work, category=category_note["yol"] if category_note else None, price_missing=price_missing, qty_assumed=qty_assumed)
@@ -1065,6 +1066,16 @@ def update_listing(ctx: Ctx, a: dict) -> dict:
 
 
 
+def _standardize(work: dict) -> list[str]:
+    """Varyasyon adı ve tüm seçenekleri kategorinin standart bir varyasyon özelliğiyle eşleşiyorsa onu standarda çevirir (bkz. inventory_edit.standardize)."""
+    if not work.get("taxonomy_id"):
+        return []
+    try:
+        return inventory_edit.standardize(work, _category_defs(int(work["taxonomy_id"])))
+    except Exception:  # noqa: BLE001 - özellikler alınamazsa varyasyonlar özel kalır (yine geçerli)
+        return []
+
+
 def _update_variations(ctx: Ctx, lid: int, work: dict, ch: dict, a: dict, variations: list[dict]) -> dict:
     """Aynı listing'in (yerel taslak ya da Etsy'deki listing) varyasyonlarını baştan kurar; YENİ taslak açmaz.
     Fiyat verilmediyse mevcut en düşük fiyat, stok ve işlem profili mevcut listing'den korunur."""
@@ -1095,6 +1106,7 @@ def _update_variations(ctx: Ctx, lid: int, work: dict, ch: dict, a: dict, variat
                 o["readiness_state_id"] = first["readiness_state_id"]
     # Eski varyasyon-fotoğraf bağları yeni seçeneklere uymaz: yeni taslakta boşalt, Etsy'deki listing'de dokunma.
     work["variation_links"] = None if lid > 0 else {"property_id": None, "images": {}}
+    standardized = _standardize(work)
     if tpl_id is not None:
         try:
             work["description"] = templates.applier(ctx.db, ctx.shop, templates.get(ctx.db, ctx.shop, int(tpl_id)))(work)
@@ -1103,7 +1115,7 @@ def _update_variations(ctx: Ctx, lid: int, work: dict, ch: dict, a: dict, variat
         ch["description_template_id"] = tpl_id
     drafts.save_local(ctx.db, ctx.shop, lid, work, live)
     _show_listing(ctx, lid, work, ["variations", *ch.keys()])
-    return {"ok": True, "listing_id": lid, "varyasyon_kombinasyonu": len(inv["products"]), "fiyat": price, "adet": quantity,
+    return {"ok": True, "listing_id": lid, "varyasyon_kombinasyonu": len(inv["products"]), "fiyat": price, "adet": quantity, "standart_varyasyona_cevrilen": standardized,
             "not": "Aynı listing'in yerel taslağı güncellendi (yeni taslak açılmadı); Etsy'ye gitmedi."}
 
 
@@ -1140,6 +1152,8 @@ def shop_options(ctx: Ctx, a: dict) -> dict:
         out["iade_politikalari"] = [{"id": x.get("return_policy_id"), "kabul_iade": x.get("accepts_returns"), "kabul_degisim": x.get("accepts_exchanges"), "gun": x.get("return_deadline")} for x in pol]
         rd = reference_cache.get_or_fetch(ctx.db, ctx.shop, "readiness_state_definitions", lambda: etsy_shipping.list_readiness_state_definitions(client))
         out["hazirlik_sureleri"] = [{"id": x.get("readiness_state_id"), "tur": x.get("readiness_state"), "min_gun": x.get("min_processing_time"), "max_gun": x.get("max_processing_time")} for x in rd]
+        partners = reference_cache.get_or_fetch(ctx.db, ctx.shop, "production_partners", lambda: etsy_shipping.list_production_partners(client))
+        out["uretim_ortaklari"] = [{"id": x.get("production_partner_id"), "ad": x.get("partner_name"), "ulke": x.get("location")} for x in partners]
     except Exception as exc:  # Etsy bağlantısı/yetki hatası: kısmi sonucu yine de döndür
         out["uyari"] = f"Etsy'den bazı seçenekler alınamadı: {str(exc)[:160]}"
     return out
@@ -1667,6 +1681,19 @@ def _photo_at(work: dict, number: int) -> tuple[list[dict], dict | None]:
     return ordered, (ordered[number - 1] if 1 <= number <= len(ordered) else None)
 
 
+def edit_personalization_question(ctx: Ctx, a: dict) -> dict:
+    """Tek bir kişiselleştirme sorusunu sıra numarasıyla düzenler, siler ya da taşır (kimlikleri korunur). Yalnızca yerel taslak."""
+    lid = int(a["listing_id"])
+    work, err = _work_or_error(ctx, lid)
+    if err:
+        return err
+    edits = {k: v for k, v in a.items() if k not in ("listing_id", "number") and v is not None}
+    if not edits:
+        return {"error": "Değişiklik belirtilmedi."}
+    changed, errors = fields.edit_question(work, int(a["number"]), edits)
+    return _save_fields(ctx, lid, work, changed, errors, kisisellestirme=[listing_view.question_view(q) for q in (work.get("personalization") or {}).get("questions", [])])
+
+
 def delete_listing_photo(ctx: Ctx, a: dict) -> dict:
     """Listing taslağından bir fotoğrafı kaldırır (sıra numarasıyla). Etsy'deki fotoğraf yayınlayınca silinir."""
     lid = int(a["listing_id"])
@@ -1849,13 +1876,14 @@ def edit_inventory(ctx: Ctx, a: dict) -> dict:
     """Seçilen kombinasyonların (where) ya da tüm listing'in stok, fiyat, SKU ve açık/kapalı durumunu değiştirir; varyasyonsuz listing'de
     where verilmez. Hata varsa hiçbir şey yazılmaz."""
     lid = int(a["listing_id"])
-    if not any(a.get(k) is not None for k in ("quantity", "price", "sku", "enabled")):
-        return {"error": "Değişiklik belirtilmedi (quantity, price, sku ya da enabled)."}
+    if not any(a.get(k) is not None for k in ("quantity", "price", "sku", "enabled", "auto_sku")):
+        return {"error": "Değişiklik belirtilmedi (quantity, price, sku, auto_sku ya da enabled)."}
     result: dict = {}
 
     def run(trial: dict):
         changed, errors, count = inventory_edit.apply_inventory(
             trial, where={str(k): str(v) for k, v in (a.get("where") or {}).items()}, quantity=a.get("quantity"), price=a.get("price"), sku=a.get("sku"), enabled=a.get("enabled"),
+            auto_sku=a.get("auto_sku"),
         )
         result.update(changed=changed, errors=errors, count=count)
 
@@ -1865,6 +1893,33 @@ def edit_inventory(ctx: Ctx, a: dict) -> dict:
     if result["errors"]:
         return {"degisenler": [], "hatalar": result["errors"], "not": "Hiçbir şey yazılmadı; hatayı kullanıcıya olduğu gibi söyle."}
     return _save_fields(ctx, lid, trial, result["changed"], [], etkilenen_kombinasyon=result["count"])
+
+
+def add_variation_option(ctx: Ctx, a: dict) -> dict:
+    """Var olan varyasyona yeni seçenek ekler (ör. Size: "15x20 cm"); mevcut stok/SKU/fotoğraf bağları korunur. Hata varsa hiçbir şey yazılmaz."""
+    lid = int(a["listing_id"])
+    result: dict = {}
+
+    def run(trial: dict):
+        std_values = None
+        pid = inventory_edit.property_id(trial, str(a["variation"]))
+        if pid is not None and pid not in inventory_edit.CUSTOM_PROPERTY_IDS and trial.get("taxonomy_id"):
+            try:  # Etsy'nin tanımlı değerleriyle kurulu varyasyon: izin verilen değerler kategorinin özelliklerinden gelir
+                std_values = next((d["possible_values"] for d in _category_defs(int(trial["taxonomy_id"])) if d["property_id"] == pid), None)
+            except Exception:  # noqa: BLE001 - değerler alınamazsa seçenek özel değer olarak eklenir
+                std_values = None
+        added, error = inventory_edit.add_option(trial, str(a["variation"]), str(a["option"]), a.get("price"), a.get("quantity"), a.get("copy_from"), std_values)
+        total = len(trial["inventory"]["products"])
+        if not error and total > MAX_COMBOS:
+            error = f"Kombinasyon sayısı çok fazla ({total}); en fazla {MAX_COMBOS}."
+        result.update(added=added, error=error)
+
+    trial, err = _locked(ctx, lid, run)
+    if err:
+        return err
+    if result["error"]:
+        return {"degisenler": [], "hatalar": [result["error"]], "not": "Hiçbir şey yazılmadı; hatayı kullanıcıya olduğu gibi söyle."}
+    return _save_fields(ctx, lid, trial, ["variations"], [], eklenen_kombinasyon=result["added"], toplam_kombinasyon=len(trial["inventory"]["products"]))
 
 
 def remove_variation_option(ctx: Ctx, a: dict) -> dict:
@@ -2273,9 +2328,11 @@ TOOLS: list[dict] = [
             "required": {"type": "boolean"}, "max_allowed_characters": {"type": "integer"}, "options": {"type": "array", "items": {"type": "string"}, "description": "Yalnızca dropdown için"},
         }, ["question_text"])},
     }, ["listing_id"])},
+    {"name": "edit_personalization_question", "description": "Listing'deki TEK bir kişiselleştirme (Özel seçenekler) sorusunu sıra numarasıyla (get_listing.kisisellestirme sırası, 1'den başlar) düzenler: metni, açıklamasını, zorunlu/isteğe bağlı olmasını, en fazla karakterini, seçenek listesi seçeneklerini değiştirir; delete=true siler; move_to ile sırasını değiştirir. Diğer sorulara dokunmaz ve kimlikleri korur; sorular için personalization_questions (hepsini baştan yazar) KULLANMA. Yeni soru eklemek için set_listing_fields.add_personalization_questions.", "input_schema": _obj({"listing_id": {"type": "integer"}, "number": {"type": "integer"}, "question_text": {"type": "string"}, "instructions": {"type": "string"}, "required": {"type": "boolean"}, "max_allowed_characters": {"type": "integer"}, "options": {"type": "array", "items": {"type": "string"}, "description": "Yalnızca seçenek listesi sorusunda: seçeneklerin TAMAMI, istenen sırayla"}, "delete": {"type": "boolean"}, "move_to": {"type": "integer"}}, ["listing_id", "number"])},
     {"name": "delete_listing_photo", "description": "Listing taslağından bir fotoğrafı sıra numarasıyla (1'den başlar) kaldırır. Etsy'deki fotoğraf yayınlayınca silinir.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer"}}, ["listing_id", "photo_number"])},
     {"name": "set_photo_alt_text", "description": "Taslak (henüz Etsy'ye yüklenmemiş) bir fotoğrafın alt metnini yazar; sıra numarasıyla. Etsy'de yayındaki fotoğrafların alt metni değiştirilemez.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer"}, "alt_text": {"type": "string", "description": "Resimde görüneni anlatan tek cümle, en fazla 125 karakter önerilir"}}, ["listing_id", "photo_number", "alt_text"])},
-    {"name": "edit_inventory", "description": "Stok, fiyat, SKU ve açık/kapalı durumunu değiştirir. Varyasyonsuz listing'de where verme ('stok 50 olsun' = quantity 50). Varyasyonlu listing'de where ile kombinasyon seç ({'Size': 'XL', 'Color': 'Red'}; kısmi seçim eşleşen TÜM kombinasyonları etkiler) ya da where vermeden hepsini değiştir. quantity 1–999; kombinasyonu satıştan kaldırmak için enabled=false. Fiyat aynı anda yalnızca tek varyasyona göre değişebilir (Etsy). Önce get_listing ile mevcut seçeneklere bak. Hata varsa hiçbir şey yazılmaz.", "input_schema": _obj({"listing_id": {"type": "integer"}, "where": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Varyasyon adı → seçenek"}, "quantity": {"type": "integer"}, "price": {"type": "number"}, "sku": {"type": "string"}, "enabled": {"type": "boolean"}}, ["listing_id"])},
+    {"name": "edit_inventory", "description": "Stok, fiyat, SKU ve açık/kapalı durumunu değiştirir. Varyasyonsuz listing'de where verme ('stok 50 olsun' = quantity 50). Varyasyonlu listing'de where ile kombinasyon seç ({'Size': 'XL', 'Color': 'Red'}; kısmi seçim eşleşen TÜM kombinasyonları etkiler) ya da where vermeden hepsini değiştir. quantity 1–999; kombinasyonu satıştan kaldırmak için enabled=false. Fiyat aynı anda yalnızca tek varyasyona göre değişebilir (Etsy). Önce get_listing ile mevcut seçeneklere bak. Hata varsa hiçbir şey yazılmaz.", "input_schema": _obj({"listing_id": {"type": "integer"}, "where": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Varyasyon adı → seçenek"}, "quantity": {"type": "integer"}, "price": {"type": "number"}, "sku": {"type": "string"}, "auto_sku": {"type": "string", "description": "Seçilen TÜM kombinasyonlara okunur SKU üretir (önek + seçenekler, ör. önek GLS → GLS-15X20CM). Önek boş string de olabilir. 'Otomatik SKU ekle' için bunu kullan; tek tek sku verme."}, "enabled": {"type": "boolean"}}, ["listing_id"])},
+    {"name": "add_variation_option", "description": "Var olan bir varyasyona YENİ SEÇENEK ekler (ör. Size varyasyonuna '15x20 cm'); mevcut stok, SKU, fiyat ve fotoğraf bağları korunur. Seçenek eklemek için set_variations ile baştan kurma. Yeni satırlar copy_from seçeneğinin (verilmezse ilkinin) satırlarından kopyalanır; varyasyon fiyata göre değişiyorsa price ver. Etsy'nin hazır değerleriyle kurulu (standart) varyasyonlarda da çalışır: ad hazır listedekilerden biriyse standart değer olarak, değilse özel değer olarak eklenir. Önce get_listing ile mevcut seçeneklere bak. Hata varsa hiçbir şey yazılmaz.", "input_schema": _obj({"listing_id": {"type": "integer"}, "variation": {"type": "string"}, "option": {"type": "string"}, "price": {"type": "number"}, "quantity": {"type": "integer"}, "copy_from": {"type": "string", "description": "Hangi mevcut seçeneğin ayarları kopyalansın"}}, ["listing_id", "variation", "option"])},
     {"name": "remove_variation_option", "description": "Bir varyasyon seçeneğini ve onu içeren tüm kombinasyonları kaldırır (ör. variation 'Color', option 'Red'). Diğer seçenekler ve fiyatlar korunur; set_variations gibi baştan kurmaz.", "input_schema": _obj({"listing_id": {"type": "integer"}, "variation": {"type": "string"}, "option": {"type": "string"}}, ["listing_id", "variation", "option"])},
     {"name": "set_variation_photo", "description": "Bir varyasyon seçeneğine listing fotoğrafı bağlar (ör. Color: Red → 3. fotoğraf). photo_number vermezsen bağı kaldırır. Etsy yalnızca TEK bir varyasyona fotoğraf bağlamaya izin verir.", "input_schema": _obj({"listing_id": {"type": "integer"}, "variation": {"type": "string"}, "option": {"type": "string"}, "photo_number": {"type": "integer"}}, ["listing_id", "variation", "option"])},
     {"name": "remove_listing_video", "description": "Listing taslağından bir videoyu sıra numarasıyla (1'den başlar) kaldırır. Etsy'deki video yayınlayınca silinir.", "input_schema": _obj({"listing_id": {"type": "integer"}, "video_number": {"type": "integer"}}, ["listing_id", "video_number"])},
@@ -2356,6 +2413,7 @@ TOOL_LABELS = {
     "generation_options": "Üretim seçeneklerine bakıyor",
     "edit_inventory": "Stok ve fiyatı güncelliyor",
     "remove_variation_option": "Varyasyon seçeneğini kaldırıyor",
+    "add_variation_option": "Varyasyon seçeneği ekliyor",
     "set_variation_photo": "Varyasyon fotoğrafını bağlıyor",
     "remove_listing_video": "Videoyu kaldırıyor",
     "copy_listing": "Listing'i kopyalıyor",
@@ -2366,6 +2424,7 @@ TOOL_LABELS = {
     "get_category_attributes": "Kategori özelliklerine bakıyor",
     "set_listing_attributes": "Özellikleri yazıyor",
     "set_listing_fields": "Listing alanlarını güncelliyor",
+    "edit_personalization_question": "Kişiselleştirme sorusunu düzenliyor",
     "delete_listing_photo": "Fotoğrafı kaldırıyor",
     "set_photo_alt_text": "Alt metni yazıyor",
     "add_chat_image_to_listing": "Resmi listing'e ekliyor",
@@ -2419,6 +2478,7 @@ TOOL_LABELS_EN = {
     "generation_options": "Checking the generation options",
     "edit_inventory": "Updating stock and price",
     "remove_variation_option": "Removing the variation option",
+    "add_variation_option": "Adding a variation option",
     "set_variation_photo": "Linking the variation photo",
     "remove_listing_video": "Removing the video",
     "copy_listing": "Copying the listing",
@@ -2429,6 +2489,7 @@ TOOL_LABELS_EN = {
     "get_category_attributes": "Checking the category attributes",
     "set_listing_attributes": "Setting attributes",
     "set_listing_fields": "Updating listing fields",
+    "edit_personalization_question": "Editing a personalization question",
     "delete_listing_photo": "Removing the photo",
     "set_photo_alt_text": "Writing the alt text",
     "add_chat_image_to_listing": "Adding the image to the listing",
@@ -2453,10 +2514,10 @@ EXECUTORS = {
     "create_listing_draft": create_listing_draft, "update_listing": update_listing,
     "shop_options": shop_options, "workspace_status": workspace_status, "orders_overview": orders_overview, "order_detail": order_detail,
     "orders_missing_costs": orders_missing_costs, "keyword_pool": keyword_pool, "shipping_invoices": shipping_invoices, "bulk_update_listings": bulk_update_listings,
-    "regenerate_listing_image": regenerate_listing_image, "edit_chat_image": edit_chat_image, "move_listing_photo": move_listing_photo, "crop_listing_photo": crop_listing_photo, "generate_listing_video": generate_listing_video, "generation_options": generation_options, "edit_inventory": edit_inventory, "remove_variation_option": remove_variation_option,
+    "regenerate_listing_image": regenerate_listing_image, "edit_chat_image": edit_chat_image, "move_listing_photo": move_listing_photo, "crop_listing_photo": crop_listing_photo, "generate_listing_video": generate_listing_video, "generation_options": generation_options, "edit_inventory": edit_inventory, "remove_variation_option": remove_variation_option, "add_variation_option": add_variation_option,
     "set_variation_photo": set_variation_photo, "remove_listing_video": remove_listing_video, "copy_listing": copy_listing,
     "discard_listing_changes": discard_listing_changes, "delete_listing": delete_listing, "personalization_library": personalization_library, "add_video_to_listing": add_video_to_listing, "get_category_attributes": get_category_attributes, "set_listing_attributes": set_listing_attributes,
-    "set_listing_fields": set_listing_fields, "delete_listing_photo": delete_listing_photo, "set_photo_alt_text": set_photo_alt_text, "add_chat_image_to_listing": add_chat_image_to_listing, "generate_missing_alt_texts": generate_missing_alt_texts,
+    "set_listing_fields": set_listing_fields, "delete_listing_photo": delete_listing_photo, "edit_personalization_question": edit_personalization_question, "set_photo_alt_text": set_photo_alt_text, "add_chat_image_to_listing": add_chat_image_to_listing, "generate_missing_alt_texts": generate_missing_alt_texts,
     "listing_health_status": listing_health_status, "keep_watching_listing": keep_watching_listing,
     "publish_listing_draft": publish_listing_draft, "deactivate_listing": deactivate_listing, "mark_order_shipped": mark_order_shipped,
     "read_shipping_invoice": read_shipping_invoice, "listing_diagnosis": listing_diagnosis, "track_keywords": track_keywords, "read_etsy_keyword_data": read_etsy_keyword_data,

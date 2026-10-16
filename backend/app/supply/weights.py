@@ -59,7 +59,7 @@ def _supplier_item(db: Session, access: EntityAccess, part: dict, cache: dict):
 def _part_cost(part: dict, item, prices: dict) -> float | None:
     """Bir parçanın malzeme maliyeti (ürün başına, parça adedi dahil; ebadı ve malzeme kaleminden); hesaplanamazsa None."""
     v = part["values"]
-    if item is None or item.id not in prices or not (v.get("width") and v.get("height")):
+    if item is None or item.id not in prices or not prices[item.id].price or not (v.get("width") and v.get("height")):  # fiyatı 0 olan kalem "bedava" sayılmaz
         return None
     cost = materials.stock_cost(item, prices[item.id].price, v["width"], v["height"])
     return None if cost is None else cost * products.part_qty(part)
@@ -91,18 +91,33 @@ def material_usage(db: Session, access: EntityAccess, targets: list[dict], when:
     return out
 
 
-def estimates(db: Session, access: EntityAccess, targets: list[dict], laser_total: float, with_material: bool, when: dt.datetime,
-              plate_cut: float | None = None) -> tuple[list[dict], float]:
-    """Hedeflerin (adet dahil) tahmini maliyeti: ([{"laser", "material"}], plakanın seçilmeyen kısmının lazer bedeli).
-    Lazer payı = süre bedeli × ürünün kesim uzunluğu payı; pay, plakanın toplam kesim uzunluğuna (`plate_cut`, rapordan) göre
-    hesaplanır: plakada seçilmeyen parçalar (başka mağaza ya da iş) varsa onların bedeli ürünlere yüklenmez, ikinci değer olarak
-    döner. Malzeme = ürünün ebadı ve tedarikçinin fiyat listesindeki malzeme kalemi (ürünün malzeme türü + kalınlığıyla eşleşen,
-    `when` tarihindeki fiyatla). Gerçek tutar bu tahminlerin oranında paylaştırılır. Malzeme hesaplanamayan ürün varsa hangileri
-    olduğu söylenir (tahmin edilmez)."""
+def laser_shares(db: Session, access: EntityAccess, targets: list[dict], plate_cut: float | None, plate_pierce: float | None,
+                 times: tuple[float, float] | None) -> list[float]:
+    """Her hedefin lazer bedelinden payı (0-1; toplam 1'den küçükse kalan plakanın seçilmeyen kısmıdır). Lazer bedeli makine süresidir:
+    rapor kesim + hareket süresini ve delme süresini ayrı veriyorsa (`times` = (kesim + hareket sn, delme sn)) kesim süresi ürünün kesim
+    uzunluğu payına, delme süresi delme sayısı payına göre bölünür; yoksa yalnızca kesim uzunluğu payı kullanılır. Paylar plakanın rapordaki
+    toplamlarına göre hesaplanır; rapor toplamı yoksa seçilenler plakanın tamamı sayılır."""
     cuts = weights(db, access, targets, "cut_length")
     cut_total = max(plate_cut or 0.0, sum(cuts)) or 1.0
-    laser = [laser_total * c / cut_total for c in cuts]
-    rest = laser_total * (1 - sum(cuts) / cut_total)
+    if not (times and plate_cut and plate_pierce and sum(times) > 0):
+        return [c / cut_total for c in cuts]
+    pierces = weights(db, access, targets, "pierce_count")
+    pierce_total = max(plate_pierce, sum(pierces)) or 1.0
+    cut_s, pierce_s = times
+    return [(cut_s * c / cut_total + pierce_s * p / pierce_total) / (cut_s + pierce_s) for c, p in zip(cuts, pierces)]
+
+
+def estimates(db: Session, access: EntityAccess, targets: list[dict], laser_total: float, with_material: bool, when: dt.datetime,
+              plate_cut: float | None = None, plate_pierce: float | None = None,
+              times: tuple[float, float] | None = None) -> tuple[list[dict], float]:
+    """Hedeflerin (adet dahil) tahmini maliyeti: ([{"laser", "material"}], plakanın seçilmeyen kısmının lazer bedeli).
+    Lazer payı = süre bedeli × ürünün makine süresi payı (`laser_shares`): plakada seçilmeyen parçalar (başka mağaza ya da iş) varsa
+    onların bedeli ürünlere yüklenmez, ikinci değer olarak döner. Malzeme = ürünün ebadı ve tedarikçinin fiyat listesindeki malzeme
+    kalemi (ürünün malzeme türü + kalınlığıyla eşleşen, `when` tarihindeki fiyatla). Gerçek tutar bu tahminlerin oranında
+    paylaştırılır. Malzeme hesaplanamayan ürün varsa hangileri olduğu söylenir (tahmin edilmez)."""
+    shares = laser_shares(db, access, targets, plate_cut, plate_pierce, times)
+    laser = [laser_total * s for s in shares]
+    rest = max(0.0, round(laser_total * (1 - sum(shares)), 2))
     if not with_material:
         return [{"laser": x, "material": 0.0} for x in laser], rest
     keys = [(t["shop_id"], t["listing_id"], t.get("variant") or "") for t in targets]
@@ -119,6 +134,6 @@ def estimates(db: Session, access: EntityAccess, targets: list[dict], laser_tota
             out.append({"laser": fee, "material": sum(costs) * t["qty"]})
     if missing:
         names = ", ".join(missing[:5]) + (f" (+{len(missing) - 5})" if len(missing) > 5 else "")
-        raise HTTPException(422, tr(f"Malzeme maliyeti hesaplanamadı (ürünün malzeme türü, kalınlığı ya da ebadı eksik, ya da bu tedarikçinin fiyat listesinde karşılığı yok; Ürünler sekmesinden tamamla, fiyat listesine ekle ya da işte 'Malzeme kesimciden'i kapat): {names}",
-                                    f"Material cost could not be worked out (the product's material type, thickness or size is missing, or this supplier's price list has no match; complete it in the Products tab, add it to the price list or turn off 'Material from the cutter' on the job): {names}"))
+        raise HTTPException(422, tr(f"Malzeme maliyeti hesaplanamadı (ürünün malzeme türü, kalınlığı ya da ebadı eksik, ya da bu tedarikçinin fiyat listesinde karşılığı yok ya da fiyatı 0; Ürünler sekmesinden tamamla, fiyat listesine ekle / fiyatı gir ya da işte 'Malzeme kesimciden'i kapat): {names}",
+                                    f"Material cost could not be worked out (the product's material type, thickness or size is missing, or this supplier's price list has no match or its price is 0; complete it in the Products tab, add or price it in the price list or turn off 'Material from the cutter' on the job): {names}"))
     return out, rest

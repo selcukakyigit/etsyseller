@@ -63,7 +63,6 @@ export interface Job {
   actual: number | null;
   basis: number;
   created_via: "owner" | "guest";
-  document_id: number | null;
   dispute_note: string;
   confirmed_at: string | null;
   created_at: string;
@@ -130,7 +129,9 @@ export interface JobDetail extends Job {
   actual_totals: { net: number; vat: number; total: number } | null;
   diff: number | null;
   vat_in_cost: boolean;
-  document: (DocumentRow & { data: DocData | null }) | null;
+  /** İşe bağlı belgeler (bir işte birden çok olabilir) ve hepsinin toplanmış okunmuş verisi. */
+  documents: DocumentRow[];
+  document_data: DocData | null;
   plan?: { mode: SplitMode; targets: PlanTarget[]; remainder_party_id?: number | null };
   allocations?: Allocation[];
   /** Tahmini dağıtım ayarları (yalnızca üye): elle yazılan süre bedeli, süre ölçüsüne eşlenen satırların toplamı, malzeme kesimciden mi, raporun süreleri. */
@@ -168,6 +169,10 @@ export interface PlanPreview {
   currency: string;
   error: string | null;
   check: MeasureCheck | null;
+  /** Tahmini dağıtımda lazer payının dayanağı: kesim + delme süresi ya da yalnızca kesim uzunluğu. */
+  laser_by?: "time" | "cut" | null;
+  /** Tahmini dağıtımda raporda plakanın toplam kesim uzunluğu var mı (yoksa seçilenler plakanın tamamı sayılır). */
+  plate_known?: boolean | null;
   /** Tahmini ve m² fiyatlı dağıtımda işin tutarından dağıtılmayan kısım (negatif: paylar tutardan fazla). */
   unallocated?: number | null;
   /** Dağıtılmayan kalanın yazılacağı dış pay sahibi ve tutarı (seçilmediyse null). */
@@ -282,6 +287,9 @@ export const supplyApi = {
     setLines: (id: number, jobId: number, lines: JobLine[]) =>
       apiRequest<JobDetail>(`${one(id)}/jobs/${jobId}/lines`, { method: "PUT", ...json({ lines }) }),
     rebuild: (id: number, jobId: number) => apiRequest<JobDetail>(`${one(id)}/jobs/${jobId}/rebuild`, { method: "POST" }),
+    detachDocument: (id: number, jobId: number, docId: number) => apiRequest<JobDetail>(`${one(id)}/jobs/${jobId}/documents/${docId}`, { method: "DELETE" }),
+    removeDocumentItem: (id: number, jobId: number, kind: "measure" | "line", key: string) =>
+      apiRequest<JobDetail>(`${one(id)}/jobs/${jobId}/documents/items?kind=${kind}&key=${encodeURIComponent(key)}`, { method: "DELETE" }),
     submit: (id: number, jobId: number) => apiRequest<JobDetail>(`${one(id)}/jobs/${jobId}/submit`, { method: "POST" }),
     dispute: (id: number, jobId: number, note: string) => apiRequest<JobDetail>(`${one(id)}/jobs/${jobId}/dispute`, { method: "POST", ...json({ note }) }),
     confirm: (id: number, jobId: number, allowDuplicate = false) =>

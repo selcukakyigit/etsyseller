@@ -130,6 +130,8 @@ EN_MESSAGES: dict[str, str] = {
     "İş numarası ayrılamadı, tekrar dene": "Could not assign a job number; try again",
     "Geçersiz miktar": "Invalid quantity",
     "Satır sınırına ulaşıldı": "The line limit has been reached",
+    "Belge sınırına ulaşıldı": "The document limit has been reached",
+    "Geçersiz tür": "Invalid type",
     "Satır açıklaması boş olamaz": "The line description cannot be empty",
     "Bu işin okunmuş bir belgesi yok": "This job has no read document",
     "Bu iş şu an gönderilemez": "This job cannot be sent right now",

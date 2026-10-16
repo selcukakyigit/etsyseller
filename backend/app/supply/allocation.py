@@ -11,16 +11,15 @@ from sqlalchemy.orm import Session
 
 from app.core.i18n import tr
 from app.listings.models import ListingCache
-from app.modkit import activity, documents, materials, parties, pricebook, products, units
+from app.modkit import activity, materials, parties, pricebook, products, units
 from app.modkit.access import EntityAccess
-from app.modkit.models import EntityDocument, ModuleEntity
+from app.modkit.models import ModuleEntity
 from app.modkit.numbers import DIMS, slug
 from app.shops.models import Shop
 from app.supply import fx, paint, weights
-from app.supply import profile as doc_profile
 from app.supply.models import SupplyAllocation, SupplyJob
 from app.supply.plan import ESTIMATED, MAX_TARGETS, SPLIT_MODES, plan_of
-from app.supply.service import MODULE, job_basis, job_when, material_summary, mapped_time_fee, similar_jobs, utcnow
+from app.supply.service import MODULE, job_basis, job_data, job_when, material_summary, mapped_time_fee, similar_jobs, utcnow
 
 
 def confirm(db: Session, access: EntityAccess, job: SupplyJob, allow_duplicate: bool = False) -> None:
@@ -130,7 +129,9 @@ def _estimates(db: Session, access: EntityAccess, job: SupplyJob, plan: dict) ->
     if job.with_material and not fee:
         raise HTTPException(422, tr("Süre bedeli yok: işte 'Süre bedeli'ni yaz ya da raporun süresini fiyat listesinden bir kaleme eşle.",
                                     "There is no time fee: enter the job's 'Time fee' or map the report's time to a price item."))
-    return weights.estimates(db, access, plan["targets"], fee or 1.0, job.with_material, job_when(job), _doc_total(db, job, "cut_length"))
+    data = job_data(db, job)
+    return weights.estimates(db, access, plan["targets"], fee or 1.0, job.with_material, job_when(job), _doc_total(data, "cut_length"),
+                             _doc_total(data, "pierce_count"), _laser_times(data))
 
 
 def split(db: Session, access: EntityAccess, job: SupplyJob, basis: float, plan: dict) -> list[float]:
@@ -204,11 +205,17 @@ def preview(db: Session, access: EntityAccess, job: SupplyJob) -> dict:
     usage = weights.material_usage(db, access, plan["targets"], job_when(job)) if plan["targets"] else []
     reports = _report_amounts(db, access, job, plan, amounts)
     paint_ids = [i.id if i else None for i in paint.items_for(db, access, plan["targets"])] if plan["mode"] == paint.MODE else None  # seçilmiş, kayıtlı ya da tek uygun kalem
+    estimated = plan["mode"] == ESTIMATED
+    data = job_data(db, job)
     return {"mode": plan["mode"], "basis": basis, "currency": job.currency, "error": error,
+            # tahmini dağıtımda lazer payının dayanağı: "time" kesim + delme süresi, "cut" yalnızca kesim uzunluğu; plaka toplamı bilinmiyorsa
+            # seçilenler plakanın tamamı sayılır (kullanıcıya uyarılır)
+            "laser_by": ("time" if _laser_times(data) and _doc_total(data, "pierce_count") else "cut") if estimated else None,
+            "plate_known": bool(_doc_total(data, "cut_length")) if estimated else None,
             "remainder": {"party_id": plan["remainder_party_id"], "amount": _remainder(plan, basis, amounts)} if plan["remainder_party_id"] else None,
             "unallocated": round(basis - sum(amounts), 2) if amounts and plan["mode"] in (ESTIMATED, paint.MODE) else None,
             "paint_items": [{"id": i.id, "name": i.name} for i in paint.candidates(db, access.entity.id)] if plan["mode"] == paint.MODE else None,
-            "check": _measure_check(db, access, job, plan) if plan["targets"] and error is None else None,
+            "check": _measure_check(db, access, data, plan) if plan["targets"] and error is None else None,
             "targets": [{**t, "share": amounts[i] if i < len(amounts) else None,
                          **({"estimate": {k: round(v, 2) for k, v in estimate[i].items()}} if i < len(estimate) else {}),
                          "material": usage[i], "report": reports[i] if i < len(reports) else None,
@@ -221,22 +228,35 @@ def preview(db: Session, access: EntityAccess, job: SupplyJob) -> dict:
 _DOC_TOTALS = {"cut_length": ("total_cut_length", "mm"), "pierce_count": ("pierce_count", "piece")}
 
 
-def _doc_total(db: Session, job: SupplyJob, measure: str) -> float | None:
-    """Belgedeki (makine raporu) toplam ölçü, ürün ölçüsünün biriminde; belge ya da ölçü yoksa None."""
-    ref = _DOC_TOTALS.get(measure)
-    doc = db.get(EntityDocument, job.document_id) if job.document_id else None
-    data = documents.data_of(doc) if doc else None
-    found = next((m for m in doc_profile.normalize(data)["measures"] if m["key"] == ref[0]), None) if ref and data else None
+def _doc_value(data: dict | None, key: str, unit: str) -> float | None:
+    """Belgedeki (makine raporu) ölçü, verilen birimde; belge ya da ölçü yoksa None."""
+    squash = lambda k: k.replace("_", "")  # noqa: E731  # rapor yazımı değişir ("Planned MoveTime" / "Planned Move Time")
+    found = next((m for m in data["measures"] if squash(m["key"]) == squash(key)), None) if data else None
     try:
-        return units.convert(found["value"], found["unit"], ref[1]) if found else None
+        return units.convert(found["value"], found["unit"], unit) if found else None
     except (KeyError, ValueError):
         return None
 
 
-def _measure_check(db: Session, access: EntityAccess, job: SupplyJob, plan: dict) -> dict | None:
+def _doc_total(data: dict | None, measure: str) -> float | None:
+    """Belgedeki (makine raporu) toplam ölçü, ürün ölçüsünün biriminde; belge ya da ölçü yoksa None."""
+    ref = _DOC_TOTALS.get(measure)
+    return _doc_value(data, ref[0], ref[1]) if ref else None
+
+
+def _laser_times(data: dict | None) -> tuple[float, float] | None:
+    """Rapordaki (kesim + hareket süresi, delme süresi) saniye olarak; rapor kesim ve delme sürelerini ayrı vermiyorsa None."""
+    cut = _doc_value(data, "planned_cut_time", "s")
+    pierce = _doc_value(data, "planned_pierce_time", "s")
+    if cut is None or pierce is None:
+        return None
+    return cut + (_doc_value(data, "planned_move_time", "s") or 0.0), pierce
+
+
+def _measure_check(db: Session, access: EntityAccess, data: dict | None, plan: dict) -> dict | None:
     """Ürünlerin (adet × ölçü) toplamı belgedeki toplamla ne kadar uyuşuyor; seçilen ürünler plakayı tam karşılıyor mu."""
     measure = "cut_length" if plan["mode"] == ESTIMATED else plan["mode"]  # tahmini dağıtımın lazer payı kesim uzunluğuna dayanır
-    expected = _doc_total(db, job, measure)
+    expected = _doc_total(data, measure)
     if not expected:
         return None
     try:
@@ -271,11 +291,9 @@ def suggest_targets(db: Session, access: EntityAccess, job: SupplyJob) -> list[d
     ebat uyuşan ya da adında en az iki ortak anlamlı sözcük geçen ürünler önerilir. Satırda malzeme ya da kalınlık yazıyorsa ve
     ürünün malzeme kaleminin adında ("2mm dkp") da varsa uyuşmayanlar elenir. Öneridir, hiçbir şey kendiliğinden eklenmez."""
     access.require_member()
-    doc = db.get(EntityDocument, job.document_id) if job.document_id else None
-    data = documents.data_of(doc) if doc else None
-    if data is None:
+    norm = job_data(db, job)
+    if norm is None:
         return []
-    norm = doc_profile.normalize(data)
     texts = [(ln["description"], ln["amount"]) for ln in norm["lines"]] + [(f"{i['label']}: {i['text']}", None) for i in norm["info"]]
     products_ = products.list_measures(db, access)
     out = []

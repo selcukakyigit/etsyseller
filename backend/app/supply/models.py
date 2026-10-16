@@ -36,12 +36,24 @@ class SupplyJob(EntityOwned, Timestamped, Base):
     material_cost: Mapped[float | None] = mapped_column(MONEY, nullable=True)
     with_material: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
     dispute_note: Mapped[str] = mapped_column(String(500), default="")
-    document_id: Mapped[int | None] = mapped_column(ForeignKey("entity_documents.id", ondelete="SET NULL"), nullable=True)
     allocation_plan: Mapped[str] = mapped_column(Text, default="[]")
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_via: Mapped[str] = mapped_column(String(8), default="owner")  # owner | guest
     confirmed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     confirmed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class SupplyJobDocument(Base):
+    """İşe bağlı okunmuş belge. Bir işte birden çok belge olabilir (ör. her plakanın raporu); işin ölçüleri ve satırları hepsinin toplamıdır
+    (`profile.merge`). Belge silinince bağ da gider."""
+
+    __tablename__ = "supply_job_documents"
+    __table_args__ = (UniqueConstraint("job_id", "document_id", name="uq_supply_job_documents_job_document"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("supply_jobs.id", ondelete="CASCADE"), index=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("entity_documents.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class SupplyJobLine(Base):

@@ -20,11 +20,12 @@ from app.modkit.access import EntityAccess
 from app.modkit.models import EntityDocument, FieldMapping, PriceItem
 from app.supply import profile as doc_profile
 from app.supply import weights
-from app.supply.models import SupplyAllocation, SupplyJob, SupplyJobLine
+from app.supply.models import SupplyAllocation, SupplyJob, SupplyJobDocument, SupplyJobLine
 from app.supply.plan import plan_of
 
 MODULE = "supply"
 MAX_LINES = 200
+MAX_DOCUMENTS = 30
 MAX_JOBS_PER_ENTITY = 20000
 MAX_QTY = 1e9
 
@@ -58,6 +59,40 @@ def get_job(db: Session, access: EntityAccess, job_id: int) -> SupplyJob:
     return job
 
 
+# --------------------------------------------------------------- işin belgeleri ----
+
+def job_documents(db: Session, job: SupplyJob) -> list[EntityDocument]:
+    return list(db.scalars(
+        select(EntityDocument).join(SupplyJobDocument, SupplyJobDocument.document_id == EntityDocument.id)
+        .where(SupplyJobDocument.job_id == job.id).order_by(SupplyJobDocument.position, SupplyJobDocument.id)
+    ))
+
+
+def job_data(db: Session, job: SupplyJob) -> dict | None:
+    """İşin tüm belgelerinin okunmuş verisi, toplanmış (`profile.merge`); okunmuş belge yoksa None. Ölçüler, satırlar ve plaka toplamları
+    (kesim uzunluğu, delme, süreler) iş genelinde bu veriden okunur."""
+    return doc_profile.merge([d for d in (documents.data_of(x) for x in job_documents(db, job)) if d])
+
+
+def link_document(db: Session, job: SupplyJob, doc: EntityDocument) -> None:
+    """Belgeyi işe bağlar (zaten bağlıysa bir şey yapmaz). Belge, işin kaydından olmalıdır (çağıran `documents.get` ile alır)."""
+    if doc.entity_id != job.entity_id:
+        raise HTTPException(404, "Belge bulunamadı")
+    if db.scalar(select(SupplyJobDocument.id).where(SupplyJobDocument.job_id == job.id, SupplyJobDocument.document_id == doc.id)):
+        return
+    n = db.scalar(select(func.count()).select_from(SupplyJobDocument).where(SupplyJobDocument.job_id == job.id)) or 0
+    if n >= MAX_DOCUMENTS:
+        raise HTTPException(422, "Belge sınırına ulaşıldı")
+    db.add(SupplyJobDocument(job_id=job.id, document_id=doc.id, position=n))
+    db.flush()
+
+
+def _sync_actual(db: Session, job: SupplyJob, old_net: float | None) -> None:
+    """Gerçek tutar belgelerin KDV hariç toplamından geliyorsa (boş ya da önceki toplamla aynı) yeni toplama güncellenir; elle yazılmışsa dokunulmaz."""
+    if job.actual is None or (old_net is not None and abs(job.actual - old_net) < 0.005):
+        job.actual = (job_data(db, job) or {}).get("net")
+
+
 # --------------------------------------------------------------- serileştirme ----
 
 def job_basis(job: SupplyJob, vat_in_cost: bool) -> float:
@@ -86,7 +121,7 @@ def serialize_job(db: Session, access: EntityAccess, job: SupplyJob, detail: boo
     out = {
         "id": job.id, "number": job.number, "title": job.title, "job_date": job.job_date.isoformat(), "status": job.status,
         "currency": job.currency, "vat_rate": job.vat_rate, "estimate": job.estimate, "actual": job.actual,
-        "basis": job_basis(job, vat_in_cost), "created_via": job.created_via, "document_id": job.document_id,
+        "basis": job_basis(job, vat_in_cost), "created_via": job.created_via,
         "dispute_note": job.dispute_note, "confirmed_at": job.confirmed_at.isoformat() + "Z" if job.confirmed_at else None,
         "created_at": job.created_at.isoformat() + "Z", "updated_at": job.updated_at.isoformat() + "Z",
     }
@@ -109,12 +144,9 @@ def serialize_job(db: Session, access: EntityAccess, job: SupplyJob, detail: boo
         "actual_totals": {"net": job.actual, "vat": actual_vat[0], "total": actual_vat[1]} if actual_vat else None,
         "diff": round(job.actual - job.estimate, 2) if job.actual is not None and job.estimate else None,
         "vat_in_cost": vat_in_cost,
-        "document": None,
+        "documents": [documents.serialize(d) for d in job_documents(db, job)],
+        "document_data": job_data(db, job),  # belgelerin toplanmış hâli (ölçüler, tutar satırları)
     })
-    if job.document_id:
-        doc = db.get(EntityDocument, job.document_id)
-        if doc is not None:
-            out["document"] = {**documents.serialize(doc), "data": documents.data_of(doc)}
     if access.internal:  # ürün dağıtımı ve olası mükerrerler iç bilgidir, tedarikçi görmez
         out["similar"] = similar_jobs(db, job)
         out["plan"] = plan_of(job)
@@ -135,9 +167,8 @@ def serialize_job(db: Session, access: EntityAccess, job: SupplyJob, detail: boo
 
 def _time_measures(db: Session, job: SupplyJob) -> list[dict]:
     """Belgedeki süre ölçüleri (saniye): rapor hem kesim hem işlem süresi verebilir, hangisinin faturalandığı kullanıcıya gösterilir."""
-    doc = db.get(EntityDocument, job.document_id) if job.document_id else None
-    data = documents.data_of(doc) if doc else None
-    return [m for m in doc_profile.normalize(data)["measures"] if m["unit"] == "s"] if data else []
+    data = job_data(db, job)
+    return [m for m in data["measures"] if m["unit"] == "s"] if data else []
 
 
 def mapped_time_fee(db: Session, job: SupplyJob) -> float | None:
@@ -220,7 +251,7 @@ def create_job(db: Session, access: EntityAccess, title: str, job_date: dt.date 
         candidate = SupplyJob(
             entity_id=access.entity.id, number=number, title=(title or "").strip()[:200], job_date=job_date or dt.date.today(),
             status="draft", currency=access.entity.currency, vat_rate=vat_rate, note=(note or "").strip()[:5000],
-            document_id=document.id if document else None, created_by=access.user.id, created_via="guest" if access.is_guest else "owner",
+            created_by=access.user.id, created_via="guest" if access.is_guest else "owner",
         )
         try:
             with db.begin_nested():
@@ -233,6 +264,8 @@ def create_job(db: Session, access: EntityAccess, title: str, job_date: dt.date 
     if job is None:
         raise HTTPException(409, "İş numarası ayrılamadı, tekrar dene")
     lines = _auto_lines(db, access.entity.id, job_when(job))
+    if document is not None:
+        link_document(db, job, document)
     if data is not None:
         lines = build_lines_from_document(db, access, data, job_when(job)) + lines
         if data.get("net") is not None:
@@ -409,35 +442,76 @@ def build_lines_from_document(db: Session, access: EntityAccess, data: dict, whe
     return out
 
 
-def rebuild_from_document(db: Session, access: EntityAccess, job: SupplyJob) -> None:
-    """Eşlemeler değişti: belgeden gelen satırlar yeniden kurulur, elle eklenen satırlar korunur."""
-    _require_editable(access, job)
-    doc = db.get(EntityDocument, job.document_id) if job.document_id else None
-    data = documents.data_of(doc) if doc else None
-    if data is None:
-        raise HTTPException(409, "Bu işin okunmuş bir belgesi yok")
+def _rebuild_lines(db: Session, access: EntityAccess, job: SupplyJob) -> None:
+    """Belgeden gelen satırlar işin belgelerinin toplanmış verisinden yeniden kurulur (belge kalmadıysa hiç), elle eklenenler korunur."""
+    data = job_data(db, job)
     keep = [{"price_item_id": ln.price_item_id, "description": ln.description, "qty": ln.qty, "unit": ln.unit, "unit_price": ln.unit_price,
              "manual_price": ln.manual_price, "source_key": ""}
             for ln in _lines(db, job.id) if not ln.source_key]
-    _write_lines(db, job, build_lines_from_document(db, access, doc_profile.normalize(data), job_when(job)) + keep)
+    _write_lines(db, job, (build_lines_from_document(db, access, data, job_when(job)) if data else []) + keep)
     activity.log(db, access.entity.id, access.user, "job_lines_changed", {"number": job.number})
+
+
+def rebuild_from_document(db: Session, access: EntityAccess, job: SupplyJob) -> None:
+    """Eşlemeler değişti: belgeden gelen satırlar yeniden kurulur, elle eklenen satırlar korunur."""
+    _require_editable(access, job)
+    if job_data(db, job) is None:
+        raise HTTPException(409, "Bu işin okunmuş bir belgesi yok")
+    _rebuild_lines(db, access, job)
+    db.commit()
+
+
+def detach_document(db: Session, access: EntityAccess, job: SupplyJob, doc_id: int) -> None:
+    """Belgeyi işten çıkarır: onun katkısı (ölçüler, satırlar, belgeden gelen gerçek tutar) düşer; elle eklenen satırlar kalır. Belgenin
+    kendisi Belgeler sekmesinde durur."""
+    _require_editable(access, job)
+    link = db.scalar(select(SupplyJobDocument).where(SupplyJobDocument.job_id == job.id, SupplyJobDocument.document_id == doc_id))
+    if link is None:
+        raise HTTPException(404, "Belge bulunamadı")
+    old_net = (job_data(db, job) or {}).get("net")
+    db.delete(link)
+    db.flush()
+    _sync_actual(db, job, old_net)
+    _rebuild_lines(db, access, job)
+    activity.log(db, access.entity.id, access.user, "job_document_removed", {"number": job.number})
+    db.commit()
+
+
+def remove_document_item(db: Session, access: EntityAccess, job: SupplyJob, kind: str, key: str) -> None:
+    """Belgelerden okunan bir ölçüyü ("measure") ya da tutar satırını ("line") okunan veriden siler (yanlış okunmuş ya da gereksiz);
+    anahtar hangi belgede varsa oradan çıkar, satırlar yeniden kurulur."""
+    _require_editable(access, job)
+    if kind not in ("measure", "line"):
+        raise HTTPException(422, "Geçersiz tür")
+    docs = job_documents(db, job)
+    if not any(documents.data_of(d) for d in docs):
+        raise HTTPException(409, "Bu işin okunmuş bir belgesi yok")
+    for doc in docs:
+        data = documents.data_of(doc)
+        if data is not None:
+            documents.set_result(doc, doc_profile.without(data, kind, key), doc.extract_source)
+    activity.log(db, access.entity.id, access.user, "job_document_item_removed", {"number": job.number})
+    db.flush()
+    _rebuild_lines(db, access, job)
     db.commit()
 
 
 def attach_analysis(db: Session, access: EntityAccess, doc: EntityDocument, data: dict | None, source: str,
                     create: bool, job_id: int | None) -> SupplyJob | None:
-    """Okunan belgeyi kaydeder; istenirse yeni iş açar ya da var olan işe bağlar."""
+    """Okunan belgeyi kaydeder; istenirse yeni iş açar ya da var olan işe ekler (işin diğer belgeleri kalır, ölçüler toplanır)."""
     documents.set_result(doc, data, source)
     activity.log(db, access.entity.id, access.user, "document_added", {"filename": doc.filename, "source": source})
     if job_id is not None:
         job = get_job(db, access, job_id)
         _require_editable(access, job)
-        job.document_id = doc.id
-        db.commit()
-        if data is not None:
-            if data.get("net") is not None and job.actual is None:
-                job.actual = round(float(data["net"]), 2)
-            rebuild_from_document(db, access, job)
+        old_net = (job_data(db, job) or {}).get("net")
+        link_document(db, job, doc)
+        if data is None:
+            db.commit()
+            return job
+        db.flush()
+        _sync_actual(db, job, old_net)
+        rebuild_from_document(db, access, job)
         return job
     if create and data is not None:
         return job_for_document(db, access, doc) or job_from_document(db, access, doc, data)
@@ -448,7 +522,8 @@ def attach_analysis(db: Session, access: EntityAccess, doc: EntityDocument, data
 def job_for_document(db: Session, access: EntityAccess, doc: EntityDocument) -> SupplyJob | None:
     """Belgeden açılmış iş varsa o (aynı belgeden ikinci iş açılmasın)."""
     return db.scalars(
-        select(SupplyJob).where(SupplyJob.entity_id == access.entity.id, SupplyJob.document_id == doc.id).order_by(SupplyJob.number).limit(1)
+        select(SupplyJob).join(SupplyJobDocument, SupplyJobDocument.job_id == SupplyJob.id)
+        .where(SupplyJob.entity_id == access.entity.id, SupplyJobDocument.document_id == doc.id).order_by(SupplyJob.number).limit(1)
     ).first()
 
 

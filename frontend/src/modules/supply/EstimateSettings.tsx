@@ -65,7 +65,7 @@ export default function EstimateSettings({ entityId, job, onJob }: { entityId: n
       <p className={`${muted} mt-2`}>
         {job.time_fee == null && job.time_fee_mapped != null
           ? t(`Süre bedeli boş: fiyat listesine eşlenen süre satırları kullanılıyor (${money(job.time_fee_mapped, job.currency, locale)}).`, `Time fee is empty: the report-time lines mapped to the price list are used (${money(job.time_fee_mapped, job.currency, locale)}).`)
-          : t("Yalnızca lazer süresinin tutarını yaz, fatura toplamını değil; boş bırakırsan rapordaki süre kullanılır.", "Enter only the laser time amount, not the invoice total; leave empty to use the report's time.")}
+          : t("Yalnızca lazer süresinin tutarını yaz, fatura toplamını değil (malzeme ayrıca hesaplanır; faturanın toplamı 'Gerçek tutar'a yazılır); boş bırakırsan rapordaki süre kullanılır.", "Enter only the laser time amount, not the invoice total (material is worked out separately; the invoice total goes in 'Actual amount'); leave empty to use the report's time.")}
       </p>
     </div>
   );

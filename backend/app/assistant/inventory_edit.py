@@ -3,6 +3,9 @@ saf mantık (düzenleyicinin `work["inventory"]` yapısı). Veritabanına ya da 
 
 Etsy kuralları burada korunur: fiyat aynı anda yalnızca TEK bir varyasyona göre değişebilir; stok ve SKU değişiyorsa hangi varyasyon(lar)a
 göre değiştiği `*_on_property` listelerinde belirtilmelidir. Her değişiklikten sonra bu listeler verilerden yeniden hesaplanır."""
+import copy
+import re
+
 from app.listings.bulk import MIN_PRICE
 
 MAX_QUANTITY = 999
@@ -113,7 +116,7 @@ def recompute_dependencies(work: dict) -> str | None:
 
 
 def apply_inventory(
-    work: dict, *, where: dict[str, str] | None = None, quantity=None, price=None, sku=None, enabled=None,
+    work: dict, *, where: dict[str, str] | None = None, quantity=None, price=None, sku=None, enabled=None, auto_sku=None,
 ) -> tuple[list[str], list[str], int]:
     """Seçilen kombinasyonlara (where boşsa hepsine; varyasyonsuz listing'de tek ürüne) stok, fiyat, SKU ve açık/kapalı yazar.
     Döner: (değişen alanlar, hatalar, etkilenen kombinasyon sayısı)."""
@@ -160,6 +163,15 @@ def apply_inventory(
             for p in chosen:
                 p["sku"] = str(sku)[:32]
             changed.append("sku")
+    if auto_sku is not None:
+        generated = {id(p): auto_sku_for(p, str(auto_sku)) for p in chosen}
+        taken = {p.get("sku") for p in products if p not in chosen and p.get("sku")}
+        if len(set(generated.values())) < len(generated) or taken & set(generated.values()):
+            errors.append("Otomatik SKU'lar çakışıyor (32 karakter sınırı seçenek adlarını kısaltıyor olabilir); daha kısa bir önek ver.")
+        else:
+            for p in chosen:
+                p["sku"] = generated[id(p)]
+            changed.append("sku")
     if enabled is not None:
         flag = bool(enabled)
         remaining = sum(1 for p in products if p not in chosen for o in _offerings(p) if o.get("is_enabled", True))
@@ -175,6 +187,76 @@ def apply_inventory(
         if rule:
             errors.append(rule)
     return changed, errors, len(chosen)
+
+
+def auto_sku_for(product: dict, prefix: str = "") -> str:
+    """Kombinasyon için okunur SKU: önek + seçeneklerin harf/rakamları (ör. "GLS-15X20CM-BLACK"); Etsy SKU sınırı 32 karakter."""
+    parts = [re.sub(r"[^A-Z0-9]+", "", (pv.get("values") or [""])[0].upper()) for pv in product.get("property_values", [])]
+    prefix = re.sub(r"[^A-Z0-9-]+", "", prefix.upper()).strip("-")
+    return "-".join(x for x in [prefix, *parts] if x)[:32]
+
+
+CUSTOM_PROPERTY_IDS = (513, 514, 516)  # Etsy'nin serbest isimli varyasyonları (tools.CUSTOM_VARIATION_IDS ile aynı)
+
+
+def property_id(work: dict, name: str) -> int | None:
+    products = _products(work)
+    for pv in (products[0].get("property_values", []) if products else []):
+        if _norm(pv["property_name"]) == _norm(name):
+            return pv["property_id"]
+    return None
+
+
+def add_option(work: dict, name: str, option: str, price=None, quantity=None, copy_from: str | None = None, std_values: list[dict] | None = None) -> tuple[int, str | None]:
+    """Var olan bir varyasyona yeni seçenek ekler: diğer varyasyonların her kombinasyonu için yeni satır açılır, mevcut stok/SKU/fotoğraf bağları
+    korunur (set_variations gibi baştan kurmaz). Yeni satırlar `copy_from` seçeneğinin (verilmezse ilk seçeneğin) satırlarından kopyalanır;
+    fiyat, varyasyon fiyata göre değişiyorsa verilmelidir. Etsy'nin tanımlı değerleriyle kurulu (standart) varyasyonda `std_values`
+    (kategorinin izin verilen değerleri) verilir: ad bunlardan biriyse standart değer olarak, değilse düzenleyicideki gibi özel değer olarak
+    eklenir. Döner: (eklenen kombinasyon, hata)."""
+    products = _products(work)
+    if not products or not products[0].get("property_values"):
+        return 0, "Listing'de varyasyon yok; varyasyon kurmak için update_listing'in set_variations alanını kullan."
+    bad = _where_error(work, {name: copy_from} if copy_from else {})
+    if bad:
+        return 0, bad
+    if not any(_norm(n) == _norm(name) for n in variation_names(work)):
+        return 0, f'"{name}" bu listing\'de bir varyasyon değil. Varyasyonlar: ' + ", ".join(variation_names(work))
+    option = " ".join(str(option).split())
+    if not option:
+        return 0, "Seçenek adı boş olamaz."
+    if _norm(option) in {_norm(o) for o in options(work, name)}:
+        return 0, f'"{option}" {name} varyasyonunda zaten var.'
+    pv0 = next(pv for pv in products[0]["property_values"] if _norm(pv["property_name"]) == _norm(name))
+    standard = next((v for v in (std_values or []) if _norm(v["name"]) == _norm(option)), None)
+    if standard is not None:
+        option = standard["name"]
+        if _norm(option) in {_norm(o) for o in options(work, name)}:
+            return 0, f'"{option}" {name} varyasyonunda zaten var.'
+    reference = copy_from or options(work, name)[0]
+    sources = [p for p in products if _match(p, {name: reference})]
+    price_vary = pv0["property_id"] in ((work.get("inventory") or {}).get("price_on_property") or [])
+    if price_vary and price is None:
+        return 0, f'"{name}" varyasyonu fiyata göre değişiyor; yeni seçenek için price ver.'
+    added = []
+    for src in sources:
+        clone = copy.deepcopy(src)
+        clone.pop("product_id", None)
+        clone["sku"] = ""
+        for pv in clone["property_values"]:
+            if pv["property_id"] == pv0["property_id"]:
+                pv["values"], pv["value_ids"] = [option], ([standard["value_id"]] if standard is not None else [])
+        for o in _offerings(clone):
+            o.pop("offering_id", None)
+            o["is_enabled"] = True
+        added.append(clone)
+    work["inventory"]["products"] = products + added
+    if price is not None or quantity is not None:
+        _changed, errors, _count = apply_inventory(work, where={name: option}, price=price, quantity=quantity)
+        if errors:
+            work["inventory"]["products"] = products
+            return 0, " ".join(errors)
+    rule = recompute_dependencies(work)
+    return len(added), rule
 
 
 def remove_option(work: dict, name: str, option: str) -> tuple[int, str | None]:
@@ -216,3 +298,42 @@ def link_photo(work: dict, name: str, option: str, image_id: int | None) -> str 
     links["images"][shown] = image_id
     work["variation_links"] = links
     return None
+
+
+def standardize(work: dict, defs: list[dict]) -> list[str]:
+    """Özel (513/514/516) kimlikle kurulmuş bir varyasyonun adı kategorinin bir standart varyasyon özelliğiyle (supports_variations) eşleşiyorsa ve
+    TÜM seçenekleri o özelliğin izin verilen değerlerindeyse, varyasyonu standart özelliğe çevirir (alıcı filtrelerinde görünür). Kısmi eşleşmede dokunmaz.
+    Döner: çevrilen varyasyon adları."""
+    products = _products(work)
+    if not products or not products[0].get("property_values"):
+        return []
+    used = {pv["property_id"] for pv in products[0]["property_values"]}
+    inv = work["inventory"]
+    done: list[str] = []
+    for pv0 in list(products[0]["property_values"]):
+        if pv0["property_id"] not in CUSTOM_PROPERTY_IDS:
+            continue
+        d = next((x for x in defs if x.get("supports_variations") and x["property_id"] not in used
+                  and _norm(pv0["property_name"]) in (_norm(x.get("display_name", "")), _norm(x.get("name", "")))), None)
+        if d is None:
+            continue
+        by_name = {_norm(v["name"]): v for v in d.get("possible_values", [])}
+        opts = options(work, pv0["property_name"])
+        if not opts or any(_norm(o) not in by_name for o in opts):
+            continue
+        old_id, new_id = pv0["property_id"], d["property_id"]
+        for p in products:
+            for pv in p["property_values"]:
+                if pv["property_id"] == old_id:
+                    match = by_name[_norm(pv["values"][0])]
+                    pv.update(property_id=new_id, property_name=d["display_name"], scale_id=None, value_ids=[match["value_id"]], values=[match["name"]])
+        for key in ("price_on_property", "quantity_on_property", "sku_on_property", "readiness_state_on_property"):
+            inv[key] = [new_id if x == old_id else x for x in inv.get(key) or []]
+        links = work.get("variation_links")
+        if links and links.get("property_id") == old_id:
+            links["property_id"] = new_id
+            links["images"] = {by_name[_norm(k)]["name"] if _norm(k) in by_name else k: v for k, v in (links.get("images") or {}).items()}
+        used.discard(old_id)
+        used.add(new_id)
+        done.append(d["display_name"])
+    return done

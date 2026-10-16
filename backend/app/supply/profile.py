@@ -166,6 +166,59 @@ def merge_note(data: dict | None, note_data: dict | None, note: str) -> dict:
     return base
 
 
+def without(data: dict, kind: str, key: str) -> dict:
+    """Okunmuş veriden bir ölçüyü (`kind` "measure") ya da tutar satırını ("line") anahtarıyla çıkarır (yeni veri döner). Anahtar, `normalize`
+    ile aynı kuralla ham (yapay zekâ) çıktıda etiketten / açıklamadan türer."""
+    field = "measures" if kind == "measure" else "lines"
+
+    def key_of(x: dict) -> str:
+        if x.get("key"):
+            return str(x["key"])
+        return slug(str(x.get("label") or "")) if kind == "measure" else "line:" + slug(str(x.get("description") or "").strip()[:200])
+
+    return {**data, field: [x for x in data.get(field) or [] if not (isinstance(x, dict) and key_of(x) == key)]}
+
+
+def _sum(values: list[float | None]) -> float | None:
+    known = [v for v in values if v is not None]
+    return round(sum(known), 2) if known else None
+
+
+def merge(datas: list[dict]) -> dict | None:
+    """Bir işin belgelerinin okunmuş verisini tek veride toplar (ör. her plakanın üretim raporu): aynı anahtarlı ölçüler (süre, kesim
+    uzunluğu, delme sayısı…) ve aynı anahtarlı satırlar toplanır, KDV hariç tutarlar toplanır; kalan alanlar ilk belgeden gelir. Tek belgede
+    olduğu gibi döner; hiç belge yoksa None."""
+    datas = [normalize(d) for d in datas if d]
+    if len(datas) <= 1:
+        return datas[0] if datas else None
+    out = {**datas[0], "measures": [], "lines": [], "info": []}
+    measures: dict[str, dict] = {}
+    lines: dict[str, dict] = {}
+    for d in datas:
+        for m in d["measures"]:
+            have = measures.get(m["key"])
+            if have is None:
+                measures[m["key"]] = dict(m)
+            elif units.compatible(m["unit"], have["unit"]):
+                have["value"] = round(have["value"] + units.convert(m["value"], m["unit"], have["unit"]), 3)
+                have["text"] = f"{have['text']} + {m['text']}"
+        for ln in d["lines"]:
+            have = lines.get(ln["key"])
+            if have is None:
+                lines[ln["key"]] = dict(ln)
+            else:
+                have["qty"] = None if have["qty"] is None or ln["qty"] is None else round(have["qty"] + ln["qty"], 6)
+                have["amount"] = _sum([have["amount"], ln["amount"]])
+        out["info"] += d["info"]
+    out.update(
+        measures=list(measures.values()), lines=list(lines.values()), info=out["info"][:30],
+        **{k: _sum([d.get(k) for d in datas]) for k in ("net", "vat", "total")},
+    )
+    for k in ("vat_rate", "currency", "date", "doc_number", "vendor"):
+        out[k] = next((d[k] for d in datas if d.get(k) is not None), None)
+    return out
+
+
 def _parse_text(text: str) -> dict | None:
     got = parse_report_text(text)
     return {**got, "_normalized": True} if got else None

@@ -131,6 +131,22 @@ def rebuild(job_id: int, a: EntityAccess = Depends(access_dep), db: Session = De
     return service.serialize_job(db, a, job, detail=True)
 
 
+@router.delete("/{entity_id}/jobs/{job_id}/documents/items")
+def remove_document_item(job_id: int, kind: str, key: str, a: EntityAccess = Depends(access_dep), db: Session = Depends(get_db)):
+    _write_limit(a)
+    job = service.get_job(db, a, job_id)
+    service.remove_document_item(db, a, job, kind, key)
+    return service.serialize_job(db, a, job, detail=True)
+
+
+@router.delete("/{entity_id}/jobs/{job_id}/documents/{doc_id}")
+def detach_document(job_id: int, doc_id: int, a: EntityAccess = Depends(access_dep), db: Session = Depends(get_db)):
+    _write_limit(a)
+    job = service.get_job(db, a, job_id)
+    service.detach_document(db, a, job, doc_id)
+    return service.serialize_job(db, a, job, detail=True)
+
+
 @router.post("/{entity_id}/jobs/{job_id}/submit")
 def submit(job_id: int, a: EntityAccess = Depends(access_dep), db: Session = Depends(get_db)):
     job = service.get_job(db, a, job_id)

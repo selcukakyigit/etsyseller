@@ -66,8 +66,8 @@ export default function AllocationEditor({ entityId, job, onJob }: { entityId: n
   const [targets, setTargets] = useState<Draft[]>(() => (job.plan?.targets ?? []).map(toDraft));
   const [picking, setPicking] = useState(false);
   const [remainderParty, setRemainderParty] = useState<number | null>(job.plan?.remainder_party_id ?? null);
-  const { data: suggested } = useApiData(`supply-suggest:${entityId}:${job.id}:${job.document_id ?? 0}`, () =>
-    job.document_id && !confirmed ? supplyApi.jobs.suggestions(entityId, job.id) : Promise.resolve({ items: [] as Suggestion[] }),
+  const { data: suggested } = useApiData(`supply-suggest:${entityId}:${job.id}:${job.documents.length}`, () =>
+    job.documents.length > 0 && !confirmed ? supplyApi.jobs.suggestions(entityId, job.id) : Promise.resolve({ items: [] as Suggestion[] }),
   );
   const [preview, setPreview] = useState<PlanPreview | null>(null);
   const [busy, setBusy] = useState(false);
@@ -208,6 +208,21 @@ export default function AllocationEditor({ entityId, job, onJob }: { entityId: n
           )}
           {!dirty && preview?.error && <p className={`${warnBox} mt-3`}>{preview.error}</p>}
           {!dirty && preview?.check && <MeasureCheckNote check={preview.check} partial={mode === "estimated"} />}
+          {!dirty && preview && !preview.error && preview.plate_known === false && (
+            <p className={`${warnBox} mt-3`}>
+              {t(
+                "Raporda plakanın toplam kesim uzunluğu yok: seçtiğin ürünler plakanın tamamı sayılıyor ve işin tutarının hepsi onlara bölünüyor. Plakada başka parça varsa raporu yükle.",
+                "The report has no total cut length for the plate: the products you chose count as the whole plate and the entire job amount is split between them. If the plate has other parts, upload the report.",
+              )}
+            </p>
+          )}
+          {!dirty && preview && !preview.error && preview.laser_by && (
+            <p className={`${muted} mt-3`}>
+              {preview.laser_by === "time"
+                ? t("Lazer payı makine süresine göre: kesim süresi kesim uzunluğuna, delme süresi delme sayısına bölünür.", "Laser share is by machine time: cutting time is split by cut length, piercing time by pierce count.")
+                : t("Lazer payı yalnızca kesim uzunluğuna göre (raporda kesim ve delme süreleri ayrı yok).", "Laser share is by cut length only (the report has no separate cutting and piercing times).")}
+            </p>
+          )}
           {!dirty && preview && !preview.error && preview.targets.length > 0 && (
             <p className={`${muted} mt-3`}>
               {preview.unallocated && preview.unallocated < 0

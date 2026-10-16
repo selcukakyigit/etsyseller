@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { BlockSpinner, Spinner } from "@/components/ui/Spinner";
 import { useT } from "@/lib/i18n-client";
@@ -11,7 +11,7 @@ import { materialLabel } from "../core/materials";
 import DocumentAnalyzer from "../components/DocumentAnalyzer";
 import { SourceBadge } from "../components/DocumentList";
 import UnitSelect from "../components/UnitSelect";
-import { EntityAccess, PriceItem, can, isMember } from "../core/api";
+import { DocumentRow, EntityAccess, PriceItem, can, isMember } from "../core/api";
 import { errMsg } from "../core/errors";
 import { badge, btnDanger, btnDark, btnLink, btnOutline, btnPrimary, card, h2, input, label, muted, rowBorder, td, th, warnBox } from "../core/ui";
 import { UNIT_GROUPS, currencySymbol, money, perUnit, qty as fmtQty, unitLabel } from "../core/units";
@@ -108,9 +108,14 @@ export default function JobEditor({
   }
 
   const st = STATUS[job.status];
-  const data = job.document?.data ?? null;
+  const data = job.document_data;
   const twins = job.similar ?? [];
   const confirmedTwin = twins.find((s) => s.status === "confirmed");
+  // Belge ekleme alanı: işte hiç belge yokken ve belgeler varken ("+ Belge ekle") aynı bileşen.
+  const adder =
+    canEdit && can(access, "documents.upload") ? (
+      <DocumentAnalyzer accept={ACCEPT} multiple={false} hint={t("PDF, fotoğraf, Excel ya da metin", "PDF, photo, Excel or text")} onFile={attach.onFile} withNote onText={attach.onText} />
+    ) : null;
 
   return (
     <div className="space-y-4">
@@ -213,7 +218,7 @@ export default function JobEditor({
 
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
         <div className="space-y-4">
-          {job.document ? (
+          {job.documents.length > 0 ? (
             <DocPanel
               entityId={entityId}
               job={job}
@@ -221,36 +226,33 @@ export default function JobEditor({
               maps={maps}
               canMap={canEdit}
               busy={busy}
+              adder={adder}
               onMap={(k, id) => void setMapping(k, id)}
+              onRemoveItem={(kind, key) => void act(() => supplyApi.jobs.removeDocumentItem(entityId, jobId, kind, key))}
+              onRemove={async (doc) => {
+                if (!(await confirm({ title: t("Belge işten çıkarılsın mı?", "Remove this document from the job?"), message: t("Bu belgenin ölçüleri ve satırları işten düşer; elle eklediklerin kalır. Belge Belgeler sekmesinde durur.", "This document's values and lines leave the job; lines you added stay. The document stays in the Documents tab."), destructive: true, confirmLabel: t("Çıkar", "Remove") }))) return;
+                await act(() => supplyApi.jobs.detachDocument(entityId, jobId, doc.id));
+              }}
             />
           ) : (
-            canEdit &&
-            can(access, "documents.upload") && (
+            adder && (
               <section className={card}>
                 <h2 className={h2}>{t("Belge ekle", "Attach a document")}</h2>
                 <p className={`${muted} mb-3`}>
                   {t("Üretim raporu, fatura ya da fiş: okunan ölçüler fiyat listesine göre hesaplanır, yazan tutar gerçek tutar olur.", "Production report, invoice or receipt: measured values are priced from the list, the written amount becomes the actual amount.")}
                 </p>
-                <DocumentAnalyzer
-                  accept={ACCEPT}
-                  multiple={false}
-                  hint={t("PDF, fotoğraf, Excel ya da metin", "PDF, photo, Excel or text")}
-                  onFile={attach.onFile}
-                  withNote
-                  onText={attach.onText}
-                />
+                {adder}
               </section>
             )
           )}
 
           <LinesEditor
-            key={`lines-${job.updated_at}`}
+            key={`lines-${jobId}`}
             job={job}
             items={items}
             currency={currency}
             canEdit={canEdit}
-            busy={busy}
-            onSave={(lines) => act(() => supplyApi.jobs.setLines(entityId, jobId, lines), t("Satırlar kaydedildi", "Lines saved"))}
+            onSave={(lines) => act(() => supplyApi.jobs.setLines(entityId, jobId, lines))}
           />
 
           {member && (
@@ -392,7 +394,10 @@ function DocPanel({
   maps,
   canMap,
   busy,
+  adder,
   onMap,
+  onRemove,
+  onRemoveItem,
 }: {
   entityId: number;
   job: JobDetail;
@@ -400,11 +405,15 @@ function DocPanel({
   maps: Map<string, number>;
   canMap: boolean;
   busy: boolean;
+  adder: ReactNode;
   onMap: (fieldKey: string, itemId: number | null) => void;
+  onRemove: (doc: DocumentRow) => void;
+  onRemoveItem: (kind: "measure" | "line", key: string) => void;
 }) {
   const { t, locale } = useT();
-  const doc = job.document!;
-  const data = doc.data;
+  const [openedAt, setOpenedAt] = useState<number | null>(null); // ekleme alanı açıldığındaki belge sayısı: belge eklenince/çıkarılınca kendiliğinden kapanır
+  const adding = openedAt === job.documents.length;
+  const data = job.document_data;
   const priced = items.filter((i) => i.kind === "service" || i.kind === "material");
   // Belge ölçülerinden gelen satırlar birden çok boyutta (süre + uzunluk/delme…) fiyatlanıyorsa aynı iş iki kez sayılıyor olabilir.
   const measureDims = new Set(job.lines.filter((l) => l.price_item_id && l.source_key && !l.source_key.startsWith("line:")).map((l) => dimOf(l.unit)));
@@ -412,14 +421,36 @@ function DocPanel({
   return (
     <section className={card}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className={h2}>{t("Belgeden okunanlar", "Read from the document")}</h2>
-        <div className="flex items-center gap-2">
-          <SourceBadge source={doc.source} />
-          <a href={supplyApi.documents.fileUrl(entityId, doc.id)} target="_blank" rel="noopener noreferrer" className={btnLink}>
-            {doc.filename}
-          </a>
-        </div>
+        <h2 className={h2}>{t("Belgeden okunanlar", "Read from the documents")}</h2>
+        {adder && (
+          <button type="button" onClick={() => setOpenedAt(adding ? null : job.documents.length)} className={btnOutline}>
+            {adding ? t("Vazgeç", "Cancel") : `+ ${t("Belge ekle", "Add a document")}`}
+          </button>
+        )}
       </div>
+      <ul className="mt-2 flex flex-wrap gap-2">
+        {job.documents.map((doc) => (
+          <li key={doc.id} className="flex items-center gap-2 rounded-lg border border-neutral-200 px-2 py-1 text-sm dark:border-neutral-800">
+            <SourceBadge source={doc.source} />
+            <a href={supplyApi.documents.fileUrl(entityId, doc.id)} target="_blank" rel="noopener noreferrer" className={btnLink}>
+              {doc.filename}
+            </a>
+            {canMap && (
+              <button type="button" disabled={busy} onClick={() => onRemove(doc)} className={btnDanger} aria-label={t("Belgeyi işten çıkar", "Remove the document from the job")}>
+                ✕
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {adding && adder && (
+        <div className="mt-3">
+          {job.documents.length > 0 && (
+            <p className={`${muted} mb-2`}>{t("Eklenen belgenin ölçüleri ve tutarı mevcut belgelere eklenir.", "The added document's values and amount are added to the existing documents.")}</p>
+          )}
+          {adder}
+        </div>
+      )}
       {!data ? (
         <p className={`${warnBox} mt-3`}>{t("Belge okunamadı. Belgeler sekmesinden tekrar okutabilirsin.", "The document could not be read. You can read it again from the Documents tab.")}</p>
       ) : (
@@ -438,6 +469,7 @@ function DocPanel({
                     <th className={th}>{t("Ölçü", "Measure")}</th>
                     <th className={th}>{t("Değer", "Value")}</th>
                     <th className={th}>{t("Fiyat kalemi", "Price item")}</th>
+                    {canMap && <th className={th} />}
                   </tr>
                 </thead>
                 <tbody>
@@ -469,6 +501,13 @@ function DocPanel({
                             ))}
                           </select>
                         </td>
+                        {canMap && (
+                          <td className={`${td} text-right`}>
+                            <button type="button" disabled={busy} onClick={() => onRemoveItem("measure", m.key)} className={btnDanger} aria-label={t("Bu ölçüyü sil", "Remove this value")}>
+                              ✕
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -514,6 +553,13 @@ function DocPanel({
                             ))}
                           </select>
                         </td>
+                        {canMap && (
+                          <td className={`${td} text-right`}>
+                            <button type="button" disabled={busy} onClick={() => onRemoveItem("line", ln.key)} className={btnDanger} aria-label={t("Bu satırı sil", "Remove this line")}>
+                              ✕
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -546,25 +592,51 @@ function DocPanel({
   );
 }
 
+const satirPayload = (l: JobLine) => ({ price_item_id: l.price_item_id, description: l.description, qty: l.qty, unit: l.unit, unit_price: l.unit_price, manual_price: l.manual_price, source_key: l.source_key });
+const satirKey = (ls: JobLine[]) => JSON.stringify(ls.map(satirPayload));
+
 function LinesEditor({
   job,
   items,
   currency,
   canEdit,
-  busy,
   onSave,
 }: {
   job: JobDetail;
   items: PriceItem[];
   currency: string;
   canEdit: boolean;
-  busy: boolean;
   onSave: (lines: JobLine[]) => Promise<void>;
 }) {
   const { t, locale } = useT();
   const symbol = currencySymbol(currency, locale);
   const [lines, setLines] = useState<JobLine[]>(job.lines);
-  const dirty = JSON.stringify(lines) !== JSON.stringify(job.lines);
+  // Satırlar değiştikçe kendiliğinden kaydedilir (yazarken kutular yeniden kurulmaz). `sent`: sunucuda olan ya da gönderilen son hâl;
+  // `pending`: bitmemiş kayıt sayısı. İşin satırları dışarıdan değişirse (belge eşlemesi, yeniden kurma) kutular sunucudakine döner.
+  const sent = useRef(satirKey(job.lines));
+  const pending = useRef(0);
+  const incomplete = lines.some((l) => !l.price_item_id && !l.description.trim());
+  const key = satirKey(lines);
+
+  useEffect(() => {
+    const server = satirKey(job.lines);
+    if (pending.current === 0 && server !== sent.current) {
+      sent.current = server;
+      setLines(job.lines);
+    }
+  }, [job.lines]);
+
+  useEffect(() => {
+    if (!canEdit || incomplete || key === sent.current) return;
+    const timer = setTimeout(() => {
+      sent.current = key;
+      pending.current += 1;
+      void onSave(lines.map(satirPayload)).finally(() => {
+        pending.current -= 1;
+      });
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [key, incomplete, canEdit]); // eslint-disable-line react-hooks/exhaustive-deps
   const active = items.filter((i) => !i.archived && i.kind !== "minimum");
   const byId = new Map(items.map((i) => [i.id, i]));
   const patch = (i: number, p: Partial<JobLine>) => setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...p } : l)));
@@ -668,25 +740,7 @@ function LinesEditor({
           >
             + {t("Serbest satır", "Free line")}
           </button>
-          {dirty && (
-            <>
-              <button
-                type="button"
-                disabled={busy || lines.some((l) => !l.price_item_id && !l.description.trim())}
-                onClick={() =>
-                  void onSave(
-                    lines.map((l) => ({ price_item_id: l.price_item_id, description: l.description, qty: l.qty, unit: l.unit, unit_price: l.unit_price, manual_price: l.manual_price, source_key: l.source_key })),
-                  )
-                }
-                className={btnDark}
-              >
-                {t("Satırları kaydet", "Save lines")}
-              </button>
-              <button type="button" onClick={() => setLines(job.lines)} className={btnLink}>
-                {t("Vazgeç", "Cancel")}
-              </button>
-            </>
-          )}
+          {incomplete && <span className={muted}>{t("Açıklamayı yazınca kaydedilir", "Saved once the description is filled in")}</span>}
         </div>
       )}
     </section>

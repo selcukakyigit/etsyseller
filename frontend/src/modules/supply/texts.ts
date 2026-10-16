@@ -19,6 +19,8 @@ const job = (d: Record<string, unknown>) => `#${s(d.number)}${d.title ? ` ${s(d.
 export const SUPPLY_ACTIVITY: Record<string, ActivityText> = {
   job_created: (d, t) => t(`İş açıldı: ${job(d)}`, `Job created: ${job(d)}`),
   job_lines_changed: (d, t) => t(`İş #${s(d.number)} satırları değişti`, `Job #${s(d.number)} lines changed`),
+  job_document_removed: (d, t) => t(`İş #${s(d.number)} belgesi kaldırıldı`, `Job #${s(d.number)} document removed`),
+  job_document_item_removed: (d, t) => t(`İş #${s(d.number)} belgesinden bir kalem silindi`, `An item was removed from job #${s(d.number)}'s document`),
   job_updated: (d, t) => t(`İş #${s(d.number)} güncellendi`, `Job #${s(d.number)} updated`),
   job_deleted: (d, t) => t(`İş silindi: ${job(d)}`, `Job deleted: ${job(d)}`),
   job_submitted: (d, t) => t(`İş #${s(d.number)} onaya gönderildi`, `Job #${s(d.number)} sent for approval`),

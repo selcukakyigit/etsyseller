@@ -175,6 +175,64 @@ def apply_fields(work: dict, f: dict, *, category_names: dict[int, str] | None =
     return changed, errors
 
 
+def edit_question(work: dict, number: int, edits: dict) -> tuple[list[str], list[str]]:
+    """Tek bir kişiselleştirme sorusunu sıra numarasıyla (1'den başlar) düzenler, siler ya da taşır; sorunun kimliği ve seçeneklerinin kimlikleri korunur
+    (düzenleyicideki Düzenle / Sil / ↑↓ ile aynı). `edits`: delete, move_to, question_text, instructions, required, max_allowed_characters, options.
+    Döner: (değişenler, hatalar)."""
+    questions = (work.get("personalization") or {}).get("questions", [])
+    if not 1 <= number <= len(questions):
+        return [], [f"Kişiselleştirme sorusu bulunamadı; {len(questions)} soru var (1–{len(questions)})."]
+    q = questions[number - 1]
+    changed: list[str] = []
+    errors: list[str] = []
+    if edits.get("delete"):
+        questions.pop(number - 1)
+        work["personalization"] = {"questions": questions}
+        return ["silindi"], []
+    if edits.get("question_text") is not None:
+        text = " ".join(str(edits["question_text"]).split())
+        if not text:
+            errors.append("Soru metni boş olamaz.")
+        elif text != q.get("question_text"):
+            q["question_text"] = text
+            changed.append("question_text")
+    if edits.get("instructions") is not None and str(edits["instructions"])[:256] != (q.get("instructions") or ""):
+        q["instructions"] = str(edits["instructions"])[:256]
+        changed.append("instructions")
+    if edits.get("required") is not None and bool(edits["required"]) != bool(q.get("required")):
+        q["required"] = bool(edits["required"])
+        changed.append("required")
+    if edits.get("max_allowed_characters") is not None:
+        if q.get("question_type") != "text_input":
+            errors.append("En fazla karakter yalnızca metin kutusu sorularında ayarlanır.")
+        elif not 1 <= int(edits["max_allowed_characters"]) <= MAX_CHARACTERS:
+            errors.append(f"En fazla karakter 1 ile {MAX_CHARACTERS} arasında olmalı.")
+        elif int(edits["max_allowed_characters"]) != q.get("max_allowed_characters"):
+            q["max_allowed_characters"] = int(edits["max_allowed_characters"])
+            changed.append("max_allowed_characters")
+    if edits.get("options") is not None:
+        labels = [" ".join(str(o).split()) for o in edits["options"] if str(o).strip()]
+        if q.get("question_type") != "dropdown":
+            errors.append("Seçenekler yalnızca seçenek listesi (dropdown) sorularında ayarlanır.")
+        elif len(labels) < 2:
+            errors.append("Seçenek listesi için en az 2 seçenek gerekli.")
+        else:
+            known = {_norm_text(o.get("label")): o.get("option_id") for o in q.get("options") or [] if isinstance(o, dict)}
+            new = [{"label": label, "option_id": known.get(_norm_text(label))} for label in labels]
+            if [o["label"] for o in new] != [o.get("label") for o in q.get("options") or []]:
+                q["options"] = new
+                changed.append("options")
+    if edits.get("move_to") is not None:
+        to = int(edits["move_to"])
+        if not 1 <= to <= len(questions):
+            errors.append(f"Hedef sıra 1 ile {len(questions)} arasında olmalı.")
+        elif to != number:
+            questions.insert(to - 1, questions.pop(number - 1))
+            changed.append("sira")
+    work["personalization"] = {"questions": questions}
+    return changed, errors
+
+
 # ------------------------------------------------------------------ kategori özellikleri
 
 def attribute_defs(defs: list[dict]) -> list[dict]:
