@@ -800,6 +800,14 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
             category_note = {"yol": category_path, "neden": why, "otomatik_secildi": True}
     elif work["taxonomy_id"] in _taxonomy():
         category_note = {"yol": _taxonomy()[work["taxonomy_id"]], "otomatik_secildi": False}
+        try:  # aynı tür ürün mağazada zaten bir kategoride duruyorsa (ör. Wall Decor) alakasız dar bir alt kategori yerine o seçilir
+            used_ids = {c["taxonomy_id"] for c in listing_service.get_top_categories(ctx.db, ctx.shop, limit=50)}
+            auto = _auto_category(ctx, " ".join([title, *tags, *(str(m) for m in a.get("materials") or [])]))
+            if work["taxonomy_id"] not in used_ids and auto is not None and auto[0] in used_ids:
+                category_note = {"yol": auto[1], "neden": f"mağazanın kullandığı kategoriyle eşleşti ({_taxonomy()[work['taxonomy_id']]} yerine)", "otomatik_secildi": True}
+                work["taxonomy_id"] = auto[0]
+        except Exception:  # noqa: BLE001 - kategori ağacı/mağaza kategorileri alınamazsa modelin seçimi kalır
+            pass
     work["shipping_profile_id"] = int(a["shipping_profile_id"]) if a.get("shipping_profile_id") else defaults["en_cok_kullanilan_kargo_profili_id"]
     work["return_policy_id"] = int(a["return_policy_id"]) if a.get("return_policy_id") else defaults["en_cok_kullanilan_iade_politikasi_id"]
     if tpl is not None:
@@ -823,8 +831,15 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         })
     # Kategori özellikleri ve kişiselleştirme taslakla BİRLİKTE yazılır; doğrulama hataları ve eksik zorunlu özellikler sonuçta döner.
     completion: dict = {}
-    if a.get("personalization_questions"):
-        _, q_errors = fields.apply_fields(work, {"personalization_questions": a["personalization_questions"]})
+    questions_in = a.get("personalization_questions")
+    if not questions_in and a.get("personalizable"):
+        chars = max(1, min(int(a.get("personalization_max_chars") or 50), fields.MAX_CHARACTERS))
+        questions_in = [{
+            "question_text": "Personalization", "question_type": "text_input", "required": True, "max_allowed_characters": chars,
+            "instructions": f"Please enter the name or text you would like on the product (up to {chars} characters).",
+        }]
+    if questions_in:
+        _, q_errors = fields.apply_fields(work, {"personalization_questions": questions_in})
         if q_errors:
             completion["kisisellestirme_hatalari"] = q_errors
     if work.get("taxonomy_id"):
@@ -833,8 +848,12 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         except Exception as exc:  # noqa: BLE001 - özellikler alınamazsa taslak yine oluşur, model get_category_attributes ile yeniden dener
             completion["ozellikler_alinamadi"] = str(exc)
         else:
-            if a.get("attributes"):
-                _, attr_errors = fields.apply_attributes(work, defs, list(a["attributes"]))
+            wanted_attrs = list(a.get("attributes") or [])
+            if a.get("personalizable") and not any("personali" in str(x.get("name", "")).lower() for x in wanted_attrs):
+                wanted_attrs.append({"name": "Can be personalized", "values": ["Yes"]})  # kategoride yoksa hata verir, taslağı bozmaz
+            if wanted_attrs:
+                _, attr_errors = fields.apply_attributes(work, defs, wanted_attrs)
+                attr_errors = [e for e in attr_errors if "personali" not in e.lower()]
                 if attr_errors:
                     completion["ozellik_hatalari"] = attr_errors
             described = fields.describe(defs, work)
@@ -843,7 +862,10 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     wanted = int(a.get("wanted_image_count") or 0)
     if wanted > attached:
         completion["eksik_resim"] = min(wanted, creation.MAX_LISTING_IMAGES) - attached
-    for spec in a.get("crop_photos") or []:  # "birinci resmi 1:1 kırp": taslakla birlikte, resimler eklendikten sonra
+    crops = list(a.get("crop_photos") or [])
+    if a.get("crop_first_photo") and not any(int(c.get("photo_number") or 1) == 1 for c in crops):
+        crops.insert(0, {"photo_number": 1, "ratio": a["crop_first_photo"]})
+    for spec in crops:  # "birinci resmi 1:1 kırp": taslakla birlikte, resimler eklendikten sonra
         bad = _crop_in_work(ctx, lid, work, int(spec.get("photo_number") or 1), spec)
         if bad:
             completion.setdefault("kirpma_hatalari", []).append(bad)
@@ -876,8 +898,9 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
             "doldurulabilecek_bos_ozellikler'den ürüne uyanları doldur."
         )
     return {
+        "listing_id": lid,
         **completion,
-        "listing_id": lid, "duzenleyici_baglantisi": f"/listings/{lid}/edit", "eklenen_resim": attached, "kategori": category_note,
+        "duzenleyici_baglantisi": f"/listings/{lid}/edit", "eklenen_resim": attached, "kategori": category_note,
         "varyasyon_kombinasyonu": len(work["inventory"]["products"]) if work["inventory"]["products"][0]["property_values"] else 0,
         "kisaltilan_etiketler": shortened, "yayin_icin_eksikler": problems,
         "mağaza_sabit_bolumleri_eklendi": std_count, "kullanilan_aciklama_sablonu": tpl.name if tpl is not None else None,
@@ -2313,6 +2336,9 @@ TOOLS: list[dict] = [
         "attributes": {"type": "array", "description": "Kategori özellikleri (malzeme, kullanım yeri/occasion, renk, kişiselleştirilebilir mi…): [{name, values, unit?}]. İzin verilen değerler get_category_attributes'tedir; bilmiyorsan ver, sonuçtaki hata/eksik listesine göre set_listing_attributes ile tamamla.", "items": _obj({"name": {"type": "string"}, "values": {"type": "array", "items": {"type": "string"}}, "unit": {"type": "string"}}, ["name"])},
         "personalization_questions": {"type": "array", "description": "Kullanıcı kişiselleştirme (isim/yazı vb.) istediyse sorular, en fazla 5: {question_text, question_type (text_input|dropdown), required, max_allowed_characters, instructions, options}", "items": _obj({"question_text": {"type": "string"}, "instructions": {"type": "string"}, "question_type": {"type": "string", "enum": list(fields.QUESTION_TYPES)}, "required": {"type": "boolean"}, "max_allowed_characters": {"type": "integer"}, "options": {"type": "array", "items": {"type": "string"}}}, ["question_text"])},
         "video_ids": {"type": "array", "items": {"type": "string"}, "description": "Kullanıcının sohbete yüklediği VİDEOLARIN kimlikleri (sistem mesajındaki KULLANICI VİDEOLARI listesinden), en fazla 2. Kullanıcı video yüklediyse mutlaka ver."},
+        "personalizable": {"type": "boolean", "description": "Kullanıcı ürünün kişiselleştirilebildiğini söylediyse (isim/yazı yazılabilir) true: sunucu 'Personalization' metin sorusunu ve 'Can be personalized' özelliğini ekler. MUTLAKA ver."},
+        "personalization_max_chars": {"type": "integer", "description": "Kişiselleştirme metninin en fazla karakteri (kullanıcı söylediyse, ör. 50)"},
+        "crop_first_photo": {"type": "string", "enum": ["1:1", "4:3", "3:4"], "description": "Kullanıcı kapak/ana/birinci resmi kırp dediyse oran (ör. 1:1 = kare). MUTLAKA ver."},
         "crop_photos": {"type": "array", "description": "Kullanıcı kırpma istediyse (ör. ana resmi 1:1 kırp): [{photo_number, ratio 1:1|4:3|3:4|original, zoom, center_x, center_y}]; taslakla birlikte uygulanır.", "items": _obj({"photo_number": {"type": "integer"}, "ratio": {"type": "string", "enum": ["1:1", "4:3", "3:4", "original"]}, "zoom": {"type": "number"}, "center_x": {"type": "number"}, "center_y": {"type": "number"}}, ["photo_number"])},
         "wanted_image_count": {"type": "integer", "description": "Kullanıcı 'N resim olsun / N farklı resim oluştur' dediyse N (en çok 20). Yüklenen resim bundan azsa sonuçta eksik_resim döner ve sen o kadarını edit_chat_image ile üretip eklersin."},
         "who_made": {"type": "string", "enum": ["i_did", "someone_else", "collective"]},
@@ -2584,14 +2610,37 @@ for _mod in toolsets.MODULES:
     TOOL_LABELS_EN.update(_mod.LABELS_EN)
 
 
+# listing_id verilmezse (ya da önceki konuşmadan unutulduysa) sohbette en son oluşturulan yeni taslak kullanılır.
+_DEFAULT_DRAFT_TOOLS = (
+    "get_listing", "update_listing", "regenerate_listing_image", "crop_listing_photo", "get_category_attributes", "set_listing_attributes", "set_listing_fields",
+    "edit_personalization_question", "delete_listing_photo", "set_photo_alt_text", "edit_inventory", "add_variation_option", "remove_variation_option",
+    "set_variation_photo", "remove_listing_video", "move_listing_photo", "generate_missing_alt_texts",
+)
+
+
 def execute(ctx: Ctx, name: str, args: dict) -> dict:
     fn = EXECUTORS.get(name)
     if fn is None:
         return {"error": f"Bilinmeyen araç: {name}"}
+    args = dict(args or {})
+    if name in _DEFAULT_DRAFT_TOOLS and args.get("listing_id") in (None, "", 0):
+        latest = _latest_new_draft(ctx)
+        if latest is None:
+            return {"error": "listing_id gerekli (bu sohbette oluşturulmuş yeni bir taslak yok)."}
+        args["listing_id"] = latest
     try:
-        return fn(ctx, args or {})
+        return fn(ctx, args)
     except (ValueError, KeyError, TypeError) as exc:  # doğrulama hataları (ör. 20 karakteri aşan etiket) modele anlaşılır döner
         msg = str(exc)
         if hasattr(exc, "errors"):  # pydantic: yalnızca okunur hata iletileri
             msg = "; ".join(str(e.get("msg", "")).removeprefix("Value error, ") for e in exc.errors())
         return {"error": msg[:400]}
+
+
+# listing_id verilmezse sohbetteki en son yeni taslak kullanılır (bkz. execute): şemada zorunlu olmaktan çıkar.
+for _t in TOOLS:
+    if _t["name"] in _DEFAULT_DRAFT_TOOLS:
+        _schema = _t["input_schema"]
+        _schema["required"] = [r for r in _schema.get("required", []) if r != "listing_id"]
+        if "listing_id" in _schema.get("properties", {}):
+            _schema["properties"]["listing_id"] = {"type": "integer", "description": "Verilmezse bu sohbette en son oluşturulan yeni taslak kullanılır"}

@@ -46,7 +46,7 @@ def _item_label(item: dict) -> str:
 
 def _compact(value) -> str:
     if isinstance(value, dict):
-        scalars = [f"{k}={_short(v)}" for k, v in value.items() if _scalar(v)]
+        scalars = [f"{k}={_short(v)}" for k, v in sorted(value.items(), key=lambda kv: kv[0] != "listing_id") if _scalar(v)]  # kimlik kısaltmada kaybolmasın
         nested = []
         for k, v in value.items():
             if isinstance(v, list):
