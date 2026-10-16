@@ -804,10 +804,39 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
             "listing_image_id": -attached, "draft_file_id": saved["file_id"], "rank": attached, "alt_text": alt_by_image.get(str(image_id)),
             "url_75x75": url, "url_170x135": url, "url_570xN": url, "url_fullxfull": url,
         })
+    # Kategori özellikleri ve kişiselleştirme taslakla BİRLİKTE yazılır; doğrulama hataları ve eksik zorunlu özellikler sonuçta döner.
+    completion: dict = {}
+    if a.get("personalization_questions"):
+        _, q_errors = fields.apply_fields(work, {"personalization_questions": a["personalization_questions"]})
+        if q_errors:
+            completion["kisisellestirme_hatalari"] = q_errors
+    if work.get("taxonomy_id"):
+        try:
+            defs = _category_defs(int(work["taxonomy_id"]))
+        except Exception as exc:  # noqa: BLE001 - özellikler alınamazsa taslak yine oluşur, model get_category_attributes ile yeniden dener
+            completion["ozellikler_alinamadi"] = str(exc)
+        else:
+            if a.get("attributes"):
+                _, attr_errors = fields.apply_attributes(work, defs, list(a["attributes"]))
+                if attr_errors:
+                    completion["ozellik_hatalari"] = attr_errors
+            described = fields.describe(defs, work)
+            completion["eksik_zorunlu_ozellikler"] = described["eksik_zorunlu"]
+            completion["doldurulabilecek_bos_ozellikler"] = [r["ad"] for r in described["ozellikler"] if not r["secili"] and not r["zorunlu"]][:12]
+    wanted = int(a.get("wanted_image_count") or 0)
+    if wanted > attached:
+        completion["eksik_resim"] = min(wanted, creation.MAX_LISTING_IMAGES) - attached
     drafts.save_local(ctx.db, ctx.shop, lid, work, None)
     problems = creation.validate_new(work, activate=True)
     _show_listing(ctx, lid, work, category=category_note["yol"] if category_note else None, price_missing=price_missing, qty_assumed=qty_assumed)
+    if completion.get("eksik_resim") or completion.get("ozellik_hatalari") or completion.get("kisisellestirme_hatalari") or completion.get("eksik_zorunlu_ozellikler"):
+        completion["sonraki_adim"] = (
+            "Taslak EKSİK; kullanıcıya yazmadan önce tamamla: eksik_resim>0 ise edit_chat_image ile (add_to_listing=true, listing_id) o kadar FARKLI görsel üret; "
+            "hatalı ya da eksik özellikleri set_listing_attributes ile, kişiselleştirme hatalarını set_listing_fields ile düzelt; "
+            "doldurulabilecek_bos_ozellikler'den ürüne uyanları doldur."
+        )
     return {
+        **completion,
         "listing_id": lid, "duzenleyici_baglantisi": f"/listings/{lid}/edit", "eklenen_resim": attached, "kategori": category_note,
         "varyasyon_kombinasyonu": len(work["inventory"]["products"]) if work["inventory"]["products"][0]["property_values"] else 0,
         "kisaltilan_etiketler": shortened, "yayin_icin_eksikler": problems,
@@ -2108,6 +2137,9 @@ TOOLS: list[dict] = [
         "image_ids": {"type": "array", "items": {"type": "string"}, "description": "Sohbete yüklenen resimlerin kimlikleri (sistem mesajındaki listeden)"},
         "image_alt_texts": {"type": "array", "items": {"type": "string"}, "description": "Her resim için, image_ids ile AYNI SIRADA alt metin: resimde gerçekten görünenin tek cümlelik betimlemesi (en fazla 125 karakter, 'image of' ile başlama, anahtar kelime doldurma), başlıkla aynı dilde"},
         "taxonomy_id": {"type": "integer", "description": "Kategori kimliği (shop_defaults'tan)"},
+        "attributes": {"type": "array", "description": "Kategori özellikleri (malzeme, kullanım yeri/occasion, renk, kişiselleştirilebilir mi…): [{name, values, unit?}]. İzin verilen değerler get_category_attributes'tedir; bilmiyorsan ver, sonuçtaki hata/eksik listesine göre set_listing_attributes ile tamamla.", "items": _obj({"name": {"type": "string"}, "values": {"type": "array", "items": {"type": "string"}}, "unit": {"type": "string"}}, ["name"])},
+        "personalization_questions": {"type": "array", "description": "Kullanıcı kişiselleştirme (isim/yazı vb.) istediyse sorular, en fazla 5: {question_text, question_type (text_input|dropdown), required, max_allowed_characters, instructions, options}", "items": _obj({"question_text": {"type": "string"}, "instructions": {"type": "string"}, "question_type": {"type": "string", "enum": list(fields.QUESTION_TYPES)}, "required": {"type": "boolean"}, "max_allowed_characters": {"type": "integer"}, "options": {"type": "array", "items": {"type": "string"}}}, ["question_text"])},
+        "wanted_image_count": {"type": "integer", "description": "Kullanıcı 'N resim olsun / N farklı resim oluştur' dediyse N (en çok 20). Yüklenen resim bundan azsa sonuçta eksik_resim döner ve sen o kadarını edit_chat_image ile üretip eklersin."},
         "who_made": {"type": "string", "enum": ["i_did", "someone_else", "collective"]},
         "when_made": {"type": "string"},
     }, ["title"])},

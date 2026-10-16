@@ -77,7 +77,7 @@ export default function CategoryPicker({
 
   return (
     <div>
-      <label className="block text-xs font-medium text-neutral-500 mb-1">{t("Kategori", "Category")}</label>
+      <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("Kategori", "Category")}</label>
       <div className="relative">
         <input
           value={open ? query : selected?.path ?? ""}
@@ -91,10 +91,10 @@ export default function CategoryPicker({
           }}
           onBlur={() => setTimeout(() => setOpen(false), 150)}
           placeholder={t("Kategori ara (en az 2 karakter)…", "Search categories (at least 2 characters)…")}
-          className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
+          className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[#D97757] dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
         />
         {open && filtered.length > 0 && (
-          <ul className="absolute z-10 mt-1 w-full max-h-60 overflow-y-auto rounded-lg border border-neutral-200 bg-white shadow-lg">
+          <ul className="absolute z-10 mt-1 w-full max-h-60 overflow-y-auto rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
             {filtered.map((n) => (
               <li key={n.id}>
                 <button
@@ -103,10 +103,10 @@ export default function CategoryPicker({
                     onChange(n.id, n.path);
                     setOpen(false);
                   }}
-                  className="w-full px-3 py-2 text-left transition hover:bg-neutral-50"
+                  className="w-full px-3 py-2 text-left transition hover:bg-neutral-50 dark:hover:bg-neutral-800"
                 >
-                  <span className="block text-sm text-neutral-900">{n.name}</span>
-                  {n.parent && <span className="block truncate text-xs text-neutral-400">{n.parent}</span>}
+                  <span className="block text-sm text-neutral-900 dark:text-neutral-100">{n.name}</span>
+                  {n.parent && <span className="block truncate text-xs text-neutral-400 dark:text-neutral-500">{n.parent}</span>}
                 </button>
               </li>
             ))}
@@ -114,7 +114,7 @@ export default function CategoryPicker({
         )}
       </div>
       {top.length > 0 && (
-        <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-500">
+        <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-500 dark:text-neutral-400">
           {t("Sık kullandığın kategoriler:", "Your frequent categories:")}
           {top.map((n) => (
             <button
@@ -122,7 +122,7 @@ export default function CategoryPicker({
               type="button"
               title={n.path}
               onClick={() => onChange(n.id, n.path)}
-              className="font-medium text-neutral-800 hover:text-[#D97757]"
+              className="font-medium text-neutral-800 hover:text-[#D97757] dark:text-neutral-200 dark:hover:text-[#D97757]"
             >
               + {n.name}
             </button>

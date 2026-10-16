@@ -1612,6 +1612,10 @@ export const api = {
     consent: (version: string) => request<User>("/api/auth/consent", { method: "POST", body: JSON.stringify({ version }) }),
     logout: async () => {
       clearSessionCache();
+      try {
+        // Yeniden girişte asistan temiz ekranla açılsın: hatırlanan sohbet ve yazılmamış metin silinir.
+        for (const key of Object.keys(localStorage)) if (key.startsWith("ulagg_chat_")) localStorage.removeItem(key);
+      } catch {}
       await supabase.auth.signOut();
     },
   },

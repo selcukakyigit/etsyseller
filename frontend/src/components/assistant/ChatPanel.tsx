@@ -30,6 +30,17 @@ const localToday = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
+/** Bu kadar süre dokunulmayan sohbet, sayfaya dönünce yeniden açılmaz (temiz ekran). */
+const CHAT_IDLE_MS = 30 * 60 * 1000;
+
+/** Sohbetin son mesajı (sunucuda UTC, saat dilimi eki yok) CHAT_IDLE_MS'ten eskiyse true. */
+function isStale(messages: ChatMessageOut[]): boolean {
+  const last = messages[messages.length - 1];
+  if (!last?.created_at) return false;
+  const at = Date.parse(/[zZ]|[+-]\d\d:\d\d$/.test(last.created_at) ? last.created_at : `${last.created_at}Z`);
+  return Number.isFinite(at) && Date.now() - at > CHAT_IDLE_MS;
+}
+
 /** **kalın** ve satır sonlarını destekleyen basit metin gösterimi (HTML enjekte etmez). */
 function Text({ text }: { text: string }) {
   return (
@@ -178,6 +189,13 @@ export default function ChatPanel({
       .session(shopId, saved)
       .then((s) => {
         if (cancelled) return;
+        if (isStale(s.messages)) {
+          // Uzun süre dokunulmamış sohbet açılmaz: temiz ekran gelir (eski sohbet Geçmiş'te durur).
+          try {
+            localStorage.removeItem(lastKey);
+          } catch {}
+          return;
+        }
         setSessionId(s.id);
         setMessages(s.messages);
       })
@@ -190,6 +208,16 @@ export default function ChatPanel({
       cancelled = true;
     };
   }, [shopId, lastKey]);
+
+  // Sekme uzun süre arkada kaldıysa dönüşte temiz sohbet açılır (eski sohbet Geçmiş'te durur).
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && !busy && messages.length > 0 && isStale(messages)) newChat();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy, messages]);
 
   // Yanıt beklerken sayfadan çıkıldıysa: sunucu işi bitirip yanıtı kaydeder; dönünce son mesaj kullanıcınınsa yanıt gelene kadar yokla.
   useEffect(() => {
