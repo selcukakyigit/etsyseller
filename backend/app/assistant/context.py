@@ -92,7 +92,7 @@ def _message_text(m: ChatMessage, full: bool) -> str:
         if n_files:
             text += f"\n[Bu mesaja {n_files} dosya/resim eklenmişti]"
     elif m.tool_notes:
-        text += f"\n\n[Araç özeti — yalnızca bağlam, kullanıcıya gösterilmedi]\n{m.tool_notes}"
+        text += f"\n\n[İç kayıt: bu turda çalışan araçlar. Yalnızca bağlam; cevabında ASLA taklit etme, tekrarlama ya da araç özeti yazma]\n{m.tool_notes}"
     return text
 
 

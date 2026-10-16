@@ -196,6 +196,14 @@ def _images_prompt(imgs: list[ChatImage]) -> str:
     return out
 
 
+_TOOL_NAME = re.compile(r"(?<![A-Za-z_])(?:" + "|".join(re.escape(n) for n in sorted(tools.EXECUTORS, key=len, reverse=True)) + r")(?![A-Za-z_])")
+
+
+def _claims_tool_use(text: str) -> bool:
+    """Cevap araç adı ya da "araç özeti" taklidi içeriyor mu (araç çağrılmadan "yaptım" demenin işareti)?"""
+    return bool(_TOOL_NAME.search(text)) or "araç çıktısına göre" in text.lower() or "araç özeti" in text.lower()
+
+
 # Model bazen talimata rağmen "[düzenleyici](https://www.etsy.com/listings/-1/edit)" gibi uydurma bağlantılar yazıyor; kartın
 # düğmesi zaten doğru sayfaya götürüyor. Listing düzenleme bağlantıları metinden çıkarılır, bağlantı metni kalır.
 _EDIT_LINK = re.compile(r"\[([^\]]+)\]\((?:https?://[^)\s]*)?/listings/-?\d+/edit\)")
@@ -270,6 +278,23 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
         db.commit()
         clear_progress(shop.id, request_id)
         raise
+    if not tool_lines and _claims_tool_use(result.text or ""):
+        # Model hiçbir araç çağırmadan "araçla yaptım" diye anlattı (geçmişteki araç özetlerini taklit etmiş): bir kez gerçekten yapması istenir.
+        first = result.usage
+        _record_usage(db, shop.id, user_id, session.id, first)
+        metering.record("assistant", model, first.input_tokens, first.output_tokens)
+        try:
+            result = llm.run_agent(
+                model, prompt.STATIC_RULES, dynamic, history,
+                _with_attachments(message, current) + "\n\n[SİSTEM NOTU: Önceki denemende hiçbir araç çağırmadın ama çağırmış gibi anlattın. Şimdi isteği gerçekten ilgili araçlarla yap; çağırmadığın hiçbir şeyi yapılmış gibi yazma. Cevapta araç adı ya da parametre adı geçirme.]",
+                [{"path": i.path, "content_type": i.content_type} for i in current if i.content_type in IMAGE_TYPES][:MODEL_IMAGES_PER_MESSAGE],
+                tools.TOOLS, run_tool,
+            )
+        except llm.AssistantError:
+            db.delete(user_msg)
+            db.commit()
+            clear_progress(shop.id, request_id)
+            raise
     reply = _strip_app_links(result.text or "")
     assistant = ChatMessage(
         session_id=session.id, role="assistant", content=reply or tr("Bir cevap üretemedim, tekrar dener misin?", "I couldn't produce an answer, could you try again?"),
