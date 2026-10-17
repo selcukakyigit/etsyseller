@@ -149,7 +149,7 @@ def generate_seo_suggestion(
         # Ölçü/renk temizliği denetimden önce: yeniden deneme, son hâli görsün (kısalan başlık benzerliği artırabilir)
         suggestion["description"] = layout.normalize(str(suggestion.get("description", "")))
         suggestion["title"] = quality.clean_title(str(suggestion.get("title", "")), variations or {})
-        problems = audit.generation_problems(suggestion["title"], tags, str(suggestion.get("description", "")), others, source_text, variations or {}, listing.get("listing_type") == "download")
+        problems = audit.generation_problems(suggestion["title"], tags, str(suggestion.get("description", "")), others, source_text, variations or {}, listing.get("listing_type") == "download", bool(listing.get("is_personalizable")))
         if not problems or attempt == MAX_RETRIES:
             break
         feedback = "\n".join(f"- {p}" for p in problems)
@@ -163,7 +163,7 @@ def generate_seo_suggestion(
 
     suggestion["tags"] = _fit_tags(suggestion.get("tags", []), keyword_pool or [], str(suggestion.get("title", "")))
     if suggestion["tags"] != tags:  # düzeltme sonrası uyarılar yeniden hesaplanır (artık geçersiz etiket kalmadı)
-        problems = audit.generation_problems(suggestion["title"], suggestion["tags"], str(suggestion.get("description", "")), others, source_text, variations or {}, listing.get("listing_type") == "download")
+        problems = audit.generation_problems(suggestion["title"], suggestion["tags"], str(suggestion.get("description", "")), others, source_text, variations or {}, listing.get("listing_type") == "download", bool(listing.get("is_personalizable")))
     if len(suggestion.get("tags", [])) != standard.TAG_COUNT:
         raise ValueError(f"Beklenen {standard.TAG_COUNT} etiket, alınan: {len(suggestion.get('tags', []))}")
 

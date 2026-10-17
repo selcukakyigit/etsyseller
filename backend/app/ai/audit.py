@@ -87,18 +87,35 @@ def structure_issues(product: str, digital: bool = False) -> list[tuple[str, str
     return out
 
 
+def coverage_issues(description: str, product: str, variations: dict[str, list[str]], personalizable: bool) -> list[tuple[str, str]]:
+    """Açıklamanın listing verisini yansıtması: kişiselleştirme nasıl yapılır, seçenekler (renk/boyut) sayılmış mı. Denetçi ve üretim hattı aynısını kullanır:
+    yazıcı bu kurallara göre yazar, denetçi aynı kuralları ölçer."""
+    out: list[tuple[str, str]] = []
+    if personalizable and product.strip() and not _PERSONAL.search(product):
+        out.append(("personalization", tr("Kişiselleştirilebilir ama açıklama bunun nasıl yapıldığını anlatmıyor.", "The item is personalizable but the description does not explain how.")))
+    unlisted = [n for n, vals in variations.items() if 2 <= len(vals) <= 12 and not any(re.search(rf"\b{re.escape(v.lower())}\b", description.lower()) for v in vals)]
+    if unlisted and product.strip():
+        out.append(("options", tr(
+            f"Açıklama seçenekleri ({', '.join(unlisted)}) saymıyor; yapay zekâ asistanları seçenekleri açıklamadan okur.",
+            f"The description does not list the options ({', '.join(unlisted)}); AI assistants read options from the description.",
+        )))
+    return out
+
+
 # Soru-cevap yapay zekâya zorlanmaz (veri yetmiyorsa atlanır; zorlamak uydurmaya iter); denetçide yine bulgu olarak görünür.
 _NOT_ENFORCED = {"faq", "layout_headers", "layout_emoji"}
 
 
 def generation_problems(
-    title: str, tags: list[str], product_description: str, others: list[dict], source_text: str | None, variations: dict[str, list[str]], digital: bool = False,
+    title: str, tags: list[str], product_description: str, others: list[dict], source_text: str | None, variations: dict[str, list[str]], digital: bool = False, personalizable: bool = False,
 ) -> list[str]:
     """Yeni yazılan metin için TEK denetim: biçim ve benzersizlik (quality), uydurma (fact), açıklama yapısı. SEO öneri hattı ve sohbet asistanının
     taslak oluşturması aynısını kullanır; sorun varsa model geri bildirimle yeniden dener."""
     problems = quality.all_problems(title, tags, product_description, others, source_text, quality.size_options(variations))
     problems += quality.fact_problems(title, product_description, source_text or "", variations)
-    problems += [text for id, text in structure_issues(quality.strip_common_paragraphs(product_description, others), digital) if id not in _NOT_ENFORCED]
+    product = quality.strip_common_paragraphs(product_description, others)
+    problems += [text for id, text in structure_issues(product, digital) if id not in _NOT_ENFORCED]
+    problems += [text for _id, text in coverage_issues(product_description, product, variations, personalizable)]
     return problems
 
 
@@ -167,11 +184,8 @@ def audit(listing: dict, *, variations: dict[str, list[str]], inventory: dict | 
         add(f"fact_{i}", "ai", 2, p, "description")
     for i, p in enumerate(quality.claim_problems(product)):
         add(f"claim_{i}", "ai", 2, p, "description")
-    if listing.get("is_personalizable") and product.strip() and not _PERSONAL.search(product):
-        add("personalization", "ai", 1, tr("Kişiselleştirilebilir ama açıklama bunun nasıl yapıldığını anlatmıyor.", "The item is personalizable but the description does not explain how."), "description")
-    unlisted = [n for n, vals in variations.items() if 2 <= len(vals) <= 12 and not any(re.search(rf"\b{re.escape(v.lower())}\b", description.lower()) for v in vals)]
-    if unlisted and product.strip():
-        add("options", "ai", 1, tr(f"Açıklama seçenekleri ({', '.join(unlisted)}) saymıyor; yapay zekâ asistanları seçenekleri açıklamadan okur.", f"The description does not list the options ({', '.join(unlisted)}); AI assistants read options from the description."), "description")
+    for id, text in coverage_issues(description, product, variations, bool(listing.get("is_personalizable"))):
+        add(id, "ai", 1, text, "description")
     images = listing.get("images") or []
     no_alt = [i for i in images if not (i.get("alt_text") or "").strip()]
     if no_alt:
