@@ -44,7 +44,7 @@ def openai_limits(model_id: str, max_tokens: int | None = None, effort: str | No
     else:
         return {} if max_tokens is None else {"max_tokens": max_tokens}
     reasoning = {"reasoning_effort": level}
-    pad = 1000 if level in ("minimal", "low") and effort is None else 4000  # akıl yürütme token'ları sınıra dahil
+    pad = 1000 if effort is None else 10000  # akıl yürütme token'ları sınıra dahil: pay dar kalırsa model düşünürken sınır dolar ve cevap BOŞ gelir
     return reasoning if max_tokens is None else {**reasoning, "max_completion_tokens": max_tokens + pad}
 
 

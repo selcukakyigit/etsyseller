@@ -703,10 +703,14 @@ export type ListingEdit = {
   // Başlık bilgileri (state dışında salt okunur)
   state?: string | null;
   listing_type?: string | null;
+  /** Dijital listing'in indirilebilir dosyaları (taslakta draft_file_id, Etsy'ye yüklenince file_id). */
+  digital_files?: DigitalFile[];
   url?: string | null;
   original_creation_timestamp?: number | null;
   ending_timestamp?: number | null;
 };
+
+export type DigitalFile = { draft_file_id?: string; filename: string; size?: number; file_id?: number | null };
 
 export type VariationLinks = { property_id: number | null; images: Record<string, number> };
 
@@ -1486,6 +1490,7 @@ export type ChatCard =
   | { type: "orders"; title: string; rows: { receipt_id: number; buyer: string; country: string; date: string; ship_by: string | null; total: number; items: string[] }[] }
   | { type: "listing_draft"; listing_id: number; title: string; edit_url: string; price: [number, number]; quantity: number; tags: string[]; combos: number; image: string | null; images: number; problems: string[]; category?: string | null; changes?: string[]; price_missing?: boolean; quantity_assumed?: boolean }
   | { type: "status"; title: string; rows: { label: string; value: number }[] }
+  | { type: "social_pins"; listing_id: number; title: string; pins: { title: string; description: string; hashtags: string[]; board: string }[] }
   | { type: "listing_update"; listing_id: number; title: string; edit_url: string; changes: string[]; tags: string[] }
   | { type: "video_job"; job: string; listing_id: number; credits: number; prompt: string; duration: number; started_at: number; source: "chat" | "listing" }
   | { type: "chat_image_edited"; image_id: string; image_url: string; prompt: string; source_image_id: string | null; source_listing_id: number | null; source_photo: number | null; listing_id: number | null; added: boolean; edit_url: string | null; listing_image_id?: number | null }
@@ -1853,7 +1858,7 @@ export const api = {
       }),
     discardDraft: (shopId: number, listingId: number) =>
       request<{ ok: boolean }>(`/api/shops/${shopId}/listings/${listingId}/draft`, { method: "DELETE" }),
-    uploadDraftFile: (shopId: number, listingId: number, file: Blob, kind: "image" | "video", filename: string) => {
+    uploadDraftFile: (shopId: number, listingId: number, file: Blob, kind: "image" | "video" | "file", filename: string) => {
       const form = new FormData();
       form.append("file", file, filename);
       form.append("kind", kind);

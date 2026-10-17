@@ -22,6 +22,8 @@ import VariationTable from "@/components/listing-editor/VariationTable";
 import ListingStatusBar from "@/components/listing-editor/ListingStatusBar";
 import ShippingAndReturns from "@/components/listing-editor/ShippingAndReturns";
 import HowItsMade from "@/components/listing-editor/HowItsMade";
+import ProductType from "@/components/listing-editor/ProductType";
+import DigitalFiles from "@/components/listing-editor/DigitalFiles";
 import ListingSettings from "@/components/listing-editor/ListingSettings";
 import PhysicalDetails from "@/components/listing-editor/PhysicalDetails";
 import PersonalizationEditor from "@/components/listing-editor/PersonalizationEditor";
@@ -212,6 +214,32 @@ export default function ListingEditPage() {
       .filter(([key, a, b]) => !inFocus[focus].includes(key) && stableJson(a) !== stableJson(b))
       .map(([, , , label]) => label);
   })();
+
+  const isDigital = edit?.listing_type === "download";
+  /** Ürün türü değişimi (yalnızca yeni listing): dijitale geçince varyasyonlar, kargo ve iade temizlenir (Etsy dijitalde bunları kabul etmez). */
+  function switchType(type: "physical" | "download") {
+    if (!edit) return;
+    if (type === "physical") {
+      wc.patch({ listing_type: "physical" });
+      return;
+    }
+    const first = edit.inventory.products[0];
+    wc.patch({
+      listing_type: "download",
+      shipping_profile_id: null,
+      return_policy_id: null,
+      inventory: {
+        ...edit.inventory,
+        products: first ? [{ ...first, property_values: [] }] : [],
+        price_on_property: [],
+        quantity_on_property: [],
+        sku_on_property: [],
+        readiness_state_on_property: [],
+      },
+      variation_links: { property_id: null, images: {} },
+    });
+    setInvKey((k) => k + 1);
+  }
 
   const titleField = () =>
     edit && (
@@ -475,9 +503,15 @@ export default function ListingEditPage() {
 
               <CategoryPicker shopId={activeShop?.id} taxonomyId={edit.taxonomy_id} onChange={(id) => wc.patch({ taxonomy_id: id })} />
 
+              <ProductType value={edit.listing_type} editable={isNew} onChange={switchType} />
+
               {titleField()}
 
               {descriptionField()}
+
+              {isDigital && (
+                <DigitalFiles shopId={activeShop.id} listingId={listingId} files={edit.digital_files ?? []} onChange={(digital_files) => wc.patch({ digital_files })} />
+              )}
 
             </div>
             </SectionCard>
@@ -503,6 +537,7 @@ export default function ListingEditPage() {
               links={edit.variation_links}
               taxonomyId={edit.taxonomy_id}
               images={edit.images}
+              digital={isDigital}
               onChange={(inventory, variation_links) => wc.patch({ inventory, variation_links })}
             />
 
@@ -553,6 +588,15 @@ export default function ListingEditPage() {
               open={isOpen("sec-shipping")}
               onToggle={() => toggle("sec-shipping")}
             >
+            {isDigital ? (
+              <p className="rounded-xl border border-neutral-200 bg-white p-5 text-sm text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300">
+                {t(
+                  "Dijital üründe kargo, işlem süresi ve iade yoktur: alıcılar dosyaları satın alır almaz indirir.",
+                  "Digital items have no shipping, processing time or returns: buyers download the files right after purchase.",
+                )}
+              </p>
+            ) : (
+            <>
             <ShippingAndReturns
               shopId={activeShop.id}
               shippingProfileId={edit.shipping_profile_id}
@@ -580,6 +624,8 @@ export default function ListingEditPage() {
               ecgtAfterSalesServiceInfo={edit.ecgt_after_sales_service_info}
               onChange={(p) => wc.patch(p)}
             />
+            </>
+            )}
             </SectionCard>
 
             <SectionCard

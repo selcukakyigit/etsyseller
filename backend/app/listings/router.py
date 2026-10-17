@@ -12,7 +12,7 @@ from app.core.byte_range import ranged
 from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.etsy.client import EtsyAuthError
-from app.listings import bulk, creation, drafts, health, performance, service, templates
+from app.listings import bulk, creation, digital, drafts, health, performance, service, templates
 from app.listings.schemas import (
     DraftSaveIn,
     ImageOrderIn,
@@ -46,13 +46,14 @@ def top_categories(shop: Shop = Depends(get_owned_shop), db: Session = Depends(g
 
 class NewListingIn(BaseModel):
     source_listing_id: int | None = None
+    listing_type: str = Field(default="physical", pattern="^(physical|download)$")  # fiziksel ya da dijital (indirilebilir)
 
 
 @router.post("/new")
 def new_listing(payload: NewListingIn, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
     """Yerelde yeni listing (boş ya da var olan bir listing'in kopyası). Etsy'ye "Yayınla" ile gider."""
     try:
-        return creation.create_local_new(db, shop, payload.source_listing_id)
+        return creation.create_local_new(db, shop, payload.source_listing_id, payload.listing_type)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -227,9 +228,12 @@ async def upload_draft_file(
     shop: Shop = Depends(get_owned_shop),
     db: Session = Depends(get_db),
 ):
-    if kind not in ("image", "video"):
-        raise HTTPException(400, "kind image veya video olmalı")
-    content = await read_limited(file, MAX_VIDEO_BYTES if kind == "video" else MAX_IMAGE_BYTES, "Dosya")
+    if kind not in ("image", "video", "file"):
+        raise HTTPException(400, "kind image, video veya file olmalı")
+    if kind == "file" and not digital.extension_ok(file.filename or ""):
+        raise HTTPException(400, "Bu dosya türü Etsy dijital ürünlerinde kabul edilmiyor (ör. PDF, ZIP, PNG, JPG, SVG, DOCX).")
+    limit = MAX_VIDEO_BYTES if kind == "video" else digital.MAX_FILE_BYTES if kind == "file" else MAX_IMAGE_BYTES
+    content = await read_limited(file, limit, "Dosya")
     return drafts.save_file(
         db, shop, listing_id, kind, file.filename or f"{kind}", file.content_type or "", content
     )

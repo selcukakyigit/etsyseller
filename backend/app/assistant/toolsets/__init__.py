@@ -1,6 +1,6 @@
 """tools.py dışındaki araç modülleri. Her modül TOOLS, EXECUTORS, LABELS ve LABELS_EN tanımlar; tools.py hepsini kaydeder.
 Yeni araç grubu buraya eklenir. Sıra sabit kalmalı: araç listesi istem önbelleğinin (prompt caching) parçasıdır."""
 from app.assistant import memory
-from app.assistant.toolsets import costs, rank, reviews
+from app.assistant.toolsets import bulk_attributes, costs, digital, market, pricing, rank, reviews, social
 
-MODULES = (memory, costs, reviews, rank)
+MODULES = (memory, costs, reviews, rank, market, pricing, bulk_attributes, social, digital)

@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.etsy.client import EtsyClient
-from app.listings import bulk, drafts, image_cache, service
+from app.listings import bulk, digital, drafts, image_cache, service
 from app.listings.models import DraftFile, ListingCache, ListingLocal
 from app.listings.schemas import ListingUpdateIn
 from app.shops.models import Shop
@@ -61,7 +61,7 @@ def blank_work(db: Session, shop: Shop, temp_id: int) -> dict:
         "ecgt_garan_guarantee_details": None, "ecgt_other_commercial_guarantee_details": None,
         "ecgt_after_sales_service_info": None, "ecgt_software_update_details": None,
         "state": "draft", "listing_type": "physical", "url": None, "original_creation_timestamp": None, "ending_timestamp": None,
-        "personalization": {"questions": []}, "managed_property_ids": [],
+        "personalization": {"questions": []}, "managed_property_ids": [], "digital_files": [],
         "variation_links": {"property_id": None, "images": {}},
     }
 
@@ -124,11 +124,12 @@ def _copy_work(db: Session, shop: Shop, source: ListingCache, temp_id: int) -> t
     return work, warnings
 
 
-def create_local_new(db: Session, shop: Shop, source_id: int | None) -> dict:
+def create_local_new(db: Session, shop: Shop, source_id: int | None, listing_type: str = "physical") -> dict:
     temp_id = _next_temp_id(db, shop)
     warnings: list[str] = []
     if source_id is None:
         work = blank_work(db, shop, temp_id)
+        work["listing_type"] = "download" if listing_type == "download" else "physical"
     else:
         source = db.scalars(select(ListingCache).where(ListingCache.shop_id == shop.id).where(ListingCache.listing_id == source_id)).one_or_none()
         if source is None:
@@ -180,11 +181,12 @@ def validate_new(work: dict, activate: bool) -> list[str]:
         problems.append("En az bir fiyat/stok satırı gerekli.")
     elif any(_price(o) <= 0 for o in offerings if o.get("is_enabled", True)):
         problems.append("Fiyat gir.")
-    if activate:
-        if not work.get("shipping_profile_id"):
-            problems.append("Aktif etmek için kargo profili gerekli.")
-        if not work.get("images"):
-            problems.append("Aktif etmek için en az bir fotoğraf gerekli.")
+    if digital.is_digital(work):
+        problems += digital.problems(work, activate)  # dijital listing: kargo/işlem profili ve varyasyon yok, dosya var
+    elif activate and not work.get("shipping_profile_id"):
+        problems.append("Aktif etmek için kargo profili gerekli.")
+    if activate and not work.get("images"):
+        problems.append("Aktif etmek için en az bir fotoğraf gerekli.")
     return problems
 
 
@@ -214,15 +216,21 @@ def publish_new(db: Session, shop: Shop, user_id: int, temp_id: int, force: bool
         "price": max(bulk.MIN_PRICE, min(_price(o) for o in offerings)),
         "should_auto_renew": bool(work.get("should_auto_renew")), "is_taxable": bool(work.get("is_taxable", True)),
     }
+    is_digital = digital.is_digital(work)
+    if is_digital:
+        body["type"] = "download"
+    physical_only = ("shipping_profile_id", "return_policy_id", "item_weight", "item_length", "item_width", "item_height", "item_weight_unit", "item_dimensions_unit")
     for key in ("shipping_profile_id", "return_policy_id", "shop_section_id", "item_weight", "item_length", "item_width",
                 "item_height", "item_weight_unit", "item_dimensions_unit"):
+        if is_digital and key in physical_only:
+            continue
         if work.get(key) not in (None, ""):
             body[key] = work[key]
     for key in ("tags", "materials", "style", "production_partner_ids"):
         if work.get(key):
             body[key] = work[key]
     readiness = offerings[0].get("readiness_state_id")
-    if readiness:
+    if readiness and not is_digital:
         body["readiness_state_id"] = readiness
 
     client = EtsyClient(db, shop)
@@ -239,6 +247,11 @@ def publish_new(db: Session, shop: Shop, user_id: int, temp_id: int, force: bool
     row = service._fetch_and_cache_one(db, shop, client, new_id)
     theirs = drafts._snapshot(db, shop, row)
     work["listing_id"] = new_id
+    if is_digital:
+        try:
+            digital.upload_pending(db, shop, client, new_id, work)  # dosyalar yeni listing kimliğiyle yüklenir
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "steps": [], "listing_id": new_id, "edit": None, "conflicts": [], "warnings": [], "error": f"Listing Etsy'de taslak olarak oluşturuldu ({new_id}) ama dijital dosya yüklenemedi: {drafts._err(exc)}"}
     work["state"] = "draft"  # aktif etme en sonda
     work["managed_property_ids"] = [p["property_id"] for p in work.get("properties", [])]
     local.data_json = json.dumps(work, ensure_ascii=False)

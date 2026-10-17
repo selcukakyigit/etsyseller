@@ -127,6 +127,7 @@ export default function VariationTable({
   links: linksProp,
   taxonomyId,
   images,
+  digital = false,
   onChange,
 }: {
   shopId: number;
@@ -134,6 +135,8 @@ export default function VariationTable({
   links: VariationLinks;
   taxonomyId: number | null;
   images: ListingImage[];
+  /** Dijital listing: varyasyon yok (Etsy), yalnızca fiyat ve stok. */
+  digital?: boolean;
   /** Her değişiklikte taslağa yazılmak üzere güncel envanter + fotoğraf bağları. Etsy'ye "Yayınla" ile gider. */
   onChange: (inventory: Inventory, links: VariationLinks) => void;
 }) {
@@ -574,12 +577,18 @@ export default function VariationTable({
             )}
           </p>
         </div>
-        <button
-          onClick={() => setManaging(true)}
-          className="rounded-full border border-neutral-300 px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800"
-        >
-          {t("Varyasyonları yönet", "Manage variations")}
-        </button>
+        {digital ? (
+          <span className="rounded-full bg-neutral-100 px-3 py-1.5 text-xs text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
+            {t("Dijital üründe varyasyon yok", "No variations on digital items")}
+          </span>
+        ) : (
+          <button
+            onClick={() => setManaging(true)}
+            className="rounded-full border border-neutral-300 px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800"
+          >
+            {t("Varyasyonları yönet", "Manage variations")}
+          </button>
+        )}
       </div>
 
       {first && sharedFields.length > 0 && (

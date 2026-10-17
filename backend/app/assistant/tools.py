@@ -760,6 +760,47 @@ def _show_listing(ctx: Ctx, lid: int, work: dict, changes: list[str] | None = No
     ctx.cards.append(card)
 
 
+def _attach_digital_files(ctx: Ctx, lid: int, work: dict, chat_file_ids: list[str]) -> list[str]:
+    """Sohbete yüklenen dosyaları dijital listing'in indirilebilir dosyaları olarak taslağa kopyalar (en fazla 5, her biri en fazla 20 MB, izinli türler).
+    Döner: hata/uyarı metinleri. Çalışma kopyasını değiştirir, kaydetmez."""
+    from app.listings import digital
+
+    notes: list[str] = []
+    entries = work.setdefault("digital_files", [])
+    for file_id in chat_file_ids:
+        row = ctx.db.get(ChatImage, str(file_id))
+        if row is None or row.shop_id != ctx.shop.id or not row.path:
+            notes.append(f"Dosya bulunamadı: {file_id}")
+            continue
+        if len(entries) >= digital.MAX_FILES:
+            notes.append(f"En fazla {digital.MAX_FILES} dijital dosya eklenir; {row.filename} eklenmedi.")
+            continue
+        if not digital.extension_ok(row.filename):
+            notes.append(f"{row.filename}: bu dosya türü Etsy dijital ürünlerinde kabul edilmiyor.")
+            continue
+        content = blobstore.read(row.path)
+        if len(content) > digital.MAX_FILE_BYTES:
+            notes.append(f"{row.filename}: 20 MB'dan büyük.")
+            continue
+        saved = drafts.save_file(ctx.db, ctx.shop, lid, "file", row.filename, row.content_type, content)
+        entries.append({"draft_file_id": saved["file_id"], "filename": row.filename, "size": len(content)})
+    return notes
+
+
+def _latest_message_documents(ctx: Ctx) -> list[str]:
+    """Kullanıcının son mesajına eklenen resim/video OLMAYAN dosyaların kimlikleri (dijital ürün dosyası adayları)."""
+    from app.assistant.models import ChatMessage
+    from app.assistant.service import IMAGE_TYPES, VIDEO_TYPES
+
+    msg = ctx.db.scalars(select(ChatMessage).where(ChatMessage.session_id == ctx.session_id, ChatMessage.role == "user").order_by(ChatMessage.id.desc())).first()
+    out: list[str] = []
+    for file_id in json.loads(msg.image_ids_json or "[]") if msg is not None else []:
+        f = ctx.db.get(ChatImage, str(file_id))
+        if f is not None and f.shop_id == ctx.shop.id and f.path and f.content_type not in IMAGE_TYPES and f.content_type not in VIDEO_TYPES:
+            out.append(f.id)
+    return out
+
+
 def _latest_message_media(ctx: Ctx) -> tuple[list[str], list[str]]:
     """Kullanıcının bu sohbetteki SON mesajına eklediği resim ve video kimlikleri (sırayla). Yeni taslakta model bunları eksik verirse tamamlanır."""
     from app.assistant.models import ChatMessage
@@ -795,13 +836,14 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     price = 0.0 if price_missing else float(a["price"])
     if not price_missing and price < bulk.MIN_PRICE:
         return {"error": f"Fiyat en az {bulk.MIN_PRICE} olmalı."}
-    created = creation.create_local_new(ctx.db, ctx.shop, None)
+    is_digital = a.get("listing_type") == "download"
+    created = creation.create_local_new(ctx.db, ctx.shop, None, "download" if is_digital else "physical")
     lid = created["listing_id"]
     work = json.loads(drafts._local_row(ctx.db, ctx.shop, lid).data_json)
     # Tek seçenekli "varyasyon" gerçek varyasyon değildir (ör. yalnızca tek boyut): açılmaz, bilgi başlık/açıklamada yer alır.
-    variations = [v for v in (a.get("variations") or []) if len(v.get("values") or []) > 1]
+    variations = [] if is_digital else [v for v in (a.get("variations") or []) if len(v.get("values") or []) > 1]  # dijital listing'de varyasyon yok (Etsy)
     dropped_variations = len(a.get("variations") or []) - len(variations)
-    err = _build_inventory(work, price, max(1, int(a.get("quantity") or norm_qty)), variations)
+    err = _build_inventory(work, price, 999 if is_digital else max(1, int(a.get("quantity") or norm_qty)), variations)
     if err:
         creation_cleanup(ctx, lid)
         return {"error": err}
@@ -851,8 +893,11 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     if picked is not None and picked[0] != work.get("taxonomy_id"):
         work["taxonomy_id"] = picked[0]
         category_note = {"yol": picked[1], "neden": "kategori seçici (ürüne en uygun aday)", "otomatik_secildi": True}
-    work["shipping_profile_id"] = int(a["shipping_profile_id"]) if a.get("shipping_profile_id") else defaults["en_cok_kullanilan_kargo_profili_id"]
-    work["return_policy_id"] = int(a["return_policy_id"]) if a.get("return_policy_id") else defaults["en_cok_kullanilan_iade_politikasi_id"]
+    if is_digital:  # dijital: kargo, iade ve işlem profili yok
+        work["shipping_profile_id"] = work["return_policy_id"] = None
+    else:
+        work["shipping_profile_id"] = int(a["shipping_profile_id"]) if a.get("shipping_profile_id") else defaults["en_cok_kullanilan_kargo_profili_id"]
+        work["return_policy_id"] = int(a["return_policy_id"]) if a.get("return_policy_id") else defaults["en_cok_kullanilan_iade_politikasi_id"]
     if tpl is not None:
         work["description"] = templates.applier(ctx.db, ctx.shop, tpl)(work)
 
@@ -930,6 +975,16 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     missing_alt = sum(1 for i in work.get("images") or [] if not i.get("alt_text"))
     if missing_alt:
         completion["alt_metni_eksik_resim"] = missing_alt
+    if is_digital:
+        file_ids = list(a.get("digital_file_ids") or [])
+        if not file_ids:  # model vermediyse: son mesajdaki resim/video dışı dosyalar dijital dosyadır
+            file_ids = _latest_message_documents(ctx)
+        file_notes = _attach_digital_files(ctx, lid, work, file_ids)
+        completion["dijital_dosya_sayisi"] = len(work.get("digital_files") or [])
+        if file_notes:
+            completion["dijital_dosya_uyarilari"] = file_notes
+        if not work.get("digital_files"):
+            completion["dijital_dosya_eksik"] = "Dijital listing'in indirilebilir dosyası yok: kullanıcıdan dosyayı (PDF, ZIP…) yüklemesini iste, sonra add_digital_file çağır."
     videos_attached = 0
     for chat_video_id in (list(a.get("video_ids") or []) + [v for v in latest_videos if v not in (a.get("video_ids") or [])])[: generation.MAX_LISTING_VIDEOS]:
         file, bad = _chat_video_file(ctx, lid, chat_video_id)
@@ -2465,6 +2520,7 @@ def keep_watching_listing(ctx: Ctx, a: dict) -> dict:
 def _stage_activation(ctx: Ctx, lid: int) -> str | None:
     """Listing'i yayınlanınca AKTİF olacak şekilde yerel sürümde işaretler (Etsy'de taslak olan ya da yeni listing).
     Aktif etmek için gerekenler eksikse hiçbir şey değiştirmeden eksikleri yazan hata metnini döner."""
+    _promote_draft(ctx, lid)  # fotoğraf/dosya araçlarının taslak katmanına yazdıkları da dahil
     work = _current_work(ctx, lid)
     if work is None:
         return "Listing bulunamadı."
@@ -2607,6 +2663,8 @@ TOOLS: list[dict] = [
         "personalization_max_chars": {"type": "integer", "description": "Kişiselleştirme metninin en fazla karakteri (kullanıcı söylediyse, ör. 50)"},
         "crop_first_photo": {"type": "string", "enum": ["1:1", "4:3", "3:4"], "description": "Kullanıcı kapak/ana/birinci resmi kırp dediyse oran (ör. 1:1 = kare). MUTLAKA ver."},
         "crop_photos": {"type": "array", "description": "Kullanıcı kırpma istediyse (ör. ana resmi 1:1 kırp): [{photo_number, ratio 1:1|4:3|3:4|original, zoom, center_x, center_y}]; taslakla birlikte uygulanır.", "items": _obj({"photo_number": {"type": "integer"}, "ratio": {"type": "string", "enum": ["1:1", "4:3", "3:4", "original"]}, "zoom": {"type": "number"}, "center_x": {"type": "number"}, "center_y": {"type": "number"}}, ["photo_number"])},
+        "listing_type": {"type": "string", "enum": ["physical", "download"], "description": "download = DİJİTAL ürün (PDF, şablon, baskı dosyası…): kargo/varyasyon yok, indirilebilir dosya var. Kullanıcı dijital/indirilebilir/printable ürün dediyse download."},
+        "digital_file_ids": {"type": "array", "items": {"type": "string"}, "description": "Dijital listing'in indirilebilir dosyaları (sohbet dosya kimlikleri, en fazla 5, her biri en fazla 20 MB). Verilmezse son mesajdaki resim/video olmayan dosyalar kullanılır; resimler dijital dosya olacaksa kimliklerini buraya da ver."},
         "wanted_image_count": {"type": "integer", "description": "Kullanıcı 'N resim olsun / N farklı resim oluştur' dediyse N (en çok 20). Yüklenen resim bundan azsa sonuçta eksik_resim döner ve sen o kadarını edit_chat_image ile üretip eklersin."},
         "who_made": {"type": "string", "enum": ["i_did", "someone_else", "collective"]},
         "when_made": {"type": "string"},
@@ -2887,7 +2945,7 @@ for _mod in toolsets.MODULES:
 _DEFAULT_DRAFT_TOOLS = (
     "get_listing", "update_listing", "regenerate_listing_image", "crop_listing_photo", "get_category_attributes", "set_listing_attributes", "autofill_listing_attributes", "set_listing_fields",
     "edit_personalization_question", "delete_listing_photo", "set_photo_alt_text", "edit_inventory", "add_variation_option", "remove_variation_option",
-    "set_variation_photo", "remove_listing_video", "move_listing_photo", "generate_missing_alt_texts",
+    "set_variation_photo", "remove_listing_video", "move_listing_photo", "generate_missing_alt_texts", "add_digital_file", "remove_digital_file", "set_listing_type",
 )
 
 
@@ -2927,10 +2985,37 @@ LISTING_TOOL_NAMES = frozenset({
     "personalization_library", "edit_inventory", "add_variation_option", "remove_variation_option", "set_variation_photo", "copy_listing", "discard_listing_changes",
     "delete_listing", "generation_options", "generate_listing_video", "add_video_to_listing", "remove_listing_video", "publish_listing_draft", "deactivate_listing",
     "list_description_templates", "save_description_template", "delete_description_templates", "listing_health_status", "workspace_status", "keyword_pool",
-    "remember_note", "forget_note",
+    "remember_note", "forget_note", "market_research", "suggest_price", "bulk_set_attributes", "pinterest_content", "make_pin_image", "add_digital_file", "remove_digital_file", "set_listing_type",
 })
 
 
-def tools_for(mode: str) -> list[dict]:
-    """Moda göre araç şemaları: "listing" ise yalnızca listing araçları, aksi halde hepsi."""
-    return TOOLS if mode != "listing" else [t for t in TOOLS if t["name"] in LISTING_TOOL_NAMES]
+# Listing modunun içinde konuya özel gruplar: yalnızca mesaj/sohbet o konuya değiniyorsa araçları ve kuralları gönderilir (girdi küçük kalır).
+TOOL_GROUPS: dict[str, frozenset[str]] = {
+    "market": frozenset({"market_research"}),
+    "price": frozenset({"suggest_price"}),
+    "bulk": frozenset({"bulk_set_attributes"}),
+    "social": frozenset({"pinterest_content", "make_pin_image"}),
+    "digital": frozenset({"add_digital_file", "remove_digital_file", "set_listing_type"}),
+}
+GROUP_WORDS: dict[str, re.Pattern] = {
+    "market": re.compile(r"piyasa|rakip|trend|popüler|popular|talep|araştır|research|competitor|seo|oluştur|create|yeni listing|taslak", re.I),
+    "price": re.compile(r"kaça sat|fiyat öner|marj|fiyatlandır|fiyatı ne|pricing|margin|price suggest", re.I),
+    "bulk": re.compile(r"toplu|bütün|tüm listing|hepsi|bulk|all listings|holiday|occasion", re.I),
+    "social": re.compile(r"pinterest|\bpin\b|sosyal|hashtag|instagram|social", re.I),
+    "digital": re.compile(r"dijital|digital|printable|indirilebilir|download|şablon|template|\bpdf\b|\bzip\b", re.I),
+}
+_CORE_LISTING_TOOLS = LISTING_TOOL_NAMES - frozenset().union(*TOOL_GROUPS.values())
+
+
+def listing_groups(message: str, last_tool_notes: str | None) -> frozenset[str]:
+    """Listing modunda hangi konu gruplarının gönderileceği: mesaj o konuya değiniyorsa ya da önceki tur o grubun aracını kullandıysa (devam mesajları için)."""
+    notes = last_tool_notes or ""
+    return frozenset(g for g, pattern in GROUP_WORDS.items() if pattern.search(message) or any(name in notes for name in TOOL_GROUPS[g]))
+
+
+def tools_for(mode: str, groups: frozenset[str] = frozenset()) -> list[dict]:
+    """Moda göre araç şemaları: "listing" ise çekirdek listing araçları + seçilen konu grupları, aksi halde hepsi."""
+    if mode != "listing":
+        return TOOLS
+    allowed = _CORE_LISTING_TOOLS | frozenset().union(*(TOOL_GROUPS[g] for g in groups if g in TOOL_GROUPS))
+    return [t for t in TOOLS if t["name"] in allowed]

@@ -109,7 +109,7 @@ def _referenced_file_ids(db: Session, shop: Shop, listing_id: int) -> set[str]:
         if row is None:
             continue
         data = json.loads(row.data_json)
-        for key in ("images", "videos"):
+        for key in ("images", "videos", "digital_files"):
             for entry in data.get(key) or []:
                 if entry.get("draft_file_id"):
                     ids.add(entry["draft_file_id"])
@@ -418,6 +418,9 @@ def _verdicts(base: dict, work: dict, theirs: dict) -> dict:
     # Görseller/videolar birleştirilir (Etsy'de sonradan eklenenler korunur): yalnızca benim değişikliğim var mı.
     v["images"] = "skip" if _ids(work.get("images"), "listing_image_id") == _ids(base.get("images"), "listing_image_id") else "send"
     v["videos"] = "skip" if _ids(work.get("videos"), "video_id") == _ids(base.get("videos"), "video_id") else "send"
+    from app.listings import digital  # sirküler içe aktarmayı önlemek için burada
+
+    v["files"] = "send" if digital.is_digital(work) and digital.pending(work) else "skip"  # yalnızca yeni dijital dosya yüklenir (mevcutlar silinmez)
     return v
 
 
@@ -592,6 +595,13 @@ def publish_local(db: Session, shop: Shop, user_id: int, listing_id: int, force:
                     raise ValueError("Taslak video dosyası bulunamadı; videoyu yeniden ekle.")
                 etsy_videos.upload_video(client, listing_id, blobstore.read(f.path), f.filename)
 
+    def digital_files():
+        if verdict["files"] == "skip":
+            return
+        from app.listings import digital
+
+        digital.upload_pending(db, shop, client, listing_id, work)
+
     def personalization():
         if verdict["personalization"] == "skip":
             return
@@ -606,6 +616,7 @@ def publish_local(db: Session, shop: Shop, user_id: int, listing_id: int, force:
         ("Fiyat & stok / varyasyonlar", inventory),
         ("Varyasyon fotoğrafları", variation_images),
         ("Videolar", videos),
+        ("Dijital dosyalar", digital_files),
         ("Kişiselleştirme", personalization),
     ]
     for name, fn in pipeline:

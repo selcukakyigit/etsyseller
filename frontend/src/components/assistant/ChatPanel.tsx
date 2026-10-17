@@ -81,9 +81,10 @@ function Thinking({ step }: { step: string }) {
 
 type Pending = { id: string; url: string; name: string; isImage: boolean; isVideo?: boolean };
 
-// Sohbete eklenebilen belgeler (kargo/gümrük faturası); resimler ayrıca kabul edilir. Sunucu sınırı 15 MB.
-const DOC_EXT = [".pdf", ".csv", ".xlsx", ".xls", ".html", ".htm"];
-const MAX_FILE_MB = 15;
+// Sohbete eklenebilen belgeler (kargo/gümrük faturası, dijital ürün dosyası); resimler ayrıca kabul edilir.
+// Sunucu sınırı 20 MB (Etsy dijital dosya sınırı). Fatura belgelerine ek olarak dijital ürün dosyaları (ZIP, DOCX, SVG…) da eklenebilir.
+const DOC_EXT = [".pdf", ".csv", ".xlsx", ".xls", ".html", ".htm", ".zip", ".docx", ".pptx", ".svg", ".eps", ".psd", ".ai", ".epub", ".txt", ".mp3", ".wav", ".ttf", ".otf", ".dxf", ".stl", ".json"];
+const MAX_FILE_MB = 20;
 // Etsy bir listing'e en fazla 20 fotoğraf kabul eder (backend: assistant/service.py MAX_IMAGES_PER_MESSAGE).
 const MAX_IMAGES = 20;
 const isDoc = (f: File) => DOC_EXT.some((ext) => f.name.toLowerCase().endsWith(ext));
@@ -602,7 +603,7 @@ export default function ChatPanel({
             }}
             aria-label={t("Ekle", "Add")}
             aria-expanded={menuOpen}
-            title={t("Resim, video ya da dosya ekle (resim 15 MB, video 100 MB'a kadar)", "Add an image, video or file (images up to 15 MB, videos up to 100 MB)")}
+            title={t("Resim, video ya da dosya ekle (resim ve dosya 20 MB, video 100 MB'a kadar)", "Add an image, video or file (images and files up to 20 MB, videos up to 100 MB)")}
             className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-neutral-600 transition hover:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-700 ${menuOpen ? "rotate-45 bg-neutral-200 dark:bg-neutral-700" : ""}`}
           >
             <PlusIcon />

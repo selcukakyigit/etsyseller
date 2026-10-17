@@ -9,6 +9,7 @@ import VideoJobCard from "./VideoJobCard";
 import ListingPreviewModal from "@/components/listings/ListingPreviewModal";
 import InvoiceReviewCard from "./InvoiceReviewCard";
 import EtsyDataReviewCard from "./EtsyDataReviewCard";
+import SocialPinsCard from "./SocialPinsCard";
 import { useT } from "@/lib/i18n-client";
 import EtsyLink from "@/components/ui/EtsyLink";
 
@@ -334,6 +335,8 @@ export default function Card({ card, shopId, onAsk }: { card: ChatCard; shopId: 
       </div>
     );
   }
+
+  if (card.type === "social_pins") return <SocialPinsCard card={card} />;
 
   if (card.type === "etsy_data_review") {
     return <EtsyDataReviewCard shopId={shopId} listingId={card.listing_id} data={card} />;

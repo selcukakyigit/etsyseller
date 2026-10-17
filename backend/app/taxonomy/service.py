@@ -25,3 +25,12 @@ def get_seller_taxonomy_nodes() -> list[dict]:
 
 def get_properties_by_taxonomy_id(taxonomy_id: int) -> list[dict]:
     return _get(f"/seller-taxonomy/nodes/{taxonomy_id}/properties")["results"]
+
+
+def search_active_listings(keywords: str, limit: int = 50) -> dict:
+    """Etsy'nin herkese açık aktif listing araması (uygulamanın kendi API anahtarıyla; mağaza/OAuth gerekmez). Pazar araştırması için:
+    başlık, etiket, fiyat, favori ve görüntülenme sayıları. Döner: {"count": toplam sonuç, "results": [...]}."""
+    import urllib.parse
+
+    query = urllib.parse.urlencode({"keywords": keywords, "limit": max(1, min(int(limit), 100)), "sort_on": "score"})
+    return _get(f"/listings/active?{query}")

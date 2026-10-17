@@ -40,9 +40,14 @@ DOC_TYPES = {
     ".xls": "application/vnd.ms-excel",
     ".html": "text/html",
     ".htm": "text/html",
+    # Dijital ürün dosyaları (Etsy dijital listing'e eklenir; içeriklerini asistan görmez):
+    ".zip": "application/zip", ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation", ".svg": "image/svg+xml", ".eps": "application/postscript",
+    ".psd": "image/vnd.adobe.photoshop", ".ai": "application/illustrator", ".epub": "application/epub+zip", ".txt": "text/plain",
+    ".mp3": "audio/mpeg", ".wav": "audio/wav", ".ttf": "font/ttf", ".otf": "font/otf", ".dxf": "application/dxf", ".stl": "model/stl", ".json": "application/json",
 }
 # Dosyanın kendisi bu boyuta kadar saklanır; yapay zekâya giden resim kopyası 5 MB sınırına göre küçültülür (ai/images.py).
-MAX_UPLOAD_BYTES = 15 * 1024 * 1024
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # Etsy dijital dosya sınırı (listing/video dosyaları ayrı sınırlıdır)
 MAX_IMAGES_PER_MESSAGE = creation.MAX_LISTING_IMAGES
 # Modele en fazla bu kadar resim gösterilir (maliyet ve bellek); geri kalanı yalnızca listing'e eklenir.
 MODEL_IMAGES_PER_MESSAGE = 4
@@ -92,7 +97,7 @@ def save_image(db: Session, shop: Shop, session_id: int | None, filename: str, c
     elif suffix in DOC_TYPES:  # tarayıcılar CSV/Excel için farklı türler gönderebiliyor; uzantı esas alınır
         ext, content_type = suffix, DOC_TYPES[suffix]
     else:
-        raise ValueError(tr("Yalnızca resim (JPEG, PNG, WEBP, GIF), video (MP4, MOV, WEBM), PDF, Excel/CSV ya da HTML dosyası eklenebilir.", "Only images (JPEG, PNG, WEBP, GIF), videos (MP4, MOV, WEBM), PDF, Excel/CSV or HTML files can be attached."))
+        raise ValueError(tr("Yalnızca resim, video (MP4, MOV, WEBM), PDF, Excel/CSV, HTML ya da dijital ürün dosyası (ZIP, DOCX, SVG…) eklenebilir.", "Only images, videos (MP4, MOV, WEBM), PDF, Excel/CSV, HTML or digital product files (ZIP, DOCX, SVG…) can be attached."))
     if len(content) > limit:
         raise ValueError(tr(f"Dosya {limit // (1024 * 1024)} MB'dan büyük olamaz.", f"The file cannot be larger than {limit // (1024 * 1024)} MB."))
     image_id = str(uuid.uuid4())
@@ -192,23 +197,26 @@ def _images_prompt(imgs: list[ChatImage]) -> str:
         out += f"\nBu sohbette yüklenmiş resimler (yeni listing taslağına eklemek için create_listing_draft'ta image_ids olarak bu kimlikleri kullan; resim bir fatura ise read_shipping_invoice'a file_id olarak ver):\n{lines}"
     if docs:
         lines = "\n".join(f'  - id="{i.id}" dosya="{i.filename}"' for i in docs)
-        out += f"\nBu sohbette yüklenmiş belgeler (içeriklerini göremezsin; kargo/gümrük faturasıysa read_shipping_invoice'a file_id olarak ver):\n{lines}"
+        out += f"\nBu sohbette yüklenmiş belgeler (içeriklerini göremezsin; kargo/gümrük faturasıysa read_shipping_invoice'a file_id olarak ver; dijital ürünün indirilebilir dosyasıysa create_listing_draft.digital_file_ids ya da add_digital_file'a ver):\n{lines}"
     return out
 
 
 _LISTING_WORDS = re.compile(
-    r"liste\b|listing|taslak|başlı[kğ]|etiket|varyasyon|stok|fiyat|kırp|resim|resm|fotoğraf|görsel|video|kişiselleştir|açıklama|kategori|özellik|alt metin|yayın[l]?a|yayımla|sku|boyut|renk|"
-    r"title|tags?\b|photo|variation|draft|crop|image|personaliz|description", re.IGNORECASE)
+    r"liste\w*|listing|taslak|başlı[kğ]|etiket|varyasyon|stok|fiyat|kırp|resim|resm|fotoğraf|görsel|video|kişiselleştir|açıklama|kategori|özellik|alt metin|yayın[l]?a|yayımla|sku|boyut|renk|"
+    r"title|tags?\b|photo|variation|draft|crop|image|personaliz|description|pinterest|\bpin\b|sosyal|hashtag|rakip|piyasa|trend|toplu|holiday|occasion", re.IGNORECASE)
 _OTHER_WORDS = re.compile(
     r"sipariş|kargo|fatura|kâr\b|zarar|satış|gelir|ciro|reklam|finans|müşteri|yorum|sıralama|rakip|ülke|rapor|maliyet|performans|"
     r"order|profit|revenue|shipping|invoice|sales|review|\bads?\b", re.IGNORECASE)
 
 
+_DIGITAL_WORDS = re.compile(r"dijital|digital|printable|indirilebilir|download|şablon|template", re.IGNORECASE)
+
+
 def _pick_mode(message: str, current: list[ChatImage], last_tool_notes: str | None) -> str:
     """"listing": listing oluştur/düzenle konuşuluyor (resim/video yüklendi ya da listing sözcükleri, sipariş/finans sözcüğü yok) ya da kısa bir devam
     mesajı ve önceki tur listing araçları kullanmış. Emin değilse "all" (hiçbir araç/kural eksilmez). Model çağırmaz."""
-    if any(i.content_type not in IMAGE_TYPES and i.content_type not in VIDEO_TYPES for i in current):
-        return "all"  # fatura/belge: analiz araçları gerekir
+    if any(i.content_type not in IMAGE_TYPES and i.content_type not in VIDEO_TYPES for i in current) and not _DIGITAL_WORDS.search(message):
+        return "all"  # fatura/belge: analiz araçları gerekir (dijital ürün dosyası olduğu söylenmişse listing modu)
     other = bool(_OTHER_WORDS.search(message))
     if other:
         return "all"
@@ -307,11 +315,12 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
 
     last_notes = next((m.tool_notes for m in recent if m.role == "assistant"), None)
     mode = _pick_mode(message, current, last_notes)
+    groups = tools.listing_groups(message, last_notes) if mode == "listing" else frozenset()
     try:
         result = llm.run_agent(
-            model, prompt.static_rules(mode), dynamic, history, _with_attachments(message, current),
+            model, prompt.static_rules(mode, groups), dynamic, history, _with_attachments(message, current),
             [{"path": i.path, "content_type": i.content_type} for i in current if i.content_type in IMAGE_TYPES][:MODEL_IMAGES_PER_MESSAGE],
-            tools.tools_for(mode), run_tool,
+            tools.tools_for(mode, groups), run_tool,
         )
     except llm.AssistantError:
         db.delete(user_msg)  # başarısız istek geçmişe yazılmasın
@@ -325,10 +334,10 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
         metering.record("assistant", model, first.input_tokens, first.output_tokens)
         try:
             result = llm.run_agent(
-                model, prompt.static_rules(mode), dynamic, history,
+                model, prompt.static_rules(mode, groups), dynamic, history,
                 _with_attachments(message, current) + "\n\n[SİSTEM NOTU: Önceki denemende hiçbir araç çağırmadın ama çağırmış gibi anlattın. Şimdi isteği gerçekten ilgili araçlarla yap; çağırmadığın hiçbir şeyi yapılmış gibi yazma. Cevapta araç adı ya da parametre adı geçirme.]",
                 [{"path": i.path, "content_type": i.content_type} for i in current if i.content_type in IMAGE_TYPES][:MODEL_IMAGES_PER_MESSAGE],
-                tools.tools_for(mode), run_tool,
+                tools.tools_for(mode, groups), run_tool,
             )
         except llm.AssistantError:
             db.delete(user_msg)

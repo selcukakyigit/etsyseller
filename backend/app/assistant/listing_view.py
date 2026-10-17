@@ -68,6 +68,8 @@ def describe_listing(work: dict, category_path: str | None = None) -> dict:
         "fotograflar": [{"sira": n, "image_id": i.get("listing_image_id"), "alt_text": i.get("alt_text")} for n, i in enumerate(images, start=1)],
         "videolar": [{"sira": n, "video_id": v.get("video_id"), "taslak": (v.get("video_id") or 0) < 0} for n, v in enumerate(work.get("videos") or [], start=1)],
         "kisisellestirme": [question_view(q) for q in questions],
+        "tur": "dijital" if work.get("listing_type") == "download" else "fiziksel",
+        "dijital_dosyalar": [{"sira": n, "dosya": f.get("filename"), "boyut_kb": round((f.get("size") or 0) / 1024)} for n, f in enumerate(work.get("digital_files") or [], start=1)],
         "ab_garanti": {k: work.get(k) for k in ("ecgt_garan_brand", "ecgt_garan_model", "ecgt_garan_years", "ecgt_garan_guarantee_details") if work.get(k)} or None,
         **inventory_summary(work),
     }

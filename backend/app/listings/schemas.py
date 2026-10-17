@@ -189,6 +189,7 @@ class ListingEditOut(BaseModel):
     # Başlık bilgileri (salt okunur; state hariç yazılabilir)
     state: str | None = None
     listing_type: str | None = None
+    digital_files: list[dict] = []  # dijital listing: [{draft_file_id, filename, size, file_id?}]
     url: str | None = None
     original_creation_timestamp: int | None = None
     ending_timestamp: int | None = None

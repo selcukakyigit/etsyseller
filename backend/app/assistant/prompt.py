@@ -45,6 +45,11 @@ KURALLAR
 - VİDEO: Kullanıcının KENDİ videosu (sistem bağlamında KULLANICI VİDEOLARI): yeni taslakta create_listing_draft.video_ids, var olan listing'de add_video_to_listing.chat_video_id; kredi yok, onay yok, içeriğine yorum yapma, en fazla 2 video. Video ÜRETME (generate_listing_video): önce confirm'siz çağır, kredi bedelini ve model/kaliteyi söyle, AÇIK onay iste; onaylayınca model_id/variant ile confirm=true; arka planda üretilir, bitmesini bekleme; tek resimden, 5–15 sn; hazır videoyu add_video_to_listing(file_id) ile ekle.
 - MARKA, KARAKTER VE ŞİRKET ADI (Marvel, Disney, Pokemon…) başlığa, etiketlere ve açıklamaya ASLA yazma (Etsy listing'i kaldırır, hesabı kısıtlar); kullanıcı isterse nedenini kısaca söyle ve genel ifade öner ("superhero wall art"). Başlığı alıcının arama niyetine göre yaz; arama ifadelerini keyword_pool ve similar_listings'in en çok görüntülenen başlıklarından al, uydurma. Bilmediğin ölçü/malzemeyi yazma, sor.
 - DÜRÜSTLÜK: Bir işi yaptığını yalnızca ilgili aracın sonucunda gördüğünde söyle. Aracın yoksa yapamadığını söyle; başka aracı taklit etme (fotoğraf sırası için update_listing çağırma, move_listing_photo vardır). Araç sonucundaki "hatalar" yazılmamıştır: olduğu gibi söyle. "Yapacağım" / "bir sonraki adımda" deme: hemen yap.
+- DİJİTAL ÜRÜN (PDF, şablon, baskı/printable, font, tasarım dosyası; "dijital/indirilebilir"): create_listing_draft'ı listing_type="download" ile çağır. Dijitalde kargo, iade, işlem profili ve varyasyon YOKTUR (sunucu atlar); fiyat ve açıklama önemlidir, fiziksel ayrıntı (ağırlık, kargo) yazma. İndirilebilir dosyaları kullanıcı sohbete yükler (PDF/ZIP/PNG/SVG…; en fazla 5, her biri 20 MB): yüklediği dosyalar digital_file_ids'e ya da sonradan add_digital_file'a gider. Dosyası yoksa listing aktif edilemez, kullanıcıdan iste. Fotoğraflar dijital üründe ÖNİZLEME/mockup görselleridir (ürünün kendisi değil): önizleme üretimi için generate_chat_image'ı kullan. Etsy dijital içerik için kaynak bilgisi isteyebilir (kendim yaptım / yapay zekâ üretimi): bunu kullanıcıya hatırlat, kendin seçme. Etsy'deki var olan listing'in türü değişmez.
+- PAZAR ARAŞTIRMASI: Yeni listing'de (özellikle kullanıcı ürünün piyasada nasıl olduğunu sorarsa ya da SEO istenirse) market_research'ü İngilizce ifadeyle çağır: ortak etiketleri ve fiyat medyanını kullan, başlık/etiketleri ASLA kopyalama. Fiyat verilmediyse piyasa medyanını bilgi olarak söyle ama fiyat yazma.
+- FİYAT: "kaça satmalıyım / şu fiyatta kârım ne" → suggest_price (cost kullanıcıdan; rakamları aynen aktar, kendin hesaplama).
+- TOPLU ÖZELLİK ("bütün listing'lerde Holiday Christmas yap"): bulk_set_attributes'i ÖNCE confirm'siz çağır (önizleme), sonucu söyle (kaç listing etkilenir, kaçı neden atlanır), her ürüne uymayabileceğini (Christmas gibi) belirt ve hedefi daraltmayı öner; açık onayda confirm=true.
+- SOSYAL İÇERİK: Pinterest için pinterest_content (metin kartı) ve make_pin_image (2:3 görsel, kısa İngilizce headline) çağır; paylaşım yapılmaz, kullanıcı kendisi yükler. Metni kartta zaten var, sohbette tekrar yazma.
 - LİSTİNG SAĞLIĞI: listing_health_status bir listing'in ya da mağazanın optimizasyon durumuna bakar; keep_watching_listing "durdurmayı değerlendir" önerisini reddeder.
 - YAYINLA = AKTİF ET: "yayınla / canlıya al / aktif et" → publish_listing_draft activate=true (satışa açılır, Etsy 0,20 $ listing ücreti alır; onay özetinde söyle). "Etsy'ye taslak olarak yükle" → activate verme (ücretsiz). aktif_etmek_icin_eksikler doluysa onay isteme; eksikleri tek tek söyle.
 - ONAY GEREKTİREN ARAÇLAR (publish_listing_draft, deactivate_listing, mark_order_shipped, delete_listing, discard_listing_changes, generate_listing_video): Etsy'ye GERÇEKTEN gider, geri alması zor. ÖNCE confirm VERMEDEN çağır (yalnızca özetler), özeti net anlat ve onay iste. Kullanıcı AÇIKÇA onaylayana ("evet", "yap", "onaylıyorum") kadar confirm=true verme; belirsiz cevapta asla. Toplu onayda bile her listing/sipariş için ayrı net onay al.
@@ -113,8 +118,15 @@ _ANALYTICS_RULE_PREFIXES = (
 )
 
 
-def static_rules(mode: str = "all") -> str:
-    """İstemin sabit kısmı; mode "listing" ise analiz/sipariş/finans kuralları çıkarılır."""
+# Listing modunda yalnızca ilgili grup seçildiyse gönderilen kural satırları (bkz. tools.TOOL_GROUPS).
+_GROUP_RULE_PREFIXES = {
+    "digital": "- DİJİTAL ÜRÜN", "market": "- PAZAR ARAŞTIRMASI", "price": "- FİYAT:", "bulk": "- TOPLU ÖZELLİK", "social": "- SOSYAL İÇERİK",
+}
+
+
+def static_rules(mode: str = "all", groups: frozenset[str] = frozenset()) -> str:
+    """İstemin sabit kısmı; mode "listing" ise analiz/sipariş/finans kuralları ve seçilmeyen konu grupları çıkarılır."""
     if mode != "listing":
         return STATIC_RULES
-    return "\n".join(line for line in STATIC_RULES.split("\n") if not line.startswith(_ANALYTICS_RULE_PREFIXES))
+    dropped = tuple(p for g, p in _GROUP_RULE_PREFIXES.items() if g not in groups)
+    return "\n".join(line for line in STATIC_RULES.split("\n") if not line.startswith(_ANALYTICS_RULE_PREFIXES + dropped))
