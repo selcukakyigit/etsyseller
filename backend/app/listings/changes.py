@@ -116,6 +116,18 @@ def record_publish(db: Session, shop: Shop, listing_id: int, verdict: dict, base
     if not fields:
         return None
     prev = last_change(db, shop.id, listing_id)
+    try:  # içerik seviyesi önce/sonra: yayının "ne yaptık"ı (sonuç ayrıca ölçülür). Hesaplanamazsa kayıt yine açılır.
+        from app.ai import audit
+        from app.ai import quality
+        from app.listings import content_audit
+
+        others = quality.shop_others(db, shop.id, exclude_id=listing_id if listing_id > 0 else None)
+        details["content"] = {
+            "before": audit.summary(content_audit.audit_work(db, shop, listing_id, base, others=others)),
+            "after": audit.summary(content_audit.audit_work(db, shop, listing_id, work, others=others)),
+        }
+    except Exception:  # noqa: BLE001
+        _log.warning("İçerik seviyesi kaydedilemedi (listing %s)", listing_id, exc_info=True)
     focus = None
     try:
         from app.insights import diagnosis

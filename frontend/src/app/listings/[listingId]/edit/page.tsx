@@ -100,8 +100,19 @@ export default function ListingEditPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
   // Odak modunda AI yalnızca o adımın alanlarını forma yazar (açıklama adımında başlığa dokunmaz…)
+  // İçerik denetiminden gelen düzeltmelerde (fix) yazılacak alanlar bulguların alanlarından çıkar; çok alanlı düzeltmede başlığa yalnızca onayla dokunulur.
+  const fixAreas = new Set(fixes.map((f) => f.fix));
+  const multiArea = new Set(fixes.map((f) => (f.fix === "tags" ? "title" : f.fix))).size > 1;
+  const canTouchTitle = fixAreas.has("title") && multiArea;
+  const [touchTitle, setTouchTitle] = useState(false);
+  const [checkKey, setCheckKey] = useState(0); // AI önerisi forma yazılınca artar: FixCard kontrolü yeniler
+  const fixFields = [
+    ...(fixAreas.has("description") ? ["description" as const] : []),
+    ...(fixAreas.has("tags") ? ["tags" as const] : []),
+    ...(fixAreas.has("title") && (!canTouchTitle || touchTitle) ? ["title" as const] : []),
+  ];
   const aiFields: ("title" | "tags" | "description" | "materials")[] =
-    focus === "title_tags" ? ["title", "tags"] : focus === "description" ? ["description"] : focus === "text" ? ["title", "tags", "description"] : ["title", "tags", "description", "materials"]; // tam form ve kapsamlı yenileme: hepsi
+    fixes.length > 0 ? fixFields : focus === "title_tags" ? ["title", "tags"] : focus === "description" ? ["description"] : focus === "text" ? ["title", "tags", "description"] : ["title", "tags", "description", "materials"]; // tam form ve kapsamlı yenileme: hepsi
   const [invKey, setInvKey] = useState(0); // işlem profili kartı envanteri değiştirince varyasyon tablosunu yeniden kurar
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -137,11 +148,30 @@ export default function ListingEditPage() {
         ...(aiFields.includes("materials") && s.suggested_materials && s.suggested_materials.length > 0 ? { materials: s.suggested_materials } : {}),
       });
       setAi({ suggestion: s, previous });
+      setCheckKey((k) => k + 1);
     } catch (e) {
       setAiError(e instanceof Error ? e.message : t("AI önerisi üretilemedi", "Could not generate an AI suggestion"));
     } finally {
       setAiBusy(false);
     }
+  }
+
+  /** Formdaki güncel (kaydedilmemiş) değerlerin içerik denetimi: ücretsiz, yapay zekâ çağırmaz. */
+  async function handleCheck() {
+    if (!edit || !activeShop) throw new Error("no listing");
+    return api.insights.checkContent(activeShop.id, listingId, {
+      title: edit.title,
+      tags: edit.tags,
+      description: edit.description,
+      materials: edit.materials,
+      images: edit.images.map((i) => ({ alt_text: i.alt_text ?? null })),
+      taxonomy_id: edit.taxonomy_id,
+      properties: edit.properties,
+      inventory: edit.inventory,
+      personalization: edit.personalization,
+      state: edit.state ?? null,
+      listing_type: edit.listing_type ?? null,
+    });
   }
 
   async function handleUndoAi() {
@@ -368,8 +398,21 @@ export default function ListingEditPage() {
             </div>
 
             {listingId > 0 &&
-              (focus && fixes.length > 0 ? (
-                <FixCard shopId={activeShop.id} listingId={listingId} fixes={fixes} focus={focus} onAi={handleAi} busy={aiBusy} />
+              (fixes.length > 0 ? (
+                <FixCard
+                  shopId={activeShop.id}
+                  listingId={listingId}
+                  fixes={fixes}
+                  focus={focus}
+                  onAi={handleAi}
+                  busy={aiBusy}
+                  canTouchTitle={canTouchTitle}
+                  touchTitle={touchTitle}
+                  onTouchTitle={setTouchTitle}
+                  onCheck={handleCheck}
+                  checkKey={checkKey}
+                  onGoTo={goTo}
+                />
               ) : focus ? (
                 <DiagnosisStrip shopId={activeShop.id} listingId={listingId} onAi={handleAi} full />
               ) : (

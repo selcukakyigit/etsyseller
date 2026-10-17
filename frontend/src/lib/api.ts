@@ -172,6 +172,7 @@ export type ListingChange = {
     images_before?: number;
     images_after?: number;
     thumbnail_changed?: boolean;
+    content?: { before: ContentLevels; after: ContentLevels };
   };
   focus: string | null;
   result: ChangeResult | null;
@@ -263,9 +264,25 @@ export type DescriptionTemplate = { id: number; name: string; body: string; is_d
 
 /** İçerik denetimi (bkz. backend app/ai/audit.py): üç boyutta seviye ve bulgular. */
 export type ContentLevel = "good" | "mid" | "weak";
+/** Yayın kaydındaki içerik seviyesi özeti (önce / sonra). */
+export type ContentLevels = { level: ContentLevel; seo: ContentLevel; aeo: ContentLevel; geo: ContentLevel };
+/** Düzenleyicideki (kaydedilmemiş) değerler: "Kontrol et" bunları denetler. */
+export type ContentCheckInput = {
+  title: string;
+  tags: string[];
+  description: string;
+  materials: string[];
+  images: { alt_text: string | null }[];
+  taxonomy_id: number | null;
+  properties: unknown[];
+  inventory: unknown;
+  personalization: unknown;
+  state: string | null;
+  listing_type: string | null;
+};
 export type ContentAudit = {
   level: ContentLevel;
-  dims: Record<"seo" | "aeo" | "geo", { level: ContentLevel; points: number }>;
+  dims: Record<"seo" | "aeo" | "geo", { level: ContentLevel; points: number; count: number }>;
   findings: { id: string; dim: "seo" | "aeo" | "geo"; weight: number; text: string; fix: "attributes" | "description" | "title" | "tags" | "alt_text" | null; risk: "low" | "high" }[];
 };
 
@@ -1591,6 +1608,8 @@ export interface DashboardData {
 
 export const api = {
   insights: {
+    checkContent: (shopId: number, listingId: number, work: ContentCheckInput) =>
+      request<ContentAudit>(`/api/shops/${shopId}/insights/listings/${listingId}/content/check`, { method: "POST", body: JSON.stringify(work) }),
     content: (shopId: number, listingId: number) => request<ContentAudit>(`/api/shops/${shopId}/insights/listings/${listingId}/content`),
     diagnosis: (shopId: number, listingId: number) => request<ListingDiagnosis>(`/api/shops/${shopId}/insights/listings/${listingId}/diagnosis`),
     attention: (shopId: number) => request<ShopAttention>(`/api/shops/${shopId}/insights/attention`),

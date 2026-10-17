@@ -51,6 +51,27 @@ def listing_content(listing_id: int, shop: Shop = Depends(get_owned_shop), db: S
     return result
 
 
+class ContentCheckIn(BaseModel):
+    """Düzenleyicideki (henüz kaydedilmemiş) değerler: "Kontrol et" bunları denetler, yapay zekâ çağırmaz."""
+
+    title: str = ""
+    tags: list[str] = []
+    description: str = ""
+    materials: list[str] = []
+    images: list[dict] = Field(default=[], max_length=50)
+    taxonomy_id: int | None = None
+    properties: list[dict] = []
+    inventory: dict = {}
+    personalization: dict | None = None
+    state: str | None = None
+    listing_type: str | None = None
+
+
+@router.post("/listings/{listing_id}/content/check")
+def check_listing_content(listing_id: int, body: ContentCheckIn, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    return content_audit.audit_work(db, shop, listing_id, body.model_dump())
+
+
 class KeywordIn(BaseModel):
     keyword: str = Field(min_length=1, max_length=rank.KEYWORD_MAX_LEN)
 

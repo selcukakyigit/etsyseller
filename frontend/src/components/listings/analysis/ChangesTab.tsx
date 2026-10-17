@@ -5,6 +5,7 @@ import { api, ChangeResult, ListingChange, ListingHistory, ListingPerformance } 
 import TrendChart from "@/components/TrendChart";
 import { T, useT } from "@/lib/i18n-client";
 import { BlockSpinner } from "@/components/ui/Spinner";
+import { DIMS, LEVEL_DOT } from "./ContentLevelCard";
 import { fieldsText, metricText, sourceText, VERDICT_STYLE, verdictKey, verdictLabel } from "./changeLabels";
 
 // Oturum boyunca bellekte tutulan son sonuçlar: panel yeniden açılınca ya da dönem değişince eski veri anında görünür, arkada yenilenir.
@@ -248,6 +249,17 @@ function ChangeItem({ ch }: { ch: ListingChange }) {
             {d.tags_removed?.length ? <span className="text-red-700 dark:text-red-400">− {d.tags_removed.join(", ")}</span> : null}
           </p>
         ) : null}
+        {d.content && DIMS.some((k) => d.content!.before[k] !== d.content!.after[k]) && (
+          <p className="flex flex-wrap items-center gap-x-3">
+            <span>{t("İçerik seviyesi", "Content level")}:</span>
+            {DIMS.map((k) => (
+              <span key={k} className="flex items-center gap-1">
+                {k.toUpperCase()}
+                <span className={`h-2 w-2 rounded-full ${LEVEL_DOT[d.content!.before[k]]}`} />→<span className={`h-2 w-2 rounded-full ${LEVEL_DOT[d.content!.after[k]]}`} />
+              </span>
+            ))}
+          </p>
+        )}
         {d.price_before !== undefined && (
           <p>{t("Fiyat", "Price")}: {d.price_before ?? "—"} → {d.price_after ?? "—"}</p>
         )}
