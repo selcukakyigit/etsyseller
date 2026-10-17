@@ -101,6 +101,16 @@ def run_agent(
     return AgentResult(text, usage)
 
 
+def _prepare(execute: Callable, calls: list[tuple[str, dict]]) -> None:
+    """Aynı turdaki birden çok çağrı varsa yürütücünün (varsa) `prepare` kancası bağımsız ağ işlerini (ör. birden çok görsel üretimi) paralel başlatır."""
+    prepare = getattr(execute, "prepare", None)
+    if prepare is not None and len(calls) > 1:
+        try:
+            prepare(calls)
+        except Exception:  # noqa: BLE001 - hazırlık başarısız olursa çağrılar sırayla yürütülür
+            log.exception("Araç hazırlığı başarısız")
+
+
 def _tool_result(execute: Callable[[str, dict], dict], name: str, args: dict, usage: Usage) -> str:
     usage.tools.append(name)
     try:
@@ -134,12 +144,15 @@ def _run_openai(static, dynamic, history, user_text, images, tools, execute, usa
             "content": msg.content or "",
             "tool_calls": [{"id": c.id, "type": "function", "function": {"name": c.function.name, "arguments": c.function.arguments}} for c in msg.tool_calls],
         })
+        parsed: list[tuple[str, dict]] = []
         for c in msg.tool_calls:
             try:
-                args = json.loads(c.function.arguments or "{}")
+                parsed.append((c.function.name, json.loads(c.function.arguments or "{}")))
             except json.JSONDecodeError:
-                args = {}
-            messages.append({"role": "tool", "tool_call_id": c.id, "content": _tool_result(execute, c.function.name, args, usage)})
+                parsed.append((c.function.name, {}))
+        _prepare(execute, parsed)
+        for c, (name, args) in zip(msg.tool_calls, parsed):
+            messages.append({"role": "tool", "tool_call_id": c.id, "content": _tool_result(execute, name, args, usage)})
     return _too_many_steps()
 
 
@@ -185,6 +198,7 @@ def _run_anthropic(static, dynamic, history, user_text, images, tools, execute, 
             return "".join(b.text for b in resp.content if b.type == "text").strip()
         assistant_blocks = []
         results = []
+        _prepare(execute, [(b.name, b.input or {}) for b in resp.content if b.type == "tool_use"])
         for b in resp.content:
             if b.type == "text":
                 assistant_blocks.append({"type": "text", "text": b.text})

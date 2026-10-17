@@ -222,9 +222,14 @@ def _pick_mode(message: str, current: list[ChatImage], last_tool_notes: str | No
 _TOOL_NAME = re.compile(r"(?<![A-Za-z_])(?:" + "|".join(re.escape(n) for n in sorted(tools.EXECUTORS, key=len, reverse=True)) + r")(?![A-Za-z_])")
 
 
+# "Hemen başlıyorum / üreteceğim" deyip hiçbir araç çağırmamak (boş söz): bir kez gerçekten yapması istenir.
+_EMPTY_PROMISE = re.compile(r"\b(?:hemen )?(?:başlıyorum|başlayayım|başlıyoruz|üreteceğim|oluşturacağım|hazırlayacağım|yapacağım|ekleyeceğim|uygulayacağım)\b")
+
+
 def _claims_tool_use(text: str) -> bool:
     """Cevap araç adı ya da "araç özeti" taklidi içeriyor mu (araç çağrılmadan "yaptım" demenin işareti)?"""
-    return bool(_TOOL_NAME.search(text)) or "araç çıktısına göre" in text.lower() or "araç özeti" in text.lower()
+    low = text.lower()
+    return bool(_TOOL_NAME.search(text)) or "araç çıktısına göre" in low or "araç özeti" in low or bool(_EMPTY_PROMISE.search(low))
 
 
 # Model bazen talimata rağmen "[düzenleyici](https://www.etsy.com/listings/-1/edit)" gibi uydurma bağlantılar yazıyor; kartın
@@ -297,6 +302,8 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
             return result
         finally:
             set_progress(shop.id, request_id, "Reviewing the result" if en else "Sonucu değerlendiriyor", None, ctx.cards)
+
+    run_tool.prepare = lambda calls: tools.prefetch_images(ctx, calls)  # aynı turdaki birden çok görsel üretimi paralel başlar
 
     last_notes = next((m.tool_notes for m in recent if m.role == "assistant"), None)
     mode = _pick_mode(message, current, last_notes)

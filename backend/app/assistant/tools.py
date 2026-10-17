@@ -74,6 +74,7 @@ class Ctx:
     message: str = ""  # kullanıcının bu mesajı (yapıştırılan fatura metni gibi, modele yeniden yazdırmadan okumak için)
     cards: list[dict] = field(default_factory=list)
     session_id: int | None = None  # sohbet oturumu: üretilen resimler bu oturuma kaydedilir
+    image_jobs: list = field(default_factory=list)  # aynı turda istenen görseller önceden paralel başlatılır: [(prompt, referans kimliği, Future)]
 
 
 def _d(value: str | None, default: dt.date) -> dt.date:
@@ -1575,6 +1576,75 @@ def regenerate_listing_image(ctx: Ctx, a: dict) -> dict:
     return {"ok": True, "not": "Yeni görsel taslağa kaydedildi; Etsy'ye gitmesi için yayınlanması gerekiyor."}
 
 
+IMAGE_PARALLEL = 3  # aynı turda istenen görsellerden en fazla bu kadarı aynı anda üretilir
+
+
+def prefetch_images(ctx: Ctx, calls: list[tuple[str, dict]]) -> None:
+    """Modelin AYNI turda istediği birden çok generate_chat_image çağrısını paralel başlatır (sağlayıcı bekleme süresi çakışır: 5 görsel ~5 kat değil ~2 kat sürer).
+    Yalnızca ağ işi iş parçacıklarında yapılır; veritabanı yazımı (kayıt, kart) çağrılar sırayla yürütülürken ana iş parçacığında olur."""
+    import contextvars
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app.ai.image_gen import generate_from_text
+
+    wanted = [a for name, a in calls if name == "generate_chat_image" and str(a.get("prompt") or "").strip()]
+    if len(wanted) < 2:
+        return
+    pool = ThreadPoolExecutor(max_workers=IMAGE_PARALLEL)
+    for a in wanted:
+        reference = None
+        if a.get("reference_image_id"):
+            ref = ctx.db.get(ChatImage, str(a["reference_image_id"]))
+            if ref is None or ref.shop_id != ctx.shop.id or not ref.path or not ref.content_type.startswith("image/"):
+                continue  # geçersiz referans: çağrı sırayla yürütülürken hata olarak döner
+            reference = (blobstore.read(ref.path), ref.content_type)
+        model_id = int(a["model_id"]) if a.get("model_id") else None
+        job = contextvars.copy_context().run  # faturalama kapsamı (contextvar) iş parçacığına taşınır
+        future = pool.submit(job, generate_from_text, str(a["prompt"]).strip(), reference, model_id, a.get("variant"))
+        ctx.image_jobs.append((str(a["prompt"]).strip(), str(a.get("reference_image_id") or ""), future))
+    pool.shutdown(wait=False)
+
+
+def _take_image_job(ctx: Ctx, prompt: str, reference_id: str):
+    for i, (p, r, future) in enumerate(ctx.image_jobs):
+        if p == prompt and r == reference_id:
+            return ctx.image_jobs.pop(i)[2]
+    return None
+
+
+def generate_chat_image(ctx: Ctx, a: dict) -> dict:
+    """Kaynak fotoğraf OLMADAN, metin talimatından yeni bir görsel üretir (ör. "Noel temalı beyaz tişört, foto-gerçekçi model üzerinde"); isteğe bağlı
+    reference_image_id ile (ör. yüklenen tasarım) o görsele bakarak üretir. Sonuç sohbette kartla gösterilir, listing'e girmez; kullanıcı
+    beğenirse create_listing_draft'ın image_ids alanına ya da add_chat_image_to_listing'e verilir."""
+    from app.ai.image_gen import ImageGenError, generate_from_text, guess_extension
+    from app.assistant import service as chat_service
+
+    prompt = str(a.get("prompt") or "").strip()
+    if not prompt:
+        return {"error": "Ne üretileceğini yaz (prompt: ürün, ortam, kadraj, ışık, üzerindeki yazı/tasarım)."}
+    reference = None
+    if a.get("reference_image_id"):
+        ref = ctx.db.get(ChatImage, str(a["reference_image_id"]))
+        if ref is None or ref.shop_id != ctx.shop.id or not ref.path or not ref.content_type.startswith("image/"):
+            return {"error": "Referans resim bulunamadı; sistem mesajındaki resim listesinden bir kimlik ver."}
+        reference = (blobstore.read(ref.path), ref.content_type)
+    try:
+        future = _take_image_job(ctx, prompt, str(a.get("reference_image_id") or ""))  # aynı turda paralel başlatılmışsa sonucunu bekle
+        if future is not None:
+            data, mime = future.result()
+        else:
+            data, mime = generate_from_text(prompt, reference, int(a["model_id"]) if a.get("model_id") else None, a.get("variant"))
+    except (ImageGenError, ValueError, FileNotFoundError) as exc:
+        return {"error": str(exc)}
+    saved = chat_service.save_image(ctx.db, ctx.shop, ctx.session_id, f"ai-generated{guess_extension(mime)}", mime, data)
+    ctx.cards.append({
+        "type": "chat_image_edited", "image_id": saved["id"], "image_url": saved["url"], "prompt": prompt[:200],
+        "source_image_id": str(a["reference_image_id"]) if a.get("reference_image_id") else None, "source_listing_id": None, "source_photo": None,
+        "listing_id": None, "added": False, "edit_url": None, "listing_image_id": None,
+    })
+    return {"ok": True, "yeni_resim_id": saved["id"], "not": "Görsel sohbette gösterildi, listing'e girmedi. Kullanıcı kullanmak isterse resim kimliğini create_listing_draft.image_ids ya da add_chat_image_to_listing'e ver."}
+
+
 def _auto_alt_text(ctx: Ctx, lid: int, listing_image_id: int | None, chat_image_id: str) -> None:
     """Listing'e eklenen üretilmiş görselin alt metnini GÖRSELİN gerçek içeriğine bakarak yazar. Model üretilen görseli görmediği için kendi
     yazdığı alt metin yanlış olabiliyordu (ör. sarı olmayan üründe "Yellow …"). Görsel okunamazsa model alt metni ya da boş kalır."""
@@ -2481,7 +2551,7 @@ def _obj(props: dict, required: list[str] | None = None) -> dict:
 DATE = {"type": "string", "description": "YYYY-MM-DD"}
 
 # Uzun süren (resim/video üreten) araçlar: sohbet bekleme sırasında buna göre ilerleme kartı gösterir.
-TOOL_KIND = {"edit_chat_image": "image", "regenerate_listing_image": "image"}
+TOOL_KIND = {"generate_chat_image": "image", "edit_chat_image": "image", "regenerate_listing_image": "image"}
 
 # Görsel/video model ve kalite seçimi (generation_options'taki id ve key değerleri). Verilmezse yönetim panelindeki varsayılan.
 _QUALITY_SCHEMA = {
@@ -2620,6 +2690,7 @@ TOOLS: list[dict] = [
     {"name": "add_video_to_listing", "description": "Listing taslağına video ekler: ÜRETİLMİŞ video için file_id (kullanıcının 'listing'e ekle' mesajında yazar) ya da kullanıcının sohbete YÜKLEDİĞİ kendi videosu için chat_video_id (KULLANICI VİDEOLARI listesinden). Ya biri ya öbürü. listing_id verilmezse sohbetteki en son yeni taslak. Bir listing'e en fazla 2 video.", "input_schema": _obj({"file_id": {"type": "string"}, "chat_video_id": {"type": "string"}, "listing_id": {"type": "integer"}}, [])},
     {"name": "crop_listing_photo", "description": "Listing fotoğrafını kırpar: ratio 1:1 (kare, küçük resim için ideal), 4:3, 3:4 ya da original; zoom 1–4 (1 = tam kadraj, büyüdükçe yakınlaşır); center_x/center_y 0–1 odak noktası (0.5, 0.5 = orta; sol-üst 0,0). 'Ana resmi kırp, ürün ortada olsun' = photo_number 1, ratio 1:1. Resim kırpmak için edit_chat_image KULLANMA (o yeni görsel üretir, kredi harcar); kırpma ücretsizdir. Yalnızca yerel taslağa yazar.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer"}, "ratio": {"type": "string", "enum": ["1:1", "4:3", "3:4", "original"]}, "zoom": {"type": "number"}, "center_x": {"type": "number"}, "center_y": {"type": "number"}}, ["listing_id", "photo_number"])},
     {"name": "move_listing_photo", "description": "Listing taslağındaki bir fotoğrafın sırasını değiştirir. 'Üçüncü resmi ana resim yap' = photo_number 3, to_position 1 (ana fotoğraf birinci sıradadır). Fotoğraf sırası için update_listing KULLANMA.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer", "description": "Taşınacak fotoğrafın şimdiki sırası (1'den başlar)"}, "to_position": {"type": "integer", "description": "Hedef sıra (varsayılan 1 = ana fotoğraf)"}}, ["listing_id", "photo_number"])},
+    {"name": "generate_chat_image", "description": "Kaynak fotoğraf OLMADAN yeni bir görsel üretir (ör. 'Noel temalı beyaz tişört, foto-gerçekçi model üzerinde, yakın çekim'); yüklenen bir tasarımı/ürünü kullanmak için reference_image_id ver. Her çağrı TEK görsel üretir: N görsel isteniyorsa N kez çağır, her birinde FARKLI kadraj/açı/sahne ver. Sonuç sohbette gösterilir, listing'e girmez. Kredi harcar; kullanıcı açıkça istediyse onay sorma, hemen üret. prompt'u İngilizce, somut yaz: ürün, renk, ortam, kadraj, ışık, üzerindeki yazı/tasarım.", "input_schema": _obj({"prompt": {"type": "string"}, "reference_image_id": {"type": "string", "description": "Yüklenen tasarımın/ürünün sohbet resim kimliği (isteğe bağlı)"}, **_QUALITY_SCHEMA}, ["prompt"])},
     {"name": "edit_chat_image", "description": "AI ile YENİ bir görsel üretir (arka plan temizle/değiştir, 'ürünü kullanımda / oturma odasında göster', kamera açısı). Kaynak: sohbetteki bir resim (image_id) YA DA bir listing fotoğrafı (listing_id + photo_number). Sonuç sohbette simgeli bir kartla gösterilir, kaynak değişmez. Listing'e YALNIZCA kullanıcı 'ekle' dediyse add_to_listing=true ver; vermezsen sadece gösterilir ve kullanıcı beğenirse ekler ya da yeniden ürettirir. Etsy'ye hiçbir şey göndermez; kredi harcar.", "input_schema": _obj({
         "image_id": {"type": "string", "description": "Kaynak: sohbete eklenen resmin kimliği (sistem mesajındaki listeden)"},
         "photo_number": {"type": "integer", "description": "Kaynak: listing_id ile birlikte, listing'in o sıradaki fotoğrafı (1'den başlar)"},
@@ -2681,6 +2752,7 @@ TOOL_LABELS = {
     "shipping_invoices": "Kargo faturalarına bakıyor",
     "bulk_update_listings": "Toplu taslak hazırlıyor",
     "regenerate_listing_image": "Fotoğrafı yeniden oluşturuyor",
+    "generate_chat_image": "Görsel üretiyor",
     "edit_chat_image": "Resmi düzenliyor",
     "move_listing_photo": "Fotoğraf sırasını değiştiriyor",
     "crop_listing_photo": "Fotoğrafı kırpıyor",
@@ -2747,6 +2819,7 @@ TOOL_LABELS_EN = {
     "shipping_invoices": "Checking shipping invoices",
     "bulk_update_listings": "Preparing bulk drafts",
     "regenerate_listing_image": "Regenerating the photo",
+    "generate_chat_image": "Generating an image",
     "edit_chat_image": "Editing the image",
     "move_listing_photo": "Reordering the photos",
     "crop_listing_photo": "Cropping the photo",
@@ -2791,7 +2864,7 @@ EXECUTORS = {
     "create_listing_draft": create_listing_draft, "update_listing": update_listing,
     "shop_options": shop_options, "workspace_status": workspace_status, "orders_overview": orders_overview, "order_detail": order_detail,
     "orders_missing_costs": orders_missing_costs, "keyword_pool": keyword_pool, "shipping_invoices": shipping_invoices, "bulk_update_listings": bulk_update_listings,
-    "regenerate_listing_image": regenerate_listing_image, "edit_chat_image": edit_chat_image, "move_listing_photo": move_listing_photo, "crop_listing_photo": crop_listing_photo, "generate_listing_video": generate_listing_video, "generation_options": generation_options, "edit_inventory": edit_inventory, "remove_variation_option": remove_variation_option, "add_variation_option": add_variation_option,
+    "regenerate_listing_image": regenerate_listing_image, "edit_chat_image": edit_chat_image, "generate_chat_image": generate_chat_image, "move_listing_photo": move_listing_photo, "crop_listing_photo": crop_listing_photo, "generate_listing_video": generate_listing_video, "generation_options": generation_options, "edit_inventory": edit_inventory, "remove_variation_option": remove_variation_option, "add_variation_option": add_variation_option,
     "set_variation_photo": set_variation_photo, "remove_listing_video": remove_listing_video, "copy_listing": copy_listing,
     "discard_listing_changes": discard_listing_changes, "delete_listing": delete_listing, "personalization_library": personalization_library, "add_video_to_listing": add_video_to_listing, "get_category_attributes": get_category_attributes, "set_listing_attributes": set_listing_attributes, "autofill_listing_attributes": autofill_listing_attributes,
     "set_listing_fields": set_listing_fields, "delete_listing_photo": delete_listing_photo, "edit_personalization_question": edit_personalization_question, "set_photo_alt_text": set_photo_alt_text, "add_chat_image_to_listing": add_chat_image_to_listing, "generate_missing_alt_texts": generate_missing_alt_texts,
@@ -2849,7 +2922,7 @@ for _t in TOOLS:
 # Listing modunda (bkz. service._pick_mode) modele yalnızca bu araçlar gösterilir; sipariş/finans/reklam araçları gönderilmez.
 LISTING_TOOL_NAMES = frozenset({
     "shop_defaults", "shop_options", "similar_listings", "find_category", "search_listings", "get_listing", "create_listing_draft", "update_listing", "bulk_update_listings",
-    "regenerate_listing_image", "edit_chat_image", "add_chat_image_to_listing", "crop_listing_photo", "delete_listing_photo", "move_listing_photo", "set_photo_alt_text",
+    "regenerate_listing_image", "edit_chat_image", "generate_chat_image", "add_chat_image_to_listing", "crop_listing_photo", "delete_listing_photo", "move_listing_photo", "set_photo_alt_text",
     "generate_missing_alt_texts", "get_category_attributes", "set_listing_attributes", "autofill_listing_attributes", "set_listing_fields", "edit_personalization_question",
     "personalization_library", "edit_inventory", "add_variation_option", "remove_variation_option", "set_variation_photo", "copy_listing", "discard_listing_changes",
     "delete_listing", "generation_options", "generate_listing_video", "add_video_to_listing", "remove_listing_video", "publish_listing_draft", "deactivate_listing",
