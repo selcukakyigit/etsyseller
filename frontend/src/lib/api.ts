@@ -259,6 +259,14 @@ export type BulkChanges = {
 
 export type DescriptionTemplate = { id: number; name: string; body: string; is_default: boolean; updated_at: string | null };
 
+/** İçerik denetimi (bkz. backend app/ai/audit.py): üç boyutta seviye ve bulgular. */
+export type ContentLevel = "good" | "mid" | "weak";
+export type ContentAudit = {
+  level: ContentLevel;
+  dims: Record<"seo" | "aeo" | "geo", { level: ContentLevel; points: number }>;
+  findings: { id: string; dim: "seo" | "aeo" | "geo"; weight: number; text: string; fix: "attributes" | "description" | "title" | "tags" | "alt_text" | null; risk: "low" | "high" }[];
+};
+
 /** Listing satış teşhisi (bkz. backend app/insights/diagnosis.py). Metinler istek dilinde gelir. */
 export type DiagnosisStatus = "new" | "low_data" | "declining" | "stable" | "growing";
 export type DiagnosisCause = "visibility" | "appeal" | "conversion" | "shop_wide" | "demand";
@@ -1581,6 +1589,7 @@ export interface DashboardData {
 
 export const api = {
   insights: {
+    content: (shopId: number, listingId: number) => request<ContentAudit>(`/api/shops/${shopId}/insights/listings/${listingId}/content`),
     diagnosis: (shopId: number, listingId: number) => request<ListingDiagnosis>(`/api/shops/${shopId}/insights/listings/${listingId}/diagnosis`),
     attention: (shopId: number) => request<ShopAttention>(`/api/shops/${shopId}/insights/attention`),
     faded: (shopId: number) => request<FadedListings>(`/api/shops/${shopId}/insights/faded`),

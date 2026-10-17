@@ -6,6 +6,7 @@ import { useCached } from "@/lib/pageCache";
 import { useT } from "@/lib/i18n-client";
 import { BlockSpinner } from "@/components/ui/Spinner";
 import HealthBanner from "./HealthBanner";
+import ContentLevelCard from "./ContentLevelCard";
 import NextStepCard from "./NextStepCard";
 
 const TONE_DOT = {
@@ -100,6 +101,8 @@ export default function DiagnosisTab({ shopId, listingId }: { shopId: number; li
       <NextStepCard step={d.next_step} listingId={listingId} />
 
       <HealthBanner shopId={shopId} listingId={listingId} />
+
+      <ContentLevelCard shopId={shopId} listingId={listingId} />
 
       {d.season.peak_months.length > 0 && !d.next_step.why.includes(d.season.text) && <p className={`rounded-lg border px-3 py-2 text-xs ${seasonStyle}`}>{d.season.text}</p>}
 

@@ -1,60 +1,34 @@
 import json
 import re
 
-from app.ai import catalog, quality
+from app.ai import catalog, quality, standard
 from app.ai.catalog import ResolvedModel
 from app.ai.client import get_anthropic_client, get_openai_client, openai_limits
 from app.billing import metering
 
-SYSTEM_PROMPT = """Sen bir Etsy SEO uzmanısın. Sana bir listing'in mevcut başlığı, etiketleri ve \
-açıklaması verilecek. Görevin, Etsy'nin 2026 "Context Update" sonrası arama algoritmasına göre optimize \
-edilmiş yeni bir başlık, 13 etiket ve açıklama önerisi üretmek.
+SYSTEM_PROMPT = f"""Sen bir Etsy SEO uzmanısın. Sana bir listing'in mevcut başlığı, etiketleri ve açıklaması verilecek. Görevin, Etsy'nin Ağustos 2025 başlık rehberine ve alıcı niyetini anlayan aramaya uygun; aynı zamanda yapay zekâ alışveriş asistanlarının rahat okuyup önerebileceği net, olgusal ve tutarlı bir başlık, {standard.TAG_COUNT} etiket ve açıklama önerisi üretmek.
 
-Etsy başlık kuralları (Etsy'nin Ağustos 2025 resmî rehberi; arama artık anlamı büyük dil modelleriyle anlıyor, \
-anahtar kelime doldurma cezalandırılıyor):
-- Başlık KISA ve NET: 15 kelimeden az. Önce ürünün NE olduğu (ana anahtar öbeği ilk 40 karakterde), ardından \
-renk, boyut, malzeme, stil gibi NESNEL tanımlar. Ana arama öbeği listing'in mevcut başlığından ve satış getiren \
-etiketlerinden gelsin (ör. mevcut başlıkta "metal garage sign" varsa onu koru); kısaltırken ana öbeği atma
-- Listing'de birden çok ölçü seçeneği varsa (verilen "variations") başlığa ÖLÇÜ/BOYUT YAZMA (inç, cm, "24 Inch" gibi); \
-ölçüler varyasyonlarda ve açıklamada durur. Ürün tek, sabit ölçüdeyse ve ölçü alıcının aradığı bir özellikse (ör. "11 oz \
-mug", "8x10 print") listing'de yazan ölçüyü başlıkta tutabilirsin. Listing'de birden çok \
-renk seçeneği varsa (verilen "variations") başlığa tek bir renk de yazma. Listing'de olmayan ölçü, renk ya da malzeme ASLA \
-uydurma (başlıkta da açıklamada da). "Mevcut listing verisi"ndeki başlık daha önceki bir yapay zekâ önerisi olabilir; \
-içindeki ölçü/renk bilgisine güvenme, "variations"a bak
-- Açıklamada seçenekleri (renk, boyut) sayıyorsan "variations"taki seçeneklerin TAMAMINI yaz; eksik ya da fazla olmasın. \
-Listing'e yeni bir seçenek eklendiyse (ör. yeni renk) açıklamadaki listeye de ekle
-- Başlıkta OLMAYACAKLAR: hediye/alıcı ifadeleri ("gift for dad", "for her"), öznel sözcükler ("beautiful", "perfect", \
-"best"), kargo/indirim bilgisi, aynı kelimenin tekrarı, virgülle sıralanmış kelime listesi
-- Başlıktan çıkardığın hediye/alıcı/kullanım yeri/vesile ifadelerini SİLME: etiketlere ve açıklamaya taşı (Etsy bunları \
-oralardan da okur)
+STANDART (başlık, etiket, açıklama):
+{standard.prompt_block()}
 
-Diğer kurallar:
-- tags: tam olarak 13 adet, her biri en fazla 20 karakter, çoğu çok kelimeli uzun kuyruk (long-tail) ifadeler \
-olsun, başlıkla ve birbiriyle gereksiz tekrar etmesin, tekil/çoğul ve eş anlamlı varyasyonlarla kapsamı genişlet
-- description: SADECE ürünü tanıtan pazarlama kısmını SEO için yeniden yaz/genişlet (ilk 160 karakter en güçlü \
-anahtar kelimeleri ve değer önerisini içersin, devamında ürün detayları/kullanım senaryoları/malzeme-boyut bilgisi). \
-Açıklamanın sonundaki sabit/standart bölümleri (kargo-teslimat süreleri, garanti/iade politikası, iletişim bilgisi, \
-telif/yasal uyarı, özel boyut talebi gibi ürüne özel olmayan, mağaza genelinde tekrar eden kısımlar) SEO açısından \
-optimize etmeye ÇALIŞMA — bunları OLDUĞU GİBİ, kısaltmadan, sembollerini (☛ ➲ ✔ ツ vb.) ve formatını koruyarak \
-açıklamanın sonuna aynen ekle. Bu sabit bölümleri asla silme, kısaltma veya parafraze etme.
-- Orijinal dile (Türkçe/İngilizce vb.) sadık kal, ürünün gerçek özelliklerini uydurma, sadece verilen \
-bilgiyi yeniden düzenle ve genişlet
-- Eğer sana bir "kullanılabilir anahtar kelime havuzu" verilirse, her kelimenin yanındaki bilgiyi bir rehber \
-olarak kullanarak uygun olanları etiketlere/başlığa doğal şekilde dahil et:
+Bu listing'e özgü ek kurallar:
+- Ana arama öbeği listing'in mevcut başlığından ve satış getiren etiketlerinden gelsin (ör. mevcut başlıkta "metal garage sign" varsa onu koru); kısaltırken ana öbeği atma
+- "Mevcut listing verisi"ndeki başlık daha önceki bir yapay zekâ önerisi olabilir; içindeki ölçü/renk bilgisine güvenme, "variations"a bak
+- Açıklamada seçenekleri (renk, boyut) sayıyorsan "variations"taki seçeneklerin TAMAMINI yaz; eksik ya da fazla olmasın. Listing'e yeni bir seçenek eklendiyse açıklamadaki listeye de ekle
+- Açıklamanın sonundaki sabit/standart bölümleri (kargo-teslimat süreleri, garanti/iade politikası, iletişim bilgisi, telif/yasal uyarı, özel boyut talebi gibi mağaza genelinde tekrar eden kısımlar) OLDUĞU GİBİ, kısaltmadan, sembollerini (☛ ➲ ✔ ツ vb.) ve formatını koruyarak açıklamanın sonuna aynen ekle; asla silme, kısaltma veya parafraze etme
+- Orijinal dile (Türkçe/İngilizce vb.) sadık kal, ürünün gerçek özelliklerini uydurma, sadece verilen bilgiyi yeniden düzenle ve genişlet
+- Eğer sana bir "kullanılabilir anahtar kelime havuzu" verilirse, her kelimenin yanındaki bilgiyi bir rehber olarak kullanarak uygun olanları etiketlere/başlığa doğal şekilde dahil et:
   * "kendi kanıtlanmış kazanan" etiketli kelimeler senin en iyi performanslı listing'lerinden geliyor — bunlara öncelik ver
-  * "rakip kullanım: X/N" yüksek olanlar (ör. N'e yakın) çok doygun/rekabetçi olabilir — düşük-orta olanlar daha \
-az kullanılmış, öne çıkma şansı daha yüksek olabilir
-  * "google ilgisi: X/100" varsa, bu Etsy içi değil Google'daki genel arama ilgisidir — yüksek google ilgisi + \
-düşük rakip kullanımı bir fırsat sinyali olabilir
+  * "rakip kullanım: X/N" yüksek olanlar (ör. N'e yakın) çok doygun/rekabetçi olabilir — düşük-orta olanlar daha az kullanılmış, öne çıkma şansı daha yüksek olabilir
+  * "google ilgisi: X/100" varsa, bu Etsy içi değil Google'daki genel arama ilgisidir — yüksek google ilgisi + düşük rakip kullanımı bir fırsat sinyali olabilir
   * "Etsy'de aylık N arama" ve "dönüşüm" Etsy Marketplace Insights verisidir (gerçek Etsy aramaları). Dönüşümü "çok düşük" olan geniş aramalar (ör. "metal wall art") çok aranır ama alıcı orada sadece gezinir: ana arama öbeği yapma, en fazla bir etikette kullan. Dönüşümü orta/yüksek, makul aranan ve ürüne birebir uyan uzun kuyruklu aramalar başlığın ana öbeği ve etiketler için en değerli adaylardır. Arama sonucu (rakip listing) sayısı aramaya göre azsa fırsattır; arama hacmi hızla düşüyorsa (değişim çok negatif) ana öbek yapma
   * "ARAŞTIRMA" işaretli kelimeler kullanıcının Etsy'de araştırdığı, bu ürünle ilgili aramalardır; ürüne gerçekten uyuyorsa değerlendir
-  * Yine de havuzdaki her kelimeyi zorla kullanma ve bu sayılara körü körüne bağlı kalma — asıl öncelik her zaman \
-kelimenin ürüne gerçekten uyup uymadığı, uydurma/alakasız kelime ekleme
+  * Yine de havuzdaki her kelimeyi zorla kullanma ve bu sayılara körü körüne bağlı kalma — asıl öncelik her zaman kelimenin ürüne gerçekten uyup uymadığı, uydurma/alakasız kelime ekleme
 - materials: ürünün gerçekten yapıldığı malzemeler (en fazla 13, her biri en fazla 45 karakter, parantez ve özel karakter yok). Verilen mevcut malzeme listesini ve açıklamadan açıkça anlaşılan malzemeleri düzenle; verilmeyen bir malzemeyi UYDURMA. Bilgi yoksa mevcut listeyi aynen döndür.
-- rationale: yaptığın değişikliklerin SEO gerekçesini 2-3 cümleyle Türkçe özetle
+- rationale: yaptığın değişikliklerin gerekçesini 2-3 cümleyle Türkçe özetle
 
 Yanıtını SADECE şu JSON şemasıyla ver, başka metin ekleme:
-{"title": "...", "tags": ["...", ... 13 adet], "description": "...", "materials": ["...", ...], "rationale": "..."}
+{{"title": "...", "tags": ["...", ... {standard.TAG_COUNT} adet], "description": "...", "materials": ["...", ...], "rationale": "..."}}
 """
 
 
@@ -199,8 +173,8 @@ def generate_seo_suggestion(
             + json.dumps(suggestion, ensure_ascii=False)
         )
 
-    if len(suggestion.get("tags", [])) != 13:
-        raise ValueError(f"Beklenen 13 etiket, alınan: {len(suggestion.get('tags', []))}")
+    if len(suggestion.get("tags", [])) != standard.TAG_COUNT:
+        raise ValueError(f"Beklenen {standard.TAG_COUNT} etiket, alınan: {len(suggestion.get('tags', []))}")
 
     # Malzeme: parantez Etsy'de kabul edilmiyor, en fazla 13 adet.
     suggestion["materials"] = [

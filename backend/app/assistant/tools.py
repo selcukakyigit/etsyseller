@@ -510,26 +510,6 @@ def _with_standard_sections(db: Session, shop_id: int, product_part: str) -> tup
     return "\n\n".join(x for x in parts if x), len(std["header"]) + len(std["footer"])
 
 
-_RISKY_CLAIMS = re.compile(
-    r"\b(hardware|mounting|included|provided|warranty|lifetime|waterproof|rust[- ]?proof|weather[- ]?proof|certified|fireproof|hypoallergenic)\b", re.I
-)
-
-
-def _quality_problems(title: str, tags: list[str], product_description: str) -> list[str]:
-    """Taslak oluşturulmadan önce kaliteyi denetler; sorun varsa model düzeltip tekrar dener (yanlış/eksik içerik yayına gitmesin)."""
-    out = []
-    out += quality.title_problems(title)
-    if len(tags) < 13:
-        out.append(f"{len(tags)} etiket var; tam 13 olmalı.")
-    single = [t for t in tags if " " not in t]
-    if len(single) > 3:
-        out.append(f"{len(single)} etiket tek kelime ({', '.join(single)}); 2–4 kelimelik uzun kuyruklu etiketler kullan (her biri en fazla 20 karakter).")
-    claims = sorted({m.group(0).lower() for m in _RISKY_CLAIMS.finditer(product_description)})
-    if claims:
-        out.append(f"Açıklamada kullanıcının söylemediği/doğrulanmamış iddialar var ({', '.join(claims)}); bunları çıkar. Yalnızca kullanıcının verdiği ya da resimde gördüğün bilgileri yaz.")
-    return out
-
-
 _STOP = {"the", "and", "for", "with", "your", "our", "you", "from", "this", "that", "custom", "personalized"}
 
 

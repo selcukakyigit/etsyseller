@@ -8,6 +8,7 @@ from app.core.db import get_db
 from app.core.uploads import read_limited
 from app.etsy.client import EtsyApiError
 from app.insights import diagnosis, etsy_data, impact, rank
+from app.listings import content_audit
 from app.shops.deps import get_owned_shop, require_ai_enabled
 from app.shops.models import Shop
 
@@ -39,6 +40,15 @@ def listing_diagnosis(listing_id: int, today: dt.date | None = None, shop: Shop 
     if d is None:
         raise HTTPException(404, "Listing bulunamadı")
     return d
+
+
+@router.get("/listings/{listing_id}/content")
+def listing_content(listing_id: int, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    """İçerik seviyesi (SEO / AEO / GEO) ve bulgular: yapay zekâ çağırmaz, ücretsizdir."""
+    result = content_audit.audit_listing(db, shop, listing_id)
+    if result is None:
+        raise HTTPException(404, "Listing bulunamadı")
+    return result
 
 
 class KeywordIn(BaseModel):

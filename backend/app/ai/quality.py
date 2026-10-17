@@ -6,6 +6,7 @@ import html
 import json
 import re
 
+from app.ai.standard import MAX_SHARED_TAGS, TAG_COUNT, TAG_MAX_LEN, TITLE_MAX_CHARS, TITLE_MAX_WORDS, TITLE_MIN_CHARS
 from app.core.i18n import tr
 
 from sqlalchemy import select
@@ -13,8 +14,6 @@ from sqlalchemy.orm import Session
 
 from app.listings.models import ListingCache
 
-TAG_MAX_LEN = 20
-MAX_SHARED_TAGS = 5  # başka tek bir listing'le en fazla bu kadar aynı etiket
 MAX_TITLE_SIMILARITY = 0.6  # başlık kelime kümesi benzerliği (Jaccard)
 MAX_INTRO_SIMILARITY = 0.6  # açıklamanın ilk ~60 kelimesinin benzerliği
 
@@ -79,8 +78,6 @@ def fix_long_tags(tags: list[str]) -> list[str]:
 # Etsy'nin Ağustos 2025 başlık rehberi: başlık kısa ve net (15 kelimeden az), önce ürünün ne olduğu, sonra renk/boyut/
 # malzeme gibi nesnel tanımlar. Hediye/alıcı ifadeleri ve öznel sözcükler etiketlere, özelliklere ve açıklamaya taşınır;
 # kargo/indirim bilgisi ve kelime tekrarı başlıkta olmaz.
-TITLE_MAX_WORDS = 15
-TITLE_MIN_CHARS = 20
 _GIFT = re.compile(r"\b(gifts?|for (?:him|her|them|mom|mum|dad|men|women|kids|teens|wife|husband|boyfriend|girlfriend|grandma|grandpa|friends?))\b", re.I)
 _SUBJECTIVE = re.compile(r"\b(beautiful|perfect|best|amazing|stunning|cute|lovely|unique|awesome|gorgeous|must[- ]have)\b", re.I)
 _PROMO = re.compile(r"(free shipping|fast shipping|on sale|\bsale\b|discount|%\s*off|\boff\b\s*\d)", re.I)
@@ -92,12 +89,12 @@ def title_problems(title: str, sizes_vary: bool = True) -> list[str]:
     özelliktir ve başlıkta kalabilir."""
     out: list[str] = []
     words = [w for w in re.split(r"[\s,|/–—-]+", title.strip()) if w]
-    if len(title) > 140:
-        out.append(tr(f"Başlık {len(title)} karakter; en fazla 140 olabilir.", f"The title is {len(title)} characters; the limit is 140."))
+    if len(title) > TITLE_MAX_CHARS:
+        out.append(tr(f"Başlık {len(title)} karakter; en fazla {TITLE_MAX_CHARS} olabilir.", f"The title is {len(title)} characters; the limit is {TITLE_MAX_CHARS}."))
     if len(words) > TITLE_MAX_WORDS:
         out.append(tr(
-            f"Başlık {len(words)} kelime; Etsy 15 kelimeden kısa, net başlık öneriyor. Önce ürünün ne olduğunu, sonra renk/boyut/malzemeyi yaz; gerisini etiketlere ve açıklamaya taşı.",
-            f"The title has {len(words)} words; Etsy recommends clear titles under 15 words. Say what the item is first, then color/size/material; move the rest to tags and the description.",
+            f"Başlık {len(words)} kelime; Etsy {TITLE_MAX_WORDS} kelimeden kısa, net başlık öneriyor. Önce ürünün ne olduğunu, sonra renk/boyut/malzemeyi yaz; gerisini etiketlere ve açıklamaya taşı.",
+            f"The title has {len(words)} words; Etsy recommends clear titles under {TITLE_MAX_WORDS} words. Say what the item is first, then color/size/material; move the rest to tags and the description.",
         ))
     if len(title.strip()) < TITLE_MIN_CHARS:
         out.append(tr(
@@ -232,29 +229,54 @@ def clean_title(title: str, variations: dict[str, list[str]]) -> str:
     return t.strip(" ,-–|/")
 
 
-def basic_problems(title: str, tags: list[str], product_description: str = "", source_text: str | None = None, sizes_vary: bool = True) -> list[str]:
-    """Başlık/etiket/açıklama biçim kuralları. `source_text` (listing'in mevcut metni) verilirse, orada zaten geçen iddialar
-    (ör. su geçirmez bir çantada "waterproof") sorun sayılmaz; yalnızca yeni eklenenler sayılır."""
-    out = title_problems(title, sizes_vary)
-    if len(tags) != 13:
-        out.append(f"{len(tags)} etiket var; tam 13 olmalı.")
+def tag_problems(tags: list[str]) -> list[str]:
+    out: list[str] = []
+    if len(tags) != TAG_COUNT:
+        out.append(tr(f"{len(tags)} etiket var; tam {TAG_COUNT} olmalı.", f"There are {len(tags)} tags; there must be exactly {TAG_COUNT}."))
     long_tags = [t for t in tags if len(t) > TAG_MAX_LEN]
     if long_tags:
-        out.append(f"Etiketler en fazla {TAG_MAX_LEN} karakter olabilir: {', '.join(long_tags)}.")
+        out.append(tr(f"Etiketler en fazla {TAG_MAX_LEN} karakter olabilir: {', '.join(long_tags)}.", f"Tags can be at most {TAG_MAX_LEN} characters: {', '.join(long_tags)}."))
     colorful = [t for t in tags if len({w for w in re.findall(r"[a-z]+", t.lower())} & _COLOR_WORDS) >= 2]
     if colorful:
-        out.append(f"Etiket renk listesi gibi ({', '.join(colorful)}); renkler varyasyonda zaten var, arama ifadesi olan bir etiketle değiştir.")
+        out.append(tr(
+            f"Etiket renk listesi gibi ({', '.join(colorful)}); renkler varyasyonda zaten var, arama ifadesi olan bir etiketle değiştir.",
+            f"A tag reads like a color list ({', '.join(colorful)}); colors are already variations, replace it with a search phrase.",
+        ))
     single = [t for t in tags if " " not in t]
     if len(single) > 3:
-        out.append(f"{len(single)} etiket tek kelime ({', '.join(single)}); 2–4 kelimelik uzun kuyruklu etiketler kullan.")
-    src = html.unescape(source_text or "").lower()
-    claims = sorted({c for c in (m.group(0).lower() for m in RISKY_CLAIMS.finditer(product_description)) if not re.search(rf"\b{re.escape(c)}\b", src)})
-    if claims:
-        out.append(f"Açıklamada doğrulanmamış iddialar var ({', '.join(claims)}); yalnızca kullanıcının verdiği ya da görselde görünen bilgiyi yaz.")
-    names = sorted({m.group(0).lower() for m in PROTECTED_NAMES.finditer(" ".join([title, *tags]))} - {m.group(0).lower() for m in PROTECTED_NAMES.finditer(src)})
-    if names:
-        out.append(f"Başlık/etiketlerde marka ya da karakter adı var ({', '.join(names)}); Etsy bunu telif/marka ihlali sayar. Genel bir ifade kullan (ör. süper kahraman, çizgi film karakteri yerine tarzı anlat).")
+        out.append(tr(
+            f"{len(single)} etiket tek kelime ({', '.join(single)}); 2–4 kelimelik uzun kuyruklu etiketler kullan.",
+            f"{len(single)} tags are single words ({', '.join(single)}); use 2–4 word long-tail tags.",
+        ))
     return out
+
+
+def claim_problems(product_description: str, source_text: str | None = None) -> list[str]:
+    """Doğrulanmamış iddialar. `source_text` (listing'in mevcut metni) verilirse, orada zaten geçenler (ör. su geçirmez bir çantada "waterproof") sorun sayılmaz."""
+    src = html.unescape(source_text or "").lower()
+    claims = sorted({c for c in (m.group(0).lower() for m in RISKY_CLAIMS.finditer(product_description)) if not re.search(rf"{re.escape(c)}", src)})
+    if not claims:
+        return []
+    return [tr(
+        f"Açıklamada doğrulanmamış iddialar var ({', '.join(claims)}); yalnızca kullanıcının verdiği ya da görselde görünen bilgiyi yaz.",
+        f"The description has unverified claims ({', '.join(claims)}); write only what the seller stated or what the photos show.",
+    )]
+
+
+def brand_problems(title: str, tags: list[str], source_text: str | None = None) -> list[str]:
+    src = html.unescape(source_text or "").lower()
+    names = sorted({m.group(0).lower() for m in PROTECTED_NAMES.finditer(" ".join([title, *tags]))} - {m.group(0).lower() for m in PROTECTED_NAMES.finditer(src)})
+    if not names:
+        return []
+    return [tr(
+        f"Başlık/etiketlerde marka ya da karakter adı var ({', '.join(names)}); Etsy bunu telif/marka ihlali sayar. Genel bir ifade kullan (ör. süper kahraman, çizgi film karakteri yerine tarzı anlat).",
+        f"The title/tags contain a brand or character name ({', '.join(names)}); Etsy treats this as infringement. Use a generic phrase (describe the style instead).",
+    )]
+
+
+def basic_problems(title: str, tags: list[str], product_description: str = "", source_text: str | None = None, sizes_vary: bool = True) -> list[str]:
+    """Başlık/etiket/açıklama biçim kuralları (bkz. ai/standard.py); parçalar ayrı işlevlerdir, `audit` onları tek tek kullanır."""
+    return title_problems(title, sizes_vary) + tag_problems(tags) + claim_problems(product_description, source_text) + brand_problems(title, tags, source_text)
 
 
 def shop_others(db: Session, shop_id: int, exclude_id: int | None = None) -> list[dict]:
@@ -278,7 +300,7 @@ def similar_context(title: str, tags: list[str], others: list[dict], limit: int 
     tw, tg = _words(title), {t.lower() for t in tags}
     scored = []
     for o in others:
-        score = _jaccard(tw, _words(o["title"])) + len(tg & {t.lower() for t in o["tags"]}) / 13
+        score = _jaccard(tw, _words(o["title"])) + len(tg & {t.lower() for t in o["tags"]}) / TAG_COUNT
         if score > 0:
             scored.append((score, o))
     scored.sort(key=lambda x: -x[0])
