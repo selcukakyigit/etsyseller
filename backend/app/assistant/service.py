@@ -196,6 +196,29 @@ def _images_prompt(imgs: list[ChatImage]) -> str:
     return out
 
 
+_LISTING_WORDS = re.compile(
+    r"liste\b|listing|taslak|başlı[kğ]|etiket|varyasyon|stok|fiyat|kırp|resim|resm|fotoğraf|görsel|video|kişiselleştir|açıklama|kategori|özellik|alt metin|yayın[l]?a|yayımla|sku|boyut|renk|"
+    r"title|tags?\b|photo|variation|draft|crop|image|personaliz|description", re.IGNORECASE)
+_OTHER_WORDS = re.compile(
+    r"sipariş|kargo|fatura|kâr\b|zarar|satış|gelir|ciro|reklam|finans|müşteri|yorum|sıralama|rakip|ülke|rapor|maliyet|performans|"
+    r"order|profit|revenue|shipping|invoice|sales|review|\bads?\b", re.IGNORECASE)
+
+
+def _pick_mode(message: str, current: list[ChatImage], last_tool_notes: str | None) -> str:
+    """"listing": listing oluştur/düzenle konuşuluyor (resim/video yüklendi ya da listing sözcükleri, sipariş/finans sözcüğü yok) ya da kısa bir devam
+    mesajı ve önceki tur listing araçları kullanmış. Emin değilse "all" (hiçbir araç/kural eksilmez). Model çağırmaz."""
+    if any(i.content_type not in IMAGE_TYPES and i.content_type not in VIDEO_TYPES for i in current):
+        return "all"  # fatura/belge: analiz araçları gerekir
+    other = bool(_OTHER_WORDS.search(message))
+    if other:
+        return "all"
+    if current or _LISTING_WORDS.search(message):
+        return "listing"
+    if last_tool_notes and any(name in last_tool_notes for name in tools.LISTING_TOOL_NAMES):
+        return "listing"  # "evet", "c ve a yap" gibi devam mesajı
+    return "all"
+
+
 _TOOL_NAME = re.compile(r"(?<![A-Za-z_])(?:" + "|".join(re.escape(n) for n in sorted(tools.EXECUTORS, key=len, reverse=True)) + r")(?![A-Za-z_])")
 
 
@@ -211,11 +234,19 @@ _BARE_EDIT_URL = re.compile(r"https?://\S*/listings/-?\d+/edit\S*")
 
 
 # Bazı modeller istemin "MAĞAZA BİLGİLERİ" bölümünü cevabın sonuna kopyalıyor; kullanıcıya gösterilmez.
-_LEAKED_CONTEXT = re.compile(r"\n[ \t]*(?:MAĞAZA BİLGİLERİ|STORE INFORMATION|SHOP INFORMATION)\b.*\Z", re.DOTALL | re.IGNORECASE)
+_LEAKED_CONTEXT = re.compile(r"\n[ \t]*(?:MAĞAZA BİLGİLERİ|SİSTEM BAĞLAMI|STORE INFORMATION|SHOP INFORMATION)\b.*\Z", re.DOTALL | re.IGNORECASE)
+
+
+# Model kendini tanıtıyor ("Ben Ulagg. İstediğini yaptım — kısa özet:" / sonda "Ben Ulagg — onayınızı bekliyorum"): cevaptan atılır.
+_PERSONA_LEAD = re.compile(r"^\s*(?:Ben\s+)?Ulagg\s*[.,!:—–-]+\s*", re.IGNORECASE)
+_PERSONA_TAIL = re.compile(r"\n+[ \t]*(?:Ben\s+)?Ulagg\s*[—–-].*\Z", re.IGNORECASE | re.DOTALL)
+_SUMMARY_LEAD = re.compile(r"^[^\n]{0,60}?(?:—|-)\s*kısa özet\s*(?:\([^)]*\))?\s*:\s*", re.IGNORECASE)
 
 
 def _strip_app_links(text: str) -> str:
-    return _LEAKED_CONTEXT.sub("", _BARE_EDIT_URL.sub("", _EDIT_LINK.sub(r"\1", text))).strip()
+    text = _LEAKED_CONTEXT.sub("", _BARE_EDIT_URL.sub("", _EDIT_LINK.sub(r"\1", text))).strip()
+    text = _PERSONA_TAIL.sub("", _PERSONA_LEAD.sub("", text)).strip()
+    return _SUMMARY_LEAD.sub("", text).strip()
 
 
 def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message: str, image_ids: list[str], today: dt.date, request_id: str | None = None, lang: str = "tr") -> dict:
@@ -267,11 +298,13 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
         finally:
             set_progress(shop.id, request_id, "Reviewing the result" if en else "Sonucu değerlendiriyor", None, ctx.cards)
 
+    last_notes = next((m.tool_notes for m in recent if m.role == "assistant"), None)
+    mode = _pick_mode(message, current, last_notes)
     try:
         result = llm.run_agent(
-            model, prompt.STATIC_RULES, dynamic, history, _with_attachments(message, current),
+            model, prompt.static_rules(mode), dynamic, history, _with_attachments(message, current),
             [{"path": i.path, "content_type": i.content_type} for i in current if i.content_type in IMAGE_TYPES][:MODEL_IMAGES_PER_MESSAGE],
-            tools.TOOLS, run_tool,
+            tools.tools_for(mode), run_tool,
         )
     except llm.AssistantError:
         db.delete(user_msg)  # başarısız istek geçmişe yazılmasın
@@ -285,10 +318,10 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
         metering.record("assistant", model, first.input_tokens, first.output_tokens)
         try:
             result = llm.run_agent(
-                model, prompt.STATIC_RULES, dynamic, history,
+                model, prompt.static_rules(mode), dynamic, history,
                 _with_attachments(message, current) + "\n\n[SİSTEM NOTU: Önceki denemende hiçbir araç çağırmadın ama çağırmış gibi anlattın. Şimdi isteği gerçekten ilgili araçlarla yap; çağırmadığın hiçbir şeyi yapılmış gibi yazma. Cevapta araç adı ya da parametre adı geçirme.]",
                 [{"path": i.path, "content_type": i.content_type} for i in current if i.content_type in IMAGE_TYPES][:MODEL_IMAGES_PER_MESSAGE],
-                tools.TOOLS, run_tool,
+                tools.tools_for(mode), run_tool,
             )
         except llm.AssistantError:
             db.delete(user_msg)

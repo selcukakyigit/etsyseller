@@ -878,6 +878,12 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
                 attr_errors = [e for e in attr_errors if "personali" not in e.lower()]
                 if attr_errors:
                     completion["ozellik_hatalari"] = attr_errors
+            if a.get("autofill_attributes", True):  # taslakla birlikte tek amaçlı model çağrısı (ucuz, kısa): genel istemde özellik adımı atlanıyor
+                filled, fill_errors = _autofill_in_work(ctx, lid, work)
+                if filled:
+                    completion["otomatik_doldurulan_ozellikler"] = filled
+                if fill_errors:
+                    completion["otomatik_ozellik_hatasi"] = fill_errors[:2]
             described = fields.describe(defs, work)
             completion["eksik_zorunlu_ozellikler"] = described["eksik_zorunlu"]
             completion["doldurulabilecek_bos_ozellikler"] = [r["ad"] for r in described["ozellikler"] if not r["secili"] and not r["zorunlu"]][:12]
@@ -1090,8 +1096,19 @@ def creation_cleanup(ctx: Ctx, lid: int) -> None:
     drafts.discard_local(ctx.db, ctx.shop, lid)
 
 
+def _promote_draft(ctx: Ctx, lid: int) -> None:
+    """Otomatik taslak katmanındaki (fotoğraf/video/envanter araçlarının yazdığı) en güncel hâli yerel sürüme yükseltir; böylece yerel sürümü okuyup
+    yazan araçlar (update_listing, toplu düzenleme) taslaktaki fotoğraf ve videoları ezmez. Yayınlama da aynısını yapar."""
+    d = drafts.get_draft(ctx.db, ctx.shop, lid)
+    if not (d["exists"] and d["data"]):
+        return
+    live = listing_service.get_listing_for_edit(ctx.db, ctx.shop, lid).model_dump() if lid > 0 else None
+    drafts.save_local(ctx.db, ctx.shop, lid, d["data"], live)
+
+
 def update_listing(ctx: Ctx, a: dict) -> dict:
     lid = int(a["listing_id"])
+    _promote_draft(ctx, lid)
     work = _current_work(ctx, lid)
     if work is None:
         return {"error": "Listing bulunamadı (yerelde yok olabilir; senkronize edilmesi gerekebilir)."}
@@ -1294,6 +1311,8 @@ def bulk_update_listings(ctx: Ctx, a: dict) -> dict:
     ch.update(_ref_changes(a))
     if not ch:
         return {"error": "Değişiklik belirtilmedi."}
+    for lid in ids:
+        _promote_draft(ctx, lid)
     results = bulk.bulk_stage(ctx.db, ctx.shop, bulk.BulkStageIn(listing_ids=ids, changes=bulk.BulkChanges(**ch)))
     ok = [r for r in results if r["ok"] and r["changed"]]
     same = [r for r in results if r["ok"] and not r["changed"]]
@@ -1761,6 +1780,54 @@ def set_listing_fields(ctx: Ctx, a: dict) -> dict:
 
 # Aynı bilgiyi anlatan sözcükler: varyasyon "Renk", özellik "Primary color" ise ikisi aynı şeydir (mağaza dili ne olursa olsun).
 _VARIATION_WORD_GROUPS = (("color", "colour", "renk"), ("size", "boyut", "beden", "ölçü"))
+
+
+def _autofill_in_work(ctx: Ctx, lid: int, work: dict) -> tuple[list[str], list[str]]:
+    """Kategorinin özelliklerini tek amaçlı model çağrısıyla doldurur (bkz. ai/attributes.py); yalnızca izin verilen değerler yazılır, boş olanlara dokunur,
+    varyasyonla karşılanan özellikleri atlar. Döner: (doldurulan özellikler, hatalar). Kaydetmez."""
+    from app.ai import attributes as ai_attributes
+    from app.ai.vision import VisionError
+
+    tid = work.get("taxonomy_id")
+    if not tid:
+        return [], ["Kategori yok; önce kategori seç."]
+    try:
+        defs = _category_defs(int(tid))
+    except Exception as exc:  # noqa: BLE001
+        return [], [f"Kategori özellikleri alınamadı: {exc}"]
+    chosen = {p["property_id"] for p in work.get("properties", []) if p.get("values")}
+    brief = []
+    for d in fields.attribute_defs(defs):
+        if d["property_id"] in chosen or fields._is_dimension(d) or _covered_by_variation(work, d["display_name"]):
+            continue
+        names = [v["name"] for v in d["possible_values"]]
+        brief.append({"name": d["display_name"], "required": bool(d.get("is_required")), "max_choices": fields._max_values(d), "allowed": names[:80]})
+    if not brief:
+        return [], []
+    photos = []
+    for img in sorted(work.get("images") or [], key=lambda i: i.get("rank") or 0)[: ai_attributes.MAX_PHOTOS]:
+        try:
+            photos.append(drafts._source_image_bytes(ctx.db, ctx.shop, lid, img["listing_image_id"], img.get("draft_file_id")))
+        except Exception:  # noqa: BLE001 - görsel okunamazsa yalnızca metinle devam
+            continue
+    variations = [{"name": n, "options": inventory_edit.options(work, n)[:8]} for n in inventory_edit.variation_names(work)]
+    try:
+        items = ai_attributes.suggest(html.unescape(work.get("title") or ""), html.unescape(work.get("description") or ""), work.get("tags") or [], work.get("materials") or [], variations, brief, photos)
+    except VisionError as exc:
+        return [], [str(exc)]
+    items = [x for x in items if not _covered_by_variation(work, x["name"])]
+    changed, errors = fields.apply_attributes(work, defs, items)
+    return changed, errors
+
+
+def autofill_listing_attributes(ctx: Ctx, a: dict) -> dict:
+    """Listing'in boş kategori özelliklerini (malzeme, kullanım yeri, tatil, yön, çerçeve…) ürüne ve fotoğraflara bakarak doldurur."""
+    lid = int(a["listing_id"])
+    work, err = _work_or_error(ctx, lid)
+    if err:
+        return err
+    changed, errors = _autofill_in_work(ctx, lid, work)
+    return _save_fields(ctx, lid, work, changed, errors)
 
 
 def _covered_by_variation(work: dict, attr_name: str) -> bool:
@@ -2433,6 +2500,7 @@ TOOLS: list[dict] = [
         **_QUALITY_SCHEMA,
     }, ["listing_id"])},
     {"name": "get_category_attributes", "description": "Listing'in kategorisinin özelliklerini (renk, malzeme, kullanım yeri, ölçü…) verir: hangileri ZORUNLU, izin verilen değerler, birimler ve şu anki seçimler. Özellik yazmadan ve kategori değişince çağır; kullanıcının söylediklerinden (ör. 'metal') ve varyasyon renklerinden uygun olanları set_listing_attributes ile kendin doldur, yalnızca bilmediğin ZORUNLU olanları kullanıcıya sor.", "input_schema": _obj({"listing_id": {"type": "integer"}}, ["listing_id"])},
+    {"name": "autofill_listing_attributes", "description": "Listing'in BOŞ kategori özelliklerini (malzeme, kullanım yeri, tatil, yön, çerçeve, el yapımı vb.) ürüne, fotoğraflara ve varyasyonlara bakarak otomatik doldurur; yalnızca Etsy'nin izin verdiği değerleri yazar, varyasyonla karşılanan renk/boyutu atlar. 'Özellikleri doldur', 'eksik alanları tamamla' isteklerinde bunu çağır; özellikleri tek tek sen yazma. Yeni taslakta zaten otomatik yapılır.", "input_schema": _obj({"listing_id": {"type": "integer"}}, [])},
     {"name": "set_listing_attributes", "description": "Kategori özelliklerini izin verilen değerlere göre yazar (yerel taslak). attributes: [{name: 'Primary color', values: ['Black']}, {name: 'Width', values: ['30'], unit: 'cm'}]. İzin verilen listede olmayan değer yazılmaz ve hata olarak döner (uydurma). Boş values özelliği kaldırır. Önce get_category_attributes'e bak.", "input_schema": _obj({"listing_id": {"type": "integer"}, "attributes": {"type": "array", "items": _obj({"name": {"type": "string"}, "values": {"type": "array", "items": {"type": "string"}}, "unit": {"type": "string", "description": "Yalnızca ölçü özelliklerinde (cm, in…)"}}, ["name"])}}, ["listing_id", "attributes"])},
     {"name": "set_listing_fields", "description": "Listing taslağının şu alanlarını doğrulayarak yazar: malzemeler, stil, kategori (taxonomy_id; find_category'den), kim yaptı / ne zaman yapıldı, tedarik ürünü mü, vergilendirme, ağırlık ve boyutlar (birimleriyle), SKU (varyasyonsuz listing) ve kişiselleştirme soruları. Yalnızca yerel taslak; Etsy'ye gitmez. Sonuçtaki hatalar yazılmamıştır: kullanıcıya olduğu gibi söyle.", "input_schema": _obj({
         "listing_id": {"type": "integer"},
@@ -2551,6 +2619,7 @@ TOOL_LABELS = {
     "personalization_library": "Önceki kişiselleştirmelere bakıyor",
     "add_video_to_listing": "Videoyu listing'e ekliyor",
     "get_category_attributes": "Kategori özelliklerine bakıyor",
+    "autofill_listing_attributes": "Özellikleri dolduruyor",
     "set_listing_attributes": "Özellikleri yazıyor",
     "set_listing_fields": "Listing alanlarını güncelliyor",
     "edit_personalization_question": "Kişiselleştirme sorusunu düzenliyor",
@@ -2616,6 +2685,7 @@ TOOL_LABELS_EN = {
     "personalization_library": "Checking earlier personalization options",
     "add_video_to_listing": "Adding the video to the listing",
     "get_category_attributes": "Checking the category attributes",
+    "autofill_listing_attributes": "Filling in attributes",
     "set_listing_attributes": "Setting attributes",
     "set_listing_fields": "Updating listing fields",
     "edit_personalization_question": "Editing a personalization question",
@@ -2645,7 +2715,7 @@ EXECUTORS = {
     "orders_missing_costs": orders_missing_costs, "keyword_pool": keyword_pool, "shipping_invoices": shipping_invoices, "bulk_update_listings": bulk_update_listings,
     "regenerate_listing_image": regenerate_listing_image, "edit_chat_image": edit_chat_image, "move_listing_photo": move_listing_photo, "crop_listing_photo": crop_listing_photo, "generate_listing_video": generate_listing_video, "generation_options": generation_options, "edit_inventory": edit_inventory, "remove_variation_option": remove_variation_option, "add_variation_option": add_variation_option,
     "set_variation_photo": set_variation_photo, "remove_listing_video": remove_listing_video, "copy_listing": copy_listing,
-    "discard_listing_changes": discard_listing_changes, "delete_listing": delete_listing, "personalization_library": personalization_library, "add_video_to_listing": add_video_to_listing, "get_category_attributes": get_category_attributes, "set_listing_attributes": set_listing_attributes,
+    "discard_listing_changes": discard_listing_changes, "delete_listing": delete_listing, "personalization_library": personalization_library, "add_video_to_listing": add_video_to_listing, "get_category_attributes": get_category_attributes, "set_listing_attributes": set_listing_attributes, "autofill_listing_attributes": autofill_listing_attributes,
     "set_listing_fields": set_listing_fields, "delete_listing_photo": delete_listing_photo, "edit_personalization_question": edit_personalization_question, "set_photo_alt_text": set_photo_alt_text, "add_chat_image_to_listing": add_chat_image_to_listing, "generate_missing_alt_texts": generate_missing_alt_texts,
     "listing_health_status": listing_health_status, "keep_watching_listing": keep_watching_listing,
     "publish_listing_draft": publish_listing_draft, "deactivate_listing": deactivate_listing, "mark_order_shipped": mark_order_shipped,
@@ -2664,7 +2734,7 @@ for _mod in toolsets.MODULES:
 
 # listing_id verilmezse (ya da önceki konuşmadan unutulduysa) sohbette en son oluşturulan yeni taslak kullanılır.
 _DEFAULT_DRAFT_TOOLS = (
-    "get_listing", "update_listing", "regenerate_listing_image", "crop_listing_photo", "get_category_attributes", "set_listing_attributes", "set_listing_fields",
+    "get_listing", "update_listing", "regenerate_listing_image", "crop_listing_photo", "get_category_attributes", "set_listing_attributes", "autofill_listing_attributes", "set_listing_fields",
     "edit_personalization_question", "delete_listing_photo", "set_photo_alt_text", "edit_inventory", "add_variation_option", "remove_variation_option",
     "set_variation_photo", "remove_listing_video", "move_listing_photo", "generate_missing_alt_texts",
 )
@@ -2696,3 +2766,20 @@ for _t in TOOLS:
         _schema["required"] = [r for r in _schema.get("required", []) if r != "listing_id"]
         if "listing_id" in _schema.get("properties", {}):
             _schema["properties"]["listing_id"] = {"type": "integer", "description": "Verilmezse bu sohbette en son oluşturulan yeni taslak kullanılır"}
+
+
+# Listing modunda (bkz. service._pick_mode) modele yalnızca bu araçlar gösterilir; sipariş/finans/reklam araçları gönderilmez.
+LISTING_TOOL_NAMES = frozenset({
+    "shop_defaults", "shop_options", "similar_listings", "find_category", "search_listings", "get_listing", "create_listing_draft", "update_listing", "bulk_update_listings",
+    "regenerate_listing_image", "edit_chat_image", "add_chat_image_to_listing", "crop_listing_photo", "delete_listing_photo", "move_listing_photo", "set_photo_alt_text",
+    "generate_missing_alt_texts", "get_category_attributes", "set_listing_attributes", "autofill_listing_attributes", "set_listing_fields", "edit_personalization_question",
+    "personalization_library", "edit_inventory", "add_variation_option", "remove_variation_option", "set_variation_photo", "copy_listing", "discard_listing_changes",
+    "delete_listing", "generation_options", "generate_listing_video", "add_video_to_listing", "remove_listing_video", "publish_listing_draft", "deactivate_listing",
+    "list_description_templates", "save_description_template", "delete_description_templates", "listing_health_status", "workspace_status", "keyword_pool",
+    "remember_note", "forget_note",
+})
+
+
+def tools_for(mode: str) -> list[dict]:
+    """Moda göre araç şemaları: "listing" ise yalnızca listing araçları, aksi halde hepsi."""
+    return TOOLS if mode != "listing" else [t for t in TOOLS if t["name"] in LISTING_TOOL_NAMES]
