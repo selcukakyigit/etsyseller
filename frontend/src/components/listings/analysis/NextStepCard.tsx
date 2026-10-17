@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { NextStep } from "@/lib/api";
 import { T, useT } from "@/lib/i18n-client";
-import { Finding, fixHref } from "./ContentLevelCard";
+import { briefText, Finding, fixHref } from "./ContentLevelCard";
 
 /** Düzenleyicinin odak modu: yalnızca sıradaki adımın alanı görünür (bir turda tek şey değişsin ki etkisi ölçülebilsin). */
 export type FocusKey = "photo" | "price" | "title_tags" | "description" | "text" | "overhaul" | "attributes";
@@ -143,7 +143,7 @@ export default function NextStepCard({
                 <span className="text-neutral-400 dark:text-neutral-500">·</span>
                 <span>
                   <span className="mr-1 font-semibold text-neutral-500 dark:text-neutral-400">{f.dim.toUpperCase()}</span>
-                  {f.text}
+                  {briefText(f.text)}
                 </span>
               </li>
             ))}

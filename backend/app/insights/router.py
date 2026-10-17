@@ -44,7 +44,7 @@ def listing_diagnosis(listing_id: int, today: dt.date | None = None, shop: Shop 
 
 @router.get("/listings/{listing_id}/content")
 def listing_content(listing_id: int, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
-    """İçerik seviyesi (SEO / AEO / GEO) ve bulgular: yapay zekâ çağırmaz, ücretsizdir."""
+    """İçerik seviyesi (SEO ve opsiyonel AI önerileri) ve bulgular: yapay zekâ çağırmaz, ücretsizdir."""
     result = content_audit.audit_listing(db, shop, listing_id)
     if result is None:
         raise HTTPException(404, "Listing bulunamadı")

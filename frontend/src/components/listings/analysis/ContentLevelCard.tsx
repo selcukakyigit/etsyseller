@@ -9,9 +9,9 @@ import HelpTip from "@/components/ui/HelpTip";
 import type { FocusKey } from "./NextStepCard";
 
 export type Finding = ContentAudit["findings"][number];
-type Dim = "seo" | "aeo" | "geo";
+type Dim = "seo" | "ai";
 
-export const DIMS: Dim[] = ["seo", "aeo", "geo"];
+export const DIMS: Dim[] = ["seo", "ai"];
 export const LEVEL_DOT: Record<ContentLevel, string> = { good: "bg-emerald-500", mid: "bg-amber-500", weak: "bg-red-500" };
 const PILL: Record<ContentLevel, string> = {
   good: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
@@ -20,15 +20,17 @@ const PILL: Record<ContentLevel, string> = {
 };
 export const levelText = (t: T): Record<ContentLevel, string> => ({ good: t("iyi", "good"), mid: t("orta", "fair"), weak: t("zayıf", "weak") });
 
-// SEO temeldir; AEO ve GEO opsiyonel öneridir (backend audit.OPTIONAL_DIMS): küçük eksikler alarm gibi görünmesin.
-const OPTIONAL: Dim[] = ["aeo", "geo"];
+// SEO temeldir; "AI" (AEO + GEO) opsiyonel öneridir (backend audit.OPTIONAL_DIMS): küçük eksikler alarm gibi görünmesin.
+const OPTIONAL: Dim[] = ["ai"];
 export const dimDot = (d: Dim, level: ContentLevel) => (OPTIONAL.includes(d) && level === "mid" ? "bg-sky-500" : LEVEL_DOT[level]);
 export const dimLevelText = (t: T, d: Dim, level: ContentLevel) =>
   OPTIONAL.includes(d) && level === "mid" ? t("öneri var", "suggestions") : levelText(t)[level];
 const dimTip = (t: T): Record<Dim, string> => ({
   seo: t("Etsy aramasında eşleşme: başlık, etiketler, kategori ve özellikler.", "Matching in Etsy search: title, tags, category and attributes."),
-  aeo: t("Alıcının sorusuna doğrudan cevap: açılış cümlesi, olgu listesi, soru-cevap.", "Direct answers to buyer questions: opening sentence, fact list, Q&A."),
-  geo: t("Yapay zekâ asistanlarının (ChatGPT, Google AI…) listing'i güvenle önerebilmesi: tutarlı, doğrulanabilir, eksiksiz veri.", "AI assistants (ChatGPT, Google AI…) being able to recommend the listing: consistent, verifiable, complete data."),
+  ai: t(
+    "Opsiyonel öneriler: alıcının sorusuna doğrudan cevap (açılış cümlesi, olgu listesi, soru-cevap; AEO) ve yapay zekâ asistanlarının (ChatGPT, Google AI…) listing'i güvenle önerebilmesi (tutarlı, doğrulanabilir, eksiksiz veri; GEO).",
+    "Optional suggestions: direct answers to buyer questions (opening sentence, fact list, Q&A; AEO) and AI assistants (ChatGPT, Google AI…) being able to recommend the listing (consistent, verifiable, complete data; GEO).",
+  ),
 });
 
 // Bulgunun düzenlendiği alan → düzenleyicinin odak modu (bkz. NextStepCard FocusKey).
@@ -42,6 +44,9 @@ const areaLabel = (t: T): Record<string, string> => ({
 });
 const AI_AREAS = ["title", "tags", "description"];
 
+/** Bulgunun kısa hâli: ilk cümle ("…; öneri" kısmı atılır). Tam metin ayrıntıda ve fare üzerine gelince görünür. */
+export const briefText = (s: string) => s.split(/;\s/)[0].replace(/\.$/, "");
+
 /** Bulguların düzeltileceği düzenleyici bağlantısı: tek alanlıysa o alanın odak modunda, birden çok alanlıysa tam formda açılır; bulgular `fix` ile taşınır. */
 export function fixHref(listingId: number, findings: Finding[]): string {
   const focuses = new Set(findings.filter((f) => f.fix).map((f) => AREA_FOCUS[f.fix as string]));
@@ -51,7 +56,7 @@ export function fixHref(listingId: number, findings: Finding[]): string {
 }
 
 /** Sıradaki Adım'ın bulguları: adım başlık-etiketse SEO boyutunun tamamı (başlık, etiketler, özellikler, çakışma: Etsy aramasındaki eşleşme), açıklamaysa açıklama alanındaki bulgular
- * (AEO + GEO dahil), kapsamlıysa metin alanlarının hepsi. Adımın düğmesi bunları tek seferde düzeltir. */
+ * (AI önerileri dahil), kapsamlıysa metin alanlarının hepsi. Adımın düğmesi bunları tek seferde düzeltir. */
 export function findingsForStep(audit: ContentAudit | null | undefined, step: FocusKey | null): Finding[] {
   if (!audit || !step) return [];
   if (step === "title_tags") return audit.findings.filter((f) => f.dim === "seo");
@@ -75,7 +80,7 @@ export function useContentAudit(shopId: number, listingId: number): ContentAudit
 const btnPrimary = "rounded-lg bg-[#D97757] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#C6613F]";
 const btnGhost = "rounded-lg border border-neutral-300 px-2.5 py-1 text-xs font-semibold text-[#B4553A] hover:bg-neutral-100 dark:border-neutral-700 dark:text-[#E89A7F] dark:hover:bg-neutral-800";
 
-/** Üç gösterge (SEO / AEO / GEO): her satırda ilk bulgunun özeti, hangi alanlara dokunulacağı, yapay zekâ gerekip gerekmediği ve "Düzelt"; üstte tüm bulgular için "Hepsini düzelt".
+/** İki gösterge (SEO ve opsiyonel AI önerileri): her satırda ilk bulgunun özeti, hangi alanlara dokunulacağı, yapay zekâ gerekip gerekmediği ve "Düzelt"; üstte tüm bulgular için "Hepsini düzelt".
  * `listingId` verilirse düğmeler çıkar. `stepFocus`: Sıradaki Adım'ın bu turdaki alanı; o alandaki bulgular "bu tur" diye işaretlenir. */
 export function ContentLevelView({ audit, listingId, stepFocus, showTitle = true, onFix }: { audit: ContentAudit; listingId?: number; stepFocus?: FocusKey | null; showTitle?: boolean; onFix?: (findings: Finding[]) => void }) {
   const { t } = useT();
@@ -94,8 +99,8 @@ export function ContentLevelView({ audit, listingId, stepFocus, showTitle = true
           {t("İçerik seviyesi", "Content level")}
           <HelpTip>
             {t(
-              "Listing metninin Etsy aramasına ve yapay zekâ alışveriş asistanlarına ne kadar hazır olduğunu gösterir. Ücretsizdir, yapay zekâ kullanmaz. SEO temeldir, AEO ve GEO isteğe bağlı önerilerdir. Bir boyutun \"Düzelt\" düğmesi o boyuttaki bulguları tek seferde düzeltir; \"Hepsini düzelt\" üç boyutu birlikte, alanlara göre birleştirerek (örneğin açıklamayı bir kez) düzeltir. Başlık değişikliği Etsy sıralamasını etkileyebileceği için başlığa dokunmak ayrıca onay ister.",
-              "Shows how ready the listing text is for Etsy search and AI shopping assistants. Free, no AI is used. SEO is the core; AEO and GEO are optional suggestions. A dimension's \"Fix\" button fixes its findings in one pass; \"Fix all\" fixes all three together, merged by area (for example the description once). A title change can affect Etsy ranking, so touching the title needs a separate confirmation.",
+              "Listing metninin Etsy aramasına ve yapay zekâ alışveriş asistanlarına ne kadar hazır olduğunu gösterir. Ücretsizdir, yapay zekâ kullanmaz. SEO temeldir, AI önerileri (AEO/GEO) isteğe bağlıdır. Bir boyutun \"Düzelt\" düğmesi o boyuttaki bulguları tek seferde düzeltir; \"Hepsini düzelt\" üç boyutu birlikte, alanlara göre birleştirerek (örneğin açıklamayı bir kez) düzeltir. Başlık değişikliği Etsy sıralamasını etkileyebileceği için başlığa dokunmak ayrıca onay ister.",
+              "Shows how ready the listing text is for Etsy search and AI shopping assistants. Free, no AI is used. SEO is the core; AI suggestions (AEO/GEO) are optional. A dimension's \"Fix\" button fixes its findings in one pass; \"Fix all\" fixes all three together, merged by area (for example the description once). A title change can affect Etsy ranking, so touching the title needs a separate confirmation.",
             )}
           </HelpTip>
         </span>
@@ -130,7 +135,7 @@ export function ContentLevelView({ audit, listingId, stepFocus, showTitle = true
                   {dimLevelText(t, d, info.level)}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-xs text-neutral-600 dark:text-neutral-300">
-                  {mine.length > 0 ? mine[0].text : t("Sorun yok", "No issues")}
+                  {mine.length > 0 ? briefText(mine[0].text) : t("Sorun yok", "No issues")}
                 </span>
                 {mine.some(inRound) && <span className="rounded bg-[#D97757]/15 px-1 text-[10px] font-semibold text-[#B4553A] dark:text-[#E89A7F]">{t("bu tur", "this round")}</span>}
                 {touched.length > 0 && onFix && (
@@ -156,9 +161,6 @@ export function ContentLevelView({ audit, listingId, stepFocus, showTitle = true
         })}
       </ul>
 
-      <p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">
-        {t("SEO temeldir. AEO ve GEO isteğe bağlı önerilerdir: Etsy'nin zorunlu şartı değildir ve genel seviyeyi düşürmez.", "SEO is the core. AEO and GEO are optional suggestions: they are not an Etsy requirement and do not lower the overall level.")}
-      </p>
       {audit.findings.length > 0 && (
         <button type="button" onClick={() => setOpen(!open)} className="mt-1 text-xs font-medium text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200">
           {open ? t("Ayrıntıları gizle", "Hide details") : t("Ayrıntıları göster", "Show details")}

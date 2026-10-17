@@ -34,7 +34,7 @@ def _local_listing(db: Session, shop: Shop, listing_id: int) -> dict:
 @router.get("")
 def keyword_pool(listing_id: int, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
     listing = _local_listing(db, shop, listing_id)
-    return {"keywords": service.build_keyword_pool(db, shop, listing)}
+    return {"keywords": service.scored_pool(db, shop, listing)}  # yapay zekânın kullandığı AYNI puanlı, rol atanmış, rekabeti ölçülmüş havuz
 
 
 @router.get("/trends")

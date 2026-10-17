@@ -87,6 +87,30 @@ def _others_block(title: str, tags: list[str], others: list[dict]) -> str:
     )
 
 
+def _fit_tags(tags: list[str], pool: list[dict], title: str) -> list[str]:
+    """Etsy 20 karakteri aşan etiketi reddeder. Kısaltılamayan etiketi havuzdaki en yüksek puanlı, sığan ve kullanılmayan adayla değiştirir;
+    havuz yetmezse kelime atarak (tek kelimeye kadar) ya da kesilerek sığdırır. Böylece öneri yayınlanamaz etiketle çıkmaz."""
+    limit = standard.TAG_MAX_LEN
+    out = [t for t in tags if len(t) <= limit]
+    if len(out) == len(tags):
+        return tags
+    used = {t.lower() for t in out}
+    spare = [p["tag"] for p in scoring.rank(pool, title) if len(p["tag"]) <= limit and p["tag"].lower() not in used]
+    for t in tags:
+        if len(t) <= limit:
+            continue
+        if spare:
+            pick = spare.pop(0)
+        else:
+            words = t.split()
+            while len(words) > 1 and len(" ".join(words)) > limit:
+                words.pop()
+            pick = " ".join(words)[:limit].strip()
+        if pick and pick.lower() not in {x.lower() for x in out}:
+            out.append(pick)
+    return out
+
+
 def generate_seo_suggestion(
     listing: dict, keyword_pool: list[dict] | None = None, others: list[dict] | None = None, diagnosis_brief: str = "",
     variations: dict[str, list[str]] | None = None, fact_source: dict | None = None,
@@ -137,6 +161,9 @@ def generate_seo_suggestion(
             + json.dumps(suggestion, ensure_ascii=False)
         )
 
+    suggestion["tags"] = _fit_tags(suggestion.get("tags", []), keyword_pool or [], str(suggestion.get("title", "")))
+    if suggestion["tags"] != tags:  # düzeltme sonrası uyarılar yeniden hesaplanır (artık geçersiz etiket kalmadı)
+        problems = audit.generation_problems(suggestion["title"], suggestion["tags"], str(suggestion.get("description", "")), others, source_text, variations or {}, listing.get("listing_type") == "download")
     if len(suggestion.get("tags", [])) != standard.TAG_COUNT:
         raise ValueError(f"Beklenen {standard.TAG_COUNT} etiket, alınan: {len(suggestion.get('tags', []))}")
 

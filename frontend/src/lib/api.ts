@@ -265,7 +265,7 @@ export type DescriptionTemplate = { id: number; name: string; body: string; is_d
 /** İçerik denetimi (bkz. backend app/ai/audit.py): üç boyutta seviye ve bulgular. */
 export type ContentLevel = "good" | "mid" | "weak";
 /** Yayın kaydındaki içerik seviyesi özeti (önce / sonra). */
-export type ContentLevels = { level: ContentLevel; seo: ContentLevel; aeo: ContentLevel; geo: ContentLevel };
+export type ContentLevels = { level: ContentLevel; seo: ContentLevel; ai?: ContentLevel };
 /** Düzenleyicideki (kaydedilmemiş) değerler: "Kontrol et" bunları denetler. */
 export type ContentCheckInput = {
   title: string;
@@ -282,8 +282,8 @@ export type ContentCheckInput = {
 };
 export type ContentAudit = {
   level: ContentLevel;
-  dims: Record<"seo" | "aeo" | "geo", { level: ContentLevel; points: number; count: number }>;
-  findings: { id: string; dim: "seo" | "aeo" | "geo"; weight: number; text: string; fix: "attributes" | "description" | "title" | "tags" | "alt_text" | null; risk: "low" | "high" }[];
+  dims: Record<"seo" | "ai", { level: ContentLevel; points: number; count: number }>;
+  findings: { id: string; dim: "seo" | "ai"; weight: number; text: string; fix: "attributes" | "description" | "title" | "tags" | "alt_text" | null; risk: "low" | "high" }[];
 };
 
 /** Listing satış teşhisi (bkz. backend app/insights/diagnosis.py). Metinler istek dilinde gelir. */
@@ -439,6 +439,10 @@ export type BulkResult = { id: number; ok: boolean; changed: boolean; error: str
 
 export type KeywordPoolItem = {
   tag: string;
+  /** Sunucu puanı (0–1), veri güveni ve rol: bkz. backend keywords/scoring.py. Yapay zekâ aynı puanı kullanır. */
+  rank_score?: number;
+  confidence?: "measured" | "partial" | "estimate";
+  role?: "head" | "mid" | "long" | "occasion" | "style";
   /** etsy: Etsy verisine göre listing'i gerçekten getiren arama (yapıştırılan arama terimleri / reklam raporu);
    * research: kullanıcının Etsy kelime araştırmasından (Marketplace Insights) bu ürünle ilgili arama, skor = aylık arama */
   source: "own" | "competitor" | "etsy" | "research";

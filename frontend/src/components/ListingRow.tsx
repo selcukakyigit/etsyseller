@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { api, FadedInfo, KeywordPoolItem, Listing, TrackedRank } from "@/lib/api";
 import ListingAnalysisPanel, { AnalysisTab } from "@/components/listings/analysis/ListingAnalysisPanel";
 import { toast } from "@/lib/toast";
 import { PublishJob } from "@/lib/publishJobs";
 import PublishBar from "@/components/listings/PublishBar";
-import { competitionFill, normalizedScore, poolRanges } from "@/lib/keywordScore";
+import { scoreFill, scorePercent, scoreTitle } from "@/lib/keywordScore";
 import { useT } from "@/lib/i18n-client";
 import ListingDateBadges, { FadedBadge, RankBadge } from "@/components/listings/ListingDateBadges";
 
@@ -27,14 +27,13 @@ function ScoredKeywordPills({ items, onTrack }: { items: KeywordPoolItem[]; onTr
   // up bunched in the same "low ratio" range and the color barely varies.
   // Comparing tags to each other instead spreads them across the full
   // green-to-red range, which is what's actually useful to look at.
-  const ranges = useMemo(() => poolRanges(items), [items]);
   const { t } = useT();
 
   return (
     <div className="flex flex-wrap gap-1.5">
       {items.map((item) => {
-        const normalized = normalizedScore(item, ranges);
-        const fill = competitionFill(normalized, item.source);
+        const fill = scoreFill(item);
+        const pct = scorePercent(item);
         return (
           <span
             key={item.tag}
@@ -59,13 +58,19 @@ function ScoredKeywordPills({ items, onTrack }: { items: KeywordPoolItem[]; onTr
                         `From competitor listings: ${item.score} of the top ${item.sample_size} competitor listings use this tag (high = crowded/competitive)`,
                       )
             }
-            style={{ background: `linear-gradient(to right, ${fill} ${normalized * 100}%, transparent ${normalized * 100}%)` }}
+            style={{ background: `linear-gradient(to right, ${fill} ${pct}%, transparent ${pct}%)` }}
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-600 dark:text-neutral-300"
           >
             {item.source === "own" && <span className="text-[9px] font-semibold text-[#D97757]">{t("SENİN", "YOURS")}</span>}
             {item.source === "etsy" && <span className="text-[9px] font-semibold text-violet-600 dark:text-violet-400">ETSY</span>}
             {item.source === "research" && <span className="text-[9px] font-semibold text-sky-600 dark:text-sky-400">{t("ARAŞTIRMA", "RESEARCH")}</span>}
             {item.tag}
+            {item.confidence && (
+              <span
+                title={scoreTitle(item, t)}
+                className={`h-1.5 w-1.5 rounded-full ${item.confidence === "measured" ? "bg-emerald-500" : item.confidence === "partial" ? "bg-amber-500" : "bg-neutral-400 dark:bg-neutral-600"}`}
+              />
+            )}
             <span className="text-neutral-400 dark:text-neutral-500">
               {item.source === "own"
                 ? `${item.units ?? 0} ${t("satış", "sales")}`

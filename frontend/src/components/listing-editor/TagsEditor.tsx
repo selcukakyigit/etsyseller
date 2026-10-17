@@ -2,22 +2,16 @@
 
 import { useState } from "react";
 import { api, KeywordPoolItem } from "@/lib/api";
-import { competitionFill, normalizedScore, poolRanges } from "@/lib/keywordScore";
+import { scoreFill, scorePercent, scoreTitle } from "@/lib/keywordScore";
 import { tNow as t } from "@/lib/i18n";
 
 const MAX_TAGS = 13;
-
-/** Rakip etikette gerçek yüzde (X/50 → %X), kendi etiketinde doğal bir yüzdesi olmadığı için havuz
- * içindeki göreli sırasına göre bir "doluluk" yüzdesi — ikisi de görsel olarak aynı dolgu çubuğunu besler. */
-function fillPercent(item: KeywordPoolItem, ranges: Map<string, { min: number; max: number }>): number {
-  if (item.source === "competitor" && item.sample_size > 0) return Math.round((item.score / item.sample_size) * 100);
-  return Math.round(normalizedScore(item, ranges) * 100);
-}
 
 function scoreLabel(item: KeywordPoolItem): string {
   if (item.source === "own") return `${item.units ?? 0} ${t("satış", "sales")}`;
   if (item.source === "etsy") return t(`${item.etsy_orders ?? 0} sip.`, `${item.etsy_orders ?? 0} orders`);
   if (item.source === "research") return item.etsy_searches ? `E:${item.etsy_searches >= 1000 ? `${(item.etsy_searches / 1000).toFixed(1)}k` : item.etsy_searches}` : "";
+  if (item.etsy_results != null) return `${item.etsy_results >= 1000 ? `${Math.round(item.etsy_results / 1000)}k` : item.etsy_results} ${t("sonuç", "results")}`;
   return `%${item.sample_size > 0 ? Math.round((item.score / item.sample_size) * 100) : 0}`;
 }
 
@@ -65,7 +59,6 @@ export default function TagsEditor({
   }
 
   const shownPool = poolOpen ? pool : null;
-  const ranges = shownPool ? poolRanges(shownPool) : null;
   const byTag = new Map((shownPool ?? []).map((k) => [k.tag.toLowerCase(), k]));
 
   function add(tag: string) {
@@ -95,8 +88,8 @@ export default function TagsEditor({
       <div className="mb-2 flex flex-wrap gap-1.5">
         {tags.map((v, i) => {
           const item = byTag.get(v.toLowerCase());
-          const fill = item && ranges ? competitionFill(normalizedScore(item, ranges), item.source) : null;
-          const pct = item && ranges ? fillPercent(item, ranges) : null;
+          const fill = item ? scoreFill(item) : null;
+          const pct = item ? scorePercent(item) : null;
           return (
             <span
               key={`${v}-${i}`}
@@ -169,16 +162,16 @@ export default function TagsEditor({
               // aksi halde slot'ların yarısı zaten bildiğin kendi etiketlerinle dolup çeşitlilik azalıyordu.
               .filter((k) => k.source === "competitor" && !tags.some((tag) => tag.toLowerCase() === k.tag.toLowerCase()))
               .map((k) => {
-                const fill = ranges ? competitionFill(normalizedScore(k, ranges), k.source) : null;
-                const pct = ranges ? fillPercent(k, ranges) : null;
+                const fill = scoreFill(k);
+                const pct = scorePercent(k);
                 return (
                   <button
                     key={k.tag}
                     type="button"
                     onClick={() => add(k.tag)}
                     disabled={atLimit}
-                    title={t(`İlk ${k.sample_size} rakip listing'in ${k.score} tanesi kullanıyor`, `Used by ${k.score} of the top ${k.sample_size} competitor listings`)}
-                    style={fill && pct !== null ? { background: `linear-gradient(to right, ${fill} ${pct}%, transparent ${pct}%)` } : undefined}
+                    title={`${scoreTitle(k, t)} · ${t(`İlk ${k.sample_size} rakip listing'in ${k.score} tanesi kullanıyor`, `Used by ${k.score} of the top ${k.sample_size} competitor listings`)}`}
+                    style={{ background: `linear-gradient(to right, ${fill} ${pct}%, transparent ${pct}%)` }}
                     className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 px-2 py-0.5 text-xs text-neutral-600 hover:border-[#D97757] disabled:opacity-40 dark:border-neutral-800 dark:text-neutral-300"
                   >
                     {k.tag}

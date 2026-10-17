@@ -488,14 +488,16 @@ export default function ListingEditPage() {
                     {t("Geri al", "Undo")}
                   </button>
                 </div>
-                {ai.suggestion.rationale && <p className="text-neutral-600 dark:text-neutral-300">{ai.suggestion.rationale}</p>}
+                {ai.suggestion.rationale && (
+                  <details className="text-xs text-neutral-600 dark:text-neutral-300">
+                    <summary className="cursor-pointer font-medium">{t("Gerekçe", "Rationale")}</summary>
+                    <p className="mt-1">{ai.suggestion.rationale}</p>
+                  </details>
+                )}
                 {ai.suggestion.warnings && ai.suggestion.warnings.length > 0 && (
                   <div className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
                     <b>{t("Dikkat:", "Note:")}</b>{" "}
-                    {t(
-                      "yapay zekâ 3 denemede şunları düzeltemedi; yayınlamadan önce bak:",
-                      "the AI could not fix these in 3 attempts; check them before publishing:",
-                    )}
+                    {t("3 denemede düzelmedi:", "not fixed in 3 attempts:")}
                     <ul className="mt-1 list-disc pl-4">
                       {ai.suggestion.warnings.map((w, i) => (
                         <li key={i}>{w}</li>
@@ -507,10 +509,7 @@ export default function ListingEditPage() {
                   <div className="mt-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300">
                     <p>
                       <b className="text-neutral-800 dark:text-neutral-100">{t("Aynı aramalarda yarışabilir:", "May compete in the same searches:")}</b>{" "}
-                      {t(
-                        "bu öneri mağazandaki şu listing'lere benziyor. Aynı nişteki ürünlerde bu normal olabilir; hata değil. Hangisinin bu aramayı hedefleyeceğine sen karar ver: bunu ya da diğerini farklılaştırabilir ya da böyle bırakabilirsin.",
-                        "this suggestion resembles these listings in your shop. That can be normal for products in the same niche; it is not an error. You decide which one targets this search: change this one or the other one, or leave it as it is.",
-                      )}
+                      {t("şu listing'lere benziyor (hata değil, sen karar ver):", "resembles these listings (not an error, you decide):")}
                     </p>
                     <ul className="mt-1 space-y-1">
                       {ai.suggestion.conflicts.map((c, i) => {
@@ -536,7 +535,6 @@ export default function ListingEditPage() {
                     </ul>
                   </div>
                 )}
-                <p className="mt-1 text-xs text-neutral-400">{t("Değişiklikler taslakta; beğenmezsen geri al ya da yayınlamadan düzenle.", "Changes are in the draft; undo them or edit before publishing.")}</p>
               </div>
             )}
 

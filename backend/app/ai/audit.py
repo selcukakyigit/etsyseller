@@ -2,8 +2,9 @@
 
 Üç boyut, her biri farklı bir soruyu cevaplar:
 - seo: Etsy aramasında eşleşir mi? (başlık, etiket, kategori, özellikler, mağazadaki diğer listing'lerle çakışma)
-- aeo: Alıcının sorusuna doğrudan cevap veriyor mu? (açılış cümlesi, olgu listesi, soru-cevap, yeterli uzunluk)
-- geo: Yapay zekâ asistanları güvenle önerebilir mi? (metin ve veri tutarlı, doğrulanabilir; malzeme, alt text, seçenekler, stok)
+- ai (OPSİYONEL öneriler): alıcının sorusuna doğrudan cevap veriyor mu (AEO: açılış cümlesi, olgu listesi, soru-cevap, yeterli uzunluk) ve yapay zekâ
+  asistanları güvenle önerebilir mi (GEO: metin ve veri tutarlı, doğrulanabilir; malzeme, alt text, seçenekler, stok). İkisi aynı alanları (çoğunlukla açıklama)
+  düzenlediği için tek boyuttur.
 
 Kullandığı kuralların çoğu `quality`'dedir (üretim hattıyla AYNI denetimler); burada yalnızca açıklamanın yapısına bakan yeni kurallar vardır.
 Her bulgunun `fix` alanı (attributes / description / title / tags / alt_text / None) ve `risk` değeri vardır: başlık değişikliği sıralamayı etkileyebilir (high),
@@ -15,7 +16,7 @@ from dataclasses import asdict, dataclass
 from app.ai import layout, quality, standard
 from app.core.i18n import tr
 
-DIMS = ("seo", "aeo", "geo")
+DIMS = ("seo", "ai")
 _GREETING = re.compile(r"^\W*(welcome|hello|hi\b|hey|dear|thank|thanks|hoş\s?geldin|merhaba)", re.I)
 _BULLET = re.compile(r"^\s*(?:[-•*➲✔✓☛▪►→]|\d+[.)])\s*\S")
 _QUESTION = re.compile(r"^\s*(?:q\s*[:.)]|question\b|soru\s*[:.)])", re.I)
@@ -106,9 +107,9 @@ def summary(result: dict) -> dict:
     return {"level": result["level"], **{d: result["dims"][d]["level"] for d in DIMS}}
 
 
-# SEO temeldir (Etsy aramasında eşleşme). AEO ve GEO OPSİYONEL önerilerdir: Etsy'nin zorunlu şartı değildir, küçük iyileştirmeleri seviyeyi "zayıf" yapmaz
+# SEO temeldir (Etsy aramasında eşleşme). "ai" (AEO + GEO) OPSİYONEL önerilerdir: Etsy'nin zorunlu şartı değildir, küçük iyileştirmeleri seviyeyi "zayıf" yapmaz
 # ve genel seviyeyi düşürmez. Yalnızca gerçek hatalar (ağırlık 2: uydurma bilgi, doğrulanmamış iddia, stoksuz aktif listing…) her boyutta "zayıf" sayılır.
-OPTIONAL_DIMS = ("aeo", "geo")
+OPTIONAL_DIMS = ("ai",)
 
 
 def _level(dim: str, points: int, severe: bool, weak_from: int = 5) -> str:
@@ -156,30 +157,30 @@ def audit(listing: dict, *, variations: dict[str, list[str]], inventory: dict | 
 
     # ---- AEO
     if not product.strip():
-        add("no_description", "aeo", 2, tr("Ürüne özel açıklama yok.", "There is no product-specific description."), "description")
+        add("no_description", "ai", 2, tr("Ürüne özel açıklama yok.", "There is no product-specific description."), "description")
     for id, text in structure_issues(product, listing.get("listing_type") == "download"):
-        add(id, "aeo", 1, text, "description")
+        add(id, "ai", 1, text, "description")
 
     # ---- GEO
     source = "\n".join([title, description, " ".join(map(str, listing.get("materials") or [])), " ".join(v for vals in variations.values() for v in vals)])
     for i, p in enumerate(quality.fact_problems(title, description, source, variations)):
-        add(f"fact_{i}", "geo", 2, p, "description")
+        add(f"fact_{i}", "ai", 2, p, "description")
     for i, p in enumerate(quality.claim_problems(product)):
-        add(f"claim_{i}", "geo", 2, p, "description")
+        add(f"claim_{i}", "ai", 2, p, "description")
     if listing.get("is_personalizable") and product.strip() and not _PERSONAL.search(product):
-        add("personalization", "geo", 1, tr("Kişiselleştirilebilir ama açıklama bunun nasıl yapıldığını anlatmıyor.", "The item is personalizable but the description does not explain how."), "description")
+        add("personalization", "ai", 1, tr("Kişiselleştirilebilir ama açıklama bunun nasıl yapıldığını anlatmıyor.", "The item is personalizable but the description does not explain how."), "description")
     unlisted = [n for n, vals in variations.items() if 2 <= len(vals) <= 12 and not any(re.search(rf"\b{re.escape(v.lower())}\b", description.lower()) for v in vals)]
     if unlisted and product.strip():
-        add("options", "geo", 1, tr(f"Açıklama seçenekleri ({', '.join(unlisted)}) saymıyor; yapay zekâ asistanları seçenekleri açıklamadan okur.", f"The description does not list the options ({', '.join(unlisted)}); AI assistants read options from the description."), "description")
+        add("options", "ai", 1, tr(f"Açıklama seçenekleri ({', '.join(unlisted)}) saymıyor; yapay zekâ asistanları seçenekleri açıklamadan okur.", f"The description does not list the options ({', '.join(unlisted)}); AI assistants read options from the description."), "description")
     images = listing.get("images") or []
     no_alt = [i for i in images if not (i.get("alt_text") or "").strip()]
     if no_alt:
-        add("alt_text", "geo", 1, tr(f"{len(no_alt)}/{len(images)} fotoğrafın alt metni yok.", f"{len(no_alt)}/{len(images)} photos have no alt text."), "alt_text")
+        add("alt_text", "ai", 1, tr(f"{len(no_alt)}/{len(images)} fotoğrafın alt metni yok.", f"{len(no_alt)}/{len(images)} photos have no alt text."), "alt_text")
     if listing.get("listing_type") != "download" and not listing.get("materials"):
-        add("materials", "geo", 1, tr("Malzeme alanı boş.", "The materials field is empty."), None)
+        add("materials", "ai", 1, tr("Malzeme alanı boş.", "The materials field is empty."), None)
     offers = [o for p in (inventory or {}).get("products", []) for o in p.get("offerings", []) if o.get("is_enabled", True)]
     if listing.get("state") == "active" and offers and not any((o.get("quantity") or 0) > 0 for o in offers):
-        add("no_stock", "geo", 2, tr("Listing aktif ama hiçbir seçeneğin stoğu yok.", "The listing is active but no option has stock."), None)
+        add("no_stock", "ai", 2, tr("Listing aktif ama hiçbir seçeneğin stoğu yok.", "The listing is active but no option has stock."), None)
 
     points = {d: sum(x.weight for x in f if x.dim == d) for d in DIMS}
     dims = {d: {"level": _level(d, points[d], any(x.weight >= 2 for x in f if x.dim == d)), "points": points[d], "count": sum(1 for x in f if x.dim == d)} for d in DIMS}

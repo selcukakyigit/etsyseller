@@ -143,7 +143,8 @@ export default function ChangeJourney({ ch, shopId, listingId, latest }: { ch: L
     ch.focus && (FOCUS_KEYS as string[]).includes(ch.focus)
       ? t(`Teşhis: ${focusLabel(t, ch.focus as FocusKey).toLowerCase()} adımı`, `Diagnosis: ${focusLabel(t, ch.focus as FocusKey).toLowerCase()} step`)
       : null;
-  const contentChanged = det.content && DIMS.some((k) => det.content!.before[k] !== det.content!.after[k]);
+  const contentDims = det.content ? DIMS.filter((k) => det.content!.before[k] && det.content!.after[k]) : [];
+  const contentChanged = !!det.content && contentDims.some((k) => det.content!.before[k] !== det.content!.after[k]);
 
   const evaluation = (m: Measured) => {
     const metric = m.metric;
@@ -192,10 +193,10 @@ export default function ChangeJourney({ ch, shopId, listingId, latest }: { ch: L
           {contentChanged && (
             <p className="flex flex-wrap items-center gap-x-3">
               <span>{t("İçerik seviyesi", "Content level")}:</span>
-              {DIMS.map((k) => (
+              {contentDims.map((k) => (
                 <span key={k} className="flex items-center gap-1">
                   {k.toUpperCase()}
-                  <span className={`h-2 w-2 rounded-full ${dimDot(k, det.content!.before[k])}`} />→<span className={`h-2 w-2 rounded-full ${dimDot(k, det.content!.after[k])}`} />
+                  <span className={`h-2 w-2 rounded-full ${dimDot(k, det.content!.before[k]!)}`} />→<span className={`h-2 w-2 rounded-full ${dimDot(k, det.content!.after[k]!)}`} />
                 </span>
               ))}
             </p>

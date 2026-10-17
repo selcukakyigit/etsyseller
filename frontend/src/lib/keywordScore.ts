@@ -1,33 +1,35 @@
 import { KeywordPoolItem } from "@/lib/api";
 
-/** Green = favorable, red = unfavorable — same convention every SEO tool uses for a difficulty/competition
- * score. Ama skorumuz kaynağa göre ters anlama geliyor: rakip etiketinde yüksek skor "çoğu üst sıradaki
- * rakip zaten bunu kullanıyor" demek (doymuş → kırmızı); kendi etiketinde yüksek skor "kendi en çok satan
- * listing'lerin kullandığı, kanıtlanmış" demek (iyi → yeşil). Yön kaynağa göre ters çevriliyor. */
-export function competitionFill(normalized: number, source: KeywordPoolItem["source"]): string {
-  // Rakipte yüksek kullanım = kalabalık (kötü); kendi satışın ve Etsy verisinde yüksek değer = iyi.
-  const favorable = source === "competitor" ? 1 - normalized : normalized;
-  const hue = favorable * 130; // 0 = kırmızı, 130 = yeşil
+/** Havuz rengi: sunucunun puanı (keywords/scoring.py; yapay zekâ da aynısını kullanır). 0 = kırmızı (zayıf), 1 = yeşil (güçlü). Puan yoksa nötr. */
+export function scoreFill(item: KeywordPoolItem): string {
+  const hue = (item.rank_score ?? 0.5) * 130;
   return `hsla(${hue}, 70%, 45%, 0.3)`;
 }
 
-/** Havuzdaki her kaynak (own/competitor) için min/max — normalize etmek için. Ham skor/örnek oranı yerine
- * havuz İÇİNDE birbirine göre kıyaslamak, etiketleri tüm yeşil-kırmızı aralığına yayıyor. */
-export function poolRanges(items: KeywordPoolItem[]): Map<string, { min: number; max: number }> {
-  const bySource = new Map<string, { min: number; max: number }>();
-  for (const item of items) {
-    const value = item.source === "own" ? (item.units ?? 0) : item.score;
-    const range = bySource.get(item.source) ?? { min: Infinity, max: -Infinity };
-    range.min = Math.min(range.min, value);
-    range.max = Math.max(range.max, value);
-    bySource.set(item.source, range);
-  }
-  return bySource;
+/** Dolgu genişliği (%): puanın kendisi. */
+export function scorePercent(item: KeywordPoolItem): number {
+  return Math.round((item.rank_score ?? 0.5) * 100);
 }
 
-export function normalizedScore(item: KeywordPoolItem, ranges: Map<string, { min: number; max: number }>): number {
-  const range = ranges.get(item.source);
-  if (!range) return item.source === "competitor" ? 1 : 0.5;
-  const value = item.source === "own" ? (item.units ?? 0) : item.score;
-  return range.max > range.min ? (value - range.min) / (range.max - range.min) : item.source === "competitor" ? 1 : 0.5;
+const CONFIDENCE: Record<NonNullable<KeywordPoolItem["confidence"]>, [string, string]> = {
+  measured: ["ölçülü", "measured"],
+  partial: ["kısmi", "partial"],
+  estimate: ["tahmin", "estimate"],
+};
+const ROLE: Record<NonNullable<KeywordPoolItem["role"]>, [string, string]> = {
+  head: ["ana ürün ifadesi", "main product phrase"],
+  mid: ["orta kapsam", "mid-range"],
+  long: ["uzun kuyruk", "long tail"],
+  occasion: ["vesile/alıcı", "occasion/recipient"],
+  style: ["stil/malzeme", "style/material"],
+};
+
+/** Fare üzerine gelince: puan, veri güveni, rol ve ölçülen sonuç sayısı. */
+export function scoreTitle(item: KeywordPoolItem, t: (tr: string, en: string) => string): string {
+  const parts: string[] = [];
+  if (item.rank_score !== undefined) parts.push(t(`Puan ${item.rank_score.toFixed(2)}`, `Score ${item.rank_score.toFixed(2)}`));
+  if (item.confidence) parts.push(t(`veri: ${CONFIDENCE[item.confidence][0]}`, `data: ${CONFIDENCE[item.confidence][1]}`));
+  if (item.role) parts.push(t(`rol: ${ROLE[item.role][0]}`, `role: ${ROLE[item.role][1]}`));
+  if (item.etsy_results != null) parts.push(t(`${item.etsy_results.toLocaleString()} arama sonucu`, `${item.etsy_results.toLocaleString()} search results`));
+  return parts.join(" · ");
 }

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { ContentAudit, ListingDiagnosis } from "@/lib/api";
 import { useCached } from "@/lib/pageCache";
 import { useT } from "@/lib/i18n-client";
-import { AREA_FOCUS, ContentLevelView } from "./ContentLevelCard";
+import { AREA_FOCUS, briefText, ContentLevelView } from "./ContentLevelCard";
 import { FocusKey, focusLabel, stepFocus } from "./NextStepCard";
 
 type Finding = ContentAudit["findings"][number];
@@ -76,9 +76,9 @@ export default function FixCard({
   const outside = !!step && step !== "overhaul" && step !== "text" && !fixFocuses.has(step);
   const inStep = !!d?.next_step && !!step && (fixFocuses.has(step) || step === "text" || step === "overhaul");
   const groups = [
-    { key: "ai", title: t("Yapay zekâ düzeltecek", "AI will fix"), items: fixes.filter((f) => f.fix === "description" || f.fix === "tags") },
+    { key: "ai", title: t("Yapay zekâ", "AI"), items: fixes.filter((f) => f.fix === "description" || f.fix === "tags") },
     { key: "title", title: t("Başlık", "Title"), items: fixes.filter((f) => f.fix === "title") },
-    { key: "manual", title: t("Elle yapılacak (yapay zekâsız)", "To do by hand (no AI)"), items: fixes.filter((f) => !f.fix || f.fix === "attributes" || f.fix === "alt_text") },
+    { key: "manual", title: t("Elle", "By hand"), items: fixes.filter((f) => !f.fix || f.fix === "attributes" || f.fix === "alt_text") },
   ].filter((g) => g.items.length > 0);
   const btn = "rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50";
   const ghost = `${btn} border border-neutral-300 text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800`;
@@ -89,7 +89,7 @@ export default function FixCard({
       {inStep && d?.next_step && (
         <p className="mt-1 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
           {t("Sıradaki adım: ", "Next step: ")}
-          {d.next_step.text}
+          {step ? focusLabel(t, step) : d.next_step.text}
         </p>
       )}
       {groups.map((g) => (
@@ -105,7 +105,7 @@ export default function FixCard({
                   ) : (
                     <span className={`mt-1.5 h-2 w-2 flex-shrink-0 rounded-full ${f.weight >= 2 ? "bg-red-500" : "bg-amber-500"}`} />
                   )}
-                  <span className={done ? "line-through" : ""}>{f.text}</span>
+                  <span className={done ? "line-through" : ""} title={f.text}>{briefText(f.text)}</span>
                 </li>
               );
             })}
@@ -118,10 +118,7 @@ export default function FixCard({
 
       {outside && step && (
         <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-          {t(
-            `Bu turun adımı "${focusLabel(t, step)}". Burayı da değiştirirsen sonucun neyden geldiği ölçülemez; yine de düzeltebilirsin.`,
-            `This round's step is "${focusLabel(t, step)}". Changing this area too makes it impossible to tell what caused the result; you can still fix it.`,
-          )}
+          {t(`Bu turun adımı "${focusLabel(t, step)}"; başka alanı da değiştirirsen ölçüm karışır.`, `This round's step is "${focusLabel(t, step)}"; changing another area blurs the measurement.`)}
         </p>
       )}
 
@@ -150,11 +147,11 @@ export default function FixCard({
         <div className="mt-3 space-y-2">
           {active.length === 0 ? (
             <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
-              {t("✓ Seçtiğin düzeltmeler tamam. Aşağıdan başka düzeltme ekleyebilir ya da Kaydet ve Etsy'de yayınla; ölçüm o zaman başlar.", "✓ The selected fixes are done. Add more fixes below, or save and publish to Etsy; measuring starts then.")}
+              {t("✓ Tamam. İstersen aşağıdan ekle, ya da Kaydet ve yayınla.", "✓ Done. Add more below if you like, or save and publish.")}
             </p>
           ) : (
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-              {t(`Kalan ${active.length} düzeltme yukarıdaki listede.`, `${active.length} fixes left in the list above.`)}
+              {t(`Kalan ${active.length}: yukarıdaki listede.`, `${active.length} left: see the list above.`)}
             </p>
           )}
           <div className="rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
