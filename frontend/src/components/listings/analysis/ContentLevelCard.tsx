@@ -19,6 +19,12 @@ const PILL: Record<ContentLevel, string> = {
   weak: "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300",
 };
 export const levelText = (t: T): Record<ContentLevel, string> => ({ good: t("iyi", "good"), mid: t("orta", "fair"), weak: t("zayıf", "weak") });
+
+// SEO temeldir; AEO ve GEO opsiyonel öneridir (backend audit.OPTIONAL_DIMS): küçük eksikler alarm gibi görünmesin.
+const OPTIONAL: Dim[] = ["aeo", "geo"];
+export const dimDot = (d: Dim, level: ContentLevel) => (OPTIONAL.includes(d) && level === "mid" ? "bg-sky-500" : LEVEL_DOT[level]);
+export const dimLevelText = (t: T, d: Dim, level: ContentLevel) =>
+  OPTIONAL.includes(d) && level === "mid" ? t("öneri var", "suggestions") : levelText(t)[level];
 const dimTip = (t: T): Record<Dim, string> => ({
   seo: t("Etsy aramasında eşleşme: başlık, etiketler, kategori ve özellikler.", "Matching in Etsy search: title, tags, category and attributes."),
   aeo: t("Alıcının sorusuna doğrudan cevap: açılış cümlesi, olgu listesi, soru-cevap.", "Direct answers to buyer questions: opening sentence, fact list, Q&A."),
@@ -88,8 +94,8 @@ export function ContentLevelView({ audit, listingId, stepFocus, showTitle = true
           {t("İçerik seviyesi", "Content level")}
           <HelpTip>
             {t(
-              "Listing metninin Etsy aramasına ve yapay zekâ alışveriş asistanlarına ne kadar hazır olduğunu gösterir. Ücretsizdir, yapay zekâ kullanmaz. Bir boyutun \"Düzelt\" düğmesi o boyuttaki bulguları tek seferde düzeltir; \"Hepsini düzelt\" üç boyutu birlikte, alanlara göre birleştirerek (örneğin açıklamayı bir kez) düzeltir. Başlık değişikliği Etsy sıralamasını etkileyebileceği için başlığa dokunmak ayrıca onay ister.",
-              "Shows how ready the listing text is for Etsy search and AI shopping assistants. Free, no AI is used. A dimension's \"Fix\" button fixes its findings in one pass; \"Fix all\" fixes all three together, merged by area (for example the description once). A title change can affect Etsy ranking, so touching the title needs a separate confirmation.",
+              "Listing metninin Etsy aramasına ve yapay zekâ alışveriş asistanlarına ne kadar hazır olduğunu gösterir. Ücretsizdir, yapay zekâ kullanmaz. SEO temeldir, AEO ve GEO isteğe bağlı önerilerdir. Bir boyutun \"Düzelt\" düğmesi o boyuttaki bulguları tek seferde düzeltir; \"Hepsini düzelt\" üç boyutu birlikte, alanlara göre birleştirerek (örneğin açıklamayı bir kez) düzeltir. Başlık değişikliği Etsy sıralamasını etkileyebileceği için başlığa dokunmak ayrıca onay ister.",
+              "Shows how ready the listing text is for Etsy search and AI shopping assistants. Free, no AI is used. SEO is the core; AEO and GEO are optional suggestions. A dimension's \"Fix\" button fixes its findings in one pass; \"Fix all\" fixes all three together, merged by area (for example the description once). A title change can affect Etsy ranking, so touching the title needs a separate confirmation.",
             )}
           </HelpTip>
         </span>
@@ -114,9 +120,9 @@ export function ContentLevelView({ audit, listingId, stepFocus, showTitle = true
                 <span className="w-10 font-semibold text-neutral-800 dark:text-neutral-200" title={tips[d]}>
                   {d.toUpperCase()}
                 </span>
-                <span className="flex w-20 flex-shrink-0 items-center gap-1.5 text-neutral-600 dark:text-neutral-400">
-                  <span className={`h-2 w-2 rounded-full ${LEVEL_DOT[info.level]}`} />
-                  {text[info.level]}
+                <span className="flex w-24 flex-shrink-0 items-center gap-1.5 text-neutral-600 dark:text-neutral-400">
+                  <span className={`h-2 w-2 rounded-full ${dimDot(d, info.level)}`} />
+                  {dimLevelText(t, d, info.level)}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-xs text-neutral-600 dark:text-neutral-300">
                   {mine.length > 0 ? mine[0].text : t("Sorun yok", "No issues")}
@@ -140,6 +146,9 @@ export function ContentLevelView({ audit, listingId, stepFocus, showTitle = true
         })}
       </ul>
 
+      <p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+        {t("SEO temeldir. AEO ve GEO isteğe bağlı önerilerdir: Etsy'nin zorunlu şartı değildir ve genel seviyeyi düşürmez.", "SEO is the core. AEO and GEO are optional suggestions: they are not an Etsy requirement and do not lower the overall level.")}
+      </p>
       {audit.findings.length > 0 && (
         <button type="button" onClick={() => setOpen(!open)} className="mt-1 text-xs font-medium text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200">
           {open ? t("Ayrıntıları gizle", "Hide details") : t("Ayrıntıları göster", "Show details")}
@@ -177,7 +186,7 @@ export default function ContentLevelCard({ audit, listingId, stepFocus, defaultO
         <span className="flex items-center gap-3 text-xs text-neutral-600 dark:text-neutral-400">
           {DIMS.map((d) => (
             <span key={d} className="flex items-center gap-1">
-              <span className={`h-2 w-2 rounded-full ${LEVEL_DOT[audit.dims[d].level]}`} />
+              <span className={`h-2 w-2 rounded-full ${dimDot(d, audit.dims[d].level)}`} />
               {d.toUpperCase()}
             </span>
           ))}

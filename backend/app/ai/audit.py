@@ -106,9 +106,18 @@ def summary(result: dict) -> dict:
     return {"level": result["level"], **{d: result["dims"][d]["level"] for d in DIMS}}
 
 
-def _level(points: int, severe: bool, weak_from: int = 5) -> str:
-    """Zayıf: belirgin bir eksik (ağırlık 2) ya da çok sayıda küçük iyileştirme. Yalnızca küçük iyileştirmeler "orta" kalır."""
-    return "good" if points == 0 else "weak" if severe or points >= weak_from else "mid"
+# SEO temeldir (Etsy aramasında eşleşme). AEO ve GEO OPSİYONEL önerilerdir: Etsy'nin zorunlu şartı değildir, küçük iyileştirmeleri seviyeyi "zayıf" yapmaz
+# ve genel seviyeyi düşürmez. Yalnızca gerçek hatalar (ağırlık 2: uydurma bilgi, doğrulanmamış iddia, stoksuz aktif listing…) her boyutta "zayıf" sayılır.
+OPTIONAL_DIMS = ("aeo", "geo")
+
+
+def _level(dim: str, points: int, severe: bool, weak_from: int = 5) -> str:
+    """Zayıf: belirgin bir eksik (ağırlık 2) ya da (yalnızca SEO'da) çok sayıda küçük iyileştirme. Yalnızca küçük iyileştirmeler "orta" kalır."""
+    if points == 0:
+        return "good"
+    if severe or (dim not in OPTIONAL_DIMS and points >= weak_from):
+        return "weak"
+    return "mid"
 
 
 def audit(listing: dict, *, variations: dict[str, list[str]], inventory: dict | None, missing_attributes: list[dict], others: list[dict]) -> dict:
@@ -173,7 +182,9 @@ def audit(listing: dict, *, variations: dict[str, list[str]], inventory: dict | 
         add("no_stock", "geo", 2, tr("Listing aktif ama hiçbir seçeneğin stoğu yok.", "The listing is active but no option has stock."), None)
 
     points = {d: sum(x.weight for x in f if x.dim == d) for d in DIMS}
-    dims = {d: {"level": _level(points[d], any(x.weight >= 2 for x in f if x.dim == d)), "points": points[d], "count": sum(1 for x in f if x.dim == d)} for d in DIMS}
-    order = {"weak": 2, "mid": 1, "good": 0}
-    overall = max((v["level"] for v in dims.values()), key=lambda lv: order[lv])
+    dims = {d: {"level": _level(d, points[d], any(x.weight >= 2 for x in f if x.dim == d)), "points": points[d], "count": sum(1 for x in f if x.dim == d)} for d in DIMS}
+    # Genel seviye: SEO'nun seviyesi; AEO/GEO'da gerçek bir hata varsa en az "orta" olur (küçük öneriler genel seviyeyi düşürmez).
+    overall = dims["seo"]["level"]
+    if overall == "good" and any(dims[d]["level"] == "weak" for d in OPTIONAL_DIMS):
+        overall = "mid"
     return {"level": overall, "dims": dims, "findings": [asdict(x) for x in sorted(f, key=lambda x: -x.weight)]}

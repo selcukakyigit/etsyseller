@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { api, ChangeResult, ListingChange, ListingDiagnosis } from "@/lib/api";
 import { useCached } from "@/lib/pageCache";
 import { useT } from "@/lib/i18n-client";
-import { DIMS, LEVEL_DOT } from "./ContentLevelCard";
+import { DIMS, dimDot } from "./ContentLevelCard";
 import { FOCUS_KEYS, FocusKey, focusLabel } from "./NextStepCard";
 import { fieldsText, metricText, sourceText, VERDICT_STYLE, verdictKey, verdictLabel } from "./changeLabels";
 
@@ -195,7 +195,7 @@ export default function ChangeJourney({ ch, shopId, listingId, latest }: { ch: L
               {DIMS.map((k) => (
                 <span key={k} className="flex items-center gap-1">
                   {k.toUpperCase()}
-                  <span className={`h-2 w-2 rounded-full ${LEVEL_DOT[det.content!.before[k]]}`} />→<span className={`h-2 w-2 rounded-full ${LEVEL_DOT[det.content!.after[k]]}`} />
+                  <span className={`h-2 w-2 rounded-full ${dimDot(k, det.content!.before[k])}`} />→<span className={`h-2 w-2 rounded-full ${dimDot(k, det.content!.after[k])}`} />
                 </span>
               ))}
             </p>
