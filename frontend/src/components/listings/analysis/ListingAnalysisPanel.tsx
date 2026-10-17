@@ -13,7 +13,7 @@ const TABS = ["diagnosis", "changes", "ranks", "etsy"] as const;
 export type AnalysisTab = (typeof TABS)[number];
 type Tab = AnalysisTab;
 
-/** Listing satırındaki "Analiz" paneli: Teşhis (ne durumda, neden), Değişiklikler ve sonuçları (ne yaptık, işe yaradı mı),
+/** Listing satırındaki "Analiz" paneli: Teşhis (ne durumda, neden), Önce / Sonra (ne yaptık, işe yaradı mı),
  * Sıralama ve Etsy verisi. Seçili sekme hatırlanır. Henüz Etsy'de olmayan (yeni) listing'de analiz yoktur. */
 export default function ListingAnalysisPanel({
   shopId,
@@ -36,7 +36,7 @@ export default function ListingAnalysisPanel({
   const tab: Tab = TABS.includes(current) ? current : "diagnosis";
   const label: Record<Tab, string> = {
     diagnosis: t("Teşhis", "Diagnosis"),
-    changes: t("Değişiklikler ve sonuçları", "Changes and results"),
+    changes: t("Önce / Sonra", "Before / After"),
     ranks: t("Sıralama", "Rankings"),
     etsy: t("Etsy verisi", "Etsy data"),
   };

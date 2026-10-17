@@ -137,7 +137,7 @@ function PerformanceSummary({ shopId, listingId }: { shopId: number; listingId: 
   );
 }
 
-/** Değişiklikler ve sonuçları: dönem performansı, değişiklik işaretli grafikler ve her yayının ölçülen etkisi. */
+/** Önce / Sonra sekmesi: dönem performansı, değişiklik işaretli grafikler ve her yayının ölçülen etkisi. */
 export default function ChangesTab({ shopId, listingId }: { shopId: number; listingId: number }) {
   const { t } = useT();
   const { history, error } = useListingHistory(shopId, listingId);
