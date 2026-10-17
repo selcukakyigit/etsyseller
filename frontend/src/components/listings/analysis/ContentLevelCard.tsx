@@ -71,7 +71,7 @@ const btnGhost = "rounded-lg border border-neutral-300 px-2.5 py-1 text-xs font-
 
 /** Üç gösterge (SEO / AEO / GEO): her satırda ilk bulgunun özeti, hangi alanlara dokunulacağı, yapay zekâ gerekip gerekmediği ve "Düzelt"; üstte tüm bulgular için "Hepsini düzelt".
  * `listingId` verilirse düğmeler çıkar. `stepFocus`: Sıradaki Adım'ın bu turdaki alanı; o alandaki bulgular "bu tur" diye işaretlenir. */
-export function ContentLevelView({ audit, listingId, stepFocus }: { audit: ContentAudit; listingId?: number; stepFocus?: FocusKey | null }) {
+export function ContentLevelView({ audit, listingId, stepFocus, showTitle = true }: { audit: ContentAudit; listingId?: number; stepFocus?: FocusKey | null; showTitle?: boolean }) {
   const { t } = useT();
   const [open, setOpen] = useState(false);
   const text = levelText(t);
@@ -83,6 +83,7 @@ export function ContentLevelView({ audit, listingId, stepFocus }: { audit: Conte
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2">
+        {showTitle && (
         <span className="flex items-center gap-1.5 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
           {t("İçerik seviyesi", "Content level")}
           <HelpTip>
@@ -92,7 +93,8 @@ export function ContentLevelView({ audit, listingId, stepFocus }: { audit: Conte
             )}
           </HelpTip>
         </span>
-        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${PILL[audit.level]}`}>{text[audit.level]}</span>
+        )}
+        {showTitle && <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${PILL[audit.level]}`}>{text[audit.level]}</span>}
         {listingId !== undefined && actionable.length > 0 && (
           <Link href={fixHref(listingId, audit.findings.filter((f) => f.fix))} className={`${btnPrimary} ml-auto`}>
             {t("Hepsini düzelt", "Fix all")}
@@ -160,12 +162,33 @@ export function ContentLevelView({ audit, listingId, stepFocus }: { audit: Conte
   );
 }
 
-/** Teşhis sekmesindeki kart: Etsy'deki (yayınlanmış) hâlin içerik seviyesi. */
-export default function ContentLevelCard({ audit, listingId, stepFocus }: { audit: ContentAudit | null; listingId: number; stepFocus?: FocusKey | null }) {
+/** Teşhis sekmesindeki katlanır panel: Etsy'deki (yayınlanmış) hâlin içerik seviyesi. Kapalıyken yalnızca genel seviye ve üç gösterge görünür;
+ * ana akış Sıradaki Adım kartıdır, burası diğer alanlara bakmak içindir. `defaultOpen`: Sıradaki Adım'ın düzelteceği bulgu yoksa açık başlar. */
+export default function ContentLevelCard({ audit, listingId, stepFocus, defaultOpen = false }: { audit: ContentAudit | null; listingId: number; stepFocus?: FocusKey | null; defaultOpen?: boolean }) {
+  const { t } = useT();
+  const [open, setOpen] = useState(defaultOpen);
   if (!audit) return null;
+  const text = levelText(t);
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-      <ContentLevelView audit={audit} listingId={listingId} stepFocus={stepFocus} />
+    <div className="rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 p-4 text-left">
+        <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("İçerik seviyesi", "Content level")}</span>
+        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${PILL[audit.level]}`}>{text[audit.level]}</span>
+        <span className="flex items-center gap-3 text-xs text-neutral-600 dark:text-neutral-400">
+          {DIMS.map((d) => (
+            <span key={d} className="flex items-center gap-1">
+              <span className={`h-2 w-2 rounded-full ${LEVEL_DOT[audit.dims[d].level]}`} />
+              {d.toUpperCase()}
+            </span>
+          ))}
+        </span>
+        <span className="ml-auto text-xs text-neutral-400 dark:text-neutral-500">{open ? "▴" : "▾"}</span>
+      </button>
+      {open && (
+        <div className="border-t border-neutral-100 px-4 pb-4 pt-2 dark:border-neutral-800">
+          <ContentLevelView audit={audit} listingId={listingId} stepFocus={stepFocus} showTitle={false} />
+        </div>
+      )}
     </div>
   );
 }

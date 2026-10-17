@@ -103,7 +103,7 @@ export default function DiagnosisTab({ shopId, listingId }: { shopId: number; li
 
       <HealthBanner shopId={shopId} listingId={listingId} />
 
-      <ContentLevelCard audit={audit} listingId={listingId} stepFocus={stepFocus(d.next_step)} />
+      <ContentLevelCard audit={audit} listingId={listingId} stepFocus={stepFocus(d.next_step)} defaultOpen={findingsForStep(audit, stepFocus(d.next_step)).length === 0} />
 
       {d.season.peak_months.length > 0 && !d.next_step.why.includes(d.season.text) && <p className={`rounded-lg border px-3 py-2 text-xs ${seasonStyle}`}>{d.season.text}</p>}
 

@@ -78,6 +78,8 @@ export default function FixCard({
   const manualItems = fixes.filter((f) => !f.fix || f.fix === "attributes" || f.fix === "alt_text");
   const skippedTitle = canTouchTitle && !touchTitle;
   const afterAi = checkKey > 0;
+  // Kontrolden sonra: seçilen bulgulardan hâlâ geçerli olanlar (kimlikler denetimde sabittir). Başlığı atlanan bulgu "kalan" sayılmaz.
+  const remaining = result ? fixes.filter((f) => result.findings.some((r) => r.id === f.id) && !(f.fix === "title" && skippedTitle)) : [];
   const groups = [
     { key: "ai", title: t("Yapay zekâ düzeltecek", "AI will fix"), items: aiItems, skipped: false },
     { key: "title", title: canTouchTitle ? t("Başlık (onayınla)", "Title (needs your confirmation)") : t("Başlık", "Title"), items: titleItems, skipped: skippedTitle },
@@ -153,8 +155,24 @@ export default function FixCard({
       </div>
 
       {result && (
-        <div className="mt-3 rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
-          <ContentLevelView audit={result} />
+        <div className="mt-3 space-y-2">
+          {remaining.length === 0 ? (
+            <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
+              {t("✓ Seçtiğin düzeltmeler tamam. Kaydet ve Etsy'de yayınla; ölçüm o zaman başlar.", "✓ The selected fixes are done. Save and publish to Etsy; measuring starts then.")}
+            </p>
+          ) : (
+            <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              <p className="font-medium">{t(`Kalan ${remaining.length} düzeltme:`, `${remaining.length} fixes left:`)}</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                {remaining.map((f) => (
+                  <li key={f.id}>{f.text}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
+            <ContentLevelView audit={result} />
+          </div>
         </div>
       )}
     </div>
