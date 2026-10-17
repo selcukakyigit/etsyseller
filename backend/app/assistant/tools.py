@@ -23,7 +23,7 @@ from app.core.ttl_cache import cached
 from app.core.i18n import tr
 from sqlalchemy.orm import Session
 
-from app.ai import quality
+from app.ai import audit, quality
 from app.assistant import toolsets
 from app.assistant.models import AdReport, ChatImage
 from app.finance import invoices
@@ -807,7 +807,8 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         return {"error": "Başlık gerekli."}
     tags_checked, _short = _tags(a.get("tags") or [])
     others = quality.shop_others(ctx.db, ctx.shop.id)
-    problems_pre = quality.all_problems(title, tags_checked, str(a.get("description") or ""), others)
+    draft_variations = {str(v.get("name") or ""): [str(x.get("value") or "") for x in v.get("values") or []] for v in a.get("variations") or []}
+    problems_pre = audit.generation_problems(title, tags_checked, str(a.get("description") or ""), others, None, draft_variations)
     if problems_pre:
         return {"error": "Taslak henüz oluşturulmadı. Önce şunları düzelt ve create_listing_draft'ı tekrar çağır (mağazanın diğer listing'lerinin kopyası olmamalı): " + " ".join(problems_pre)}
     _, norm_qty = _shop_norms(ctx)

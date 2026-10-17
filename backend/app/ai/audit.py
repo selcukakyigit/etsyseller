@@ -46,6 +46,41 @@ def _sentences(text: str) -> list[str]:
     return out
 
 
+def structure_issues(product: str) -> list[tuple[str, str]]:
+    """Açıklamanın yapısı (AEO): [(kimlik, metin)]. Hem denetçi hem üretim hattı (yeniden deneme geri bildirimi) kullanır."""
+    if not product.strip():
+        return []
+    out: list[tuple[str, str]] = []
+    sentences = _sentences(product)
+    opening = sentences[0] if sentences else ""
+    if len(opening) < 40 or _GREETING.search(opening):
+        out.append(("opening", tr(
+            f"Açıklama ürünü ilk cümlede anlatmıyor; ilk {standard.OPENING_CHARS} karakter ürünün ne olduğunu, kimin için olduğunu ve en önemli özelliğini söylemeli.",
+            f"The description does not say what the item is in the first sentence; the first {standard.OPENING_CHARS} characters should say what it is, who it is for and its key feature.",
+        )))
+    lines = product.split("\n")
+    if sum(1 for ln in lines if _BULLET.match(ln)) < 3:
+        out.append(("facts", tr("Malzeme, ölçü, seçenekler gibi olgular kısa maddeler halinde yok.", "Facts such as material, size and options are not listed as short bullets.")))
+    if sum(1 for ln in lines if _QUESTION.match(ln) or (ln.strip().endswith("?") and len(ln.strip()) < 140)) < 2:
+        out.append(("faq", tr("Alıcının sorabileceği soruların kısa cevapları (soru-cevap) yok.", "There are no short answers to questions buyers ask (Q&A).")))
+    if _words(product) < standard.DESCRIPTION_WORDS[0] // 2:
+        out.append(("short", tr(f"Açıklama kısa ({_words(product)} kelime); alıcı niyetini karşılamak için daha dolu olmalı.", f"The description is short ({_words(product)} words); it should be fuller to meet buyer intent.")))
+    return out
+
+
+# Soru-cevap yapay zekâya zorlanmaz (veri yetmiyorsa atlanır; zorlamak uydurmaya iter); denetçide yine bulgu olarak görünür.
+_NOT_ENFORCED = {"faq"}
+
+
+def generation_problems(title: str, tags: list[str], product_description: str, others: list[dict], source_text: str | None, variations: dict[str, list[str]]) -> list[str]:
+    """Yeni yazılan metin için TEK denetim: biçim ve benzersizlik (quality), uydurma (fact), açıklama yapısı. SEO öneri hattı ve sohbet asistanının
+    taslak oluşturması aynısını kullanır; sorun varsa model geri bildirimle yeniden dener."""
+    problems = quality.all_problems(title, tags, product_description, others, source_text, quality.size_options(variations))
+    problems += quality.fact_problems(title, product_description, source_text or "", variations)
+    problems += [text for id, text in structure_issues(quality.strip_common_paragraphs(product_description, others)) if id not in _NOT_ENFORCED]
+    return problems
+
+
 def _level(points: int, weak_from: int = 3) -> str:
     return "good" if points == 0 else "mid" if points < weak_from else "weak"
 
@@ -85,23 +120,10 @@ def audit(listing: dict, *, variations: dict[str, list[str]], inventory: dict | 
         ), None)
 
     # ---- AEO
-    sentences = _sentences(product)
     if not product.strip():
         add("no_description", "aeo", 2, tr("Ürüne özel açıklama yok.", "There is no product-specific description."), "description")
-    else:
-        opening = sentences[0] if sentences else ""
-        if len(opening) < 40 or _GREETING.search(opening):
-            add("opening", "aeo", 1, tr(
-                f"Açıklama ürünü ilk cümlede anlatmıyor; ilk {standard.OPENING_CHARS} karakter ürünün ne olduğunu, kimin için olduğunu ve en önemli özelliğini söylemeli.",
-                f"The description does not say what the item is in the first sentence; the first {standard.OPENING_CHARS} characters should say what it is, who it is for and its key feature.",
-            ), "description")
-        lines = product.split("\n")
-        if sum(1 for ln in lines if _BULLET.match(ln)) < 3:
-            add("facts", "aeo", 1, tr("Malzeme, ölçü, seçenekler gibi olgular kısa maddeler halinde yok.", "Facts such as material, size and options are not listed as short bullets."), "description")
-        if sum(1 for ln in lines if _QUESTION.match(ln) or (ln.strip().endswith("?") and len(ln.strip()) < 140)) < 2:
-            add("faq", "aeo", 1, tr("Alıcının sorabileceği soruların kısa cevapları (soru-cevap) yok.", "There are no short answers to questions buyers ask (Q&A)."), "description")
-        if _words(product) < standard.DESCRIPTION_WORDS[0] // 2:
-            add("short", "aeo", 1, tr(f"Açıklama kısa ({_words(product)} kelime); alıcı niyetini karşılamak için daha dolu olmalı.", f"The description is short ({_words(product)} words); it should be fuller to meet buyer intent."), "description")
+    for id, text in structure_issues(product):
+        add(id, "aeo", 1, text, "description")
 
     # ---- GEO
     source = "\n".join([title, description, " ".join(map(str, listing.get("materials") or [])), " ".join(v for vals in variations.values() for v in vals)])
