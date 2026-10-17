@@ -24,7 +24,7 @@ from app.core.ttl_cache import cached
 from app.core.i18n import tr
 from sqlalchemy.orm import Session
 
-from app.ai import audit, quality
+from app.ai import audit, layout, quality
 from app.assistant import toolsets
 from app.assistant.models import AdReport, ChatImage
 from app.finance import invoices
@@ -821,6 +821,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     title = " ".join(str(a.get("title", "")).split())[: bulk.TITLE_MAX]
     if not title:
         return {"error": "Başlık gerekli."}
+    a = {**a, "description": layout.normalize(str(a.get("description") or ""))}  # düzen: bölüm başlıkları, tek tip madde işareti, emoji yok (ai/layout.py)
     tags_checked, _short = _tags(a.get("tags") or [])
     others = quality.shop_others(ctx.db, ctx.shop.id)
     draft_variations = {str(v.get("name") or ""): [str(x.get("value") or "") for x in v.get("values") or []] for v in a.get("variations") or []}

@@ -41,6 +41,8 @@ class SuggestIn(BaseModel):
     materials: list[str] | None = None
     # Formdaki varyasyonlar (kaydedilmemiş olabilir): yapay zekâ güncel renk/boyut seçeneklerini bilsin
     inventory: dict | None = None
+    # Düzeltilecek sorunlar / kullanıcının isteği (içerik denetimindeki seçilen bulgular): öneri bunlara odaklanır
+    instruction: str | None = Field(default=None, max_length=1200)
 
 
 class ListingOut(BaseModel):

@@ -1,7 +1,7 @@
 import json
 import re
 
-from app.ai import audit, catalog, quality, standard
+from app.ai import audit, catalog, layout, quality, standard
 from app.ai.catalog import ResolvedModel
 from app.ai.client import get_anthropic_client, get_openai_client, openai_limits
 from app.billing import metering
@@ -123,6 +123,7 @@ def generate_seo_suggestion(
         tags = quality.fix_long_tags(quality.clean_tags(suggestion.get("tags", [])))
         suggestion["tags"] = tags
         # Ölçü/renk temizliği denetimden önce: yeniden deneme, son hâli görsün (kısalan başlık benzerliği artırabilir)
+        suggestion["description"] = layout.normalize(str(suggestion.get("description", "")))
         suggestion["title"] = quality.clean_title(str(suggestion.get("title", "")), variations or {})
         problems = audit.generation_problems(suggestion["title"], tags, str(suggestion.get("description", "")), others, source_text, variations or {})
         if not problems or attempt == MAX_RETRIES:

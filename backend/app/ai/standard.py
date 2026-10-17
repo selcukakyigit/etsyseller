@@ -33,6 +33,11 @@ TAG_RULES = (
     "Renk listesi etiketi yazma (renkler varyasyonda zaten var); marka ya da karakter adı yazma.",
 )
 
+LAYOUT_RULES = (
+    "DÜZEN (düz metin): açılış paragrafı, sonra bölümler; her bölüm arasında bir boş satır. Bölüm başlığı kendi satırında BÜYÜK HARF ve emojisiz (DETAILS, GREAT FOR, QUESTIONS).",
+    "Maddeler tek tip \"• \" ile, her madde tek satır; paragraf en fazla 3 satır; soru-cevap çiftleri arasında boş satır. Emoji kullanma. Mağazanın sabit bölümleri kendi sembolleriyle aynen kalır.",
+)
+
 DESCRIPTION_RULES = (
     f"Yalnızca ürüne özel kısmı yaz ({DESCRIPTION_WORDS[0]}–{DESCRIPTION_WORDS[1]} kelime). Mağazanın sabit bölümleri (kargo, iade, iletişim, yasal) otomatik eklenir ya da olduğu gibi korunur; yazma, değiştirme.",
     f"AÇILIŞ (ilk {OPENING_CHARS} karakter): tek net cümlede ürünün ne olduğunu, kim/ne için olduğunu ve en önemli özelliğini (malzeme, ölçü) söyle; ana aranan ifadeler doğal geçsin. Selamlama, \"welcome\", abartı yok.",
@@ -40,6 +45,7 @@ DESCRIPTION_RULES = (
     "KULLANIM VE VESİLE: kime, hangi anda, hangi ihtiyaç için (hediye vesileleri burada); alıcının doğal dille soracağı gibi yaz.",
     f"SORU-CEVAP ({FAQ_COUNT[0]}–{FAQ_COUNT[1]} kısa): \"Q: …\" / \"A: …\" biçiminde, yalnızca listing verisinden cevaplanabilen sorular (ölçü seçenekleri, malzeme, kişiselleştirme, hazırlık/kargo bilgisi). Cevabını bilmediğin soruyu yazma; veri yetmiyorsa bu bölümü atla.",
     "Doğrulanamayan iddia (waterproof, lifetime, certified…) ve öznel övgü yazma; somut ve ölçülebilir ifadeleri tercih et.",
+    *LAYOUT_RULES,
 )
 
 

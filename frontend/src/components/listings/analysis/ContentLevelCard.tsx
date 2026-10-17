@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, ContentAudit, ContentLevel } from "@/lib/api";
 import { useCached } from "@/lib/pageCache";
+import { FocusKey } from "./NextStepCard";
 import { useT } from "@/lib/i18n-client";
 import HelpTip from "@/components/ui/HelpTip";
 
@@ -14,11 +15,12 @@ const PILL: Record<ContentLevel, string> = {
   weak: "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300",
 };
 // Düzenleyicinin odak modları (bkz. NextStepCard FOCUS_KEYS): yalnızca ilgili alan açılır.
-const FOCUS: Record<string, string> = { title: "title_tags", tags: "title_tags", description: "description", alt_text: "photo" };
+const FOCUS: Record<string, FocusKey> = { title: "title_tags", tags: "title_tags", description: "description", alt_text: "photo", attributes: "attributes" };
 const SHOWN = 5;
 
 /** İçerik seviyesi: SEO (Etsy aramasında eşleşme), AEO (alıcının sorusuna cevap), GEO (yapay zekâ asistanlarının güvenle önerebilmesi) + bulgular. Ücretsiz, yapay zekâ çağırmaz. */
-export default function ContentLevelCard({ shopId, listingId }: { shopId: number; listingId: number }) {
+/** `stepFocus`: Sıradaki Adım'ın bu turdaki alanı; o alandaki bulgular "bu tur" diye işaretlenir ve öne alınır (ölçüm için bir turda tek alan). */
+export default function ContentLevelCard({ shopId, listingId, stepFocus }: { shopId: number; listingId: number; stepFocus?: FocusKey | null }) {
   const { t } = useT();
   const [a, setA] = useCached<ContentAudit>(`content:${shopId}:${listingId}`);
   const [all, setAll] = useState(false);
@@ -38,7 +40,9 @@ export default function ContentLevelCard({ shopId, listingId }: { shopId: number
     { key: "aeo" as const, label: "AEO", tip: t("Alıcının sorusuna doğrudan cevap: açılış cümlesi, olgu listesi, soru-cevap.", "Direct answers to buyer questions: opening sentence, fact list, Q&A.") },
     { key: "geo" as const, label: "GEO", tip: t("Yapay zekâ asistanlarının (ChatGPT, Google AI…) listing'i güvenle önerebilmesi: tutarlı, doğrulanabilir, eksiksiz veri.", "AI assistants (ChatGPT, Google AI…) being able to recommend the listing: consistent, verifiable, complete data.") },
   ];
-  const list = all ? a.findings : a.findings.slice(0, SHOWN);
+  const inRound = (f: ContentAudit["findings"][number]) => !!stepFocus && !!f.fix && (FOCUS[f.fix] === stepFocus || stepFocus === "text" || stepFocus === "overhaul");
+  const sorted = [...a.findings].sort((x, y) => Number(inRound(y)) - Number(inRound(x)));
+  const list = all ? sorted : sorted.slice(0, SHOWN);
 
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
@@ -73,10 +77,11 @@ export default function ContentLevelCard({ shopId, listingId }: { shopId: number
               <span className="flex-1">
                 <span className="mr-1.5 rounded bg-neutral-100 px-1 text-[10px] font-semibold text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">{f.dim.toUpperCase()}</span>
                 {f.text}
+                {inRound(f) && <span className="ml-1.5 rounded bg-[#D97757]/15 px-1 text-[10px] font-semibold text-[#B4553A] dark:text-[#E89A7F]">{t("bu tur", "this round")}</span>}
               </span>
               {f.fix && (
                 <Link
-                  href={`/listings/${listingId}/edit${FOCUS[f.fix] ? `?focus=${FOCUS[f.fix]}` : ""}`}
+                  href={`/listings/${listingId}/edit?focus=${FOCUS[f.fix]}&fix=${encodeURIComponent(f.id)}`}
                   className="flex-shrink-0 text-xs font-medium text-[#D97757] hover:text-[#C6613F]"
                   title={f.risk === "high" ? t("Başlık değişikliği sıralamayı etkileyebilir", "A title change can affect ranking") : undefined}
                 >

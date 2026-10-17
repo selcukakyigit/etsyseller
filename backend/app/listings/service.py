@@ -473,7 +473,7 @@ def generate_for_listing(db: Session, shop: Shop, listing_id: int, overrides: Su
     fact_source = {k: listing.get(k) for k in ("title", "description", "materials")}
     # Formdaki (taslaktaki) güncel değerler verildiyse AI onları iyileştirir.
     if overrides is not None:
-        for key, value in overrides.model_dump(exclude_none=True, exclude={"inventory"}).items():
+        for key, value in overrides.model_dump(exclude_none=True, exclude={"inventory", "instruction"}).items():
             listing[key] = value
         if overrides.inventory:
             inventory = overrides.inventory
@@ -488,7 +488,7 @@ def generate_for_listing(db: Session, shop: Shop, listing_id: int, overrides: Su
         except Exception:  # noqa: BLE001 — teşhis hesaplanamazsa öneri yine üretilir
             logger.warning("Teşhis hesaplanamadı (listing %s)", listing_id, exc_info=True)
     if instruction:
-        brief = f"{brief}\nKULLANICININ İSTEĞİ (ton/odak): {instruction}".strip()
+        brief = f"{brief}\nKULLANICININ İSTEĞİ / DÜZELTİLECEK SORUNLAR (öncelik ver): {instruction}".strip()
 
     try:
         suggestion = seo.generate_seo_suggestion(listing, keyword_pool=keyword_pool, others=quality.shop_others(db, shop.id, exclude_id=listing_id), diagnosis_brief=brief, variations=quality.variation_values(inventory), fact_source=fact_source)
@@ -502,7 +502,7 @@ def generate_for_listing(db: Session, shop: Shop, listing_id: int, overrides: Su
 def create_suggestion(
     db: Session, shop: Shop, user_id: int, listing_id: int, overrides: SuggestIn | None = None
 ) -> SuggestionOut:
-    listing, suggestion = generate_for_listing(db, shop, listing_id, overrides)
+    listing, suggestion = generate_for_listing(db, shop, listing_id, overrides, instruction=(overrides.instruction if overrides else None) or "")
     version_row = ListingVersion(
         shop_id=shop.id,
         listing_id=listing_id,

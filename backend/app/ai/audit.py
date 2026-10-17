@@ -12,7 +12,7 @@ import html
 import re
 from dataclasses import asdict, dataclass
 
-from app.ai import quality, standard
+from app.ai import layout, quality, standard
 from app.core.i18n import tr
 
 DIMS = ("seo", "aeo", "geo")
@@ -63,13 +63,17 @@ def structure_issues(product: str) -> list[tuple[str, str]]:
         out.append(("facts", tr("Malzeme, ölçü, seçenekler gibi olgular kısa maddeler halinde yok.", "Facts such as material, size and options are not listed as short bullets.")))
     if sum(1 for ln in lines if _QUESTION.match(ln) or (ln.strip().endswith("?") and len(ln.strip()) < 140)) < 2:
         out.append(("faq", tr("Alıcının sorabileceği soruların kısa cevapları (soru-cevap) yok.", "There are no short answers to questions buyers ask (Q&A).")))
+    if _words(product) > 120 and not any(layout.is_header(ln) for ln in lines):
+        out.append(("layout_headers", tr("Açıklama tek blok; bölüm başlıkları (DETAILS, GREAT FOR…) ve boşluklarla düzenli değil.", "The description is one block; it is not organized with section headings and spacing.")))
+    if len(re.findall(layout._EMOJI, product)) > 3:
+        out.append(("layout_emoji", tr("Açıklamada çok fazla emoji var; düz ve temiz metin daha okunaklı.", "The description has too many emoji; plain, clean text reads better.")))
     if _words(product) < standard.DESCRIPTION_WORDS[0] // 2:
         out.append(("short", tr(f"Açıklama kısa ({_words(product)} kelime); alıcı niyetini karşılamak için daha dolu olmalı.", f"The description is short ({_words(product)} words); it should be fuller to meet buyer intent.")))
     return out
 
 
 # Soru-cevap yapay zekâya zorlanmaz (veri yetmiyorsa atlanır; zorlamak uydurmaya iter); denetçide yine bulgu olarak görünür.
-_NOT_ENFORCED = {"faq"}
+_NOT_ENFORCED = {"faq", "layout_headers", "layout_emoji"}
 
 
 def generation_problems(title: str, tags: list[str], product_description: str, others: list[dict], source_text: str | None, variations: dict[str, list[str]]) -> list[str]:

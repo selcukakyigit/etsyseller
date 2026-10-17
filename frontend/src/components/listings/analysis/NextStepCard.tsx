@@ -5,9 +5,9 @@ import { NextStep } from "@/lib/api";
 import { T, useT } from "@/lib/i18n-client";
 
 /** Düzenleyicinin odak modu: yalnızca sıradaki adımın alanı görünür (bir turda tek şey değişsin ki etkisi ölçülebilsin). */
-export type FocusKey = "photo" | "price" | "title_tags" | "description" | "text" | "overhaul";
+export type FocusKey = "photo" | "price" | "title_tags" | "description" | "text" | "overhaul" | "attributes";
 
-export const FOCUS_KEYS: FocusKey[] = ["photo", "price", "title_tags", "description", "text", "overhaul"];
+export const FOCUS_KEYS: FocusKey[] = ["photo", "price", "title_tags", "description", "text", "overhaul", "attributes"];
 
 export const focusLabel = (t: T, f: FocusKey) =>
   ({
@@ -17,6 +17,7 @@ export const focusLabel = (t: T, f: FocusKey) =>
     description: t("Açıklama", "Description"),
     text: t("Başlık, etiketler ve açıklama", "Title, tags and description"),
     overhaul: t("Kapsamlı yenileme", "Full refresh"),
+    attributes: t("Kategori özellikleri", "Category attributes"),
   })[f];
 
 /** Adımın düzenleyicide hangi odak alanını açacağı (yoksa düzenlenecek bir şey yok: bekle, koru, mağaza geneli…). */

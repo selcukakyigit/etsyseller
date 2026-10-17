@@ -3,10 +3,11 @@
 import DescriptionTemplatePicker from "@/components/listing-editor/DescriptionTemplatePicker";
 import DiagnosisStrip from "@/components/listings/analysis/DiagnosisStrip";
 import { FOCUS_KEYS, FocusKey, focusLabel } from "@/components/listings/analysis/NextStepCard";
+import FixCard from "@/components/listings/analysis/FixCard";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { api, Suggestion } from "@/lib/api";
+import { api, ContentAudit, Suggestion } from "@/lib/api";
 import { useListingWorkingCopy } from "@/lib/useListingWorkingCopy";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { dismissPublishJob, startPublish, usePublishJobs } from "@/lib/publishJobs";
@@ -71,11 +72,30 @@ export default function ListingEditPage() {
     const f = new URLSearchParams(window.location.search).get("focus");
     if (f && (FOCUS_KEYS as string[]).includes(f)) setTimeout(() => setFocus(f as FocusKey), 0);
   }, []);
+  // İçerik denetiminden "Düzelt" (?fix=bulgu1,bulgu2): seçilen bulgular adım kartının yerine geçer ve AI önerisine talimat olur.
+  const [fixes, setFixes] = useState<ContentAudit["findings"]>([]);
+  const shopIdForFix = activeShop?.id;
+  useEffect(() => {
+    const ids = new URLSearchParams(window.location.search).get("fix")?.split(",").filter(Boolean) ?? [];
+    if (!ids.length || !shopIdForFix || listingId < 0) return;
+    let cancelled = false;
+    api.insights.content(shopIdForFix, listingId).then(
+      (a) => !cancelled && setFixes(a.findings.filter((x) => ids.includes(x.id))),
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [shopIdForFix, listingId]);
   function enterFocus(f: FocusKey | null) {
     setFocus(f);
+    if (!f) setFixes([]);
     const url = new URL(window.location.href);
     if (f) url.searchParams.set("focus", f);
-    else url.searchParams.delete("focus");
+    else {
+      url.searchParams.delete("focus");
+      url.searchParams.delete("fix");
+    }
     window.history.replaceState(null, "", url);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -105,7 +125,11 @@ export default function ListingEditPage() {
     setAiError(null);
     try {
       const previous = { title: edit.title, tags: edit.tags, description: edit.description, materials: edit.materials };
-      const s = await api.listings.suggest(activeShop.id, listingId, { ...previous, inventory: edit.inventory });
+      const s = await api.listings.suggest(activeShop.id, listingId, {
+        ...previous,
+        inventory: edit.inventory,
+        ...(fixes.length > 0 ? { instruction: fixes.map((f) => f.text).join(" ") } : {}),
+      });
       wc.patch({
         ...(aiFields.includes("title") ? { title: s.suggested_title } : {}),
         ...(aiFields.includes("tags") ? { tags: s.suggested_tags } : {}),
@@ -202,6 +226,7 @@ export default function ListingEditPage() {
       description: ["description"],
       text: ["title", "tags", "description"],
       overhaul: ["images", "inventory", "title", "tags", "description"],
+      attributes: [],
     };
     const areas: [string, unknown, unknown, string][] = [
       ["title", edit.title, live.title, t("başlık", "title")],
@@ -343,7 +368,9 @@ export default function ListingEditPage() {
             </div>
 
             {listingId > 0 &&
-              (focus ? (
+              (focus && fixes.length > 0 ? (
+                <FixCard shopId={activeShop.id} listingId={listingId} fixes={fixes} focus={focus} onAi={handleAi} busy={aiBusy} />
+              ) : focus ? (
                 <DiagnosisStrip shopId={activeShop.id} listingId={listingId} onAi={handleAi} full />
               ) : (
                 <DiagnosisStrip shopId={activeShop.id} listingId={listingId} onFocus={enterFocus} onAi={handleAi} />
@@ -550,9 +577,7 @@ export default function ListingEditPage() {
             </SectionCard>
             )}
 
-            {!focus && (
-            <>
-
+            {(!focus || focus === "attributes") && (
             <SectionCard
               id="sec-attributes"
               title={t("Etiketler & Özellikler", "Tags & Attributes")}
@@ -578,7 +603,10 @@ export default function ListingEditPage() {
               onChange={wc.setProperty}
             />
             </SectionCard>
+            )}
 
+            {!focus && (
+            <>
             <SectionCard
               id="sec-shipping"
               title={t("Kargo, İşlem Süresi & İade", "Shipping, Processing & Returns")}

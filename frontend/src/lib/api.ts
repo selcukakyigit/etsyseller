@@ -104,6 +104,8 @@ export type SuggestInput = {
   materials?: string[];
   /** Formdaki (henüz kaydedilmemiş olabilir) varyasyonlar: öneri güncel renk/boyut seçeneklerini bilsin */
   inventory?: unknown;
+  /** Düzeltilecek sorunlar (içerik denetimindeki seçilen bulgular): öneri bunlara odaklanır */
+  instruction?: string;
 };
 
 export type StatSnapshot = {
