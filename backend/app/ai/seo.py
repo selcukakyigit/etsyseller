@@ -5,6 +5,7 @@ from app.ai import audit, catalog, quality, standard
 from app.ai.catalog import ResolvedModel
 from app.ai.client import get_anthropic_client, get_openai_client, openai_limits
 from app.billing import metering
+from app.keywords import scoring
 
 SYSTEM_PROMPT = f"""Sen bir Etsy SEO uzmanısın. Sana bir listing'in mevcut başlığı, etiketleri ve açıklaması verilecek. Görevin, Etsy'nin Ağustos 2025 başlık rehberine ve alıcı niyetini anlayan aramaya uygun; aynı zamanda yapay zekâ alışveriş asistanlarının rahat okuyup önerebileceği net, olgusal ve tutarlı bir başlık, {standard.TAG_COUNT} etiket ve açıklama önerisi üretmek.
 
@@ -17,13 +18,11 @@ Bu listing'e özgü ek kurallar:
 - Açıklamada seçenekleri (renk, boyut) sayıyorsan "variations"taki seçeneklerin TAMAMINI yaz; eksik ya da fazla olmasın. Listing'e yeni bir seçenek eklendiyse açıklamadaki listeye de ekle
 - Açıklamanın sonundaki sabit/standart bölümleri (kargo-teslimat süreleri, garanti/iade politikası, iletişim bilgisi, telif/yasal uyarı, özel boyut talebi gibi mağaza genelinde tekrar eden kısımlar) OLDUĞU GİBİ, kısaltmadan, sembollerini (☛ ➲ ✔ ツ vb.) ve formatını koruyarak açıklamanın sonuna aynen ekle; asla silme, kısaltma veya parafraze etme
 - Orijinal dile (Türkçe/İngilizce vb.) sadık kal, ürünün gerçek özelliklerini uydurma, sadece verilen bilgiyi yeniden düzenle ve genişlet
-- Eğer sana bir "kullanılabilir anahtar kelime havuzu" verilirse, her kelimenin yanındaki bilgiyi bir rehber olarak kullanarak uygun olanları etiketlere/başlığa doğal şekilde dahil et:
-  * "kendi kanıtlanmış kazanan" etiketli kelimeler senin en iyi performanslı listing'lerinden geliyor — bunlara öncelik ver
-  * "rakip kullanım: X/N" yüksek olanlar (ör. N'e yakın) çok doygun/rekabetçi olabilir — düşük-orta olanlar daha az kullanılmış, öne çıkma şansı daha yüksek olabilir
-  * "google ilgisi: X/100" varsa, bu Etsy içi değil Google'daki genel arama ilgisidir — yüksek google ilgisi + düşük rakip kullanımı bir fırsat sinyali olabilir
-  * "Etsy'de aylık N arama" ve "dönüşüm" Etsy Marketplace Insights verisidir (gerçek Etsy aramaları). Dönüşümü "çok düşük" olan geniş aramalar (ör. "metal wall art") çok aranır ama alıcı orada sadece gezinir: ana arama öbeği yapma, en fazla bir etikette kullan. Dönüşümü orta/yüksek, makul aranan ve ürüne birebir uyan uzun kuyruklu aramalar başlığın ana öbeği ve etiketler için en değerli adaylardır. Arama sonucu (rakip listing) sayısı aramaya göre azsa fırsattır; arama hacmi hızla düşüyorsa (değişim çok negatif) ana öbek yapma
-  * "ARAŞTIRMA" işaretli kelimeler kullanıcının Etsy'de araştırdığı, bu ürünle ilgili aramalardır; ürüne gerçekten uyuyorsa değerlendir
-  * Yine de havuzdaki her kelimeyi zorla kullanma ve bu sayılara körü körüne bağlı kalma — asıl öncelik her zaman kelimenin ürüne gerçekten uyup uymadığı, uydurma/alakasız kelime ekleme
+- Sana "Kullanılabilir anahtar kelime havuzu" verilirse: ifadeler ROLLERE ayrılmış ve puana göre sıralıdır; her birinin yanında verinin durumu yazar.
+  * ÖNCE alaka: ürüne gerçekten uymayan ifadeyi puanı ne olursa olsun kullanma. Sonra rollere göre seç: başlık ana öbeği ve etiketlerde ana ürün ifadesi, orta kapsam, uzun kuyruk, vesile/alıcı ve stil/malzeme etiketlerinden dengeli bir karışım kur; 13 etiketin hepsi aynı geniş ifadenin varyasyonu olmasın
+  * veri "ölçülü": aylık arama ve sonuç sayısı gerçek; ARAMA ÷ SONUÇ oranı yüksek ifadeler fırsattır. "kısmi": sonuç sayısı, dönüşüm ya da senin satışın biliniyor. "tahmin": talep BİLİNMİYOR, yalnızca kelime yapısı ya da rakip kullanımı var; bunları körü körüne güvenme
+  * Yüz binlerce sonuçlu geniş aramalar (ör. "metal wall art") ve dönüşümü düşük olanlar ana öbek olmasın, en fazla bir etikette geçsin; kanıtlanmış satışı olan ("senin benzer listing'lerinde N satış", "bu listing'e N siparişle gelmiş") ifadeleri koru
+  * Arama hacmi hızla düşen (değişim çok negatif) ifadeyi ana öbek yapma; havuzdaki her kelimeyi zorla kullanma, uydurma/alakasız kelime ekleme
 - materials: ürünün gerçekten yapıldığı malzemeler (en fazla 13, her biri en fazla 45 karakter, parantez ve özel karakter yok). Verilen mevcut malzeme listesini ve açıklamadan açıkça anlaşılan malzemeleri düzenle; verilmeyen bir malzemeyi UYDURMA. Bilgi yoksa mevcut listeyi aynen döndür.
 - rationale: yaptığın değişikliklerin gerekçesini 2-3 cümleyle Türkçe özetle
 
@@ -63,39 +62,6 @@ def _generate_with_anthropic(model: ResolvedModel, user_content: str) -> dict:
     metering.record_response("seo", model, message)
     text = "".join(block.text for block in message.content if block.type == "text")
     return _extract_json(text or "{}")
-
-
-_CONVERSION_TR = {"very_low": "çok düşük", "low": "düşük", "medium": "orta", "high": "yüksek", "very_high": "çok yüksek"}
-
-
-def _format_keyword_pool(pool: list[dict]) -> str:
-    lines = []
-    for item in pool:
-        if item.get("source") == "own":
-            info = f"senin benzer listing'lerinde kullanılıyor, bu listing'lerin son 180 günde toplam {item.get('units', 0)} satışı var"
-        elif item.get("source") == "etsy":
-            info = (
-                "ETSY VERİSİ: bu listing'e gerçekten bu aramayla gelinmiş "
-                f"(görüntülenme {item.get('etsy_views') or 0}, tıklama {item.get('etsy_clicks') or 0}, sipariş {item.get('etsy_orders') or 0}) — yüksek öncelik"
-            )
-        elif item.get("source") == "research":
-            info = "ARAŞTIRMA: kullanıcının Etsy kelime araştırmasından, bu ürünle ilgili"
-        else:
-            info = f"rakip kullanım: {item['score']}/{item['sample_size']}"
-        if item.get("etsy_searches"):
-            info += f", Etsy'de aylık {item['etsy_searches']} arama"
-            if item.get("etsy_trend_pct") is not None:
-                info += f" (değişim %{item['etsy_trend_pct']:+d})"
-            if item.get("etsy_results"):
-                info += f", {item['etsy_results']} arama sonucu"
-            if item.get("etsy_conversion"):
-                info += f", dönüşüm: {_CONVERSION_TR.get(item['etsy_conversion'], item['etsy_conversion'])}"
-            if item.get("etsy_competition"):
-                info += f" (rekabet: {item['etsy_competition']})"
-        if item.get("google_score") is not None:
-            info += f", google ilgisi: {item['google_score']}/100"
-        lines.append(f'- "{item["tag"]}" [{info}]')
-    return "\n".join(lines)
 
 
 MAX_RETRIES = 2  # kalite/benzersizlik ihlalinde modele geri bildirimle en fazla bu kadar yeniden dene
@@ -146,7 +112,7 @@ def generate_seo_suggestion(
 
     user_content = f"Mevcut listing verisi:\n{json.dumps(listing_payload, ensure_ascii=False, indent=2)}"
     if keyword_pool:
-        user_content += f"\n\nKullanılabilir anahtar kelime havuzu:\n{_format_keyword_pool(keyword_pool)}"
+        user_content += f"\n\nKullanılabilir anahtar kelime havuzu:\n{scoring.brief(keyword_pool, listing_payload["title"])}"
     user_content += _others_block(listing_payload["title"], listing_payload["tags"], others)
     if diagnosis_brief:
         user_content += f"\n\n{diagnosis_brief}\nGerekçede (rationale) bu teşhise göre neyi neden değiştirdiğini açıkla."

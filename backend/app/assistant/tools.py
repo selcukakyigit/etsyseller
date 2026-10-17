@@ -6,6 +6,7 @@ import datetime as dt
 import html
 import itertools
 import json
+import logging
 import re
 import statistics
 import time
@@ -30,6 +31,7 @@ from app.finance import invoices
 from app.finance import service as fin
 from app.listings import bulk, creation, drafts, performance, templates
 from app.listings import service as listing_service
+from app.keywords import scoring
 from app.keywords import service as keyword_service
 from app.listings import sync_status as listing_sync
 from app.listings.models import ListingCache, ListingLocal
@@ -38,6 +40,8 @@ from app.orders.models import OrderCache
 from app.shops import reference_cache
 from app.shops.models import Shop
 from app.taxonomy import service as taxonomy_service
+
+log = logging.getLogger(__name__)
 
 CUSTOM_VARIATION_IDS = [513, 514, 516]  # Etsy'nin serbest isimli varyasyon kimlikleri
 MAX_COMBOS = 400
@@ -75,6 +79,7 @@ class Ctx:
     message: str = ""  # kullanıcının bu mesajı (yapıştırılan fatura metni gibi, modele yeniden yazdırmadan okumak için)
     cards: list[dict] = field(default_factory=list)
     session_id: int | None = None  # sohbet oturumu: üretilen resimler bu oturuma kaydedilir
+    keyword_checked: bool = False  # create_listing_draft anahtar kelime denetimini tur başına bir kez yapar (model düzeltip tekrar çağırır)
     image_jobs: list = field(default_factory=list)  # aynı turda istenen görseller önceden paralel başlatılır: [(prompt, referans kimliği, Future)]
 
 
@@ -801,6 +806,17 @@ def _latest_message_media(ctx: Ctx) -> tuple[list[str], list[str]]:
     return images, videos
 
 
+def _keyword_feedback(ctx: Ctx, a: dict, title: str, tags: list[str]) -> str | None:
+    """Yeni listing'in etiketlerini sunucudaki puanlı kelime havuzuna göre denetler (yapay zekâ çağırmaz). Havuz kurulamazsa ya da veri yoksa None: taslak engellenmez."""
+    try:
+        tid = int(a["taxonomy_id"]) if a.get("taxonomy_id") else None
+        pool = keyword_service.scored_pool(ctx.db, ctx.shop, {"title": title, "tags": tags, "taxonomy_id": tid})
+        return scoring.coverage_feedback(tags, pool, title)
+    except Exception:  # noqa: BLE001 - kelime denetimi yardımcıdır; hata taslak oluşturmayı engellemez
+        log.warning("Anahtar kelime denetimi yapılamadı", exc_info=True)
+        return None
+
+
 def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     title = " ".join(str(a.get("title", "")).split())[: bulk.TITLE_MAX]
     if not title:
@@ -811,6 +827,11 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     problems_pre = audit.generation_problems(title, tags_checked, str(a.get("description") or ""), others, None, draft_variations)
     if problems_pre:
         return {"error": "Taslak henüz oluşturulmadı. Önce şunları düzelt ve create_listing_draft'ı tekrar çağır (mağazanın diğer listing'lerinin kopyası olmamalı): " + " ".join(problems_pre)}
+    if not ctx.keyword_checked:
+        ctx.keyword_checked = True
+        hint = _keyword_feedback(ctx, a, title, tags_checked)
+        if hint:
+            return {"error": "Taslak henüz oluşturulmadı. Etiketleri ölçülü anahtar kelime verisine göre gözden geçirip create_listing_draft'ı tekrar çağır (ürüne uymayan öneriyi kullanma): " + hint}
     _, norm_qty = _shop_norms(ctx)
     qty_assumed = not a.get("quantity")
     # Fiyat yalnızca kullanıcının söylediği değerdir: verilmediyse 0 kalır ve taslak "Fiyat gir." ile yayına hazır sayılmaz.
@@ -1445,17 +1466,11 @@ def keyword_pool(ctx: Ctx, a: dict) -> dict:
         listing = {"title": str(a["query"]), "tags": [], "taxonomy_id": int(a["taxonomy_id"]) if a.get("taxonomy_id") else None}
     else:
         return {"error": "listing_id ya da query ver."}
-    pool = keyword_service.build_keyword_pool(ctx.db, ctx.shop, listing)
-    limit = max(5, min(int(a.get("limit") or 25), 40))
+    pool = keyword_service.scored_pool(ctx.db, ctx.shop, listing)
     return {
-        "etiketler": [{
-            "etiket": p["tag"], "kaynak": {"own": "kendi", "etsy": "etsy_verisi", "research": "arastirma"}.get(p["source"], "rakip"), "puan": p.get("score"),
-            **({"etsy_aylik_arama": p["etsy_searches"], "etsy_donusum": p.get("etsy_conversion"), "etsy_degisim_yuzde": p.get("etsy_trend_pct"),
-                "etsy_arama_sonucu": p.get("etsy_results")} if p.get("etsy_searches") else {}),
-        } for p in pool[:limit]],
-        "not": ("Puan: kendi etiketlerin için satışa göre, rakip etiketleri için ilk 50 rakip listing'de geçme sayısına göre, etsy_verisi için "
-                "listing'i getiren sipariş/tıklama, arastirma için Etsy'de aylık arama. etsy_donusum çok düşük olan geniş aramaları ana öbek yapma. "
-                "Etiket en fazla 20 karakter olmalı; hepsini kopyalama, ürüne uyanları seç."),
+        "adaylar": scoring.brief(pool, listing.get("title") or "", limit=max(5, min(int(a.get("limit") or 30), 40))),
+        "not": ("Roller ve veri durumu (ölçülü / kısmi / tahmin) ile puana göre sıralı. Önce ürüne UYUP UYMADIĞINA bak, sonra rollere göre dengeli seç; "
+                "tahmin etiketli ifadelerde talep bilinmiyor. Etiket en fazla 20 karakter; hepsini kopyalama."),
     }
 
 

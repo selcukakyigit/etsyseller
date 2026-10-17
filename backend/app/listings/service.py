@@ -21,7 +21,6 @@ from app.etsy import videos as etsy_videos
 from app.etsy.client import EtsyClient
 from app.listings import image_cache
 from app.keywords import service as keyword_service
-from app.keywords import trends as keyword_trends
 from app.listings.models import ListingCache, ListingChange, ListingDraft, ListingLocal, ListingStatSnapshot, ListingVersion
 from app.listings.schemas import (
     ImageOrderIn,
@@ -479,15 +478,7 @@ def generate_for_listing(db: Session, shop: Shop, listing_id: int, overrides: Su
         if overrides.inventory:
             inventory = overrides.inventory
 
-    keyword_pool = keyword_service.build_keyword_pool(db, shop, listing)
-
-    # Cache-only — never triggers a live Google Trends request here, just
-    # opportunistically uses whatever's already cached from a prior
-    # "Google Trend Ekle" click (any listing), so this stays fast.
-    cached_trends = keyword_trends.get_cached_scores(db, [item["tag"] for item in keyword_pool])
-    for item in keyword_pool:
-        if item["tag"] in cached_trends:
-            item["google_score"] = cached_trends[item["tag"]]
+    keyword_pool = keyword_service.scored_pool(db, shop, listing)
 
     # Satış teşhisi (yalnızca Etsy'deki listing'ler için): öneri, listing'in neden düştüğüne göre odaklanır.
     brief = ""
