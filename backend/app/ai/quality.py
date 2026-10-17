@@ -20,7 +20,7 @@ MAX_INTRO_SIMILARITY = 0.6  # açıklamanın ilk ~60 kelimesinin benzerliği
 _WORD = re.compile(r"[^\W_]+")  # her dildeki harf ve rakamlar (ä, ß, é, ç, ğ…)
 _STOP = {"the", "and", "for", "with", "your", "our", "you", "from", "this", "that", "a", "an", "of", "in", "to", "or", "by", "on", "at", "is", "it"}
 RISKY_CLAIMS = re.compile(
-    r"\b(hardware|mounting|included|provided|warranty|lifetime|waterproof|rust[- ]?proof|weather[- ]?proof|certified|fireproof|hypoallergenic)\b", re.I
+    r"\b(hardware|warranty|lifetime|(?:water|weather|rust|fade|scratch|uv)[- ]?(?:proof|resistant)|certified|fireproof|hypoallergenic)\b", re.I
 )
 
 
@@ -168,6 +168,14 @@ def variation_values(inventory: dict | None) -> dict[str, list[str]]:
     return out
 
 
+def _in_title(value: str, title_lower: str) -> bool:
+    """Seçenek başlıkta ayrı bir sözcük olarak geçiyor mu. Beden harfleri (S, M, L) ve çok kısa değerler sayılmaz: "Papa's" gibi sözcüklerin içinde eşleşirdi."""
+    v = value.strip().lower()
+    if len(v) <= 2 and not any(ch.isdigit() for ch in v):
+        return False
+    return bool(re.search(rf"(?<![\w'’]){re.escape(v)}(?![\w'’])", title_lower))
+
+
 def fact_problems(title: str, description: str, source_text: str, variations: dict[str, list[str]]) -> list[str]:
     """Önerinin listing'de olmayan bilgi uydurmadığını denetler: kaynakta geçmeyen ölçü ve renkler; birden çok seçeneği
     olan boyut/renk için başlıkta tek bir seçenek (alıcıyı yanıltır)."""
@@ -203,7 +211,7 @@ def fact_problems(title: str, description: str, source_text: str, variations: di
     for name, vals in variations.items():
         if len(vals) < 2:
             continue
-        hits = [v for v in vals if v.lower() in t or any(n in _NUM.findall(t) for n in _NUM.findall(v))]
+        hits = [v for v in vals if _in_title(v, t) or any(n in _NUM.findall(t) for n in _NUM.findall(v))]
         if hits:
             out.append(tr(
                 f"Başlıkta \"{name}\" seçeneklerinden yalnızca biri var ({hits[0]}), oysa {len(vals)} seçenek sunuluyor; başlığa tek bir seçeneği yazma.",
@@ -221,8 +229,8 @@ def clean_title(title: str, variations: dict[str, list[str]]) -> str:
             continue
         for v in vals:
             word = re.sub(r"[^\w\s'&-]", "", v).strip()
-            if word and not any(ch.isdigit() for ch in word):
-                t = re.sub(rf"(?i)\b(?:in\s+)?{re.escape(word)}\b", "", t)
+            if len(word) > 2 and not any(ch.isdigit() for ch in word):  # beden harfleri (S, M, L) silinmez: "Papa's" bozulurdu
+                t = re.sub(rf"(?i)(?<![\w'’])(?:in\s+)?{re.escape(word)}(?![\w'’])", "", t)
     t = re.sub(r"\s+,", ",", t)
     t = re.sub(r",\s*,+", ",", t)
     t = re.sub(r"\s{2,}", " ", t)

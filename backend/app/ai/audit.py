@@ -46,8 +46,19 @@ def _sentences(text: str) -> list[str]:
     return out
 
 
+def _without_fixed(text: str) -> str:
+    """Açıklamanın mağazanın sabit bölümlerinden (☛ ➲ ✔ ツ ile başlayan satırlar) ÖNCEKİ kısmı: yapı denetimi yalnızca ürüne özel metne bakar."""
+    out = []
+    for ln in text.split("\n"):
+        if ln.strip() and ln.strip()[0] in layout.FIXED_MARKERS:
+            break
+        out.append(ln)
+    return "\n".join(out)
+
+
 def structure_issues(product: str, digital: bool = False) -> list[tuple[str, str]]:
     """Açıklamanın yapısı (AEO): [(kimlik, metin)]. Hem denetçi hem üretim hattı (yeniden deneme geri bildirimi) kullanır. `digital`: indirilebilir ürünün olguları farklıdır."""
+    product = _without_fixed(product)
     if not product.strip():
         return []
     out: list[tuple[str, str]] = []
@@ -68,7 +79,7 @@ def structure_issues(product: str, digital: bool = False) -> list[tuple[str, str
         out.append(("faq", tr("Alıcının sorabileceği soruların kısa cevapları (soru-cevap) yok.", "There are no short answers to questions buyers ask (Q&A).")))
     if _words(product) > 120 and not any(layout.is_header(ln) for ln in lines):
         out.append(("layout_headers", tr("Açıklama tek blok; bölüm başlıkları (DETAILS, GREAT FOR…) ve boşluklarla düzenli değil.", "The description is one block; it is not organized with section headings and spacing.")))
-    if len(re.findall(layout._EMOJI, product)) > 3:
+    if sum(1 for ch in product if layout.is_emoji(ch)) > 3:
         out.append(("layout_emoji", tr("Açıklamada çok fazla emoji var; düz ve temiz metin daha okunaklı.", "The description has too many emoji; plain, clean text reads better.")))
     if _words(product) < standard.DESCRIPTION_WORDS[0] // 2:
         out.append(("short", tr(f"Açıklama kısa ({_words(product)} kelime); alıcı niyetini karşılamak için daha dolu olmalı.", f"The description is short ({_words(product)} words); it should be fuller to meet buyer intent.")))
@@ -95,8 +106,9 @@ def summary(result: dict) -> dict:
     return {"level": result["level"], **{d: result["dims"][d]["level"] for d in DIMS}}
 
 
-def _level(points: int, weak_from: int = 3) -> str:
-    return "good" if points == 0 else "mid" if points < weak_from else "weak"
+def _level(points: int, severe: bool, weak_from: int = 5) -> str:
+    """Zayıf: belirgin bir eksik (ağırlık 2) ya da çok sayıda küçük iyileştirme. Yalnızca küçük iyileştirmeler "orta" kalır."""
+    return "good" if points == 0 else "weak" if severe or points >= weak_from else "mid"
 
 
 def audit(listing: dict, *, variations: dict[str, list[str]], inventory: dict | None, missing_attributes: list[dict], others: list[dict]) -> dict:
@@ -161,7 +173,7 @@ def audit(listing: dict, *, variations: dict[str, list[str]], inventory: dict | 
         add("no_stock", "geo", 2, tr("Listing aktif ama hiçbir seçeneğin stoğu yok.", "The listing is active but no option has stock."), None)
 
     points = {d: sum(x.weight for x in f if x.dim == d) for d in DIMS}
-    dims = {d: {"level": _level(points[d]), "points": points[d], "count": sum(1 for x in f if x.dim == d)} for d in DIMS}
+    dims = {d: {"level": _level(points[d], any(x.weight >= 2 for x in f if x.dim == d)), "points": points[d], "count": sum(1 for x in f if x.dim == d)} for d in DIMS}
     order = {"weak": 2, "mid": 1, "good": 0}
     overall = max((v["level"] for v in dims.values()), key=lambda lv: order[lv])
     return {"level": overall, "dims": dims, "findings": [asdict(x) for x in sorted(f, key=lambda x: -x.weight)]}

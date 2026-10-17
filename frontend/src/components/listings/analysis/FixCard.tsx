@@ -73,27 +73,47 @@ export default function FixCard({
   const step = d?.next_step ? stepFocus(d.next_step) : null;
   const fixFocuses = new Set(fixes.filter((f) => f.fix).map((f) => AREA_FOCUS[f.fix as string]));
   const outside = !!step && step !== "overhaul" && step !== "text" && !fixFocuses.has(step);
+  const aiItems = fixes.filter((f) => f.fix === "description" || f.fix === "tags");
+  const titleItems = fixes.filter((f) => f.fix === "title");
+  const manualItems = fixes.filter((f) => !f.fix || f.fix === "attributes" || f.fix === "alt_text");
+  const skippedTitle = canTouchTitle && !touchTitle;
+  const afterAi = checkKey > 0;
+  const groups = [
+    { key: "ai", title: t("Yapay zekâ düzeltecek", "AI will fix"), items: aiItems, skipped: false },
+    { key: "title", title: canTouchTitle ? t("Başlık (onayınla)", "Title (needs your confirmation)") : t("Başlık", "Title"), items: titleItems, skipped: skippedTitle },
+    { key: "manual", title: t("Elle yapılacak (yapay zekâsız)", "To do by hand (no AI)"), items: manualItems, skipped: false },
+  ].filter((g) => g.items.length > 0);
   const btn = "rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50";
   const ghost = `${btn} border border-neutral-300 text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800`;
 
   return (
     <div className="rounded-xl border border-[#D97757]/40 bg-[#D97757]/5 p-4 dark:bg-[#D97757]/10">
       <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 dark:text-neutral-500">{t("Seçtiğin düzeltme", "Selected fix")}</p>
-      <ul className="mt-1.5 space-y-1.5">
-        {fixes.map((f) => (
-          <li key={f.id} className="flex items-start gap-2 text-sm text-neutral-900 dark:text-neutral-100">
-            <span className={`mt-1.5 h-2 w-2 flex-shrink-0 rounded-full ${f.weight >= 2 ? "bg-red-500" : "bg-amber-500"}`} />
-            <span>{f.text}</span>
-          </li>
-        ))}
-      </ul>
-
-      {canTouchTitle && (
-        <label className="mt-3 flex items-start gap-2 text-xs text-neutral-700 dark:text-neutral-300">
-          <input type="checkbox" checked={touchTitle} onChange={(e) => onTouchTitle(e.target.checked)} className="mt-0.5" />
-          <span>{t("Başlığa da dokun (Etsy sıralamasını etkileyebilir; kapalıysa başlık bulgusu atlanır)", "Change the title too (can affect Etsy ranking; when off, the title finding is skipped)")}</span>
-        </label>
+      {groups.map((g) => (
+        <div key={g.key} className="mt-2">
+          <p className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">{g.title}</p>
+          <ul className="mt-1 space-y-1.5">
+            {g.items.map((f) => (
+              <li key={f.id} className={`flex items-start gap-2 text-sm ${g.skipped ? "text-neutral-400 line-through dark:text-neutral-500" : "text-neutral-900 dark:text-neutral-100"}`}>
+                <span className={`mt-1.5 h-2 w-2 flex-shrink-0 rounded-full ${f.weight >= 2 ? "bg-red-500" : "bg-amber-500"}`} />
+                <span>{f.text}</span>
+              </li>
+            ))}
+          </ul>
+          {g.key === "title" && canTouchTitle && (
+            <label className="mt-1.5 flex items-start gap-2 text-xs text-neutral-700 dark:text-neutral-300">
+              <input type="checkbox" checked={touchTitle} onChange={(e) => onTouchTitle(e.target.checked)} className="mt-0.5" />
+              <span>{t("Başlığı da değiştir (Etsy sıralamasını etkileyebilir)", "Change the title too (can affect Etsy ranking)")}</span>
+            </label>
+          )}
+        </div>
+      ))}
+      {afterAi && skippedTitle && (
+        <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+          {t("Başlık değiştirilmedi: kutu işaretli değildi. Başlığı da düzeltmek istiyorsan kutuyu işaretleyip önerileri yeniden üret.", "The title was not changed: the box was not ticked. To fix the title too, tick the box and generate again.")}
+        </p>
       )}
+
       {outside && step && (
         <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
           {t(

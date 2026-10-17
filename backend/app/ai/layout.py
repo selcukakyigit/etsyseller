@@ -13,7 +13,7 @@ _LABEL = re.compile(r"^[^:\n]{2,30}:$")  # "Features:" gibi tek başına bir eti
 MAX_HEADER_CHARS = 34
 
 
-def _is_emoji(ch: str) -> bool:
+def is_emoji(ch: str) -> bool:
     return ch not in FIXED_MARKERS and bool(_EMOJI.match(ch))
 
 
@@ -23,8 +23,8 @@ def is_header(line: str) -> bool:
 
 def _tidy_line(s: str) -> str:
     """Tek ürün satırı: emoji temizlenir; madde işareti '•' olur; emojili ya da 'Etiket:' biçimindeki kısa satır BÜYÜK HARFLİ başlık olur."""
-    emoji_lead = bool(s) and _is_emoji(s[0])
-    s = "".join(ch for ch in s if not _is_emoji(ch) and ch != "️").strip()
+    emoji_lead = bool(s) and is_emoji(s[0])
+    s = "".join(ch for ch in s if not is_emoji(ch) and ch != "️").strip()
     if _BULLET.match(s):
         return "• " + _BULLET.sub("", s)
     short = 0 < len(s) <= MAX_HEADER_CHARS and not s.endswith((".", "!"))
