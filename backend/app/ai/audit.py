@@ -46,8 +46,8 @@ def _sentences(text: str) -> list[str]:
     return out
 
 
-def structure_issues(product: str) -> list[tuple[str, str]]:
-    """Açıklamanın yapısı (AEO): [(kimlik, metin)]. Hem denetçi hem üretim hattı (yeniden deneme geri bildirimi) kullanır."""
+def structure_issues(product: str, digital: bool = False) -> list[tuple[str, str]]:
+    """Açıklamanın yapısı (AEO): [(kimlik, metin)]. Hem denetçi hem üretim hattı (yeniden deneme geri bildirimi) kullanır. `digital`: indirilebilir ürünün olguları farklıdır."""
     if not product.strip():
         return []
     out: list[tuple[str, str]] = []
@@ -60,7 +60,10 @@ def structure_issues(product: str) -> list[tuple[str, str]]:
         )))
     lines = product.split("\n")
     if sum(1 for ln in lines if _BULLET.match(ln)) < 3:
-        out.append(("facts", tr("Malzeme, ölçü, seçenekler gibi olgular kısa maddeler halinde yok.", "Facts such as material, size and options are not listed as short bullets.")))
+        out.append(("facts", tr(
+            "Dosya türü, çözünürlük/boyut, kaç dosya ve nasıl indirilip kullanılacağı gibi olgular kısa maddeler halinde yok.",
+            "Facts such as file type, resolution/size, number of files and how to download and use them are not listed as short bullets.",
+        ) if digital else tr("Malzeme, ölçü, seçenekler gibi olgular kısa maddeler halinde yok.", "Facts such as material, size and options are not listed as short bullets.")))
     if sum(1 for ln in lines if _QUESTION.match(ln) or (ln.strip().endswith("?") and len(ln.strip()) < 140)) < 2:
         out.append(("faq", tr("Alıcının sorabileceği soruların kısa cevapları (soru-cevap) yok.", "There are no short answers to questions buyers ask (Q&A).")))
     if _words(product) > 120 and not any(layout.is_header(ln) for ln in lines):
@@ -76,12 +79,14 @@ def structure_issues(product: str) -> list[tuple[str, str]]:
 _NOT_ENFORCED = {"faq", "layout_headers", "layout_emoji"}
 
 
-def generation_problems(title: str, tags: list[str], product_description: str, others: list[dict], source_text: str | None, variations: dict[str, list[str]]) -> list[str]:
+def generation_problems(
+    title: str, tags: list[str], product_description: str, others: list[dict], source_text: str | None, variations: dict[str, list[str]], digital: bool = False,
+) -> list[str]:
     """Yeni yazılan metin için TEK denetim: biçim ve benzersizlik (quality), uydurma (fact), açıklama yapısı. SEO öneri hattı ve sohbet asistanının
     taslak oluşturması aynısını kullanır; sorun varsa model geri bildirimle yeniden dener."""
     problems = quality.all_problems(title, tags, product_description, others, source_text, quality.size_options(variations))
     problems += quality.fact_problems(title, product_description, source_text or "", variations)
-    problems += [text for id, text in structure_issues(quality.strip_common_paragraphs(product_description, others)) if id not in _NOT_ENFORCED]
+    problems += [text for id, text in structure_issues(quality.strip_common_paragraphs(product_description, others), digital) if id not in _NOT_ENFORCED]
     return problems
 
 
@@ -131,7 +136,7 @@ def audit(listing: dict, *, variations: dict[str, list[str]], inventory: dict | 
     # ---- AEO
     if not product.strip():
         add("no_description", "aeo", 2, tr("Ürüne özel açıklama yok.", "There is no product-specific description."), "description")
-    for id, text in structure_issues(product):
+    for id, text in structure_issues(product, listing.get("listing_type") == "download"):
         add(id, "aeo", 1, text, "description")
 
     # ---- GEO

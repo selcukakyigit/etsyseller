@@ -41,7 +41,7 @@ LAYOUT_RULES = (
 DESCRIPTION_RULES = (
     f"Yalnızca ürüne özel kısmı yaz ({DESCRIPTION_WORDS[0]}–{DESCRIPTION_WORDS[1]} kelime). Mağazanın sabit bölümleri (kargo, iade, iletişim, yasal) otomatik eklenir ya da olduğu gibi korunur; yazma, değiştirme.",
     f"AÇILIŞ (ilk {OPENING_CHARS} karakter): tek net cümlede ürünün ne olduğunu, kim/ne için olduğunu ve en önemli özelliğini (malzeme, ölçü) söyle; ana aranan ifadeler doğal geçsin. Selamlama, \"welcome\", abartı yok.",
-    "OLGULAR: malzeme, ölçüler/seçenekler (varyasyonlardaki TÜM seçenekler), kişiselleştirme nasıl yapılır, pakette ne var, bakım. Kısa maddeler halinde, yalnızca bildiğin bilgiler.",
+    "OLGULAR: malzeme, ölçüler/seçenekler (varyasyonlardaki TÜM seçenekler), kişiselleştirme nasıl yapılır, pakette ne var, bakım. Dijital üründe olgular: dosya türü, çözünürlük/boyut, kaç dosya, nasıl indirilip kullanılır, kullanım hakkı. Kısa maddeler halinde, yalnızca bildiğin bilgiler.",
     "KULLANIM VE VESİLE: kime, hangi anda, hangi ihtiyaç için (hediye vesileleri burada); alıcının doğal dille soracağı gibi yaz.",
     f"SORU-CEVAP ({FAQ_COUNT[0]}–{FAQ_COUNT[1]} kısa): \"Q: …\" / \"A: …\" biçiminde, yalnızca listing verisinden cevaplanabilen sorular (ölçü seçenekleri, malzeme, kişiselleştirme, hazırlık/kargo bilgisi). Cevabını bilmediğin soruyu yazma; veri yetmiyorsa bu bölümü atla.",
     "Doğrulanamayan iddia (waterproof, lifetime, certified…) ve öznel övgü yazma; somut ve ölçülebilir ifadeleri tercih et.",

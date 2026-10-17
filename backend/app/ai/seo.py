@@ -125,7 +125,7 @@ def generate_seo_suggestion(
         # Ölçü/renk temizliği denetimden önce: yeniden deneme, son hâli görsün (kısalan başlık benzerliği artırabilir)
         suggestion["description"] = layout.normalize(str(suggestion.get("description", "")))
         suggestion["title"] = quality.clean_title(str(suggestion.get("title", "")), variations or {})
-        problems = audit.generation_problems(suggestion["title"], tags, str(suggestion.get("description", "")), others, source_text, variations or {})
+        problems = audit.generation_problems(suggestion["title"], tags, str(suggestion.get("description", "")), others, source_text, variations or {}, listing.get("listing_type") == "download")
         if not problems or attempt == MAX_RETRIES:
             break
         feedback = "\n".join(f"- {p}" for p in problems)

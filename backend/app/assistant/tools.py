@@ -825,7 +825,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     tags_checked, _short = _tags(a.get("tags") or [])
     others = quality.shop_others(ctx.db, ctx.shop.id)
     draft_variations = {str(v.get("name") or ""): [str(x.get("value") or "") for x in v.get("values") or []] for v in a.get("variations") or []}
-    problems_pre = audit.generation_problems(title, tags_checked, str(a.get("description") or ""), others, None, draft_variations)
+    problems_pre = audit.generation_problems(title, tags_checked, str(a.get("description") or ""), others, None, draft_variations, a.get("listing_type") == "download")
     if problems_pre:
         return {"error": "Taslak henüz oluşturulmadı. Önce şunları düzelt ve create_listing_draft'ı tekrar çağır (mağazanın diğer listing'lerinin kopyası olmamalı): " + " ".join(problems_pre)}
     if not ctx.keyword_checked:
