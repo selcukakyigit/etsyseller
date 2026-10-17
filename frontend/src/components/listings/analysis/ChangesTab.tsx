@@ -13,9 +13,10 @@ const perfCache = new Map<string, ListingPerformance>();
 const historyCache = new Map<string, ListingHistory>();
 
 const RANGES = (t: T) => [
+  { days: 7, label: t("7 gün", "7 days") },
+  { days: 14, label: t("14 gün", "14 days") },
   { days: 30, label: t("30 gün", "30 days") },
   { days: 90, label: t("90 gün", "90 days") },
-  { days: 180, label: t("180 gün", "180 days") },
   { days: 365, label: t("1 yıl", "1 year") },
 ];
 const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -40,11 +41,17 @@ export function useListingHistory(shopId: number, listingId: number) {
   return { history, error };
 }
 
-/** Seçilen dönemde satış (tam), görüntülenme/favori artışı (biriktirilen günlük kayıtlardan) ve dönüşüm. */
-function PerformanceSummary({ shopId, listingId }: { shopId: number; listingId: number }) {
+/** Seçilen dönemde satış (tam), görüntülenme/favori artışı (biriktirilen günlük kayıtlardan) ve dönüşüm.
+ * `sinceDate`: listing'in son güncellemesinin tarihi; verilirse "Son güncellemeden beri" seçeneği çıkar ve varsayılan o olur
+ * (önceki dönem arka uçta aynı uzunlukta, güncellemeden hemen önceki dönemdir: Önce / Sonra ölçümüyle aynı mantık). */
+function PerformanceSummary({ shopId, listingId, sinceDate }: { shopId: number; listingId: number; sinceDate?: string }) {
   const { t, locale } = useT();
-  const [days, setDays] = useState(90);
-  const [perf, setPerf] = useState<ListingPerformance | null>(() => perfCache.get(`${shopId}:${listingId}:90`) ?? null);
+  const [choice, setChoice] = useState<number | "since" | null>(null);
+  const mode: number | "since" = choice ?? (sinceDate ? "since" : 30);
+  const [nowMs] = useState(() => Date.now());
+  const sinceDays = sinceDate ? Math.max(1, Math.ceil((nowMs - new Date(sinceDate).getTime()) / 864e5)) : 0;
+  const days = mode === "since" ? sinceDays || 30 : mode;
+  const [perf, setPerf] = useState<ListingPerformance | null>(() => perfCache.get(`${shopId}:${listingId}:30`) ?? null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -69,23 +76,32 @@ function PerformanceSummary({ shopId, listingId }: { shopId: number; listingId: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shopId, listingId, days]);
 
+  const choose = (next: number | "since", nextDays: number) => {
+    setChoice(next);
+    const cached = perfCache.get(`${shopId}:${listingId}:${nextDays}`);
+    if (cached) setPerf(cached);
+  };
+  const pill = (active: boolean) =>
+    `rounded-full px-2.5 py-1 text-xs ${active ? "bg-[#D97757] text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"}`;
+
   const pct = (a: number, b: number) => (b ? `${a >= b ? "▲" : "▼"} %${Math.abs(((a - b) / b) * 100).toFixed(0)}` : "");
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("Dönem performansı", "Period performance")}</p>
-        <div className="flex gap-1">
-          {RANGES(t).map((r) => (
-            <button
-              key={r.days}
-              type="button"
-              onClick={() => {
-                setDays(r.days);
-                const cached = perfCache.get(`${shopId}:${listingId}:${r.days}`);
-                if (cached) setPerf(cached);
-              }}
-              className={`rounded-full px-2.5 py-1 text-xs ${days === r.days ? "bg-[#D97757] text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"}`}
-            >
+        <div className="flex flex-wrap gap-1">
+          {RANGES(t).slice(0, 4).map((r) => (
+            <button key={r.days} type="button" onClick={() => choose(r.days, r.days)} className={pill(mode === r.days)}>
+              {r.label}
+            </button>
+          ))}
+          {sinceDate && (
+            <button type="button" onClick={() => choose("since", sinceDays)} className={pill(mode === "since")}>
+              {t("Son güncellemeden beri", "Since last update")}
+            </button>
+          )}
+          {RANGES(t).slice(4).map((r) => (
+            <button key={r.days} type="button" onClick={() => choose(r.days, r.days)} className={pill(mode === r.days)}>
               {r.label}
             </button>
           ))}
@@ -93,6 +109,14 @@ function PerformanceSummary({ shopId, listingId }: { shopId: number; listingId: 
       </div>
       {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
       {!perf && !error && <BlockSpinner />}
+      {perf && !error && perf.freshness.tracking_days < days && (
+        <p className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+          {t(
+            `Bu dönem için görüntülenme verisi henüz tam değil: izleme ${perf.freshness.tracking_days} gündür. Satışlar sipariş geçmişinden tam gelir.`,
+            `View data for this period is not complete yet: tracking has run for ${perf.freshness.tracking_days} days. Sales are complete from order history.`,
+          )}
+        </p>
+      )}
       {perf && !error && (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -146,7 +170,7 @@ export default function ChangesTab({ shopId, listingId }: { shopId: number; list
   const events = changes.map((c) => ({ date: c.published_at }));
   return (
     <div className="space-y-4">
-      {listingId > 0 && <PerformanceSummary shopId={shopId} listingId={listingId} />}
+      {listingId > 0 && <PerformanceSummary shopId={shopId} listingId={listingId} sinceDate={changes[0]?.published_at} />}
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
       {!history && !error && <BlockSpinner />}
       {history && (
