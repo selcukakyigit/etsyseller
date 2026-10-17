@@ -74,13 +74,19 @@ export default function ListingEditPage() {
   }, []);
   // İçerik denetiminden "Düzelt" (?fix=bulgu1,bulgu2): seçilen bulgular adım kartının yerine geçer ve AI önerisine talimat olur.
   const [fixes, setFixes] = useState<ContentAudit["findings"]>([]);
+  const [touchTitle, setTouchTitle] = useState(false); // çok alanlı düzeltmede başlığa dokunma onayı
   const shopIdForFix = activeShop?.id;
   useEffect(() => {
     const ids = new URLSearchParams(window.location.search).get("fix")?.split(",").filter(Boolean) ?? [];
     if (!ids.length || !shopIdForFix || listingId < 0) return;
     let cancelled = false;
+    const touch = new URLSearchParams(window.location.search).get("title") === "1";
     api.insights.content(shopIdForFix, listingId).then(
-      (a) => !cancelled && setFixes(a.findings.filter((x) => ids.includes(x.id))),
+      (a) => {
+        if (cancelled) return;
+        setFixes(a.findings.filter((x) => ids.includes(x.id)));
+        if (touch) setTouchTitle(true); // adımın kendisi başlık-etiket: başlığa dokunmak baştan açık
+      },
       () => undefined,
     );
     return () => {
@@ -104,7 +110,6 @@ export default function ListingEditPage() {
   const fixAreas = new Set(fixes.map((f) => f.fix));
   const multiArea = new Set(fixes.map((f) => (f.fix === "tags" ? "title" : f.fix))).size > 1;
   const canTouchTitle = fixAreas.has("title") && multiArea;
-  const [touchTitle, setTouchTitle] = useState(false);
   const [checkKey, setCheckKey] = useState(0); // AI önerisi forma yazılınca artar: FixCard kontrolü yeniler
   const fixFields = [
     ...(fixAreas.has("description") ? ["description" as const] : []),

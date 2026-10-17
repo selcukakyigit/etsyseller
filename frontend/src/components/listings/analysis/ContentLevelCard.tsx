@@ -37,16 +37,18 @@ const areaLabel = (t: T): Record<string, string> => ({
 const AI_AREAS = ["title", "tags", "description"];
 
 /** Bulguların düzeltileceği düzenleyici bağlantısı: tek alanlıysa o alanın odak modunda, birden çok alanlıysa tam formda açılır; bulgular `fix` ile taşınır. */
-export function fixHref(listingId: number, findings: Finding[], forceFocus?: FocusKey): string {
+export function fixHref(listingId: number, findings: Finding[], opts: { touchTitle?: boolean } = {}): string {
   const focuses = new Set(findings.filter((f) => f.fix).map((f) => AREA_FOCUS[f.fix as string]));
   const fix = `fix=${encodeURIComponent(findings.map((f) => f.id).join(","))}`;
-  const focus = forceFocus ?? (focuses.size === 1 ? [...focuses][0] : null);
-  return `/listings/${listingId}/edit?${focus ? `focus=${focus}&` : ""}${fix}`;
+  const focus = focuses.size === 1 ? [...focuses][0] : null;
+  return `/listings/${listingId}/edit?${focus ? `focus=${focus}&` : ""}${fix}${opts.touchTitle ? "&title=1" : ""}`;
 }
 
-/** Sıradaki Adım'ın alanındaki bulgular: adım başlık-etiketse başlık/etiket bulguları, açıklamaysa açıklama bulguları (AEO + GEO dahil), kapsamlıysa metin alanlarının hepsi. */
+/** Sıradaki Adım'ın bulguları: adım başlık-etiketse SEO boyutunun tamamı (başlık, etiketler, özellikler, çakışma: Etsy aramasındaki eşleşme), açıklamaysa açıklama alanındaki bulgular
+ * (AEO + GEO dahil), kapsamlıysa metin alanlarının hepsi. Adımın düğmesi bunları tek seferde düzeltir. */
 export function findingsForStep(audit: ContentAudit | null | undefined, step: FocusKey | null): Finding[] {
   if (!audit || !step) return [];
+  if (step === "title_tags") return audit.findings.filter((f) => f.dim === "seo");
   const text = step === "text" || step === "overhaul";
   return audit.findings.filter((f) => !!f.fix && (AREA_FOCUS[f.fix] === step || (text && AI_AREAS.includes(f.fix))));
 }

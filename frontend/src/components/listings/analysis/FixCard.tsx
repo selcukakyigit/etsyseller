@@ -86,9 +86,17 @@ export default function FixCard({
   const btn = "rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50";
   const ghost = `${btn} border border-neutral-300 text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800`;
 
+  const inStep = !!d?.next_step && !!step && (fixFocuses.has(step) || step === "text" || step === "overhaul");
+
   return (
     <div className="rounded-xl border border-[#D97757]/40 bg-[#D97757]/5 p-4 dark:bg-[#D97757]/10">
       <p className="text-xs font-medium uppercase tracking-wide text-neutral-400 dark:text-neutral-500">{t("Seçtiğin düzeltme", "Selected fix")}</p>
+      {inStep && d?.next_step && (
+        <p className="mt-1 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+          {t("Sıradaki adım: ", "Next step: ")}
+          {d.next_step.text}
+        </p>
+      )}
       {groups.map((g) => (
         <div key={g.key} className="mt-2">
           <p className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">{g.title}</p>

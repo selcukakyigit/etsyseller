@@ -105,8 +105,11 @@ export default function NextStepCard({
     );
   } else if (focus && !onFocus && !onAi) {
     action = (
-      <Link href={findings.length > 0 ? fixHref(listingId, findings, focus) : `/listings/${listingId}/edit?focus=${focus}`} className={`inline-block ${button}`}>
-        {t(`Düzenle: ${focusLabel(t, focus)}`, `Edit: ${focusLabel(t, focus)}`)} →
+      <Link href={findings.length > 0 ? fixHref(listingId, findings, { touchTitle: focus === "title_tags" }) : `/listings/${listingId}/edit?focus=${focus}`} className={`inline-block ${button}`}>
+        {findings.length > 0
+          ? t(`Düzelt: ${focusLabel(t, focus)} · ${[...new Set(findings.map((f) => f.dim.toUpperCase()))].join(" + ")}`, `Fix: ${focusLabel(t, focus)} · ${[...new Set(findings.map((f) => f.dim.toUpperCase()))].join(" + ")}`)
+          : t(`Düzenle: ${focusLabel(t, focus)}`, `Edit: ${focusLabel(t, focus)}`)}{" "}
+        →
       </Link>
     );
   }
