@@ -329,6 +329,7 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
             clear_progress(shop.id, request_id)
             raise
     reply = _strip_app_links(result.text or "")
+    ctx.cards.sort(key=lambda c: c.get("type") == "listing_draft")  # güncel listing kartı(ları) cevabın en altında (sıra korunur)
     assistant = ChatMessage(
         session_id=session.id, role="assistant", content=reply or tr("Bir cevap üretemedim, tekrar dener misin?", "I couldn't produce an answer, could you try again?"),
         cards_json=json.dumps(ctx.cards, ensure_ascii=False, default=str), tool_notes=context.tool_notes(tool_lines),
