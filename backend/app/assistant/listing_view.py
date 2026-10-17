@@ -4,7 +4,7 @@ Asistan bir listing'i değiştirmeden önce bunu okur: varyasyonlar, kombinasyon
 değil gerçek veriden yazar (ör. varyasyonları baştan kurarken mevcut seçenekleri ve fiyatları bilir)."""
 import html
 
-from app.assistant import inventory_edit as inv
+from app.listings import inventory_edit as inv
 
 MAX_COMBO_ROWS = 60
 DESCRIPTION_CHARS = 1500

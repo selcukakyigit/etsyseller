@@ -14,7 +14,8 @@ from dataclasses import dataclass, field
 
 from sqlalchemy import func, select
 
-from app.assistant import fields, inventory_edit, listing_view
+from app.assistant import listing_view
+from app.listings import fields, inventory_edit
 from app.ai import catalog, video_gen
 from app.listings import generation
 from app.core import blobstore
@@ -939,7 +940,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         except Exception as exc:  # noqa: BLE001 - özellikler alınamazsa taslak yine oluşur, model get_category_attributes ile yeniden dener
             completion["ozellikler_alinamadi"] = str(exc)
         else:
-            wanted_attrs = [x for x in (a.get("attributes") or []) if not _covered_by_variation(work, str(x.get("name", "")))]  # renk/boyut varyasyondaysa özelliğe yazılmaz
+            wanted_attrs = [x for x in (a.get("attributes") or []) if not inventory_edit.covered_by_variation(work, str(x.get("name", "")))]  # renk/boyut varyasyondaysa özelliğe yazılmaz
             if a.get("personalizable") and not any("personali" in str(x.get("name", "")).lower() for x in wanted_attrs):
                 wanted_attrs.append({"name": "Can be personalized", "values": ["Yes"]})  # kategoride yoksa hata verir, taslağı bozmaz
             if wanted_attrs:
@@ -1362,47 +1363,6 @@ def workspace_status(ctx: Ctx, a: dict) -> dict:
         "siparis_senkronizasyonu": {"yerel": osync.local, "etsy_toplam": osync.remote_total, "gecmis_iniyor": osync.backfilling},
         "finans_senkronizasyonu": {"calisiyor": fsync["running"], "kayit": fsync["entries"], "son_kayit": fsync["last_entry"], "hata": fsync["error"]},
         "not": "Yayınlanmamış değişiklikler Etsy'de görünmez; listing düzenleyicisinde ya da Listing'ler sayfasında 'Etsy'de yayınla' ile gönderilir.",
-    }
-
-
-def bulk_update_listings(ctx: Ctx, a: dict) -> dict:
-    """Birden çok listing'e AYNI değişiklikleri YEREL TASLAK olarak uygular (Etsy'ye göndermez)."""
-    ids = [int(i) for i in (a.get("listing_ids") or [])]
-    if a.get("title_contains"):
-        q = select(ListingCache.listing_id).where(ListingCache.shop_id == ctx.shop.id, ListingCache.title.like(f"%{str(a['title_contains']).strip()}%"))
-        ids += [i for i in ctx.db.scalars(q.limit(200)).all() if i not in ids]
-    ids = ids[:100]
-    if not ids:
-        return {"error": "Listing belirtilmedi (listing_ids ya da title_contains ver)."}
-    ch: dict = {}
-    if a.get("price_change_percent") is not None:
-        ch["price"] = bulk.PriceOp(mode="percent", value=float(a["price_change_percent"]), rounding=a.get("price_rounding") or "none")
-    elif a.get("price_change_amount") is not None:
-        ch["price"] = bulk.PriceOp(mode="amount", value=float(a["price_change_amount"]), rounding=a.get("price_rounding") or "none")
-    if a.get("add_tags") or a.get("remove_tags"):
-        ch["tags"] = bulk.TagsOp(add=list(a.get("add_tags") or []), remove=list(a.get("remove_tags") or []))
-    if a.get("title_find") is not None:
-        ch["title"] = bulk.TextOp(mode="find_replace", find=str(a["title_find"]), replace=str(a.get("title_replace") or ""))
-    elif a.get("title_prefix"):
-        ch["title"] = bulk.TextOp(mode="prefix", text=str(a["title_prefix"]))
-    elif a.get("title_suffix"):
-        ch["title"] = bulk.TextOp(mode="suffix", text=str(a["title_suffix"]))
-    ch.update(_ref_changes(a))
-    if not ch:
-        return {"error": "Değişiklik belirtilmedi."}
-    for lid in ids:
-        _promote_draft(ctx, lid)
-    results = bulk.bulk_stage(ctx.db, ctx.shop, bulk.BulkStageIn(listing_ids=ids, changes=bulk.BulkChanges(**ch)))
-    ok = [r for r in results if r["ok"] and r["changed"]]
-    same = [r for r in results if r["ok"] and not r["changed"]]
-    bad = [r for r in results if not r["ok"]]
-    ctx.cards.append({
-        "type": "status", "title": tr("Toplu taslak", "Bulk draft"),
-        "rows": [{"label": tr("Taslağa alınan", "Drafted"), "value": len(ok)}, {"label": tr("Zaten aynı", "Already the same"), "value": len(same)}, {"label": tr("Atlanan", "Skipped"), "value": len(bad)}],
-    })
-    return {
-        "taslaga_alinan": len(ok), "zaten_ayni": len(same), "atlanan": [{"listing_id": r["id"], "neden": r["error"]} for r in bad][:10],
-        "uygulanan_degisiklik": list(ch), "not": "Hepsi yalnızca yerel taslak; Etsy'ye gitmedi. Kullanıcı Listing'ler sayfasında 'Yayınlanmamışları seç' → 'Seçilenleri Etsy'de yayınla' ile gönderir.",
     }
 
 
@@ -1875,9 +1835,7 @@ def crop_listing_photo(ctx: Ctx, a: dict) -> dict:
     return {"ok": True, "not": "Kırpılan görsel yerel taslağa kaydedildi (Etsy'ye gitmedi); eski sürüm düzenleyicide dosya olarak durur. Sonucu kullanıcıya kartta göster."}
 
 
-def _category_defs(taxonomy_id: int) -> list[dict]:
-    """Etsy'nin bir kategori için tanımladığı özellikler (önbellekli; düzenleyici aynı veriyi kullanır)."""
-    return cached(("tax", "props", taxonomy_id), lambda: taxonomy_service.get_properties_by_taxonomy_id(taxonomy_id))
+_category_defs = taxonomy_service.cached_properties  # kategori özellik tanımları (ortak, önbellekli)
 
 
 def _save_fields(ctx: Ctx, lid: int, work: dict, changed: list[str], errors: list[str], **extra) -> dict:
@@ -1959,8 +1917,7 @@ def set_listing_fields(ctx: Ctx, a: dict) -> dict:
     return _save_fields(ctx, lid, work, changed, errors, **extra)
 
 
-# Aynı bilgiyi anlatan sözcükler: varyasyon "Renk", özellik "Primary color" ise ikisi aynı şeydir (mağaza dili ne olursa olsun).
-_VARIATION_WORD_GROUPS = (("color", "colour", "renk"), ("size", "boyut", "beden", "ölçü"))
+
 
 
 def _autofill_in_work(ctx: Ctx, lid: int, work: dict) -> tuple[list[str], list[str]]:
@@ -1979,7 +1936,7 @@ def _autofill_in_work(ctx: Ctx, lid: int, work: dict) -> tuple[list[str], list[s
     chosen = {p["property_id"] for p in work.get("properties", []) if p.get("values")}
     brief = []
     for d in fields.attribute_defs(defs):
-        if d["property_id"] in chosen or fields._is_dimension(d) or _covered_by_variation(work, d["display_name"]):
+        if d["property_id"] in chosen or fields._is_dimension(d) or inventory_edit.covered_by_variation(work, d["display_name"]):
             continue
         names = [v["name"] for v in d["possible_values"]]
         brief.append({"name": d["display_name"], "required": bool(d.get("is_required")), "max_choices": fields._max_values(d), "allowed": names[:80]})
@@ -1996,7 +1953,7 @@ def _autofill_in_work(ctx: Ctx, lid: int, work: dict) -> tuple[list[str], list[s
         items = ai_attributes.suggest(html.unescape(work.get("title") or ""), html.unescape(work.get("description") or ""), work.get("tags") or [], work.get("materials") or [], variations, brief, photos)
     except VisionError as exc:
         return [], [str(exc)]
-    items = [x for x in items if not _covered_by_variation(work, x["name"])]
+    items = [x for x in items if not inventory_edit.covered_by_variation(work, x["name"])]
     changed, errors = fields.apply_attributes(work, defs, items)
     return changed, errors
 
@@ -2009,17 +1966,6 @@ def autofill_listing_attributes(ctx: Ctx, a: dict) -> dict:
         return err
     changed, errors = _autofill_in_work(ctx, lid, work)
     return _save_fields(ctx, lid, work, changed, errors)
-
-
-def _covered_by_variation(work: dict, attr_name: str) -> bool:
-    """Özellik (ör. Primary color) listing'in bir varyasyonuyla (ör. Color) zaten karşılanıyorsa True: renk/boyut seçenekleri varyasyonda
-    durur, aynı bilgiyi tek bir değerle özelliğe yazmak (ör. Silver) yanıltıcı olur."""
-    n = " ".join(str(attr_name).lower().split())
-    for v in inventory_edit.variation_names(work):
-        vn = " ".join(v.lower().split())
-        if vn == n or any(any(w in vn for w in words) and any(w in n for w in words) for words in _VARIATION_WORD_GROUPS):
-            return True
-    return False
 
 
 def set_listing_attributes(ctx: Ctx, a: dict) -> dict:
@@ -2036,7 +1982,7 @@ def set_listing_attributes(ctx: Ctx, a: dict) -> dict:
     except Exception as exc:  # noqa: BLE001
         return {"error": f"Kategori özellikleri alınamadı: {exc}"}
     items = list(a.get("attributes") or [])
-    skipped = [str(x.get("name")) for x in items if (x.get("values") and _covered_by_variation(work, str(x.get("name", ""))))]
+    skipped = [str(x.get("name")) for x in items if (x.get("values") and inventory_edit.covered_by_variation(work, str(x.get("name", ""))))]
     items = [x for x in items if str(x.get("name")) not in skipped]
     changed, errors = fields.apply_attributes(work, defs, items)
     extra = {"atlanan_ozellikler": skipped, "atlama_nedeni": "Bu bilgi zaten bir varyasyonla (renk/boyut seçenekleri) karşılanıyor; özelliğe tek bir değer yazılmadı."} if skipped else {}
@@ -2676,15 +2622,6 @@ TOOLS: list[dict] = [
     {"name": "orders_missing_costs", "description": "Ürün maliyeti tanımlı olmadığı için kârı eksik hesaplanan siparişler ve en çok eksik kalan ürünler. Tarih verilmezse son 90 gün.", "input_schema": _obj({"start_date": DATE, "end_date": DATE, "limit": {"type": "integer"}})},
     {"name": "shipping_invoices", "description": "Kayıtlı kargo/gümrük faturaları (gönderi başına): toplam tutar, kalemler (nakliye/gümrük/ek hizmet), aynı gönderiye fazla kesilmiş kalem uyarıları ve siparişe bağlanamayanlar. Alıcı adı, takip no, ürün ya da fatura no ile aranabilir.", "input_schema": _obj({"query": {"type": "string"}, "kind": {"type": "string", "enum": ["nakliye", "gümrük", "ek hizmet", "diğer"]}, "start_date": DATE, "end_date": DATE, "sort": {"type": "string", "enum": ["inv_date", "order_date", "buyer", "amount"]}, "limit": {"type": "integer"}})},
     {"name": "keyword_pool", "description": "Etiket/anahtar kelime havuzu (kendi satan listing'lerinin ve rakiplerin etiketleri). Var olan listing için listing_id; yeni ürün için İngilizce query ve taxonomy_id (find_category'den) ver. Başlık/etiket yazmadan önce bak.", "input_schema": _obj({"listing_id": {"type": "integer"}, "query": {"type": "string"}, "taxonomy_id": {"type": "integer"}, "limit": {"type": "integer"}})},
-    {"name": "bulk_update_listings", "description": "Birden çok listing'e AYNI değişikliği YEREL TASLAK olarak uygular (Etsy'ye göndermez; en fazla 100 listing). Listing'leri listing_ids ile ya da başlığında geçen ifadeyle (title_contains) seç. Fiyat yüzdesi/tutarı, etiket ekle/çıkar, başlıkta bul-değiştir/önek/sonek, bölüm/kargo/iade/hazırlık süresi. Kullanıcı kapsamı (kaç listing, ne değişecek) net söylemediyse önce sor.", "input_schema": _obj({
-        "listing_ids": {"type": "array", "items": {"type": "integer"}}, "title_contains": {"type": "string"},
-        "price_change_percent": {"type": "number", "description": "10 = %10 zam, -5 = %5 indirim"}, "price_change_amount": {"type": "number"}, "price_rounding": {"type": "string", "enum": ["none", "x.99", "x.00"]},
-        "add_tags": {"type": "array", "items": {"type": "string"}}, "remove_tags": {"type": "array", "items": {"type": "string"}},
-        "title_find": {"type": "string"}, "title_replace": {"type": "string"}, "title_prefix": {"type": "string"}, "title_suffix": {"type": "string"},
-        "shop_section_id": {"type": "integer"}, "shipping_profile_id": {"type": "integer"}, "return_policy_id": {"type": "integer"}, "readiness_state_id": {"type": "integer"},
-        "production_partner_ids": {"type": "array", "items": {"type": "integer"}}, "should_auto_renew": {"type": "boolean"},
-        "description_template_id": {"type": "integer", "description": "Hazır açıklama metni (list_description_templates). Eski sabit kısım (kargo/garanti vb.) çıkarılır, bu şablon ürün yazısının etrafına konur."},
-    })},
     {"name": "update_listing", "description": "Var olan bir listing'in ya da daha önce oluşturduğun taslağın (negatif listing_id) başlık, açıklama, etiket, fiyat, VARYASYONLAR (boyut/renk vb.), bölüm, kargo profili, iade politikası, hazırlık süresi, üretim ortağı veya otomatik yenilemesini YEREL TASLAK olarak değiştirir (Etsy'ye göndermez). Kullanıcı sohbette konuşulan listing'e/taslağa bir şey eklemek ya da değiştirmek isterse HER ZAMAN bunu kullan; create_listing_draft ile yeni taslak AÇMA. Önce get_listing ile mevcut hâline bak.", "input_schema": _obj({
         "listing_id": {"type": "integer"}, "new_title": {"type": "string"}, "new_description": {"type": "string"},
         "set_tags": {"type": "array", "items": {"type": "string"}, "description": "Etiketlerin tamamını bununla değiştirir (en fazla 13)"},
@@ -2808,7 +2745,6 @@ TOOL_LABELS = {
     "orders_missing_costs": "Maliyeti eksik siparişleri tarıyor",
     "keyword_pool": "Anahtar kelime havuzuna bakıyor",
     "shipping_invoices": "Kargo faturalarına bakıyor",
-    "bulk_update_listings": "Toplu taslak hazırlıyor",
     "regenerate_listing_image": "Fotoğrafı yeniden oluşturuyor",
     "generate_chat_image": "Görsel üretiyor",
     "edit_chat_image": "Resmi düzenliyor",
@@ -2875,7 +2811,6 @@ TOOL_LABELS_EN = {
     "orders_missing_costs": "Finding orders with missing costs",
     "keyword_pool": "Checking the keyword pool",
     "shipping_invoices": "Checking shipping invoices",
-    "bulk_update_listings": "Preparing bulk drafts",
     "regenerate_listing_image": "Regenerating the photo",
     "generate_chat_image": "Generating an image",
     "edit_chat_image": "Editing the image",
@@ -2921,7 +2856,7 @@ EXECUTORS = {
     "search_listings": search_listings, "get_listing": get_listing, "shop_defaults": shop_defaults, "find_category": find_category, "similar_listings": similar_listings,
     "create_listing_draft": create_listing_draft, "update_listing": update_listing,
     "shop_options": shop_options, "workspace_status": workspace_status, "orders_overview": orders_overview, "order_detail": order_detail,
-    "orders_missing_costs": orders_missing_costs, "keyword_pool": keyword_pool, "shipping_invoices": shipping_invoices, "bulk_update_listings": bulk_update_listings,
+    "orders_missing_costs": orders_missing_costs, "keyword_pool": keyword_pool, "shipping_invoices": shipping_invoices,
     "regenerate_listing_image": regenerate_listing_image, "edit_chat_image": edit_chat_image, "generate_chat_image": generate_chat_image, "move_listing_photo": move_listing_photo, "crop_listing_photo": crop_listing_photo, "generate_listing_video": generate_listing_video, "generation_options": generation_options, "edit_inventory": edit_inventory, "remove_variation_option": remove_variation_option, "add_variation_option": add_variation_option,
     "set_variation_photo": set_variation_photo, "remove_listing_video": remove_listing_video, "copy_listing": copy_listing,
     "discard_listing_changes": discard_listing_changes, "delete_listing": delete_listing, "personalization_library": personalization_library, "add_video_to_listing": add_video_to_listing, "get_category_attributes": get_category_attributes, "set_listing_attributes": set_listing_attributes, "autofill_listing_attributes": autofill_listing_attributes,
@@ -2979,13 +2914,13 @@ for _t in TOOLS:
 
 # Listing modunda (bkz. service._pick_mode) modele yalnızca bu araçlar gösterilir; sipariş/finans/reklam araçları gönderilmez.
 LISTING_TOOL_NAMES = frozenset({
-    "shop_defaults", "shop_options", "similar_listings", "find_category", "search_listings", "get_listing", "create_listing_draft", "update_listing", "bulk_update_listings",
+    "shop_defaults", "shop_options", "similar_listings", "find_category", "search_listings", "get_listing", "create_listing_draft", "update_listing",
     "regenerate_listing_image", "edit_chat_image", "generate_chat_image", "add_chat_image_to_listing", "crop_listing_photo", "delete_listing_photo", "move_listing_photo", "set_photo_alt_text",
     "generate_missing_alt_texts", "get_category_attributes", "set_listing_attributes", "autofill_listing_attributes", "set_listing_fields", "edit_personalization_question",
     "personalization_library", "edit_inventory", "add_variation_option", "remove_variation_option", "set_variation_photo", "copy_listing", "discard_listing_changes",
     "delete_listing", "generation_options", "generate_listing_video", "add_video_to_listing", "remove_listing_video", "publish_listing_draft", "deactivate_listing",
     "list_description_templates", "save_description_template", "delete_description_templates", "listing_health_status", "workspace_status", "keyword_pool",
-    "remember_note", "forget_note", "market_research", "suggest_price", "bulk_set_attributes", "pinterest_content", "make_pin_image", "add_digital_file", "remove_digital_file", "set_listing_type",
+    "remember_note", "forget_note", "market_research", "suggest_price", "bulk_update_listings", "pinterest_content", "make_pin_image", "add_digital_file", "remove_digital_file", "set_listing_type",
 })
 
 
@@ -2993,14 +2928,14 @@ LISTING_TOOL_NAMES = frozenset({
 TOOL_GROUPS: dict[str, frozenset[str]] = {
     "market": frozenset({"market_research"}),
     "price": frozenset({"suggest_price"}),
-    "bulk": frozenset({"bulk_set_attributes"}),
+    "bulk": frozenset({"bulk_update_listings"}),
     "social": frozenset({"pinterest_content", "make_pin_image"}),
     "digital": frozenset({"add_digital_file", "remove_digital_file", "set_listing_type"}),
 }
 GROUP_WORDS: dict[str, re.Pattern] = {
     "market": re.compile(r"piyasa|rakip|trend|popüler|popular|talep|araştır|research|competitor|seo|oluştur|create|yeni listing|taslak", re.I),
     "price": re.compile(r"kaça sat|fiyat öner|marj|fiyatlandır|fiyatı ne|pricing|margin|price suggest", re.I),
-    "bulk": re.compile(r"toplu|bütün|tüm listing|hepsi|bulk|all listings|holiday|occasion", re.I),
+    "bulk": re.compile(r"toplu|bütün|tüm |hepsi|bulk|all listings|holiday|occasion|%|yüzde|zam\b|indirim|artır|arttır|düşür|indir\b|stokları|stoğu", re.I),
     "social": re.compile(r"pinterest|\bpin\b|sosyal|hashtag|instagram|social", re.I),
     "digital": re.compile(r"dijital|digital|printable|indirilebilir|download|şablon|template|\bpdf\b|\bzip\b", re.I),
 }

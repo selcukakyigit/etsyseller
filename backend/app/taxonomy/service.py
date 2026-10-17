@@ -34,3 +34,10 @@ def search_active_listings(keywords: str, limit: int = 50) -> dict:
 
     query = urllib.parse.urlencode({"keywords": keywords, "limit": max(1, min(int(limit), 100)), "sort_on": "score"})
     return _get(f"/listings/active?{query}")
+
+
+def cached_properties(taxonomy_id: int) -> list[dict]:
+    """Bir kategorinin özellik tanımları (süreç içi önbellekli; düzenleyici, asistan ve toplu işlemler aynı veriyi kullanır)."""
+    from app.core.ttl_cache import cached
+
+    return cached(("tax", "props", taxonomy_id), lambda: get_properties_by_taxonomy_id(taxonomy_id))

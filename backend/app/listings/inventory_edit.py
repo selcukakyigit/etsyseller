@@ -6,7 +6,6 @@ göre değiştiği `*_on_property` listelerinde belirtilmelidir. Her değişikli
 import copy
 import re
 
-from app.listings.bulk import MIN_PRICE
 
 MAX_QUANTITY = 999
 
@@ -120,6 +119,8 @@ def apply_inventory(
 ) -> tuple[list[str], list[str], int]:
     """Seçilen kombinasyonlara (where boşsa hepsine; varyasyonsuz listing'de tek ürüne) stok, fiyat, SKU ve açık/kapalı yazar.
     Döner: (değişen alanlar, hatalar, etkilenen kombinasyon sayısı)."""
+    from app.listings.bulk import MIN_PRICE  # bulk.py bu modülü içe aktarır; döngüyü önlemek için burada
+
     products = _products(work)
     if not products or not _offerings(products[0]):
         return [], ["Listing'de envanter satırı yok."], 0
@@ -337,3 +338,18 @@ def standardize(work: dict, defs: list[dict]) -> list[str]:
         used.add(new_id)
         done.append(d["display_name"])
     return done
+
+
+# Aynı bilgiyi anlatan sözcükler: varyasyon "Renk", özellik "Primary color" ise ikisi aynı şeydir (mağaza dili ne olursa olsun).
+VARIATION_WORD_GROUPS = (("color", "colour", "renk"), ("size", "boyut", "beden", "ölçü"))
+
+
+def covered_by_variation(work: dict, attr_name: str) -> bool:
+    """Özellik (ör. Primary color) listing'in bir varyasyonuyla (ör. Color) zaten karşılanıyorsa True: renk/boyut seçenekleri varyasyonda durur,
+    aynı bilgiyi tek bir değerle özelliğe yazmak (ör. Silver) yanıltıcı olur."""
+    n = _norm(attr_name)
+    for v in variation_names(work):
+        vn = _norm(v)
+        if vn == n or any(any(w in vn for w in words) and any(w in n for w in words) for words in VARIATION_WORD_GROUPS):
+            return True
+    return False

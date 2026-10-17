@@ -710,6 +710,9 @@ export type ListingEdit = {
   ending_timestamp?: number | null;
 };
 
+/** Toplu işlemde bir listing'in önce/sonra özeti (bkz. backend listings/bulk.py _brief). */
+export type BulkBrief = { title: string; price: [number, number] | null; quantity: [number, number] | null; tags: number };
+
 export type DigitalFile = { draft_file_id?: string; filename: string; size?: number; file_id?: number | null };
 
 export type VariationLinks = { property_id: number | null; images: Record<string, number> };
@@ -1490,6 +1493,7 @@ export type ChatCard =
   | { type: "orders"; title: string; rows: { receipt_id: number; buyer: string; country: string; date: string; ship_by: string | null; total: number; items: string[] }[] }
   | { type: "listing_draft"; listing_id: number; title: string; edit_url: string; price: [number, number]; quantity: number; tags: string[]; combos: number; image: string | null; images: number; problems: string[]; category?: string | null; changes?: string[]; price_missing?: boolean; quantity_assumed?: boolean }
   | { type: "status"; title: string; rows: { label: string; value: number }[] }
+  | { type: "bulk_result"; listing_ids: number[]; inspected: number; changed: number; skipped: { reason: string; count: number }[]; samples: { id: number; title: string; before: BulkBrief; after: BulkBrief }[]; ops: string[] }
   | { type: "social_pins"; listing_id: number; title: string; pins: { title: string; description: string; hashtags: string[]; board: string }[] }
   | { type: "listing_update"; listing_id: number; title: string; edit_url: string; changes: string[]; tags: string[] }
   | { type: "video_job"; job: string; listing_id: number; credits: number; prompt: string; duration: number; started_at: number; source: "chat" | "listing" }

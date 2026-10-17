@@ -16,10 +16,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.etsy.client import EtsyClient
-from app.listings import drafts, service, templates
+from app.listings import drafts, fields, inventory_edit, service, templates
 from app.core import blobstore
 from app.listings.models import DraftFile, ListingCache, ListingDraft, ListingLocal
+from app.listings.selection import ListingFilter, select_rows
 from app.shops.models import Shop
+from app.taxonomy import service as taxonomy_service
 
 TITLE_MAX = 140
 TAG_MAX_LEN = 20
@@ -72,8 +74,16 @@ class PriceOp(BaseModel):
         return self
 
 
+class AttributeItem(BaseModel):
+    name: str
+    values: list[str]
+
+
 class BulkChanges(BaseModel):
     state: Literal["active", "inactive"] | None = None
+    quantity: int | None = Field(default=None, ge=1, le=inventory_edit.MAX_QUANTITY)  # tüm kombinasyonların stoğu
+    attributes: list[AttributeItem] | None = None  # kategori özellikleri (Holiday=Christmas…): her listing kendi kategorisine göre doğrulanır
+    add_personalization: list[dict] | None = None  # kişiselleştirme (özel seçenek) soruları EKLER, var olanlara dokunmaz
     title: TextOp | None = None
     description: TextOp | None = None
     tags: TagsOp | None = None
@@ -163,9 +173,28 @@ def template_applier(db: Session, shop: Shop, c: BulkChanges):
     return templates.applier(db, shop, templates.get(db, shop, c.description_template_id))
 
 
-def apply_changes(work: dict, c: BulkChanges, apply_template=None) -> str | None:
+def _apply_attributes(work: dict, items: list[AttributeItem], defs_for) -> str | None:
+    """Kategori özelliklerini listing'in KENDİ kategorisinin tanımına göre yazar; özellik yoksa / değer izin verilmiyorsa hata (listing atlanır)."""
+    tid = work.get("taxonomy_id")
+    if not tid:
+        return "Listing'in kategorisi yok."
+    usable = [{"name": i.name, "values": i.values} for i in items if not inventory_edit.covered_by_variation(work, i.name)]
+    if not usable:
+        return "Renk/boyut zaten varyasyonda."
+    try:
+        defs = defs_for(int(tid))
+    except Exception:  # noqa: BLE001 - Etsy kategori özelliklerini vermezse listing atlanır
+        return "Kategori özellikleri alınamadı."
+    before = json.dumps(work.get("properties"), sort_keys=True)
+    changed, errors = fields.apply_attributes(work, defs, usable)
+    if json.dumps(work.get("properties"), sort_keys=True) == before:
+        return "Özellik bu kategoride yok ya da değer izin verilenlerde değil." if errors else "Zaten aynı."
+    return None
+
+
+def apply_changes(work: dict, c: BulkChanges, apply_template=None, defs_for=None) -> str | None:
     """Çalışma kopyasına değişiklikleri uygular; geçersizse hata metni döner (o listing atlanır).
-    `apply_template`: bkz. template_applier; şablon, açıklama değişikliğinden sonra uygulanır."""
+    `apply_template`: bkz. template_applier; şablon, açıklama değişikliğinden sonra uygulanır. `defs_for`: kategori kimliğinden özellik tanımları."""
     if c.title:
         work["title"] = _text(work["title"], c.title)
         if not work["title"].strip():
@@ -192,6 +221,24 @@ def apply_changes(work: dict, c: BulkChanges, apply_template=None) -> str | None
         err = _apply_price(work["inventory"], c.price)
         if err:
             return err
+    if c.quantity is not None:
+        for product in work["inventory"].get("products", []):
+            for off in product.get("offerings", []):
+                off["quantity"] = c.quantity
+        inventory_edit.recompute_dependencies(work)  # stok/SKU "hangi varyasyona göre değişir" işaretleri verilerden yeniden kurulur
+    if c.attributes:
+        err = _apply_attributes(work, c.attributes, defs_for or taxonomy_service.cached_properties)
+        if err:
+            return err
+    if c.add_personalization:
+        if work.get("personalization") is None:
+            return "Kişiselleştirme bilgisi henüz senkronize edilmedi (listing'i bir kez aç)."
+        before = json.dumps(work["personalization"], sort_keys=True)
+        _changed, errors = fields.apply_fields(work, {"add_personalization_questions": c.add_personalization})
+        if errors:
+            return " ".join(errors)
+        if json.dumps(work["personalization"], sort_keys=True) == before:
+            return "Bu sorular zaten var."
     for key in ("shop_section_id", "shipping_profile_id", "return_policy_id", "should_auto_renew", "production_partner_ids", "state"):
         v = getattr(c, key)
         if v is not None:
@@ -209,8 +256,39 @@ def _sig(work: dict) -> str:
 
 # ------------------------------------------------------------------ işlemler ----
 
+def _brief(work: dict) -> dict:
+    """Önce/sonra özeti (sonuç kartı için): başlık, en düşük–en yüksek fiyat ve stok, etiket sayısı."""
+    offers = [o for p in (work.get("inventory") or {}).get("products", []) for o in p.get("offerings", [])]
+    prices = [o["price"]["amount"] / o["price"]["divisor"] for o in offers if isinstance(o.get("price"), dict) and o["price"].get("divisor")]
+    stock = [o.get("quantity") or 0 for o in offers]
+    return {
+        "title": (work.get("title") or "")[:140], "price": [round(min(prices), 2), round(max(prices), 2)] if prices else None,
+        "quantity": [min(stock), max(stock)] if stock else None, "tags": len(work.get("tags") or []),
+    }
+
+
+def _stage_one(db: Session, shop: Shop, lid: int, row: ListingCache | None, changes: BulkChanges, apply_template) -> dict:
+    """Tek listing'in yerel sürümüne değişiklikleri işler (tek yer: toplu seçim ve filtreli seçim aynı mantığı kullanır)."""
+    if lid < 0:
+        return {"id": lid, "ok": False, "changed": False, "error": "Yeni (henüz yayınlanmamış) listing toplu işlemlere dahil değil; düzenleme sayfasından yönet."}
+    if row is None:
+        return {"id": lid, "ok": False, "changed": False, "error": "Listing yerelde yok (senkronize et)."}
+    live = snapshot_cached(row)
+    local = drafts._local_row(db, shop, lid)
+    work = json.loads(local.data_json) if local else copy.deepcopy(live)
+    before = _brief(work)
+    err = apply_changes(work, changes, apply_template)
+    if err:
+        return {"id": lid, "ok": False, "changed": False, "error": err, "title": before["title"]}
+    if _sig(work) == _sig(live):
+        drafts.discard_local(db, shop, lid)  # Etsy ile aynı: yerel sürüme gerek yok
+        return {"id": lid, "ok": True, "changed": False, "error": None, "title": before["title"]}
+    drafts.save_local(db, shop, lid, work, live)
+    return {"id": lid, "ok": True, "changed": True, "error": None, "title": before["title"], "before": before, "after": _brief(work)}
+
+
 def bulk_stage(db: Session, shop: Shop, payload: BulkStageIn) -> list[dict]:
-    """Seçili listing'lerin yerel sürümlerine değişiklikleri işler. Her listing için {id, ok, changed, error}."""
+    """Seçili listing'lerin yerel sürümlerine değişiklikleri işler. Her listing için {id, ok, changed, error, title, before, after}."""
     rows = {
         r.listing_id: r
         for r in db.scalars(
@@ -218,29 +296,14 @@ def bulk_stage(db: Session, shop: Shop, payload: BulkStageIn) -> list[dict]:
         ).all()
     }
     apply_template = template_applier(db, shop, payload.changes)
-    results: list[dict] = []
-    for lid in payload.listing_ids:
-        row = rows.get(lid)
-        if lid < 0:
-            results.append({"id": lid, "ok": False, "changed": False, "error": "Yeni (henüz yayınlanmamış) listing toplu işlemlere dahil değil; düzenleme sayfasından yönet."})
-            continue
-        if row is None:
-            results.append({"id": lid, "ok": False, "changed": False, "error": "Listing yerelde yok (senkronize et)."})
-            continue
-        live = snapshot_cached(row)
-        local = drafts._local_row(db, shop, lid)
-        work = json.loads(local.data_json) if local else copy.deepcopy(live)
-        err = apply_changes(work, payload.changes, apply_template)
-        if err:
-            results.append({"id": lid, "ok": False, "changed": False, "error": err})
-            continue
-        if _sig(work) == _sig(live):
-            drafts.discard_local(db, shop, lid)  # Etsy ile aynı: yerel sürüme gerek yok
-            results.append({"id": lid, "ok": True, "changed": False, "error": None})
-            continue
-        drafts.save_local(db, shop, lid, work, live)
-        results.append({"id": lid, "ok": True, "changed": True, "error": None})
-    return results
+    return [_stage_one(db, shop, lid, rows.get(lid), payload.changes, apply_template) for lid in payload.listing_ids]
+
+
+def stage_filtered(db: Session, shop: Shop, flt: ListingFilter, changes: BulkChanges) -> list[dict]:
+    """Filtreye uyan listing'lere (bkz. selection.ListingFilter) değişiklikleri yerel taslak olarak işler."""
+    rows = select_rows(db, shop, flt)
+    apply_template = template_applier(db, shop, changes)
+    return [_stage_one(db, shop, r.listing_id, r, changes, apply_template) for r in rows]
 
 
 def delete_listing(db: Session, shop: Shop, listing_id: int) -> None:
