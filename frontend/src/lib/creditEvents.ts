@@ -15,7 +15,7 @@ export function onCreditRequired(cb: () => void): () => void {
 }
 
 /** Kredi harcayabilen (AI) uç noktaların yolları: başarılı bir POST/PUT sonrası rozet bakiyesi tazelenir. */
-const SPENDS = /\/(assistant|suggest|generate|alt-text|documents|analyze)/;
+const SPENDS = /\/(assistant|suggest|generate|alt-text|documents|analyze)\b/;
 
 export function spendsCredits(path: string): boolean {
   return SPENDS.test(path);

@@ -488,7 +488,10 @@ def generate_for_listing(db: Session, shop: Shop, listing_id: int, overrides: Su
         except Exception:  # noqa: BLE001 — teşhis hesaplanamazsa öneri yine üretilir
             logger.warning("Teşhis hesaplanamadı (listing %s)", listing_id, exc_info=True)
     if instruction:
-        brief = f"{brief}\nKULLANICININ İSTEĞİ / DÜZELTİLECEK SORUNLAR (öncelik ver): {instruction}".strip()
+        brief = (
+            f"{brief}\nKULLANICININ İSTEĞİ / DÜZELTİLECEK SORUNLAR (öncelik ver): {instruction}\n"
+            "BU BİR DÜZELTME TURU: mevcut metni (önceki düzeltmeler dahil) KORU, baştan yazma; yalnızca yukarıdaki sorunları gider, çalışan kısımları ve ilgisiz alanları aynen bırak."
+        ).strip()
 
     try:
         suggestion = seo.generate_seo_suggestion(listing, keyword_pool=keyword_pool, others=quality.shop_others(db, shop.id, exclude_id=listing_id), diagnosis_brief=brief, variations=quality.variation_values(inventory), fact_source=fact_source)

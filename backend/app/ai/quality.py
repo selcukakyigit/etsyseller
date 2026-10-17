@@ -262,12 +262,12 @@ def tag_problems(tags: list[str]) -> list[str]:
 def claim_problems(product_description: str, source_text: str | None = None) -> list[str]:
     """Doğrulanmamış iddialar. `source_text` (listing'in mevcut metni) verilirse, orada zaten geçenler (ör. su geçirmez bir çantada "waterproof") sorun sayılmaz."""
     src = html.unescape(source_text or "").lower()
-    claims = sorted({c for c in (m.group(0).lower() for m in RISKY_CLAIMS.finditer(product_description)) if not re.search(rf"{re.escape(c)}", src)})
+    claims = sorted({c for c in (m.group(0).lower() for m in RISKY_CLAIMS.finditer(product_description)) if not re.search(rf"\b{re.escape(c)}\b", src)})
     if not claims:
         return []
     return [tr(
-        f"Açıklamada doğrulanmamış iddialar var ({', '.join(claims)}); yalnızca kullanıcının verdiği ya da görselde görünen bilgiyi yaz.",
-        f"The description has unverified claims ({', '.join(claims)}); write only what the seller stated or what the photos show.",
+        f"Açıklamada doğrulanmamış iddialar var ({', '.join(claims)}); bu ifadeleri (soru-cevap dahil) açıklamadan SİL, yalnızca kullanıcının verdiği ya da görselde görünen bilgiyi yaz.",
+        f"The description has unverified claims ({', '.join(claims)}); REMOVE these phrases (including in Q&A) and write only what the seller stated or what the photos show.",
     )]
 
 

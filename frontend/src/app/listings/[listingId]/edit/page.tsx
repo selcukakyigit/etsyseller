@@ -124,7 +124,7 @@ export default function ListingEditPage() {
     setResolved((prev) => new Set([...prev].filter((id) => !more.some((m) => m.id === id))));
   }
   const aiFields: ("title" | "tags" | "description" | "materials")[] =
-    activeFixes.length > 0 ? fixFields : focus === "title_tags" ? ["title", "tags"] : focus === "description" ? ["description"] : focus === "text" ? ["title", "tags", "description"] : ["title", "tags", "description", "materials"]; // tam form ve kapsamlı yenileme: hepsi
+    fixFields.length > 0 ? fixFields : focus === "title_tags" ? ["title", "tags"] : focus === "description" ? ["description"] : focus === "text" ? ["title", "tags", "description"] : ["title", "tags", "description", "materials"]; // tam form ve kapsamlı yenileme: hepsi
   const [invKey, setInvKey] = useState(0); // işlem profili kartı envanteri değiştirince varyasyon tablosunu yeniden kurar
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
