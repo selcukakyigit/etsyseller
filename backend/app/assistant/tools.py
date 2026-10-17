@@ -41,6 +41,7 @@ from app.taxonomy import service as taxonomy_service
 CUSTOM_VARIATION_IDS = [513, 514, 516]  # Etsy'nin serbest isimli varyasyon kimlikleri
 MAX_COMBOS = 400
 _taxonomy_cache: dict[int, str] | None = None  # kategori kimliği -> "Ev & Yaşam > Duvar Dekoru > ..." (bir kez yüklenir)
+_taxonomy_roots: list[dict] = []  # Etsy kategori ağacının ana düğümleri (çocuklarıyla)
 _taxonomy_leaves: set[int] = set()  # alt kategorisi olmayan (ürünün atanabileceği) düğümler
 
 
@@ -57,7 +58,9 @@ def _taxonomy() -> dict[int, str]:
                     _taxonomy_leaves.add(n["id"])
                 walk(n.get("children") or [], p)
 
-        walk(taxonomy_service.get_seller_taxonomy_nodes(), [])
+        roots = taxonomy_service.get_seller_taxonomy_nodes()
+        walk(roots, [])
+        _taxonomy_roots[:] = roots
         _taxonomy_cache = flat
     return _taxonomy_cache
 
@@ -621,6 +624,19 @@ def _auto_category(ctx: Ctx, text: str) -> tuple[int, str, str] | None:
     return None
 
 
+def _choose_category(ctx: Ctx, title: str, description: str, tags: list[str], materials: list[str], given_id: int | None) -> tuple[int, str] | None:
+    """Kategoriyi Etsy'nin kategori ağacında gezinerek seçer (bkz. ai/category.py): önce mağazanın kendi kategorilerine girip girmediğine, sonra seviye
+    seviye aşağı. Döner: (kimlik, yol) ya da None (seçilemedi: mevcut seçim kalır)."""
+    from app.ai import category as ai_category
+
+    names = _taxonomy()
+    used = [c["taxonomy_id"] for c in listing_service.get_top_categories(ctx.db, ctx.shop, limit=50) if c["taxonomy_id"] in names]
+    chosen = ai_category.navigate(
+        title, description, tags, materials, _taxonomy_roots, set(used), [names[i] for i in used[:8]], [{"id": i, "path": names[i]} for i in used[:8]],
+    )
+    return (chosen, names[chosen]) if chosen is not None and chosen in names else None
+
+
 def find_category(ctx: Ctx, a: dict) -> dict:
     """Etsy kategori ağacında ada göre arar (kategori kimliği bulmak için)."""
     q = str(a.get("query", "")).strip().lower()
@@ -827,6 +843,13 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
                 work["taxonomy_id"] = auto[0]
         except Exception:  # noqa: BLE001 - kategori ağacı/mağaza kategorileri alınamazsa modelin seçimi kalır
             pass
+    try:  # kategori seçici: adaylar arasından ürüne en uygununu seçer; model/kelime eşleşmesi seçimini onaylar ya da düzeltir
+        picked = _choose_category(ctx, title, str(a.get("description") or ""), tags, [str(m) for m in a.get("materials") or []], work.get("taxonomy_id"))
+    except Exception:  # noqa: BLE001 - seçici çalışmazsa (anahtar/ağ) mevcut seçim kalır
+        picked = None
+    if picked is not None and picked[0] != work.get("taxonomy_id"):
+        work["taxonomy_id"] = picked[0]
+        category_note = {"yol": picked[1], "neden": "kategori seçici (ürüne en uygun aday)", "otomatik_secildi": True}
     work["shipping_profile_id"] = int(a["shipping_profile_id"]) if a.get("shipping_profile_id") else defaults["en_cok_kullanilan_kargo_profili_id"]
     work["return_policy_id"] = int(a["return_policy_id"]) if a.get("return_policy_id") else defaults["en_cok_kullanilan_iade_politikasi_id"]
     if tpl is not None:
@@ -1919,9 +1942,29 @@ def delete_listing_photo(ctx: Ctx, a: dict) -> dict:
     work, err = _work_or_error(ctx, lid)
     if err:
         return err
+    if a.get("photo_numbers"):  # "1, 2 ve 3. fotoğrafları sil": hepsi tek seferde, numaralar işlem öncesindeki sıraya göre
+        ordered = sorted(work.get("images") or [], key=lambda i: i.get("rank") or 0)
+        try:
+            numbers = sorted({int(n) for n in a["photo_numbers"]})
+        except (TypeError, ValueError):
+            return {"error": "photo_numbers sayı listesi olmalı (ör. [1, 2, 3])."}
+        bad_numbers = [n for n in numbers if not 1 <= n <= len(ordered)]
+        if bad_numbers:
+            return {"error": f"Fotoğraf bulunamadı: {bad_numbers}; listing'de {len(ordered)} fotoğraf var."}
+        kept = [img for n, img in enumerate(ordered, start=1) if n not in numbers]
+        for rank, keep in enumerate(kept, start=1):
+            keep["rank"] = rank
+        work["images"] = kept
+        _save_draft_work(ctx, lid, work)
+        _show_listing(ctx, lid, work, ["photo"])
+        return {"ok": True, "silinen": len(numbers), "kalan_fotograf": len(kept), "not": "Fotoğraflar yalnızca yerel taslaktan kaldırıldı; Etsy'deki, yayınlayınca silinir." + (" Listing'de hiç fotoğraf kalmadı; aktif edilemez." if not kept else "")}
     if a.get("image_id") is not None:  # sohbetteki karttan: sıra numarası değişmiş olabilir, fotoğraf kimliğiyle bulunur
         ordered = sorted(work.get("images") or [], key=lambda i: i.get("rank") or 0)
-        img = next((i for i in ordered if i.get("listing_image_id") == int(a["image_id"])), None)
+        try:
+            wanted_id = int(a["image_id"])
+        except (TypeError, ValueError):
+            return {"error": "image_id listing fotoğrafının SAYI kimliği olmalı (sohbet resim kimliği değil). Sıra numarasıyla sil: photo_number ya da photo_numbers."}
+        img = next((i for i in ordered if i.get("listing_image_id") == wanted_id), None)
     elif a.get("photo_number") is not None:
         ordered, img = _photo_at(work, int(a["photo_number"]))
     else:
@@ -2561,7 +2604,7 @@ TOOLS: list[dict] = [
         }, ["question_text"])},
     }, ["listing_id"])},
     {"name": "edit_personalization_question", "description": "Listing'deki TEK bir kişiselleştirme (Özel seçenekler) sorusunu sıra numarasıyla (get_listing.kisisellestirme sırası, 1'den başlar) düzenler: metni, açıklamasını, zorunlu/isteğe bağlı olmasını, en fazla karakterini, seçenek listesi seçeneklerini değiştirir; delete=true siler; move_to ile sırasını değiştirir. Diğer sorulara dokunmaz ve kimlikleri korur; sorular için personalization_questions (hepsini baştan yazar) KULLANMA. Yeni soru eklemek için set_listing_fields.add_personalization_questions.", "input_schema": _obj({"listing_id": {"type": "integer"}, "number": {"type": "integer"}, "question_text": {"type": "string"}, "instructions": {"type": "string"}, "required": {"type": "boolean"}, "max_allowed_characters": {"type": "integer"}, "options": {"type": "array", "items": {"type": "string"}, "description": "Yalnızca seçenek listesi sorusunda: seçeneklerin TAMAMI, istenen sırayla"}, "delete": {"type": "boolean"}, "move_to": {"type": "integer"}}, ["listing_id", "number"])},
-    {"name": "delete_listing_photo", "description": "Listing taslağından bir fotoğrafı kaldırır: sıra numarasıyla (photo_number, 1'den başlar) ya da fotoğraf kimliğiyle (image_id; sohbetteki resim kartından). Etsy'deki fotoğraf yayınlayınca silinir.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer"}, "image_id": {"type": "integer"}}, ["listing_id"])},
+    {"name": "delete_listing_photo", "description": "Listing taslağından bir fotoğrafı kaldırır: sıra numarasıyla (photo_number, 1'den başlar) ya da fotoğraf kimliğiyle (image_id; sohbetteki resim kartından). Etsy'deki fotoğraf yayınlayınca silinir.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer"}, "photo_numbers": {"type": "array", "items": {"type": "integer"}, "description": "Birden çok fotoğrafı TEK çağrıda sil (sıra numaraları, ör. eski ham fotoğraflar [1, 2, 3])"}, "image_id": {"type": "integer"}}, ["listing_id"])},
     {"name": "set_photo_alt_text", "description": "Taslak (henüz Etsy'ye yüklenmemiş) bir fotoğrafın alt metnini yazar; sıra numarasıyla. Etsy'de yayındaki fotoğrafların alt metni değiştirilemez.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer"}, "alt_text": {"type": "string", "description": "Resimde görüneni anlatan tek cümle, en fazla 125 karakter önerilir"}}, ["listing_id", "photo_number", "alt_text"])},
     {"name": "edit_inventory", "description": "Stok, fiyat, SKU ve açık/kapalı durumunu değiştirir. Varyasyonsuz listing'de where verme ('stok 50 olsun' = quantity 50). Varyasyonlu listing'de where ile kombinasyon seç ({'Size': 'XL', 'Color': 'Red'}; kısmi seçim eşleşen TÜM kombinasyonları etkiler) ya da where vermeden hepsini değiştir. quantity 1–999; kombinasyonu satıştan kaldırmak için enabled=false. Fiyat aynı anda yalnızca tek varyasyona göre değişebilir (Etsy). Önce get_listing ile mevcut seçeneklere bak. Hata varsa hiçbir şey yazılmaz.", "input_schema": _obj({"listing_id": {"type": "integer"}, "where": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Varyasyon adı → seçenek"}, "quantity": {"type": "integer"}, "price": {"type": "number"}, "sku": {"type": "string"}, "auto_sku": {"type": "string", "description": "Seçilen TÜM kombinasyonlara okunur SKU üretir (önek + seçenekler, ör. önek GLS → GLS-15X20CM). Önek boş string de olabilir. 'Otomatik SKU ekle' için bunu kullan; tek tek sku verme."}, "enabled": {"type": "boolean"}}, ["listing_id"])},
     {"name": "add_variation_option", "description": "Var olan bir varyasyona YENİ SEÇENEK ekler (ör. Size varyasyonuna '15x20 cm'); mevcut stok, SKU, fiyat ve fotoğraf bağları korunur. Seçenek eklemek için set_variations ile baştan kurma. Yeni satırlar copy_from seçeneğinin (verilmezse ilkinin) satırlarından kopyalanır; varyasyon fiyata göre değişiyorsa price ver. Etsy'nin hazır değerleriyle kurulu (standart) varyasyonlarda da çalışır: ad hazır listedekilerden biriyse standart değer olarak, değilse özel değer olarak eklenir. Önce get_listing ile mevcut seçeneklere bak. Hata varsa hiçbir şey yazılmaz.", "input_schema": _obj({"listing_id": {"type": "integer"}, "variation": {"type": "string"}, "option": {"type": "string"}, "price": {"type": "number"}, "quantity": {"type": "integer"}, "copy_from": {"type": "string", "description": "Hangi mevcut seçeneğin ayarları kopyalansın"}}, ["listing_id", "variation", "option"])},

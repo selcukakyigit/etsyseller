@@ -28,11 +28,14 @@ RISKY_CLAIMS = re.compile(
 # Etsy'de telif/marka ihlali sayılan, en sık görülen karakter ve marka adları: başlıkta/etiketlerde geçerse listing kaldırılabilir,
 # tekrarında hesap kısıtlanabilir. Kısa, bilerek temkinli bir liste (tam bir marka denetimi değildir); lisansı olan satıcı
 # düzenleyicide elle yazabilir.
+_COLOR_WORDS = {"black", "white", "red", "yellow", "grey", "gray", "blue", "green", "gold", "silver", "pink", "purple", "orange", "brown", "beige", "navy"}
+
 PROTECTED_NAMES = re.compile(
     r"\b(spider[- ]?man|marvel|avengers|iron man|captain america|batman|superman|dc comics|wonder woman|disney|mickey mouse|"
     r"pixar|star wars|mandalorian|baby yoda|harry potter|hogwarts|pokemon|pok[eé]mon|pikachu|nintendo|super mario|zelda|minecraft|"
     r"hello kitty|sanrio|barbie|lego|stranger things|game of thrones|lord of the rings|naruto|one piece|dragon ball|"
-    r"nike|adidas|gucci|louis vuitton|chanel|rolex|coca[- ]?cola|harley[- ]?davidson|taylor swift|nfl|nba|mlb)\b", re.I
+    r"nike|adidas|gucci|louis vuitton|chanel|rolex|coca[- ]?cola|harley[- ]?davidson|taylor swift|nfl|nba|mlb|"
+    r"apple watch|iphone|ipad|macbook|airpods|samsung galaxy|playstation|xbox|tesla|ikea|starbucks)\b", re.I
 )
 
 
@@ -238,6 +241,9 @@ def basic_problems(title: str, tags: list[str], product_description: str = "", s
     long_tags = [t for t in tags if len(t) > TAG_MAX_LEN]
     if long_tags:
         out.append(f"Etiketler en fazla {TAG_MAX_LEN} karakter olabilir: {', '.join(long_tags)}.")
+    colorful = [t for t in tags if len({w for w in re.findall(r"[a-z]+", t.lower())} & _COLOR_WORDS) >= 2]
+    if colorful:
+        out.append(f"Etiket renk listesi gibi ({', '.join(colorful)}); renkler varyasyonda zaten var, arama ifadesi olan bir etiketle değiştir.")
     single = [t for t in tags if " " not in t]
     if len(single) > 3:
         out.append(f"{len(single)} etiket tek kelime ({', '.join(single)}); 2–4 kelimelik uzun kuyruklu etiketler kullan.")
