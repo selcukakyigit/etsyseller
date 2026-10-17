@@ -43,11 +43,11 @@ const areaLabel = (t: T): Record<string, string> => ({
 const AI_AREAS = ["title", "tags", "description"];
 
 /** Bulguların düzeltileceği düzenleyici bağlantısı: tek alanlıysa o alanın odak modunda, birden çok alanlıysa tam formda açılır; bulgular `fix` ile taşınır. */
-export function fixHref(listingId: number, findings: Finding[], opts: { touchTitle?: boolean } = {}): string {
+export function fixHref(listingId: number, findings: Finding[]): string {
   const focuses = new Set(findings.filter((f) => f.fix).map((f) => AREA_FOCUS[f.fix as string]));
   const fix = `fix=${encodeURIComponent(findings.map((f) => f.id).join(","))}`;
   const focus = focuses.size === 1 ? [...focuses][0] : null;
-  return `/listings/${listingId}/edit?${focus ? `focus=${focus}&` : ""}${fix}${opts.touchTitle ? "&title=1" : ""}`;
+  return `/listings/${listingId}/edit?${focus ? `focus=${focus}&` : ""}${fix}`;
 }
 
 /** Sıradaki Adım'ın bulguları: adım başlık-etiketse SEO boyutunun tamamı (başlık, etiketler, özellikler, çakışma: Etsy aramasındaki eşleşme), açıklamaysa açıklama alanındaki bulgular
@@ -77,7 +77,7 @@ const btnGhost = "rounded-lg border border-neutral-300 px-2.5 py-1 text-xs font-
 
 /** Üç gösterge (SEO / AEO / GEO): her satırda ilk bulgunun özeti, hangi alanlara dokunulacağı, yapay zekâ gerekip gerekmediği ve "Düzelt"; üstte tüm bulgular için "Hepsini düzelt".
  * `listingId` verilirse düğmeler çıkar. `stepFocus`: Sıradaki Adım'ın bu turdaki alanı; o alandaki bulgular "bu tur" diye işaretlenir. */
-export function ContentLevelView({ audit, listingId, stepFocus, showTitle = true }: { audit: ContentAudit; listingId?: number; stepFocus?: FocusKey | null; showTitle?: boolean }) {
+export function ContentLevelView({ audit, listingId, stepFocus, showTitle = true, onFix }: { audit: ContentAudit; listingId?: number; stepFocus?: FocusKey | null; showTitle?: boolean; onFix?: (findings: Finding[]) => void }) {
   const { t } = useT();
   const [open, setOpen] = useState(false);
   const text = levelText(t);
@@ -101,7 +101,12 @@ export function ContentLevelView({ audit, listingId, stepFocus, showTitle = true
         </span>
         )}
         {showTitle && <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${PILL[audit.level]}`}>{text[audit.level]}</span>}
-        {listingId !== undefined && actionable.length > 0 && (
+        {actionable.length > 0 && onFix && (
+          <button type="button" onClick={() => onFix(audit.findings)} className={`${btnPrimary} ml-auto`}>
+            {t("Hepsini düzelt", "Fix all")}
+          </button>
+        )}
+        {actionable.length > 0 && !onFix && listingId !== undefined && (
           <Link href={fixHref(listingId, audit.findings.filter((f) => f.fix))} className={`${btnPrimary} ml-auto`}>
             {t("Hepsini düzelt", "Fix all")}
           </Link>
@@ -128,7 +133,12 @@ export function ContentLevelView({ audit, listingId, stepFocus, showTitle = true
                   {mine.length > 0 ? mine[0].text : t("Sorun yok", "No issues")}
                 </span>
                 {mine.some(inRound) && <span className="rounded bg-[#D97757]/15 px-1 text-[10px] font-semibold text-[#B4553A] dark:text-[#E89A7F]">{t("bu tur", "this round")}</span>}
-                {listingId !== undefined && touched.length > 0 && (
+                {touched.length > 0 && onFix && (
+                  <button type="button" onClick={() => onFix(mine)} className={btnGhost}>
+                    {t("Düzelt", "Fix")}
+                  </button>
+                )}
+                {touched.length > 0 && !onFix && listingId !== undefined && (
                   <Link href={fixHref(listingId, mine)} className={btnGhost}>
                     {t("Düzelt", "Fix")}
                   </Link>

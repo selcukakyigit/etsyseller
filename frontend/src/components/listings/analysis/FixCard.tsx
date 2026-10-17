@@ -18,9 +18,8 @@ export default function FixCard({
   focus,
   onAi,
   busy,
-  canTouchTitle,
-  touchTitle,
-  onTouchTitle,
+  resolved,
+  onAdd,
   onCheck,
   checkKey,
   onGoTo,
@@ -31,9 +30,10 @@ export default function FixCard({
   focus: FocusKey | null;
   onAi: () => void;
   busy: boolean;
-  canTouchTitle: boolean;
-  touchTitle: boolean;
-  onTouchTitle: (v: boolean) => void;
+  /** Kontrol et ile giderildiği doğrulanan bulgular */
+  resolved: Set<string>;
+  /** Kontrol sonucundan "Düzelt": bulguları bu düzeltme listesine ekler */
+  onAdd: (findings: Finding[]) => void;
   onCheck: () => Promise<ContentAudit>;
   /** AI önerisi forma yazılınca artar: kontrol kendiliğinden yenilenir */
   checkKey: number;
@@ -68,27 +68,20 @@ export default function FixCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkKey]);
 
-  const areas = new Set(fixes.map((f) => f.fix));
-  const needsAi = areas.has("description") || areas.has("tags") || (areas.has("title") && (!canTouchTitle || touchTitle));
+  const active = fixes.filter((f) => !resolved.has(f.id));
+  const areas = new Set(active.map((f) => f.fix));
+  const needsAi = areas.has("description") || areas.has("tags") || areas.has("title");
   const step = d?.next_step ? stepFocus(d.next_step) : null;
   const fixFocuses = new Set(fixes.filter((f) => f.fix).map((f) => AREA_FOCUS[f.fix as string]));
   const outside = !!step && step !== "overhaul" && step !== "text" && !fixFocuses.has(step);
-  const aiItems = fixes.filter((f) => f.fix === "description" || f.fix === "tags");
-  const titleItems = fixes.filter((f) => f.fix === "title");
-  const manualItems = fixes.filter((f) => !f.fix || f.fix === "attributes" || f.fix === "alt_text");
-  const skippedTitle = canTouchTitle && !touchTitle;
-  const afterAi = checkKey > 0;
-  // Kontrolden sonra: seçilen bulgulardan hâlâ geçerli olanlar (kimlikler denetimde sabittir). Başlığı atlanan bulgu "kalan" sayılmaz.
-  const remaining = result ? fixes.filter((f) => result.findings.some((r) => r.id === f.id) && !(f.fix === "title" && skippedTitle)) : [];
+  const inStep = !!d?.next_step && !!step && (fixFocuses.has(step) || step === "text" || step === "overhaul");
   const groups = [
-    { key: "ai", title: t("Yapay zekâ düzeltecek", "AI will fix"), items: aiItems, skipped: false },
-    { key: "title", title: canTouchTitle ? t("Başlık (onayınla)", "Title (needs your confirmation)") : t("Başlık", "Title"), items: titleItems, skipped: skippedTitle },
-    { key: "manual", title: t("Elle yapılacak (yapay zekâsız)", "To do by hand (no AI)"), items: manualItems, skipped: false },
+    { key: "ai", title: t("Yapay zekâ düzeltecek", "AI will fix"), items: fixes.filter((f) => f.fix === "description" || f.fix === "tags") },
+    { key: "title", title: t("Başlık", "Title"), items: fixes.filter((f) => f.fix === "title") },
+    { key: "manual", title: t("Elle yapılacak (yapay zekâsız)", "To do by hand (no AI)"), items: fixes.filter((f) => !f.fix || f.fix === "attributes" || f.fix === "alt_text") },
   ].filter((g) => g.items.length > 0);
   const btn = "rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50";
   const ghost = `${btn} border border-neutral-300 text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800`;
-
-  const inStep = !!d?.next_step && !!step && (fixFocuses.has(step) || step === "text" || step === "overhaul");
 
   return (
     <div className="rounded-xl border border-[#D97757]/40 bg-[#D97757]/5 p-4 dark:bg-[#D97757]/10">
@@ -103,26 +96,25 @@ export default function FixCard({
         <div key={g.key} className="mt-2">
           <p className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">{g.title}</p>
           <ul className="mt-1 space-y-1.5">
-            {g.items.map((f) => (
-              <li key={f.id} className={`flex items-start gap-2 text-sm ${g.skipped ? "text-neutral-400 line-through dark:text-neutral-500" : "text-neutral-900 dark:text-neutral-100"}`}>
-                <span className={`mt-1.5 h-2 w-2 flex-shrink-0 rounded-full ${f.weight >= 2 ? "bg-red-500" : "bg-amber-500"}`} />
-                <span>{f.text}</span>
-              </li>
-            ))}
+            {g.items.map((f) => {
+              const done = resolved.has(f.id);
+              return (
+                <li key={f.id} className={`flex items-start gap-2 text-sm ${done ? "text-neutral-400 dark:text-neutral-500" : "text-neutral-900 dark:text-neutral-100"}`}>
+                  {done ? (
+                    <span className="mt-0.5 flex-shrink-0 text-xs text-emerald-600 dark:text-emerald-400">✓</span>
+                  ) : (
+                    <span className={`mt-1.5 h-2 w-2 flex-shrink-0 rounded-full ${f.weight >= 2 ? "bg-red-500" : "bg-amber-500"}`} />
+                  )}
+                  <span className={done ? "line-through" : ""}>{f.text}</span>
+                </li>
+              );
+            })}
           </ul>
-          {g.key === "title" && canTouchTitle && (
-            <label className="mt-1.5 flex items-start gap-2 text-xs text-neutral-700 dark:text-neutral-300">
-              <input type="checkbox" checked={touchTitle} onChange={(e) => onTouchTitle(e.target.checked)} className="mt-0.5" />
-              <span>{t("Başlığı da değiştir (Etsy sıralamasını etkileyebilir)", "Change the title too (can affect Etsy ranking)")}</span>
-            </label>
+          {g.key === "title" && !g.items.every((f) => resolved.has(f.id)) && (
+            <p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">{t("Başlık değişikliği Etsy sıralamasını etkileyebilir.", "A title change can affect Etsy ranking.")}</p>
           )}
         </div>
       ))}
-      {afterAi && skippedTitle && (
-        <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-          {t("Başlık değiştirilmedi: kutu işaretli değildi. Başlığı da düzeltmek istiyorsan kutuyu işaretleyip önerileri yeniden üret.", "The title was not changed: the box was not ticked. To fix the title too, tick the box and generate again.")}
-        </p>
-      )}
 
       {outside && step && (
         <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
@@ -156,22 +148,17 @@ export default function FixCard({
 
       {result && (
         <div className="mt-3 space-y-2">
-          {remaining.length === 0 ? (
+          {active.length === 0 ? (
             <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
-              {t("✓ Seçtiğin düzeltmeler tamam. Kaydet ve Etsy'de yayınla; ölçüm o zaman başlar.", "✓ The selected fixes are done. Save and publish to Etsy; measuring starts then.")}
+              {t("✓ Seçtiğin düzeltmeler tamam. Aşağıdan başka düzeltme ekleyebilir ya da Kaydet ve Etsy'de yayınla; ölçüm o zaman başlar.", "✓ The selected fixes are done. Add more fixes below, or save and publish to Etsy; measuring starts then.")}
             </p>
           ) : (
-            <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-              <p className="font-medium">{t(`Kalan ${remaining.length} düzeltme:`, `${remaining.length} fixes left:`)}</p>
-              <ul className="mt-1 list-disc space-y-0.5 pl-4">
-                {remaining.map((f) => (
-                  <li key={f.id}>{f.text}</li>
-                ))}
-              </ul>
-            </div>
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              {t(`Kalan ${active.length} düzeltme yukarıdaki listede.`, `${active.length} fixes left in the list above.`)}
+            </p>
           )}
           <div className="rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
-            <ContentLevelView audit={result} />
+            <ContentLevelView audit={result} onFix={onAdd} />
           </div>
         </div>
       )}

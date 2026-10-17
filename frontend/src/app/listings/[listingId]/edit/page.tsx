@@ -4,6 +4,7 @@ import DescriptionTemplatePicker from "@/components/listing-editor/DescriptionTe
 import DiagnosisStrip from "@/components/listings/analysis/DiagnosisStrip";
 import { FOCUS_KEYS, FocusKey, focusLabel } from "@/components/listings/analysis/NextStepCard";
 import FixCard from "@/components/listings/analysis/FixCard";
+import { AREA_FOCUS } from "@/components/listings/analysis/ContentLevelCard";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -74,19 +75,14 @@ export default function ListingEditPage() {
   }, []);
   // İçerik denetiminden "Düzelt" (?fix=bulgu1,bulgu2): seçilen bulgular adım kartının yerine geçer ve AI önerisine talimat olur.
   const [fixes, setFixes] = useState<ContentAudit["findings"]>([]);
-  const [touchTitle, setTouchTitle] = useState(false); // çok alanlı düzeltmede başlığa dokunma onayı
+  const [resolved, setResolved] = useState<Set<string>>(new Set()); // Kontrol et ile giderildiği doğrulanan bulgular
   const shopIdForFix = activeShop?.id;
   useEffect(() => {
     const ids = new URLSearchParams(window.location.search).get("fix")?.split(",").filter(Boolean) ?? [];
     if (!ids.length || !shopIdForFix || listingId < 0) return;
     let cancelled = false;
-    const touch = new URLSearchParams(window.location.search).get("title") === "1";
     api.insights.content(shopIdForFix, listingId).then(
-      (a) => {
-        if (cancelled) return;
-        setFixes(a.findings.filter((x) => ids.includes(x.id)));
-        if (touch) setTouchTitle(true); // adımın kendisi başlık-etiket: başlığa dokunmak baştan açık
-      },
+      (a) => !cancelled && setFixes(a.findings.filter((x) => ids.includes(x.id))),
       () => undefined,
     );
     return () => {
@@ -106,18 +102,29 @@ export default function ListingEditPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
   // Odak modunda AI yalnızca o adımın alanlarını forma yazar (açıklama adımında başlığa dokunmaz…)
-  // İçerik denetiminden gelen düzeltmelerde (fix) yazılacak alanlar bulguların alanlarından çıkar; çok alanlı düzeltmede başlığa yalnızca onayla dokunulur.
-  const fixAreas = new Set(fixes.map((f) => f.fix));
-  const multiArea = new Set(fixes.map((f) => (f.fix === "tags" ? "title" : f.fix))).size > 1;
-  const canTouchTitle = fixAreas.has("title") && multiArea;
+  // İçerik denetiminden gelen düzeltmelerde (fix) yazılacak alanlar, henüz giderilmemiş bulguların alanlarından çıkar.
+  const activeFixes = fixes.filter((f) => !resolved.has(f.id));
+  const fixAreas = new Set(activeFixes.map((f) => f.fix));
   const [checkKey, setCheckKey] = useState(0); // AI önerisi forma yazılınca artar: FixCard kontrolü yeniler
   const fixFields = [
     ...(fixAreas.has("description") ? ["description" as const] : []),
     ...(fixAreas.has("tags") ? ["tags" as const] : []),
-    ...(fixAreas.has("title") && (!canTouchTitle || touchTitle) ? ["title" as const] : []),
+    ...(fixAreas.has("title") ? ["title" as const] : []),
   ];
+  /** Kontrol sonucundaki bulguları düzeltme listesine ekler (aynı sayfada: "bunu da düzelt"). */
+  function addFixes(more: ContentAudit["findings"]) {
+    // Odak modunda görünmeyen bir alana ait bulgu eklendiyse tam forma geçilir (yoksa yazılan alan ekranda görünmez).
+    if (focus && more.some((m) => m.fix && AREA_FOCUS[m.fix] !== focus)) {
+      setFocus(null);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("focus");
+      window.history.replaceState(null, "", url);
+    }
+    setFixes((prev) => [...prev, ...more.filter((m) => !prev.some((p) => p.id === m.id))]);
+    setResolved((prev) => new Set([...prev].filter((id) => !more.some((m) => m.id === id))));
+  }
   const aiFields: ("title" | "tags" | "description" | "materials")[] =
-    fixes.length > 0 ? fixFields : focus === "title_tags" ? ["title", "tags"] : focus === "description" ? ["description"] : focus === "text" ? ["title", "tags", "description"] : ["title", "tags", "description", "materials"]; // tam form ve kapsamlı yenileme: hepsi
+    activeFixes.length > 0 ? fixFields : focus === "title_tags" ? ["title", "tags"] : focus === "description" ? ["description"] : focus === "text" ? ["title", "tags", "description"] : ["title", "tags", "description", "materials"]; // tam form ve kapsamlı yenileme: hepsi
   const [invKey, setInvKey] = useState(0); // işlem profili kartı envanteri değiştirince varyasyon tablosunu yeniden kurar
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -144,7 +151,7 @@ export default function ListingEditPage() {
       const s = await api.listings.suggest(activeShop.id, listingId, {
         ...previous,
         inventory: edit.inventory,
-        ...(fixes.length > 0 ? { instruction: fixes.map((f) => f.text).join(" ") } : {}),
+        ...(activeFixes.length > 0 ? { instruction: activeFixes.map((f) => f.text).join(" ") } : {}),
       });
       wc.patch({
         ...(aiFields.includes("title") ? { title: s.suggested_title } : {}),
@@ -164,7 +171,7 @@ export default function ListingEditPage() {
   /** Formdaki güncel (kaydedilmemiş) değerlerin içerik denetimi: ücretsiz, yapay zekâ çağırmaz. */
   async function handleCheck() {
     if (!edit || !activeShop) throw new Error("no listing");
-    return api.insights.checkContent(activeShop.id, listingId, {
+    const audit = await api.insights.checkContent(activeShop.id, listingId, {
       title: edit.title,
       tags: edit.tags,
       description: edit.description,
@@ -177,6 +184,8 @@ export default function ListingEditPage() {
       state: edit.state ?? null,
       listing_type: edit.listing_type ?? null,
     });
+    setResolved(new Set(fixes.filter((f) => !audit.findings.some((r) => r.id === f.id)).map((f) => f.id)));
+    return audit;
   }
 
   async function handleUndoAi() {
@@ -411,9 +420,8 @@ export default function ListingEditPage() {
                   focus={focus}
                   onAi={handleAi}
                   busy={aiBusy}
-                  canTouchTitle={canTouchTitle}
-                  touchTitle={touchTitle}
-                  onTouchTitle={setTouchTitle}
+                  resolved={resolved}
+                  onAdd={addFixes}
                   onCheck={handleCheck}
                   checkKey={checkKey}
                   onGoTo={goTo}
