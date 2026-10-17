@@ -6,9 +6,9 @@ import { api, ContentAudit, ContentLevel } from "@/lib/api";
 import { useCached } from "@/lib/pageCache";
 import { T, useT } from "@/lib/i18n-client";
 import HelpTip from "@/components/ui/HelpTip";
-import { FocusKey } from "./NextStepCard";
+import type { FocusKey } from "./NextStepCard";
 
-type Finding = ContentAudit["findings"][number];
+export type Finding = ContentAudit["findings"][number];
 type Dim = "seo" | "aeo" | "geo";
 
 export const DIMS: Dim[] = ["seo", "aeo", "geo"];
@@ -27,22 +27,56 @@ const dimTip = (t: T): Record<Dim, string> => ({
 
 // Bulgunun düzenlendiği alan → düzenleyicinin odak modu (bkz. NextStepCard FocusKey).
 export const AREA_FOCUS: Record<string, FocusKey> = { title: "title_tags", tags: "title_tags", description: "description", alt_text: "photo", attributes: "attributes" };
+const areaLabel = (t: T): Record<string, string> => ({
+  title: t("başlık", "title"),
+  tags: t("etiketler", "tags"),
+  description: t("açıklama", "description"),
+  attributes: t("özellikler", "attributes"),
+  alt_text: t("alt metin", "alt text"),
+});
+const AI_AREAS = ["title", "tags", "description"];
 
-/** Bir boyutun bulgularını düzeltmek için düzenleyici bağlantısı: tek alanlıysa o alanın odak modunda, birden çok alanlıysa tam formda açılır; bulgular `fix` ile taşınır. */
-export function fixHref(listingId: number, findings: Finding[]): string {
+/** Bulguların düzeltileceği düzenleyici bağlantısı: tek alanlıysa o alanın odak modunda, birden çok alanlıysa tam formda açılır; bulgular `fix` ile taşınır. */
+export function fixHref(listingId: number, findings: Finding[], forceFocus?: FocusKey): string {
   const focuses = new Set(findings.filter((f) => f.fix).map((f) => AREA_FOCUS[f.fix as string]));
   const fix = `fix=${encodeURIComponent(findings.map((f) => f.id).join(","))}`;
-  return `/listings/${listingId}/edit?${focuses.size === 1 ? `focus=${[...focuses][0]}&` : ""}${fix}`;
+  const focus = forceFocus ?? (focuses.size === 1 ? [...focuses][0] : null);
+  return `/listings/${listingId}/edit?${focus ? `focus=${focus}&` : ""}${fix}`;
 }
 
-/** Üç gösterge (SEO / AEO / GEO) ve ayrıntıya açılan bulgu listesi. `listingId` verilirse boyut satırlarında "Düzelt" düğmesi çıkar.
- * `stepFocus`: Sıradaki Adım'ın bu turdaki alanı; o alandaki bulgular "bu tur" diye işaretlenir. */
+/** Sıradaki Adım'ın alanındaki bulgular: adım başlık-etiketse başlık/etiket bulguları, açıklamaysa açıklama bulguları (AEO + GEO dahil), kapsamlıysa metin alanlarının hepsi. */
+export function findingsForStep(audit: ContentAudit | null | undefined, step: FocusKey | null): Finding[] {
+  if (!audit || !step) return [];
+  const text = step === "text" || step === "overhaul";
+  return audit.findings.filter((f) => !!f.fix && (AREA_FOCUS[f.fix] === step || (text && AI_AREAS.includes(f.fix))));
+}
+
+/** Teşhis sekmesi: içerik denetimi (Etsy'deki yayınlanmış hâl). Birden çok yerde kullanılır; istek bir kez yapılır ve önbellekten paylaşılır. */
+export function useContentAudit(shopId: number, listingId: number): ContentAudit | null {
+  const [a, setA] = useCached<ContentAudit>(`content:${shopId}:${listingId}`);
+  useEffect(() => {
+    let cancelled = false;
+    api.insights.content(shopId, listingId).then((r) => !cancelled && setA(r), () => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [shopId, listingId, setA]);
+  return a ?? null;
+}
+
+const btnPrimary = "rounded-lg bg-[#D97757] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#C6613F]";
+const btnGhost = "rounded-lg border border-neutral-300 px-2.5 py-1 text-xs font-semibold text-[#B4553A] hover:bg-neutral-100 dark:border-neutral-700 dark:text-[#E89A7F] dark:hover:bg-neutral-800";
+
+/** Üç gösterge (SEO / AEO / GEO): her satırda ilk bulgunun özeti, hangi alanlara dokunulacağı, yapay zekâ gerekip gerekmediği ve "Düzelt"; üstte tüm bulgular için "Hepsini düzelt".
+ * `listingId` verilirse düğmeler çıkar. `stepFocus`: Sıradaki Adım'ın bu turdaki alanı; o alandaki bulgular "bu tur" diye işaretlenir. */
 export function ContentLevelView({ audit, listingId, stepFocus }: { audit: ContentAudit; listingId?: number; stepFocus?: FocusKey | null }) {
   const { t } = useT();
   const [open, setOpen] = useState(false);
   const text = levelText(t);
   const tips = dimTip(t);
+  const areas = areaLabel(t);
   const inRound = (f: Finding) => !!stepFocus && !!f.fix && (AREA_FOCUS[f.fix] === stepFocus || stepFocus === "text" || stepFocus === "overhaul");
+  const actionable = audit.findings.filter((f) => f.fix);
 
   return (
     <div>
@@ -51,35 +85,51 @@ export function ContentLevelView({ audit, listingId, stepFocus }: { audit: Conte
           {t("İçerik seviyesi", "Content level")}
           <HelpTip>
             {t(
-              "Listing metninin Etsy aramasına ve yapay zekâ alışveriş asistanlarına ne kadar hazır olduğunu gösterir. Ücretsizdir, yapay zekâ kullanmaz. Bir boyutun \"Düzelt\" düğmesi o boyuttaki tüm bulguları tek seferde düzeltir; başlık değişikliği Etsy sıralamasını etkileyebileceği için başlığa dokunmak ayrıca onay ister.",
-              "Shows how ready the listing text is for Etsy search and AI shopping assistants. Free, no AI is used. A dimension's \"Fix\" button fixes all of its findings in one pass; a title change can affect Etsy ranking, so touching the title needs a separate confirmation.",
+              "Listing metninin Etsy aramasına ve yapay zekâ alışveriş asistanlarına ne kadar hazır olduğunu gösterir. Ücretsizdir, yapay zekâ kullanmaz. Bir boyutun \"Düzelt\" düğmesi o boyuttaki bulguları tek seferde düzeltir; \"Hepsini düzelt\" üç boyutu birlikte, alanlara göre birleştirerek (örneğin açıklamayı bir kez) düzeltir. Başlık değişikliği Etsy sıralamasını etkileyebileceği için başlığa dokunmak ayrıca onay ister.",
+              "Shows how ready the listing text is for Etsy search and AI shopping assistants. Free, no AI is used. A dimension's \"Fix\" button fixes its findings in one pass; \"Fix all\" fixes all three together, merged by area (for example the description once). A title change can affect Etsy ranking, so touching the title needs a separate confirmation.",
             )}
           </HelpTip>
         </span>
         <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${PILL[audit.level]}`}>{text[audit.level]}</span>
+        {listingId !== undefined && actionable.length > 0 && (
+          <Link href={fixHref(listingId, audit.findings.filter((f) => f.fix))} className={`${btnPrimary} ml-auto`}>
+            {t("Hepsini düzelt", "Fix all")}
+          </Link>
+        )}
       </div>
 
       <ul className="mt-3 divide-y divide-neutral-100 dark:divide-neutral-800">
         {DIMS.map((d) => {
           const mine = audit.findings.filter((f) => f.dim === d);
           const info = audit.dims[d];
+          const touched = [...new Set(mine.filter((f) => f.fix).map((f) => f.fix as string))];
+          const usesAi = touched.some((a) => AI_AREAS.includes(a));
           return (
-            <li key={d} className="flex items-center gap-3 py-2 text-sm">
-              <span className="w-10 font-semibold text-neutral-800 dark:text-neutral-200" title={tips[d]}>
-                {d.toUpperCase()}
-              </span>
-              <span className="flex w-24 items-center gap-1.5 text-neutral-600 dark:text-neutral-400">
-                <span className={`h-2 w-2 rounded-full ${LEVEL_DOT[info.level]}`} />
-                {text[info.level]}
-              </span>
-              <span className="flex-1 text-xs text-neutral-500 dark:text-neutral-400">
-                {mine.length > 0 ? t(`${mine.length} bulgu`, `${mine.length} findings`) : "—"}
-                {mine.some(inRound) && <span className="ml-1.5 rounded bg-[#D97757]/15 px-1 text-[10px] font-semibold text-[#B4553A] dark:text-[#E89A7F]">{t("bu tur", "this round")}</span>}
-              </span>
-              {listingId !== undefined && mine.length > 0 && (
-                <Link href={fixHref(listingId, mine)} className="text-xs font-medium text-[#D97757] hover:text-[#C6613F]">
-                  {t("Düzelt", "Fix")}
-                </Link>
+            <li key={d} className="py-2.5 text-sm">
+              <div className="flex items-center gap-3">
+                <span className="w-10 font-semibold text-neutral-800 dark:text-neutral-200" title={tips[d]}>
+                  {d.toUpperCase()}
+                </span>
+                <span className="flex w-20 flex-shrink-0 items-center gap-1.5 text-neutral-600 dark:text-neutral-400">
+                  <span className={`h-2 w-2 rounded-full ${LEVEL_DOT[info.level]}`} />
+                  {text[info.level]}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-xs text-neutral-600 dark:text-neutral-300">
+                  {mine.length > 0 ? mine[0].text : t("Sorun yok", "No issues")}
+                </span>
+                {mine.some(inRound) && <span className="rounded bg-[#D97757]/15 px-1 text-[10px] font-semibold text-[#B4553A] dark:text-[#E89A7F]">{t("bu tur", "this round")}</span>}
+                {listingId !== undefined && touched.length > 0 && (
+                  <Link href={fixHref(listingId, mine)} className={btnGhost}>
+                    {t("Düzelt", "Fix")}
+                  </Link>
+                )}
+              </div>
+              {mine.length > 0 && (
+                <p className="mt-1 pl-[3.25rem] text-[11px] text-neutral-500 dark:text-neutral-400">
+                  {t(`${mine.length} bulgu`, `${mine.length} findings`)}
+                  {touched.length > 0 && ` · ${touched.map((a) => areas[a] ?? a).join(", ")}`}
+                  {touched.length > 0 && ` · ${usesAi ? t("yapay zekâ", "AI") : t("yapay zekâsız", "no AI")}`}
+                </p>
               )}
             </li>
           );
@@ -109,21 +159,11 @@ export function ContentLevelView({ audit, listingId, stepFocus }: { audit: Conte
 }
 
 /** Teşhis sekmesindeki kart: Etsy'deki (yayınlanmış) hâlin içerik seviyesi. */
-export default function ContentLevelCard({ shopId, listingId, stepFocus }: { shopId: number; listingId: number; stepFocus?: FocusKey | null }) {
-  const [a, setA] = useCached<ContentAudit>(`content:${shopId}:${listingId}`);
-
-  useEffect(() => {
-    let cancelled = false;
-    api.insights.content(shopId, listingId).then((r) => !cancelled && setA(r), () => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [shopId, listingId, setA]);
-
-  if (!a) return null;
+export default function ContentLevelCard({ audit, listingId, stepFocus }: { audit: ContentAudit | null; listingId: number; stepFocus?: FocusKey | null }) {
+  if (!audit) return null;
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-      <ContentLevelView audit={a} listingId={listingId} stepFocus={stepFocus} />
+      <ContentLevelView audit={audit} listingId={listingId} stepFocus={stepFocus} />
     </div>
   );
 }

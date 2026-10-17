@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { NextStep } from "@/lib/api";
 import { T, useT } from "@/lib/i18n-client";
+import { Finding, fixHref } from "./ContentLevelCard";
 
 /** Düzenleyicinin odak modu: yalnızca sıradaki adımın alanı görünür (bir turda tek şey değişsin ki etkisi ölçülebilsin). */
 export type FocusKey = "photo" | "price" | "title_tags" | "description" | "text" | "overhaul" | "attributes";
@@ -74,12 +75,15 @@ export default function NextStepCard({
   compact = false,
   onFocus,
   onAi,
+  findings = [],
 }: {
   step: NextStep;
   listingId: number;
   compact?: boolean;
   onFocus?: (focus: FocusKey) => void;
   onAi?: () => void;
+  /** Adımın alanındaki içerik bulguları (bkz. ContentLevelCard.findingsForStep): listelenir ve düğme bunları düzeltmeye taşır */
+  findings?: Finding[];
 }) {
   const { t } = useT();
   const focus = stepFocus(step);
@@ -101,7 +105,7 @@ export default function NextStepCard({
     );
   } else if (focus && !onFocus && !onAi) {
     action = (
-      <Link href={`/listings/${listingId}/edit?focus=${focus}`} className={`inline-block ${button}`}>
+      <Link href={findings.length > 0 ? fixHref(listingId, findings, focus) : `/listings/${listingId}/edit?focus=${focus}`} className={`inline-block ${button}`}>
         {t(`Düzenle: ${focusLabel(t, focus)}`, `Edit: ${focusLabel(t, focus)}`)} →
       </Link>
     );
@@ -126,6 +130,23 @@ export default function NextStepCard({
             </li>
           ))}
         </ul>
+      )}
+      {!compact && findings.length > 0 && (
+        <div className="mt-2 rounded-lg bg-white/60 px-3 py-2 text-xs text-neutral-700 dark:bg-black/20 dark:text-neutral-300">
+          <p className="font-medium text-neutral-800 dark:text-neutral-200">{t(`Bu adımda düzeltilecek ${findings.length} bulgu`, `${findings.length} findings to fix in this step`)}</p>
+          <ul className="mt-1 space-y-0.5">
+            {findings.slice(0, 3).map((f) => (
+              <li key={f.id} className="flex gap-1.5">
+                <span className="text-neutral-400 dark:text-neutral-500">·</span>
+                <span>
+                  <span className="mr-1 font-semibold text-neutral-500 dark:text-neutral-400">{f.dim.toUpperCase()}</span>
+                  {f.text}
+                </span>
+              </li>
+            ))}
+            {findings.length > 3 && <li className="text-neutral-500 dark:text-neutral-400">{t(`+ ${findings.length - 3} bulgu daha`, `+ ${findings.length - 3} more`)}</li>}
+          </ul>
+        </div>
       )}
       {action && <div className="mt-3">{action}</div>}
     </div>

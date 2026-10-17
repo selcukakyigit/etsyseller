@@ -6,7 +6,7 @@ import { useCached } from "@/lib/pageCache";
 import { useT } from "@/lib/i18n-client";
 import { BlockSpinner } from "@/components/ui/Spinner";
 import HealthBanner from "./HealthBanner";
-import ContentLevelCard from "./ContentLevelCard";
+import ContentLevelCard, { findingsForStep, useContentAudit } from "./ContentLevelCard";
 import NextStepCard, { stepFocus } from "./NextStepCard";
 
 const TONE_DOT = {
@@ -59,6 +59,7 @@ export default function DiagnosisTab({ shopId, listingId }: { shopId: number; li
   const { t, locale } = useT();
   const [d, setD] = useCached<ListingDiagnosis>(`diagnosis:${shopId}:${listingId}`);
   const [error, setError] = useState<string | null>(null);
+  const audit = useContentAudit(shopId, listingId);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,11 +99,11 @@ export default function DiagnosisTab({ shopId, listingId }: { shopId: number; li
         {confidence && <span className="text-xs text-neutral-500 dark:text-neutral-400">{confidence}</span>}
       </div>
 
-      <NextStepCard step={d.next_step} listingId={listingId} />
+      <NextStepCard step={d.next_step} listingId={listingId} findings={findingsForStep(audit, stepFocus(d.next_step))} />
 
       <HealthBanner shopId={shopId} listingId={listingId} />
 
-      <ContentLevelCard shopId={shopId} listingId={listingId} stepFocus={stepFocus(d.next_step)} />
+      <ContentLevelCard audit={audit} listingId={listingId} stepFocus={stepFocus(d.next_step)} />
 
       {d.season.peak_months.length > 0 && !d.next_step.why.includes(d.season.text) && <p className={`rounded-lg border px-3 py-2 text-xs ${seasonStyle}`}>{d.season.text}</p>}
 
