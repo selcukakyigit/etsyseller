@@ -455,9 +455,9 @@ def _build_listings(db: Session, shop: Shop) -> list[ListingOut]:
     return out
 
 
-def create_suggestion(
-    db: Session, shop: Shop, user_id: int, listing_id: int, overrides: SuggestIn | None = None
-) -> SuggestionOut:
+def generate_for_listing(db: Session, shop: Shop, listing_id: int, overrides: SuggestIn | None = None, instruction: str = "") -> tuple[dict, dict]:
+    """Bir listing için SEO önerisi üretir (anahtar kelime havuzu, teşhis, mağazadaki diğer listing'ler ve varyasyonlarla): (listing, öneri).
+    `instruction`: kullanıcının ton/odak isteği; teşhis özetinin sonuna eklenir. Hem tek listing önerisi hem toplu yeniden yazım bunu kullanır."""
     local = db.scalars(select(ListingLocal).where(ListingLocal.shop_id == shop.id).where(ListingLocal.listing_id == listing_id)).one_or_none()
     local_data = json.loads(local.data_json) if local else {}
     if listing_id < 0:
@@ -496,6 +496,8 @@ def create_suggestion(
             brief = diagnosis.prompt_brief(diagnosis.diagnose(db, shop, listing_id))
         except Exception:  # noqa: BLE001 — teşhis hesaplanamazsa öneri yine üretilir
             logger.warning("Teşhis hesaplanamadı (listing %s)", listing_id, exc_info=True)
+    if instruction:
+        brief = f"{brief}\nKULLANICININ İSTEĞİ (ton/odak): {instruction}".strip()
 
     try:
         suggestion = seo.generate_seo_suggestion(listing, keyword_pool=keyword_pool, others=quality.shop_others(db, shop.id, exclude_id=listing_id), diagnosis_brief=brief, variations=quality.variation_values(inventory), fact_source=fact_source)
@@ -503,7 +505,13 @@ def create_suggestion(
         raise SuggestionError(str(exc)) from exc
     except (ValueError, json.JSONDecodeError) as exc:
         raise SuggestionError(f"SEO önerisi üretilemedi: {exc}") from exc
+    return listing, suggestion
 
+
+def create_suggestion(
+    db: Session, shop: Shop, user_id: int, listing_id: int, overrides: SuggestIn | None = None
+) -> SuggestionOut:
+    listing, suggestion = generate_for_listing(db, shop, listing_id, overrides)
     version_row = ListingVersion(
         shop_id=shop.id,
         listing_id=listing_id,

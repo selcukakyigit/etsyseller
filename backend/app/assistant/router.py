@@ -12,6 +12,8 @@ from app.core import blobstore
 from app.core.byte_range import ranged
 from app.core.db import get_db
 from app.core.deps import get_current_user
+from app.core.i18n import tr
+from app.listings import rewrite
 from app.shops.deps import get_owned_shop, require_ai_enabled
 from app.shops.models import Shop
 
@@ -41,6 +43,32 @@ def chat(body: ChatIn, shop: Shop = Depends(get_owned_shop), user: User = Depend
 def progress(request_id: str, shop: Shop = Depends(get_owned_shop)):
     """Asistanın o an yaptığı işin kısa açıklaması (arayüz bekleme sırasında gösterir)."""
     return service.get_progress(shop.id, request_id)
+
+
+def _rewrite_job(job_id: str, shop: Shop) -> rewrite.Job:
+    job = rewrite.get(job_id, shop.id)
+    if job is None:
+        raise HTTPException(404, tr("İş bulunamadı (süresi dolmuş ya da sunucu yeniden başlamış olabilir). O ana dek yazılanlar yerel taslakta duruyor.", "Job not found (it may have expired or the server restarted). What was written so far stays in local drafts."))
+    return job
+
+
+@router.get("/rewrite-jobs/{job_id}")
+def rewrite_job(job_id: str, shop: Shop = Depends(get_owned_shop)):
+    return rewrite.public(_rewrite_job(job_id, shop))
+
+
+@router.post("/rewrite-jobs/{job_id}/start", dependencies=[Depends(require_ai_enabled)])
+def rewrite_job_start(job_id: str, shop: Shop = Depends(get_owned_shop)):
+    job = _rewrite_job(job_id, shop)
+    rewrite.start(job)
+    return rewrite.public(job)
+
+
+@router.post("/rewrite-jobs/{job_id}/stop")
+def rewrite_job_stop(job_id: str, shop: Shop = Depends(get_owned_shop)):
+    job = _rewrite_job(job_id, shop)
+    rewrite.stop(job)
+    return rewrite.public(job)
 
 
 @router.get("/sessions")

@@ -711,6 +711,12 @@ export type ListingEdit = {
 };
 
 /** Toplu işlemde bir listing'in önce/sonra özeti (bkz. backend listings/bulk.py _brief). */
+export type RewriteText = { title: string; tags: string[]; description: string };
+export type RewriteState = {
+  job_id: string; status: "preview" | "running" | "done" | "stopped" | "out_of_credits"; total: number; processed: number; fields: string[];
+  samples: { id: number; title: string; before: BulkBrief; after: BulkBrief; detail: { before: RewriteText; after: RewriteText }; warnings: string[] }[];
+  listing_ids: number[]; changed: number; skipped: { reason: string; count: number }[]; estimate: { listings: number; credits: number; needs_confirmation: boolean };
+};
 export type BulkBrief = { title: string; price: [number, number] | null; quantity: [number, number] | null; tags: number };
 
 export type DigitalFile = { draft_file_id?: string; filename: string; size?: number; file_id?: number | null };
@@ -1494,6 +1500,7 @@ export type ChatCard =
   | { type: "listing_draft"; listing_id: number; title: string; edit_url: string; price: [number, number]; quantity: number; tags: string[]; combos: number; image: string | null; images: number; problems: string[]; category?: string | null; changes?: string[]; price_missing?: boolean; quantity_assumed?: boolean }
   | { type: "status"; title: string; rows: { label: string; value: number }[] }
   | { type: "bulk_result"; listing_ids: number[]; inspected: number; changed: number; skipped: { reason: string; count: number }[]; samples: { id: number; title: string; before: BulkBrief; after: BulkBrief }[]; ops: string[] }
+  | ({ type: "rewrite_job" } & RewriteState)
   | { type: "social_pins"; listing_id: number; title: string; pins: { title: string; description: string; hashtags: string[]; board: string }[] }
   | { type: "listing_update"; listing_id: number; title: string; edit_url: string; changes: string[]; tags: string[] }
   | { type: "video_job"; job: string; listing_id: number; credits: number; prompt: string; duration: number; started_at: number; source: "chat" | "listing" }
@@ -2052,6 +2059,8 @@ export const api = {
   },
   assistant: {
     progress: (shopId: number, requestId: string) => request<{ step: string; kind: "image" | "video" | null; cards: ChatCard[] }>(`/api/shops/${shopId}/assistant/progress/${requestId}`),
+    rewriteJob: (shopId: number, jobId: string, action?: "start" | "stop") =>
+      request<RewriteState>(`/api/shops/${shopId}/assistant/rewrite-jobs/${jobId}${action ? `/${action}` : ""}`, { method: action ? "POST" : "GET" }),
     deleteImage: (shopId: number, imageId: string) => request<{ ok: boolean }>(`/api/shops/${shopId}/assistant/images/${imageId}`, { method: "DELETE" }),
     chat: (shopId: number, body: { message: string; session_id?: number | null; image_ids: string[]; today: string; request_id?: string; lang?: "tr" | "en" }) =>
       request<ChatReply>(`/api/shops/${shopId}/assistant/chat`, { method: "POST", body: JSON.stringify(body) }),

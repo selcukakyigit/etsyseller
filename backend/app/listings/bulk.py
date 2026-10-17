@@ -269,6 +269,11 @@ def _brief(work: dict) -> dict:
 
 def _stage_one(db: Session, shop: Shop, lid: int, row: ListingCache | None, changes: BulkChanges, apply_template) -> dict:
     """Tek listing'in yerel sürümüne değişiklikleri işler (tek yer: toplu seçim ve filtreli seçim aynı mantığı kullanır)."""
+    return stage_edit(db, shop, lid, row, lambda work: apply_changes(work, changes, apply_template))
+
+
+def stage_edit(db: Session, shop: Shop, lid: int, row: ListingCache | None, edit) -> dict:
+    """`edit(work) -> hata metni | None` çalışma kopyasını değiştirir; sonuç yerel taslak olur (Etsy'ye gitmez). Yapay zekâ yeniden yazımı da bunu kullanır."""
     if lid < 0:
         return {"id": lid, "ok": False, "changed": False, "error": "Yeni (henüz yayınlanmamış) listing toplu işlemlere dahil değil; düzenleme sayfasından yönet."}
     if row is None:
@@ -277,7 +282,7 @@ def _stage_one(db: Session, shop: Shop, lid: int, row: ListingCache | None, chan
     local = drafts._local_row(db, shop, lid)
     work = json.loads(local.data_json) if local else copy.deepcopy(live)
     before = _brief(work)
-    err = apply_changes(work, changes, apply_template)
+    err = edit(work)
     if err:
         return {"id": lid, "ok": False, "changed": False, "error": err, "title": before["title"]}
     if _sig(work) == _sig(live):
