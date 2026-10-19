@@ -67,6 +67,7 @@ class OrderOut(BaseModel):
     total_days: int | None = None
     has_personalization: bool = False
     is_canceled: bool = False
+    step_id: int | None = None  # yerel ilerleme adımı (boş = New)
 
 
 class ShipRequest(BaseModel):
@@ -84,11 +85,32 @@ class DestinationCount(BaseModel):
     count: int
 
 
+class StepOut(BaseModel):
+    id: int
+    name: str
+    count: int = 0  # bu adımdaki (gönderilmemiş, iptal olmamış) sipariş sayısı
+
+
+class StepIn(BaseModel):
+    id: int | None = None  # boşsa yeni adım
+    name: str
+
+
+class StepsIn(BaseModel):
+    steps: list[StepIn]
+
+
+class MoveIn(BaseModel):
+    receipt_ids: list[int]
+    step_id: int | None = None  # boşsa New'e döner
+
+
 class OrderCounts(BaseModel):
-    toship: int
+    toship: int  # "New": gönderilmemiş ve hiçbir adıma taşınmamış
     completed: int
     canceled: int
     all: int
+    steps: list[StepOut] = []
 
 
 class OrdersPageOut(BaseModel):

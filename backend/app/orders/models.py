@@ -6,6 +6,19 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.db import Base
 
 
+class OrderStep(Base):
+    """Mağazanın kendi sipariş ilerleme adımları (Etsy Shop Manager'daki "Customize progress steps" gibi). Etsy API'si bu adımları vermez; yalnızca yerelde tutulur.
+    "New" (yeni gelenler), "Completed" (gönderilenler) ve "All" sabittir, burada yer almaz."""
+
+    __tablename__ = "order_steps"
+    __table_args__ = (UniqueConstraint("shop_id", "name", name="uq_order_steps_shop_name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), index=True)
+    name: Mapped[str] = mapped_column(String(40))
+    position: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class OrderCache(Base):
     """Local mirror of an Etsy ShopReceipt, refreshed by jobs/order_sync.py
     and on-demand. `raw_json` keeps the full Etsy payload (transactions,
@@ -30,6 +43,9 @@ class OrderCache(Base):
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
     expected_ship_date: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+
+    # Yerel ilerleme adımı (bkz. OrderStep); boşsa sipariş "New"dadır. Gönderilince temizlenir. Etsy senkronu bu sütuna dokunmaz.
+    step_id: Mapped[int | None] = mapped_column(ForeignKey("order_steps.id", ondelete="SET NULL"), nullable=True, index=True)
 
     # Filtre/arama/sayfalama için raw_json'dan türetilen sütunlar (bkz. orders/derive.py)
     country_iso: Mapped[str] = mapped_column(String(2), default="", server_default="", index=True)

@@ -526,7 +526,12 @@ export type Order = Fulfillment & {
   shipments: OrderShipment[];
   has_personalization: boolean;
   is_canceled: boolean;
+  /** Yerel ilerleme adımı (boş = New). */
+  step_id?: number | null;
 };
+
+/** Siparişler sayfasının yerel ilerleme adımı (Etsy API'si bu adımları vermez). */
+export type OrderStep = { id: number; name: string; count?: number };
 
 /** Etsy webhook'larından gelen sipariş olayları (backend app/notifications). Metin arayüzde kurulur. */
 export type AppNotification = {
@@ -552,7 +557,7 @@ export type NotificationsOut = { items: AppNotification[]; unread: number };
 export type OrdersPage = {
   items: Order[];
   total: number;
-  counts: { toship: number; completed: number; canceled: number; all: number };
+  counts: { toship: number; completed: number; canceled: number; all: number; steps: OrderStep[] };
   destinations: { iso: string; count: number }[];
 };
 
@@ -2078,6 +2083,13 @@ export const api = {
       });
       return request<OrdersPage>(`/api/shops/${shopId}/orders/page?${params}`);
     },
+    steps: (shopId: number) => request<OrderStep[]>(`/api/shops/${shopId}/orders/steps`),
+    /** Adımların tamamını verilen sırayla kaydeder (id boşsa yeni adım; listede olmayan silinir, siparişleri New'e döner). */
+    saveSteps: (shopId: number, steps: { id: number | null; name: string }[]) =>
+      request<OrderStep[]>(`/api/shops/${shopId}/orders/steps`, { method: "PUT", body: JSON.stringify({ steps }) }),
+    /** Açık siparişleri bir adıma taşır; stepId null ise New'e döndürür. */
+    move: (shopId: number, receiptIds: number[], stepId: number | null) =>
+      request<{ moved: number }>(`/api/shops/${shopId}/orders/move`, { method: "POST", body: JSON.stringify({ receipt_ids: receiptIds, step_id: stepId }) }),
     insights: (shopId: number) => request<OrderInsights>(`/api/shops/${shopId}/orders/insights`),
     ship: (shopId: number, receiptId: number, trackingCode?: string, carrierName?: string) =>
       request<Order>(`/api/shops/${shopId}/orders/${receiptId}/ship`, {

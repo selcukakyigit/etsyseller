@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.etsy.client import EtsyAuthError
 from app.orders import service
-from app.orders.schemas import OrderInsightsOut, OrderOut, OrdersPageOut, OrdersSyncStatus, ShipRequest
+from app.orders.schemas import MoveIn, OrderInsightsOut, OrderOut, OrdersPageOut, OrdersSyncStatus, ShipRequest, StepOut, StepsIn
 from app.shops.deps import get_owned_shop
 from app.shops.models import Shop
 
@@ -59,6 +59,30 @@ def sync(shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
     except EtsyAuthError as exc:
         raise HTTPException(401, str(exc)) from exc
     return service.sync_status(db, shop)
+
+
+@router.get("/steps", response_model=list[StepOut])
+def get_steps(shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    return [StepOut(id=s.id, name=s.name) for s in service.list_steps(db, shop)]
+
+
+@router.put("/steps", response_model=list[StepOut])
+def save_steps(payload: StepsIn, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    """İlerleme adımlarının tamamını verilen sırayla kaydeder (yeniden adlandırma, sıralama, ekleme, silme tek çağrıda)."""
+    try:
+        steps = service.save_steps(db, shop, [(s.id, s.name) for s in payload.steps])
+    except service.StepError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return [StepOut(id=s.id, name=s.name) for s in steps]
+
+
+@router.post("/move")
+def move(payload: MoveIn, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    """Seçili açık siparişleri bir ilerleme adımına (ya da step_id boşsa New'e) taşır."""
+    try:
+        return {"moved": service.move_orders(db, shop, payload.receipt_ids, payload.step_id)}
+    except service.StepError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @router.get("/insights", response_model=OrderInsightsOut)

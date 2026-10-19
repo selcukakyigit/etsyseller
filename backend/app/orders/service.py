@@ -11,7 +11,7 @@ from app.etsy import orders as etsy_orders
 from app.etsy.client import EtsyClient
 from app.listings.models import ListingCache
 from app.orders.derive import derive, fulfillment
-from app.orders.models import OrderCache
+from app.orders.models import OrderCache, OrderStep
 from app.orders.schemas import (
     AddressOut,
     DestinationCount,
@@ -23,7 +23,9 @@ from app.orders.schemas import (
     OrdersSyncStatus,
     OrderVariationOut,
     ShipmentOut,
+    StepOut,
 )
+from app.core.i18n import tr
 from app.shops.models import Shop
 
 
@@ -240,6 +242,7 @@ def _serialize_order(row: OrderCache, images: dict[int, str] | None = None) -> O
         **fulfillment(receipt, row.created_at, row.delivered_at),
         has_personalization=personalized,
         is_canceled=(row.status or "").lower() in ("canceled", "fully refunded"),
+        step_id=row.step_id,
     )
 
 
@@ -247,7 +250,7 @@ def _shipby_order(tab: str, nulls_last):
     """Gönderim tarihine göre sıra: gönderilecekler en yakın tarih önce (acil olan üstte); gönderilmiş/iptal olanlar en
     yeni tarih önce. "Tümü"nde gönderilecekler üstte (yakın→uzak), gönderilmişler altta (yeni→eski)."""
     d = OrderCache.expected_ship_date
-    if tab == "toship":
+    if tab == "toship" or tab.startswith("step:"):
         return (nulls_last, d.asc(), OrderCache.created_at.desc())
     if tab == "all":
         return (OrderCache.is_shipped.asc(), nulls_last, case((OrderCache.is_shipped.is_(False), d), else_=None).asc(), d.desc(), OrderCache.created_at.desc())
@@ -282,8 +285,11 @@ def orders_page(
             return OrderCache.is_canceled.is_(True)
         if t == "completed":
             return (OrderCache.is_canceled.is_(False)) & (OrderCache.is_shipped.is_(True))
-        if t == "toship":
-            return (OrderCache.is_canceled.is_(False)) & (OrderCache.is_shipped.is_(False))
+        open_ = (OrderCache.is_canceled.is_(False)) & (OrderCache.is_shipped.is_(False))
+        if t == "toship":  # "New": henüz bir adıma taşınmamış açık siparişler
+            return open_ & OrderCache.step_id.is_(None)
+        if t.startswith("step:") and t[5:].isdigit():
+            return open_ & (OrderCache.step_id == int(t[5:]))
         return None
 
     def count(t: str) -> int:
@@ -293,7 +299,11 @@ def orders_page(
             stmt = stmt.where(cond)
         return db.scalar(stmt) or 0
 
-    counts = OrderCounts(toship=count("toship"), completed=count("completed"), canceled=count("canceled"), all=count("all"))
+    steps = list_steps(db, shop)
+    counts = OrderCounts(
+        toship=count("toship"), completed=count("completed"), canceled=count("canceled"), all=count("all"),
+        steps=[StepOut(id=s.id, name=s.name, count=count(f"step:{s.id}")) for s in steps],
+    )
 
     conds = []
     if tab_cond(tab) is not None:
@@ -376,11 +386,76 @@ def mark_shipped(db: Session, shop: Shop, receipt_id: int, tracking_code: str | 
     receipt = etsy_orders.create_shipment(client, receipt_id, data)
 
     row.is_shipped = receipt["is_shipped"]
+    if row.is_shipped:
+        row.step_id = None  # tamamlanan sipariş artık bir ilerleme adımında durmaz
     row.status = receipt["status"]
     row.raw_json = _receipt_json(receipt)
     row.synced_at = dt.datetime.utcnow()
     db.commit()
     return _serialize_order(row)
+
+
+# ------------------------------------------------------------------ yerel ilerleme adımları
+
+MAX_STEPS = 12
+RESERVED_STEP_NAMES = {"new", "completed", "all", "yeni", "tamamlandı", "tümü"}
+
+
+class StepError(ValueError):
+    """Kullanıcıya gösterilecek adım doğrulama hatası."""
+
+
+def list_steps(db: Session, shop: Shop) -> list[OrderStep]:
+    return list(db.scalars(select(OrderStep).where(OrderStep.shop_id == shop.id).order_by(OrderStep.position, OrderStep.id)))
+
+
+def save_steps(db: Session, shop: Shop, items: list[tuple[int | None, str]]) -> list[OrderStep]:
+    """Adımların tamamını verilen sırayla kaydeder: kimliği olan yeniden adlandırılır/sıralanır, kimliği olmayan eklenir, listede olmayan silinir
+    (o adımdaki siparişler New'e döner). Kimlikler yalnızca bu mağazanın adımlarından biri olabilir."""
+    existing = {s.id: s for s in list_steps(db, shop)}
+    names = [" ".join(n.split()) for _, n in items]
+    if len(items) > MAX_STEPS:
+        raise StepError(tr(f"En fazla {MAX_STEPS} adım olabilir.", f"You can have at most {MAX_STEPS} steps."))
+    if any(not n or len(n) > 40 for n in names):
+        raise StepError(tr("Adım adı boş olamaz ve en fazla 40 karakter olabilir.", "A step name cannot be empty and can be at most 40 characters."))
+    if any(n.lower() in RESERVED_STEP_NAMES for n in names):
+        raise StepError(tr("New, Completed ve All adları sabittir; başka ad seç.", "New, Completed and All are fixed names; pick another name."))
+    if len({n.lower() for n in names}) != len(names):
+        raise StepError(tr("Aynı adlı iki adım olamaz.", "Two steps cannot have the same name."))
+    if any(i is not None and i not in existing for i, _ in items):
+        raise StepError(tr("Adım bulunamadı.", "Step not found."))
+    keep = {i for i, _ in items if i is not None}
+    for sid, step in existing.items():
+        if sid not in keep:
+            db.query(OrderCache).filter(OrderCache.shop_id == shop.id, OrderCache.step_id == sid).update({OrderCache.step_id: None})
+            db.delete(step)
+    db.flush()  # silinen adların benzersizlik kısıtı yeni/yeniden adlandırılanlarla çakışmasın
+    for (sid, _), name in zip(items, names):  # adları takas ederken geçici çakışma olmasın: önce ad değişenlere geçici ad
+        if sid is not None and existing[sid].name != name:
+            existing[sid].name = f"~{sid}~"
+    db.flush()
+    out: list[OrderStep] = []
+    for pos, ((sid, _), name) in enumerate(zip(items, names)):
+        step = existing[sid] if sid is not None else OrderStep(shop_id=shop.id, name=name)
+        step.name, step.position = name, pos
+        if sid is None:
+            db.add(step)
+        out.append(step)
+    db.commit()
+    return out
+
+
+def move_orders(db: Session, shop: Shop, receipt_ids: list[int], step_id: int | None) -> int:
+    """Açık (gönderilmemiş, iptal olmamış) siparişleri bir adıma taşır; step_id boşsa New'e döndürür. Döner: taşınan sipariş sayısı."""
+    if step_id is not None and not db.scalar(select(func.count()).select_from(OrderStep).where(OrderStep.id == step_id, OrderStep.shop_id == shop.id)):
+        raise StepError(tr("Adım bulunamadı.", "Step not found."))
+    rows = db.scalars(
+        select(OrderCache).where(OrderCache.shop_id == shop.id, OrderCache.receipt_id.in_(receipt_ids[:500]), OrderCache.is_shipped.is_(False), OrderCache.is_canceled.is_(False))
+    ).all()
+    for row in rows:
+        row.step_id = step_id
+    db.commit()
+    return len(rows)
 
 
 def get_insights(db: Session, shop: Shop) -> OrderInsightsOut:

@@ -1,15 +1,62 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Order } from "@/lib/api";
+import { Order, OrderStep } from "@/lib/api";
 import { addressText, copyText, fmtDate, shipBucket, shipByLabel } from "./orderUtils";
 import { useT } from "@/lib/i18n-client";
 import FulfillmentTimes from "./FulfillmentTimes";
+import StepMenu from "./StepMenu";
 
 const btn =
   "rounded-full border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-800 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800";
 
 const URL_RE = /(https?:\/\/[^\s]+)/g;
+
+const iconBtn =
+  "flex h-9 w-9 items-center justify-center rounded-full text-neutral-700 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-800";
+
+/** Kartın "⋮" menüsü: yazdır ve Etsy'de aç. Gönderim tarihini güncelleme, hediye işaretini kaldırma, iptal ve iade Etsy API'sinde yok; Etsy'de yapılır. */
+function MoreMenu({ order, onPrint }: { order: Order; onPrint: () => void }) {
+  const { t } = useT();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+  const row = "block w-full px-4 py-2.5 text-left text-sm text-neutral-800 hover:bg-neutral-50 dark:text-neutral-100 dark:hover:bg-neutral-800";
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open} aria-label={t("Diğer işlemler", "More actions")} className={iconBtn}>
+        ⋮
+      </button>
+      {open && (
+        <div role="menu" className="absolute right-0 top-full z-30 mt-1 w-60 overflow-hidden rounded-xl border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+          <button
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onPrint();
+            }}
+            className={row}
+          >
+            🖨 {t("Yazdır", "Print")}
+          </button>
+          <a role="menuitem" href={`https://www.etsy.com/your/orders/sold/${order.receipt_id}`} target="_blank" rel="noreferrer" onClick={() => setOpen(false)} className={row}>
+            ↗ {t("Etsy'de aç", "Open on Etsy")}
+          </a>
+          <p className="border-t border-neutral-100 px-4 py-2 text-[11px] leading-snug text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
+            {t("Gönderim tarihini güncelleme, hediye işaretini kaldırma, iptal ve iade Etsy'de yapılır.", "Updating the ship-by date, unmarking a gift, cancelling and refunding are done on Etsy.")}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** Kişiselleştirme metnindeki linkleri (ör. Etsy'nin "logonu yükle" dosya bağlantıları) tıklanabilir bir
  * düğmeye çevirir — düz metin olarak uzun bir URL göstermek yerine. Metnin geri kalanı olduğu gibi kalır. */
@@ -44,6 +91,9 @@ export default function OrderCard({
   onSelect,
   onShip,
   onGift,
+  onPrint,
+  steps,
+  onMove,
   highlighted,
 }: {
   order: Order;
@@ -53,6 +103,10 @@ export default function OrderCard({
   onSelect: (on: boolean) => void;
   onShip: () => void;
   onGift: () => void;
+  onPrint: () => void;
+  steps: OrderStep[];
+  /** Siparişi bir ilerleme adımına taşır (null = New). */
+  onMove: (stepId: number | null) => void;
 }) {
   const { t } = useT();
   const [addrOpen, setAddrOpen] = useState(false);
@@ -62,6 +116,8 @@ export default function OrderCard({
   useEffect(() => {
     if (highlighted) cardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [highlighted]);
+  const stepName = order.step_id != null ? steps.find((s) => s.id === order.step_id)?.name : undefined;
+  const open_ = !order.is_shipped && !order.is_canceled;
   const urgent = !order.is_shipped && !order.is_canceled && (bucket === "overdue" || bucket === "today");
 
   async function copy(text: string, key: string) {
@@ -95,6 +151,9 @@ export default function OrderCard({
             )}
             {order.channel === "pattern" && (
               <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-800 dark:bg-violet-950/50 dark:text-violet-300">Pattern</span>
+            )}
+            {stepName && (
+              <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-800 dark:bg-sky-950/50 dark:text-sky-300">{stepName}</span>
             )}
             {order.is_canceled && (
               <span className="rounded-full bg-neutral-200 px-2 py-0.5 text-[11px] font-semibold text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">{t("İptal / iade", "Canceled / refunded")}</span>
@@ -154,6 +213,8 @@ export default function OrderCard({
         </div>
 
         <div className="w-full shrink-0 space-y-3 text-xs text-neutral-600 dark:text-neutral-300 lg:w-72">
+          <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
           {order.is_shipped ? (
             <div>
               <p className="text-sm font-semibold text-green-700 dark:text-green-400">
@@ -180,6 +241,16 @@ export default function OrderCard({
           ) : (
             <p className={`text-sm font-semibold ${urgent ? "text-red-600" : "text-neutral-900 dark:text-neutral-100"}`}>{shipByLabel(order, t)}</p>
           )}
+          </div>
+          <div className="-mt-1 flex shrink-0 items-center">
+            {open_ && (
+              <StepMenu steps={steps} current={order.step_id ?? null} onMove={onMove} onComplete={onShip} className={iconBtn} label={t("İlerlemeyi güncelle", "Update progress")}>
+                <span aria-hidden>🕒</span>
+              </StepMenu>
+            )}
+            <MoreMenu order={order} onPrint={onPrint} />
+          </div>
+          </div>
           <p>{t("Sipariş tarihi", "Ordered")}: {fmtDate(order.created_at, t)}</p>
           <p>
             {order.shipping_upgrade ? `${order.shipping_upgrade} · ` : ""}

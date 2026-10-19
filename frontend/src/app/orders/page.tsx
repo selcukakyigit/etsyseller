@@ -1,13 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, Order, OrdersPage as OrdersPageData, OrdersSyncStatus } from "@/lib/api";
+import { api, Order, OrdersPage as OrdersPageData, OrdersSyncStatus, OrderStep } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import AppShell from "@/components/AppShell";
 import { pageContainer } from "@/components/layout/pageContainer";
 import OrderCard from "@/components/orders/OrderCard";
 import OrderFilterPanel from "@/components/orders/OrderFilterPanel";
 import ShipModal from "@/components/orders/ShipModal";
+import StepMenu from "@/components/orders/StepMenu";
+import OrderStepsModal from "@/components/orders/OrderStepsModal";
+import PrintOrdersModal from "@/components/orders/PrintOrdersModal";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 import GiftCardModal, { configForOrder } from "@/components/orders/GiftCardModal";
 import { printCards } from "@/components/orders/giftCard";
 import { EMPTY_ORDER_FILTERS, OrderFilters, Tab, addressText, copyText, groupByShipBy } from "@/components/orders/orderUtils";
@@ -22,13 +26,9 @@ import { PageSpinner } from "@/components/ui/Spinner";
 import { useResponsiveFilters } from "@/components/ui/ResponsiveFilters";
 import { ChoiceMenu, SearchIcon, SortIcon } from "@/components/ui/Popover";
 
-const TABS: [Tab, string, string][] = [
-  ["toship", "Gönderilecek", "To ship"],
-  ["completed", "Tamamlandı", "Completed"],
-  ["canceled", "İptal / iade", "Canceled / refunded"],
-  ["all", "Tümü", "All"],
-];
-const TAB_VALUES = TABS.map(([v]) => v) as readonly Tab[];
+// Etsy Shop Manager gibi: All, New (sabit), kendi ilerleme adımların, Completed (sabit). "İptal / iade" yalnızca iptal olan sipariş varsa görünür.
+const FIXED_TABS = ["toship", "completed", "canceled", "all"];
+const isValidTab = (v: string) => FIXED_TABS.includes(v) || /^step:\d+$/.test(v);
 const SORTS: [string, string, string][] = [
   ["shipby", "Gönderim tarihi", "Ship-by date"],
   ["newest", "En yeni", "Newest"],
@@ -46,7 +46,7 @@ export default function OrdersPage() {
   const { t, locale } = useT();
   const [loadedKey, setLoadedKey] = useState<string | null>(null); // hangi sorgunun sonucu ekranda
   const [syncInfo, setSyncInfo] = useState<OrdersSyncStatus | null>(null);
-  const [tab, setTab] = useUrlTab<Tab>("tab", "toship", TAB_VALUES);
+  const [tab, setTab] = useUrlTab<Tab>("tab", "toship", isValidTab);
   const [filters, setFilters] = useState<OrderFilters>(EMPTY_ORDER_FILTERS);
   const [queryInput, setQueryInput] = useState("");
   const [query, setQuery] = useState("");
@@ -59,6 +59,9 @@ export default function OrdersPage() {
   const [selected, setSelected] = useState<Map<number, Order>>(new Map());
   const [shipFor, setShipFor] = useState<Order | null>(null);
   const [giftFor, setGiftFor] = useState<Order | null>(null);
+  const [printFor, setPrintFor] = useState<Order[] | null>(null);
+  const [stepsOpen, setStepsOpen] = useState(false);
+  const [confirm, confirmElement] = useConfirm();
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -84,7 +87,7 @@ export default function OrdersPage() {
   const applyFocus = useCallback(
     (f: OrderFocus) => {
       if (f.receipt) {
-        if (f.tab && (TAB_VALUES as readonly string[]).includes(f.tab)) setTab(f.tab as Tab);
+        if (f.tab && isValidTab(f.tab)) setTab(f.tab as Tab);
         setQueryInput(String(f.receipt));
         setQuery(String(f.receipt));
         setPage(0);
@@ -234,9 +237,14 @@ export default function OrdersPage() {
     return () => clearTimeout(timer);
   }, [focusId, focusFound, loading, loadedKey, queryKey, tab, setTab]);
   const total = data?.total ?? 0;
-  const counts = data?.counts ?? { toship: 0, completed: 0, canceled: 0, all: 0 };
+  const counts = data?.counts ?? { toship: 0, completed: 0, canceled: 0, all: 0, steps: [] };
+  const steps: OrderStep[] = counts.steps;
+  // Açık sekmedeki adım silindiyse (başka yerden ya da bu pencereden) New'e dön.
+  useEffect(() => {
+    if (data && tab.startsWith("step:") && !steps.some((s) => `step:${s.id}` === tab)) setTab("toship");
+  }, [data, tab, steps, setTab]);
   const pages = Math.max(1, Math.ceil(total / perPage));
-  const groups = tab === "toship" && sort === "shipby" ? groupByShipBy(items, t) : [{ key: "all", label: "", orders: items }];
+  const groups = (tab === "toship" || tab.startsWith("step:")) && sort === "shipby" ? groupByShipBy(items, t) : [{ key: "all", label: "", orders: items }];
   const selectedOrders = [...selected.values()];
   const allVisibleSelected = items.length > 0 && items.every((o) => selected.has(o.receipt_id));
 
@@ -255,6 +263,61 @@ export default function OrdersPage() {
       next.delete(updated.receipt_id);
       return next;
     });
+    load();
+  }
+
+  async function moveOrders(orders: Order[], stepId: number | null) {
+    if (!activeShop || orders.length === 0) return;
+    try {
+      const { moved } = await api.orders.move(activeShop.id, orders.map((o) => o.receipt_id), stepId);
+      const name = stepId === null ? "New" : steps.find((s) => s.id === stepId)?.name ?? "";
+      setNotice(t(`${moved} sipariş "${name}" adımına taşındı.`, `${moved} order(s) moved to "${name}".`));
+      setSelected(new Map());
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error"));
+    }
+  }
+
+  // Siparişi tamamla = Etsy'de "gönderildi" işaretlemek (alıcıya bildirim gider, geri alınamaz). Tek siparişte takip kodu penceresi açılır; toplu seçimde onaydan sonra takipsiz tamamlanır.
+  async function completeOrders(orders: Order[]) {
+    if (!activeShop || orders.length === 0) return;
+    if (orders.length === 1) {
+      setShipFor(orders[0]);
+      return;
+    }
+    const ok = await confirm({
+      title: t(`${orders.length} sipariş tamamlansın mı?`, `Complete ${orders.length} orders?`),
+      message: t(
+        "Siparişler Etsy'de gönderildi olarak işaretlenir ve alıcılara bildirim gider; bu geri alınamaz. Takip kodu eklenmez (ABD'ye 10 $ üzeri siparişlerde Etsy takip kodu ister, o siparişler atlanır).",
+        "The orders are marked as shipped on Etsy and the buyers are notified; this cannot be undone. No tracking code is added (Etsy requires one for US orders over $10; those orders are skipped).",
+      ),
+      confirmLabel: t("Tamamla", "Complete"),
+    });
+    if (!ok) return;
+    let done = 0;
+    const failed: number[] = [];
+    for (const o of orders) {
+      try {
+        await api.orders.ship(activeShop.id, o.receipt_id);
+        done += 1;
+      } catch {
+        failed.push(o.receipt_id);
+      }
+    }
+    setNotice(
+      failed.length
+        ? t(`${done} sipariş tamamlandı; ${failed.length} tanesi tamamlanamadı (takip kodu gerekebilir): ${failed.map((n) => `#${n}`).join(", ")}`, `${done} order(s) completed; ${failed.length} could not be completed (a tracking code may be required): ${failed.map((n) => `#${n}`).join(", ")}`)
+        : t(`${done} sipariş tamamlandı.`, `${done} order(s) completed.`),
+    );
+    setSelected(new Map());
+    load();
+  }
+
+  async function saveSteps(list: { id: number | null; name: string }[]) {
+    if (!activeShop) return;
+    await api.orders.saveSteps(activeShop.id, list);
+    setStepsOpen(false);
     load();
   }
 
@@ -385,6 +448,16 @@ export default function OrdersPage() {
               </label>
               {selected.size > 0 && (
                 <>
+                  <StepMenu
+                    steps={steps}
+                    onMove={(id) => void moveOrders(selectedOrders, id)}
+                    onComplete={() => void completeOrders(selectedOrders.filter((o) => !o.is_shipped && !o.is_canceled))}
+                    align="left"
+                    label={t("İlerlemeyi güncelle", "Update progress")}
+                    className="inline-flex h-8 items-center gap-1 rounded-full border border-neutral-300 px-3 text-sm font-medium text-neutral-800 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800"
+                  >
+                    🕒 {t("İlerlemeyi güncelle", "Update progress")} ▾
+                  </StepMenu>
                   <div ref={menuRef} className="relative">
                     <button
                       onClick={() => setMenuOpen((v) => !v)}
@@ -396,6 +469,15 @@ export default function OrdersPage() {
                       <div className="absolute left-0 top-full z-20 mt-1 w-64 overflow-hidden rounded-lg border border-neutral-200 bg-white py-1 text-sm shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
                         <button onClick={copyAddresses} className="block w-full px-3 py-2 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800">
                           {t("Seçili adresleri kopyala", "Copy selected addresses")}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setMenuOpen(false);
+                            setPrintFor(selectedOrders);
+                          }}
+                          className="block w-full px-3 py-2 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                        >
+                          {t("Yazdır (paket fişi, sipariş fişi)", "Print (packing slips, receipts)")}
                         </button>
                         <button onClick={printGiftCards} className="block w-full px-3 py-2 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800">
                           {t("Hediye kartlarını yazdır", "Print gift cards")} ({selectedOrders.filter((o) => o.is_gift).length})
@@ -411,7 +493,13 @@ export default function OrdersPage() {
               <div className="ml-auto flex shrink-0 items-center gap-2 sm:hidden">{controls}</div>
             </div>
             <div className="-mx-4 mt-3 flex gap-x-5 overflow-x-auto whitespace-nowrap border-b border-neutral-200 px-4 [scrollbar-width:none] dark:border-neutral-800 sm:mx-0 sm:flex-wrap sm:px-0">
-              {TABS.map(([key, tr, en]) => (
+              {[
+                { key: "all", label: t("Tümü", "All"), count: null as number | null },
+                { key: "toship", label: "New", count: counts.toship },
+                ...steps.map((s) => ({ key: `step:${s.id}`, label: s.name, count: s.count ?? 0 })),
+                { key: "completed", label: "Completed", count: counts.completed },
+                ...(counts.canceled > 0 || tab === "canceled" ? [{ key: "canceled", label: t("İptal / iade", "Canceled / refunded"), count: counts.canceled }] : []),
+              ].map(({ key, label, count }) => (
                 <button
                   key={key}
                   onClick={() => {
@@ -422,9 +510,19 @@ export default function OrdersPage() {
                     tab === key ? "border-neutral-900 font-semibold text-neutral-900 dark:border-neutral-100 dark:text-neutral-100" : "border-transparent text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
                   }`}
                 >
-                  {t(tr, en)} {counts[key].toLocaleString(locale)}
+                  {label}
+                  {count !== null && <span className="ml-1 tabular-nums">{count.toLocaleString(locale)}</span>}
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={() => setStepsOpen(true)}
+                aria-label={t("İlerleme adımlarını düzenle", "Customize progress steps")}
+                title={t("İlerleme adımlarını düzenle", "Customize progress steps")}
+                className="-mb-px px-1 pb-2 text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100"
+              >
+                ✎
+              </button>
             </div>
             </div>
 
@@ -478,6 +576,9 @@ export default function OrdersPage() {
                         onSelect={(on) => toggle(order, on)}
                         onShip={() => setShipFor(order)}
                         onGift={() => setGiftFor(order)}
+                        onPrint={() => setPrintFor([order])}
+                        steps={steps}
+                        onMove={(id) => void moveOrders([order], id)}
                         highlighted={order.receipt_id === focusId}
                       />
                     ))}
@@ -515,6 +616,9 @@ export default function OrdersPage() {
 
       {shipFor && activeShop && <ShipModal shopId={activeShop.id} order={shipFor} onClose={() => setShipFor(null)} onShipped={handleShipped} />}
       {giftFor && <GiftCardModal order={giftFor} onClose={() => setGiftFor(null)} />}
+      {printFor && <PrintOrdersModal orders={printFor} shopName={activeShop?.shop_name ?? ""} onClose={() => setPrintFor(null)} />}
+      {stepsOpen && <OrderStepsModal steps={steps} onSave={saveSteps} onClose={() => setStepsOpen(false)} />}
+      {confirmElement}
     </AppShell>
   );
 }

@@ -9,13 +9,13 @@ import { useRouter } from "next/navigation";
  * tuşlarıyla da (popstate) senkron kalır. `next/navigation`'ın `useSearchParams`'ı yerine düz
  * `window.location` kullanıyoruz — sayfayı Suspense sınırına almaya gerek kalmasın.
  */
-export function useUrlTab<T extends string>(param: string, def: T, valid: readonly T[]): [T, (t: T) => void] {
+export function useUrlTab<T extends string>(param: string, def: T, valid: readonly T[] | ((v: string) => boolean)): [T, (t: T) => void] {
   const router = useRouter();
 
   const fromUrl = useCallback((): T => {
     if (typeof window === "undefined") return def;
     const v = new URLSearchParams(window.location.search).get(param);
-    return v && (valid as readonly string[]).includes(v) ? (v as T) : def;
+    return v && (typeof valid === "function" ? valid(v) : (valid as readonly string[]).includes(v)) ? (v as T) : def;
   }, [param, def, valid]);
 
   // İlk render sunucuyla AYNI olmalı (varsayılan sekme); aksi halde sekme adını gösteren her yer (ör. "Excel: …"

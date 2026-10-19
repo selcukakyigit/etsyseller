@@ -1,7 +1,8 @@
 import { Order } from "@/lib/api";
 import type { T } from "@/lib/i18n-client";
 
-export type Tab = "toship" | "completed" | "canceled" | "all";
+/** Sekme: "toship" (New), "step:<id>" (yerel ilerleme adımı), "completed", "canceled", "all". */
+export type Tab = string;
 
 export type OrderFilters = {
   shipBy: "all" | "overdue" | "today" | "tomorrow" | "week" | "none";
@@ -64,7 +65,7 @@ export function shipByLabel(o: Order, t: T): string {
   }
 }
 
-export function tabOf(o: Order): Exclude<Tab, "all"> {
+export function tabOf(o: Order): "canceled" | "completed" | "toship" {
   if (o.is_canceled) return "canceled";
   return o.is_shipped ? "completed" : "toship";
 }
