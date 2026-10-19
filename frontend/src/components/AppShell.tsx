@@ -1,7 +1,7 @@
 "use client";
 
 import InstallBanner from "@/components/InstallBanner";
-import { ReactNode, useCallback, useState } from "react";
+import { ReactNode, useCallback, useEffect, useState } from "react";
 import { Shop, User } from "@/lib/api";
 import Sidebar from "@/components/layout/Sidebar";
 import MobileDrawer from "@/components/layout/MobileDrawer";
@@ -15,6 +15,7 @@ import SummaryStrip, { useSummaryStrip } from "@/components/layout/SummaryStrip"
 import CreditRequiredModal from "@/components/billing/CreditRequiredModal";
 import { useT } from "@/lib/i18n-client";
 import { usePresence } from "@/lib/usePresence";
+import { installClientErrorBuffer } from "@/lib/clientErrors";
 
 export default function AppShell({
   user,
@@ -42,6 +43,7 @@ export default function AppShell({
   const shopState = useShopState(shops);
   const shell = { user, hasShop: shopState === "yes", shops: shops ?? null, activeShop, onSwitchShop, current };
   usePresence(current, !!user);
+  useEffect(installClientErrorBuffer, []); // destek talebine eklenecek son arayüz hataları için
   const strip = useSummaryStrip(user ? activeShop : null);
   // Sidebar/Topbar `user` gelene kadar (kısa bir ağ isteği) hiç render edilmiyordu — sayfa önce tam genişlikte
   // açılıp bir anda kenar çubuğu ve üst bar belirince içerik yana/aşağı kayıyordu ("UI zıplaması"). İkisi de artık

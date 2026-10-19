@@ -27,6 +27,7 @@ from app.keywords import models as _keyword_models  # noqa: E402,F401
 from app.finance import models as _finance_models  # noqa: E402,F401
 from app.assistant import models as _assistant_models  # noqa: E402,F401
 from app.contact import models as _contact_models  # noqa: E402,F401
+from app.support import models as _support_models  # noqa: E402,F401
 from app.insights import models as _insights_models  # noqa: E402,F401
 from app.modkit import models as _modkit_models  # noqa: E402,F401
 from app.supply import models as _supply_models  # noqa: E402,F401

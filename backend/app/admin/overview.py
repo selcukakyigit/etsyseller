@@ -13,6 +13,7 @@ from app.auth.models import User
 from app.billing.models import CreditLedger
 from app.contact.models import ContactMessage
 from app.shops.models import OAuthToken, Shop
+from app.support import service as support
 
 
 def _count(db: Session, stmt) -> int:
@@ -84,6 +85,7 @@ def get_overview(db: Session) -> OverviewOut:
         ai_input_tokens_30d=sum(m.input_tokens for m in by_model),
         ai_output_tokens_30d=sum(m.output_tokens for m in by_model),
         ai_by_model=by_model,
+        open_tickets=support.open_count(db),
         open_messages=_count(db, select(func.count(ContactMessage.id)).where(ContactMessage.handled.is_(False))),
         etsy_calls_today=etsy["calls_today"],
         etsy_daily_limit=etsy["daily_limit"],

@@ -57,15 +57,19 @@ export default function HelpSettingsPage() {
         <div className="pt-4 border-t border-neutral-100 dark:border-neutral-800">
           <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("İletişim", "Contact")}</h2>
           <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-            {t("Bir sorunla karşılaşırsan bize yaz:", "If something goes wrong, write to us:")}{" "}
+            {t("Bir sorunla karşılaşırsan ekran görüntüsüyle birlikte talep aç; yanıt ya da tamamlanma bilgisi burada ve e-postayla gelir:", "If something goes wrong, open a request with a screenshot; you will be notified here and by email:")}{" "}
+            <Link href="/support?new=1" className="underline">
+              {t("Yeni talep aç", "Open a request")}
+            </Link>{" "}
+            ·{" "}
+            <Link href="/support" className="underline">
+              {t("Taleplerim", "My requests")}
+            </Link>
+            .{" "}
+            {t("Giriş yapamıyorsan:", "If you cannot sign in:")}{" "}
             <a href={`mailto:${COMPANY.email}`} className="underline">
               {COMPANY.email}
-            </a>{" "}
-            {t("ya da", "or use the")}{" "}
-            <Link href="/contact" className="underline">
-              {t("iletişim formunu kullan", "contact form")}
-            </Link>
-            .
+            </a>
           </p>
         </div>
       </section>

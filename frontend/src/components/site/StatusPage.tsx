@@ -18,11 +18,14 @@ export default function StatusPage({
   lang,
   onRetry,
   digest,
+  contactHref = "/contact",
 }: {
   code: StatusCode;
   lang: Lang;
   onRetry?: () => void;
   digest?: string;
+  /** "Destekle iletişime geç" bağlantısı; giriş yapmış kullanıcıya uygulama içi talep formu verilir. */
+  contactHref?: string;
 }) {
   const copy = STATUS_COPY[code][lang];
   const actions = STATUS_ACTIONS[lang];
@@ -50,7 +53,7 @@ export default function StatusPage({
           </Link>
         )}
         {(code === 500 || code === 503) && (
-          <Link href="/contact" className={secondary}>
+          <Link href={contactHref} className={secondary}>
             {actions.contact}
           </Link>
         )}

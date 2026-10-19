@@ -7,7 +7,8 @@ import Avatar from "@/components/Avatar";
 import { useT } from "@/lib/i18n-client";
 import { useHydrated } from "@/lib/useHydrated";
 import { useStoredState } from "@/lib/useStoredState";
-import { ADMIN_NAV, MAIN_NAV, SETTINGS_NAV, SHOP_NAV, SUPPLY_NAV, forShops } from "./navItems";
+import { ADMIN_NAV, MAIN_NAV, SETTINGS_NAV, SHOP_NAV, SUPPLY_NAV, SUPPORT_NAV, forShops } from "./navItems";
+import { useSupportUnread } from "@/lib/useSupportUnread";
 import { supplyStore } from "@/modules/supply/store";
 import { supplyApi } from "@/modules/supply/api";
 import EntityAvatar from "@/modules/components/EntityAvatar";
@@ -38,6 +39,7 @@ export default function SidebarNav({ user, hasShop, shops, activeShop, onSwitchS
   // Menünün hangi öğeleri göstereceği tarayıcıda hatırlanan duruma bağlı; sunucu HTML'i bunu bilmez. Hidrasyona kadar
   // menü yer tutar ama görünmez, böylece tam menü çizilip küçülmez.
   const hydrated = useHydrated();
+  const supportUnread = useSupportUnread(!!user);
   const connectedShops = (shops ?? []).filter((s) => s.connected);
   // Mağaza bağlı değilken mağazaya ait sayfalar (Analiz, Finans, Mağaza menüsü…) gösterilmez; bağlanınca belirir.
   const mainNav = forShops(MAIN_NAV, hasShop);
@@ -94,6 +96,15 @@ export default function SidebarNav({ user, hasShop, shops, activeShop, onSwitchS
 
         <Link href={SETTINGS_NAV.href} onClick={onNavigate} className={linkClass(current === SETTINGS_NAV.href)}>
           {t(SETTINGS_NAV.tr, SETTINGS_NAV.en)}
+        </Link>
+
+        <Link href={SUPPORT_NAV.href} onClick={onNavigate} className={`${linkClass(current === SUPPORT_NAV.href)} flex items-center justify-between`}>
+          {t(SUPPORT_NAV.tr, SUPPORT_NAV.en)}
+          {supportUnread > 0 && (
+            <span className="min-w-[1.25rem] rounded-full bg-[#D97757] px-1.5 text-center text-[11px] font-semibold leading-5 text-white" aria-label={t(`${supportUnread} okunmamış yanıt`, `${supportUnread} unread replies`)}>
+              {supportUnread}
+            </span>
+          )}
         </Link>
 
         {user?.is_admin && (

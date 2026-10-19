@@ -1,5 +1,4 @@
 import logging
-import re
 import secrets
 import time
 from collections import defaultdict, deque
@@ -12,6 +11,7 @@ from app.auth.models import User
 from app.contact.models import ContactAttachment, ContactMessage
 from app.core import storage
 from app.core.net import client_ip
+from app.core.attachments import MAX_FILE_BYTES, read_uploads
 from app.core.config import settings
 from app.core.db import get_db
 from app.emails.renderer import render
@@ -26,46 +26,9 @@ MAX_PER_HOUR = 5
 _hits: dict[str, deque[float]] = defaultdict(deque)
 
 BUCKET = "contact-attachments"
-MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_FILES = 3
 MAX_REQUEST_BYTES = MAX_FILES * MAX_FILE_BYTES + 256 * 1024
-# uzantı -> (içerik türü, imza kontrolü). Dosya adındaki uzantıya değil içeriğin gerçek imzasına da bakılır.
-ALLOWED: dict[str, tuple[str, str]] = {
-    "jpg": ("image/jpeg", "jpeg"),
-    "jpeg": ("image/jpeg", "jpeg"),
-    "png": ("image/png", "png"),
-    "gif": ("image/gif", "gif"),
-    "webp": ("image/webp", "webp"),
-    "pdf": ("application/pdf", "pdf"),
-    "txt": ("text/plain", "text"),
-    "csv": ("text/csv", "text"),
-    "docx": ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "zip"),
-    "xlsx": ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "zip"),
-}
 _email = TypeAdapter(EmailStr)
-
-
-def _signature_ok(kind: str, data: bytes) -> bool:
-    if kind == "jpeg":
-        return data.startswith(b"\xff\xd8\xff")
-    if kind == "png":
-        return data.startswith(b"\x89PNG\r\n\x1a\n")
-    if kind == "gif":
-        return data[:4] == b"GIF8"
-    if kind == "webp":
-        return data[:4] == b"RIFF" and data[8:12] == b"WEBP"
-    if kind == "pdf":
-        return data.lstrip()[:5] == b"%PDF-"
-    if kind == "zip":
-        return data[:4] == b"PK\x03\x04"
-    if kind == "text":
-        return b"\x00" not in data[:4096]
-    return False
-
-
-def _safe_name(name: str) -> str:
-    base = re.sub(r"[^\w.\- ]+", "_", name.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]).strip(" .")
-    return (base or "file")[:120]
 
 
 def _rate_limited(ip: str) -> bool:
@@ -135,22 +98,7 @@ async def submit(
     except ValidationError as exc:
         raise HTTPException(422, "Invalid email address") from exc
 
-    files = [f for f in files if f.filename]
-    if len(files) > MAX_FILES:
-        raise HTTPException(422, f"At most {MAX_FILES} files.")
-    prepared: list[tuple[str, str, bytes]] = []  # (güvenli ad, içerik türü, bayt)
-    for f in files:
-        fname = _safe_name(f.filename or "file")
-        ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
-        if ext not in ALLOWED:
-            raise HTTPException(422, f"File type not allowed: {fname}")
-        data = await f.read(MAX_FILE_BYTES + 1)
-        if len(data) > MAX_FILE_BYTES:
-            raise HTTPException(413, f"{fname} is larger than 10 MB.")
-        ctype, kind = ALLOWED[ext]
-        if not data or not _signature_ok(kind, data):
-            raise HTTPException(422, f"File content does not match its type: {fname}")
-        prepared.append((fname, ctype, data))
+    prepared = await read_uploads(files, MAX_FILES)
 
     row = ContactMessage(
         name=name.strip(),

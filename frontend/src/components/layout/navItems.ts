@@ -27,6 +27,8 @@ export const forShops = (items: NavItem[], hasShop: boolean): NavItem[] => (hasS
 // Dış Tedarik: kenar çubuğunda sabit bölüm; altında kullanıcının tedarikçileri listelenir (bkz. SidebarNav).
 export const SUPPLY_NAV: NavItem = { href: "/supply", tr: "Dış Tedarik", en: "External suppliers" };
 
+export const SUPPORT_NAV: NavItem = { href: "/support", tr: "Yardım & Destek", en: "Help & Support" };
+
 export const SETTINGS_NAV: NavItem = { href: "/settings", tr: "Ayarlar", en: "Settings" };
 
 // Yalnızca yöneticilere görünür (User.is_admin); sunucu da yönetici olmayana 404 döner.

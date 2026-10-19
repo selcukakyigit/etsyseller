@@ -1,6 +1,6 @@
 """Saklama süresi dolan kayıtların silinmesi. Gizlilik Politikası / KVKK metnindeki taahhüdün uygulaması:
 iletişim formu mesajları ve ekleri 12 ay sonra silinir. Bildirimler 90 gün sonra silinir. Asistan sohbet ekleri 90 gün,
-hiç açılmayan sohbetler 12 ay sonra silinir (assistant/cleanup.py). Banner görselleri 30 gün sonra silinir.
+hiç açılmayan sohbetler 12 ay sonra silinir (assistant/cleanup.py). Banner görselleri 30 gün sonra silinir. Çözülmüş destek talepleri ve ekleri son hareketten 12 ay sonra silinir.
 Etsy API Şartları (veri gerektiğinden uzun saklanmaz): satıcı Ulagg'ı Etsy'den kaldırdıysa ve REVOKED_GRACE içinde yeniden
 bağlanmadıysa mağazanın Etsy'den gelen verisi, "bağlantıyı kes" ile aynı şekilde silinir (shops/disconnect.py)."""
 import datetime as dt
@@ -17,6 +17,8 @@ from app.core.db import SessionLocal
 from app.notifications.service import purge_old as purge_old_notifications
 from app.shops.disconnect import disconnect_shop
 from app.shops.models import OAuthToken, Shop
+from app.support.errors import purge_expired as purge_error_groups
+from app.support.service import purge_expired as purge_support
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +46,7 @@ def purge_expired_records() -> None:
             logger.info("Saklama süresi dolan %s iletişim mesajı silindi", removed)
         if n := purge_old_notifications(db):
             logger.info("90 günden eski %s bildirim silindi", n)
-        for name, purge in (("Asistan", purge_assistant_data), ("Banner", purge_banners)):
+        for name, purge in (("Asistan", purge_assistant_data), ("Banner", purge_banners), ("Destek", purge_support), ("Hata kaydı", purge_error_groups)):
             try:
                 purge(db)
             except Exception:  # sonraki adımı (erişimi kaldırılmış mağazalar) engellemesin

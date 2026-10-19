@@ -1,4 +1,5 @@
 import logging
+import traceback
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -31,6 +32,7 @@ from app.finance import models as _finance_models  # noqa: F401
 from app.assistant import models as _assistant_models  # noqa: F401
 from app.keywords import models as _keyword_models  # noqa: F401
 from app.contact import models as _contact_models  # noqa: F401
+from app.support import models as _support_models  # noqa: F401
 from app.insights import models as _insights_models  # noqa: F401
 from app.notifications import models as _notification_models  # noqa: F401
 from app.ai import models as _ai_models  # noqa: F401
@@ -50,6 +52,10 @@ from app.banners.router import router as banners_router
 from app.billing.router import router as billing_router
 from app.billing.webhooks import router as billing_webhooks_router
 from app.contact.router import router as contact_router
+from app.support import errors as support_errors
+from app.support.admin_router import router as support_admin_router
+from app.support.inbound import router as support_inbound_router
+from app.support.router import router as support_router
 from app.site.router import router as site_router
 from app.finance.router import router as finance_router
 from app.finance.invoices_router import router as finance_invoices_router
@@ -127,6 +133,14 @@ app.add_middleware(
 # uploads/ altında kalır ve yalnızca yetki kontrolü yapan uç noktalardan sunulur — klasörün tamamı asla mount edilmez.
 app.mount("/static/avatars", StaticFiles(directory=str(AVATAR_DIR)), name="avatars")
 
+@app.exception_handler(Exception)
+async def unhandled_error_handler(request: Request, exc: Exception):
+    """Yakalanmamış hata: yöneticinin "Hatalar" sayfasına düşer, kullanıcıya genel 500 döner."""
+    logging.getLogger("app").error("Yakalanmamış hata: %s %s", request.method, request.url.path, exc_info=exc)
+    support_errors.record_server_error(f"{request.method} {request.url.path}", exc, "".join(traceback.format_exception(exc)))
+    return JSONResponse(status_code=500, content={"detail": tr("Beklenmeyen bir hata oluştu.", "An unexpected error occurred."), "code": 500})
+
+
 @app.exception_handler(EtsyAuthError)
 async def etsy_auth_error_handler(_: Request, exc: EtsyAuthError):
     return JSONResponse(status_code=401, content={"detail": translate_detail(str(exc)), "code": 401})
@@ -172,6 +186,9 @@ app.include_router(assistant_router)
 app.include_router(taxonomy_router)
 app.include_router(keywords_router)
 app.include_router(contact_router)
+app.include_router(support_router)
+app.include_router(support_inbound_router)
+app.include_router(support_admin_router)
 app.include_router(webhooks_router)
 app.include_router(admin_router)
 app.include_router(billing_router)

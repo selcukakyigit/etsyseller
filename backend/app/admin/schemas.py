@@ -21,6 +21,7 @@ class OverviewOut(BaseModel):
     ai_output_tokens_30d: int
     ai_by_model: list[ModelUsageOut]
     open_messages: int
+    open_tickets: int
     etsy_calls_today: int
     etsy_daily_limit: int
     online_now: int

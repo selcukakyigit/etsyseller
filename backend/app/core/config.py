@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     resend_api_key: str = ""
     resend_from: str = ""
     contact_to: str = ""
+    # Destek talebine e-postayla yanıt: bildirim e-postalarının Reply-To adresi (gelen kutusu sağlayıcıya yönlendirilir) ve
+    # gelen e-postayı ileten webhook'un ortak sırrı. Sır boşsa /api/support/inbound 503 döner.
+    support_reply_to: str = ""
+    support_inbound_secret: str = ""
 
     # /docs, /redoc, /openapi.json yalnızca yerelde açık (üretimde uç nokta haritası saldırgana verilmez).
     expose_docs: bool = False

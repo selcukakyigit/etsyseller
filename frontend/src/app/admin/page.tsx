@@ -54,6 +54,9 @@ function Overview() {
             hint={t(`Son 24 saatte ${f.num(data.active_24h)} aktif`, `${f.num(data.active_24h)} active in the last 24 hours`)}
           />
         </Link>
+        <Link href="/admin/tickets" className="block rounded-xl transition hover:opacity-90">
+          <StatCard label={t("Bekleyen talepler", "Pending tickets")} value={f.num(data.open_tickets)} hint={t("Yanıtını bekleyen", "Waiting for a reply")} />
+        </Link>
         <Link href="/admin/messages" className="block rounded-xl transition hover:opacity-90">
           <StatCard label={t("Açık mesajlar", "Open messages")} value={f.num(data.open_messages)} hint={t("İletişim formu", "Contact form")} />
         </Link>

@@ -922,6 +922,7 @@ export type AdminOverview = {
   ai_output_tokens_30d: number;
   ai_by_model: AdminModelUsage[];
   open_messages: number;
+  open_tickets: number;
   etsy_calls_today: number;
   etsy_daily_limit: number;
   online_now: number;

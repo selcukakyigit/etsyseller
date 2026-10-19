@@ -17,6 +17,7 @@ from app.core import blobstore
 from app.core.config import settings
 from app.core.db import Base
 from app.shops.models import Shop
+from app.support.service import delete_user_tickets
 
 UPLOADS = Path(__file__).resolve().parents[2] / "uploads"
 # mağaza başına diskte tutulan klasörler: <uploads>/<ad>/<shop_id>
@@ -105,6 +106,7 @@ def delete_account(db: Session, user: User) -> None:
     if avatar:
         (AVATAR_DIR / avatar).unlink(missing_ok=True)
     user_id = user.id
+    delete_user_tickets(db, user_id)  # ek dosyaları depodan kalkar; satırlar kullanıcıyla birlikte cascade ile gider
     db.expire_all()
     db.delete(db.get(User, user_id))
     db.flush()
