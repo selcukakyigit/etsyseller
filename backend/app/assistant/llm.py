@@ -20,7 +20,7 @@ from app.core.i18n import tr
 
 log = logging.getLogger(__name__)
 
-MAX_ROUNDS = 9
+MAX_ROUNDS = 14  # resim üretimi + taslak + düzeltme turları bir istekte sığsın
 # gpt-5/o-serisi modellerde akıl yürütme düzeyi: "minimal" en ucuz ama çok adımlı listing işlerinde kuralları atlıyor; "low" dengeli (gizli düşünme token'ları çıktı olarak faturalanır).
 ASSISTANT_REASONING = "low"
 MAX_TOKENS = 2500

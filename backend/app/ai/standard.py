@@ -17,7 +17,7 @@ TAG_MAX_LEN = 20
 MAX_SHARED_TAGS = 5  # başka tek bir listing'le en fazla bu kadar aynı etiket
 OPENING_CHARS = 160  # arama sonucu önizlemesi ve yapay zekâ özetleri açıklamanın başını okur
 DESCRIPTION_WORDS = (200, 300)  # ürüne özel kısım (mağazanın sabit bölümleri hariç)
-FAQ_COUNT = (3, 4)
+FAQ_COUNT = (2, 3)  # isteğe bağlı: yalnızca yeni bilgi veriyorsa
 
 TITLE_RULES = (
     f"KISA ve NET: {TITLE_MAX_WORDS} kelimeden az. Önce ürünün NE olduğu (ana arama öbeği ilk {TITLE_LEAD_CHARS} karakterde), sonra renk, malzeme, stil gibi NESNEL tanımlar.",
@@ -41,9 +41,10 @@ LAYOUT_RULES = (
 DESCRIPTION_RULES = (
     f"Yalnızca ürüne özel kısmı yaz ({DESCRIPTION_WORDS[0]}–{DESCRIPTION_WORDS[1]} kelime). Mağazanın sabit bölümleri (kargo, iade, iletişim, yasal) otomatik eklenir ya da olduğu gibi korunur; yazma, değiştirme.",
     f"AÇILIŞ (ilk {OPENING_CHARS} karakter): tek net cümlede ürünün ne olduğunu, kim/ne için olduğunu ve en önemli özelliğini (malzeme, ölçü) söyle; ana aranan ifadeler doğal geçsin. Selamlama, \"welcome\", abartı yok.",
-    "OLGULAR: malzeme, ölçüler/seçenekler (varyasyonlardaki TÜM seçenekler), kişiselleştirme nasıl yapılır, pakette ne var, bakım. Dijital üründe olgular: dosya türü, çözünürlük/boyut, kaç dosya, nasıl indirilip kullanılır, kullanım hakkı. Kısa maddeler halinde, yalnızca bildiğin bilgiler.",
-    "KULLANIM VE VESİLE: kime, hangi anda, hangi ihtiyaç için (hediye vesileleri burada); alıcının doğal dille soracağı gibi yaz.",
-    f"SORU-CEVAP ({FAQ_COUNT[0]}–{FAQ_COUNT[1]} kısa): \"Q: …\" / \"A: …\" biçiminde, yalnızca listing verisinden cevaplanabilen sorular (ölçü seçenekleri, malzeme, kişiselleştirme, hazırlık/kargo bilgisi). Cevabını bilmediğin soruyu yazma; dayanıklılık, hava koşulu, su/pas geçirmezlik, iç/dış mekân kullanımı gibi iddialarla ilgili soru-cevap listing'de açıkça yazmıyorsa YAZMA; veri yetmiyorsa bu bölümü atla.",
+    "OLGULAR (DETAILS, kısa maddeler): malzeme, ölçüler/seçenekler (varyasyonlardaki TÜM seçenekleri ADIYLA say: \"Sizes: 50 cm, 70 cm\"), kişiselleştirme nasıl yapılır, pakette ne var, bakım. Dijital üründe: dosya türü, çözünürlük/boyut, kaç dosya, nasıl indirilip kullanılır, kullanım hakkı. Yalnızca bildiğin bilgiler.",
+    "HER BİLGİ BİR KEZ: ölçü, kişiselleştirme, malzeme yalnızca OLGULAR'da geçer; açılışta kısaca anılabilir ama GREAT FOR ve soru-cevapta TEKRAR EDİLMEZ. Dolgu cümle yazma (\"see variations\", \"options are set as variations\", \"choose from the size menu\", \"prices are listed in the variations\"): seçenekleri adıyla yaz.",
+    "GREAT FOR (1–3 madde, isteğe bağlı): yalnızca aramada niyet yakalayan bilgi (oda, vesile, mevsim, alıcı); OLGULAR'daki bilgiyi tekrar etme; yeni bir şey katmıyorsa bu bölümü atla.",
+    f"SORU-CEVAP (isteğe bağlı, en fazla {FAQ_COUNT[1]}): YALNIZCA yukarıda cevabı olmayan, listing verisinden cevaplanabilen soru (ürüne göre: kişiselleştirmede teslim süresi/yazı sınırı, tekstilde bakım ve beden, dijitalde dosya ve indirme, hazırlık/kargo). OLGULAR'da zaten yazılan bir bilgiyi soru yapma (ör. kişiselleştirme anlatıldıysa \"How do I personalize?\" yazma). Cevabını bilmediğin ya da dayanıklılık, su/pas geçirmezlik gibi iddia gerektiren soruyu YAZMA; yeni bilgi yoksa bölümü atla.",
     "Doğrulanamayan iddia (waterproof, lifetime, certified…) ve öznel övgü yazma; somut ve ölçülebilir ifadeleri tercih et.",
     *LAYOUT_RULES,
 )

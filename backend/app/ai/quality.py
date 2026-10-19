@@ -141,6 +141,51 @@ COLORS = (
 )
 
 
+_TR_COLORS = {
+    "siyah": "black", "beyaz": "white", "altın": "gold", "gümüş": "silver", "gri": "grey", "bakır": "copper", "bronz": "bronze", "kahverengi": "brown",
+    "kırmızı": "red", "mavi": "blue", "yeşil": "green", "sarı": "yellow", "turuncu": "orange", "pembe": "pink", "mor": "purple", "bej": "beige", "lacivert": "navy",
+    "krem": "cream", "gökkuşağı": "rainbow",
+}
+
+
+def _with_conversions(nums: set[str]) -> set[str]:
+    """Kaynaktaki ölçülerin cm↔inç karşılıkları (35 cm → 13.8 in) uydurma sayılmaz."""
+    out = set(nums)
+    for n in nums:
+        try:
+            v = float(n)
+        except ValueError:
+            continue
+        for c in (v / 2.54, v * 2.54):
+            for shown in (c, c - 0.1, c + 0.1):
+                out.add(f"{shown:.1f}")
+            out.update({f"{c:.0f}", f"{c:g}"})
+    return out
+
+
+_FILLER = re.compile(
+    r"\b(?:see (?:the )?variations?|(?:are|is) (?:set|listed|shown) (?:as|in) (?:the )?(?:product )?variations?|choose (?:it )?from the (?:size|color|colour|option)s? (?:menu|dropdown)|"
+    r"(?:prices?|stock)(?: and (?:stock|prices?))? (?:per \w+ )?(?:are|is) listed in the variations?|select your (?:size|option) (?:from|in) the (?:menu|dropdown))\b", re.I)
+_PERSONAL_LINE = re.compile(r"personali[sz]|engrav|your name|name or (?:short )?text|custom name", re.I)
+
+
+def filler_problems(description: str) -> list[str]:
+    """Açıklamanın dolgu ve tekrar sorunları: "varyasyonlara bakın" gibi bilgi vermeyen cümleler; aynı konunun (kişiselleştirme) 3+ satırda anlatılması."""
+    out: list[str] = []
+    if _FILLER.search(description):
+        out.append(tr(
+            "Açıklamada \"varyasyonlara bakın / seçenekler varyasyon olarak ayarlı\" gibi bilgi vermeyen dolgu cümle var; seçenekleri adıyla say (ör. \"Sizes: 50 cm, 70 cm\"), dolgu yazma.",
+            "The description has filler such as \"see variations\"; list the options by name (e.g. \"Sizes: 50 cm, 70 cm\") instead.",
+        ))
+    lines = [ln for ln in description.split("\n") if ln.strip() and not ln.strip()[0] in "☛➲✔✓ツ"]
+    if sum(1 for ln in lines if _PERSONAL_LINE.search(ln)) >= 3:
+        out.append(tr(
+            "Kişiselleştirme 3 ya da daha fazla yerde anlatılmış; bir kez (OLGULAR'da) anlat, açılışta kısaca anıp soru-cevapta ve diğer bölümlerde tekrar etme.",
+            "Personalization is explained in 3+ places; explain it once (in DETAILS) and do not repeat it in the Q&A or other sections.",
+        ))
+    return out
+
+
 _SIZE_NAME = re.compile(r"size|boyut|ölçü|olcu|dimension|length|width|height|diameter|größe|taille|tamaño", re.I)
 
 
@@ -181,7 +226,8 @@ def fact_problems(title: str, description: str, source_text: str, variations: di
     olan boyut/renk için başlıkta tek bir seçenek (alıcıyı yanıltır)."""
     out: list[str] = []
     src = html.unescape(source_text).lower()
-    src_nums = {n.replace(",", ".") for n in _NUM.findall(src)}
+    src += " " + " ".join(en for tr_word, en in _TR_COLORS.items() if tr_word in src)  # kaynak Türkçeyse ("siyah") İngilizce karşılığı da bilinen renktir
+    src_nums = _with_conversions({n.replace(",", ".") for n in _NUM.findall(src)})
     new_text = f"{title}\n{description}"
     sizes = sorted({m.group(1).replace(",", ".") for m in _SIZE.finditer(new_text)} - src_nums)
     if sizes:

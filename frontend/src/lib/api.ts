@@ -1529,6 +1529,7 @@ export type ChatCard =
   | { type: "movers"; title: string; currency: string; rows: { title: string; listing_id: number; units: number; prev_units: number; sales: number; prev_sales: number; change: number }[] }
   | { type: "orders"; title: string; rows: { receipt_id: number; buyer: string; country: string; date: string; ship_by: string | null; total: number; items: string[] }[] }
   | { type: "listing_draft"; listing_id: number; title: string; edit_url: string; price: [number, number]; quantity: number; tags: string[]; combos: number; image: string | null; images: number; problems: string[]; category?: string | null; changes?: string[]; price_missing?: boolean; quantity_assumed?: boolean }
+  | { type: "choices"; kind: "question" | "suggestions"; question: string; options: string[] }
   | { type: "status"; title: string; rows: { label: string; value: number }[] }
   | { type: "bulk_result"; listing_ids: number[]; inspected: number; changed: number; skipped: { reason: string; count: number }[]; samples: { id: number; title: string; before: BulkBrief; after: BulkBrief }[]; ops: string[] }
   | ({ type: "rewrite_job" } & RewriteState)

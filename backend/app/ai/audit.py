@@ -15,6 +15,7 @@ from dataclasses import asdict, dataclass
 
 from app.ai import layout, quality, standard
 from app.core.i18n import tr
+from app.listings import dimensions
 
 DIMS = ("seo", "ai")
 _GREETING = re.compile(r"^\W*(welcome|hello|hi\b|hey|dear|thank|thanks|hoş\s?geldin|merhaba)", re.I)
@@ -93,7 +94,7 @@ def coverage_issues(description: str, product: str, variations: dict[str, list[s
     out: list[tuple[str, str]] = []
     if personalizable and product.strip() and not _PERSONAL.search(product):
         out.append(("personalization", tr("Kişiselleştirilebilir ama açıklama bunun nasıl yapıldığını anlatmıyor.", "The item is personalizable but the description does not explain how.")))
-    unlisted = [n for n, vals in variations.items() if 2 <= len(vals) <= 12 and not any(re.search(rf"\b{re.escape(v.lower())}\b", description.lower()) for v in vals)]
+    unlisted = [n for n, vals in variations.items() if 2 <= len(vals) <= 12 and not any(re.search(rf"\b{re.escape(v.lower())}\b", description.lower()) or dimensions.mentioned(v, description) for v in vals)]
     if unlisted and product.strip():
         out.append(("options", tr(
             f"Açıklama seçenekleri ({', '.join(unlisted)}) saymıyor; yapay zekâ asistanları seçenekleri açıklamadan okur.",
@@ -116,6 +117,7 @@ def generation_problems(
     product = quality.strip_common_paragraphs(product_description, others)
     problems += [text for id, text in structure_issues(product, digital) if id not in _NOT_ENFORCED]
     problems += [text for _id, text in coverage_issues(product_description, product, variations, personalizable)]
+    problems += quality.filler_problems(product)
     return problems
 
 

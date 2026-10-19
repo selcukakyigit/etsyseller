@@ -51,6 +51,7 @@ MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # Etsy dijital dosya sınırı (listing/vid
 MAX_IMAGES_PER_MESSAGE = creation.MAX_LISTING_IMAGES
 # Modele en fazla bu kadar resim gösterilir (maliyet ve bellek); geri kalanı yalnızca listing'e eklenir.
 MODEL_IMAGES_PER_MESSAGE = 4
+MAX_STALL_RETRIES = 2  # model onay isteyip işi yapmazsa en fazla bu kadar kez "şimdi yap" diye yeniden çalıştırılır
 
 
 # ------------------------------------------------------------------ ilerleme (asistan şu an ne yapıyor)
@@ -240,6 +241,44 @@ def _claims_tool_use(text: str) -> bool:
     return bool(_TOOL_NAME.search(text)) or "araç çıktısına göre" in low or "araç özeti" in low or bool(_EMPTY_PROMISE.search(low))
 
 
+# Açık bir istek varken kullanıcıdan onay/seçim istemek ("onaylıyor musun", "tek kelimeyle onay yaz", "hangi yolu uygulayayım"): kullanıcı bunlardan bıkıyor.
+_ASKS_CONFIRMATION = re.compile(
+    r"onayl[ıi]yor musun|onay(?:la|lar[ıi]n[ıi]z|lars[ıa]n|\s+ver|\s+yaz)|kabul ediyor musun|kabul ediyorsan|tek kelimeyle|hangi(?:sini| yolu| adımı)|"
+    r"yap[ae]yım m[ıi]|oluşturay[ıi]m m[ıi]|deneyeyim m[ıi]|\bse[çc]\b|are you sure|do you confirm|shall i|which (?:one|option)", re.IGNORECASE)
+
+# Etsy'ye gerçekten giden / geri dönüşü zor işler: bunlarda onay istemek doğrudur, ısrar edilmez.
+_CONFIRM_TOOLS = frozenset({"publish_listing_draft", "deactivate_listing", "mark_order_shipped", "delete_listing", "discard_listing_changes", "generate_listing_video", "rewrite_listings", "bulk_update_listings"})
+
+_STALL_NOTE = (
+    "\n\n[SİSTEM NOTU: Önceki denemende kullanıcıdan onay/seçim istedin işi yapmadan 'başlıyorum' dedin ya da yazma aracı çağırmadan 'güncelledim/ekledim' dedin (araç sonucunu görmeden yapıldı denmez). Kullanıcının isteği zaten açık ve onaylı; "
+    "tekrar sorma. Eksik ayrıntıları (renk yazımı, malzeme, başlık, etiket, açıklama, kategori, ölçü formatı) kendin makul biçimde tamamla, araç hatalarını "
+    "kendin düzelt ve ilgili araçları ŞİMDİ çağır. Yalnızca gerçekten bilinemeyen şey (ör. fiyat) boş kalabilir. Resim isteniyse generate_chat_image / "
+    "edit_chat_image'ı çağır, taslak isteniyse create_listing_draft'ı çağır. Cevapta araç adı geçirme, soru sorma; yaptığını kısaca söyle.]"
+)
+
+
+# Yazma aracı çağırmadan "güncelledim / ekledim" demek (sahte tamamlama): test turlarında model 13 düzenlemenin yarısını yapmadan yaptım dedi.
+_DONE_CLAIM = re.compile(
+    r"\b(?:güncelledim|ekledim|değiştirdim|yaptım|ayarladım|çıkardım|kaldırdım|artırdım|arttırdım|azalttım|düzelttim|oluşturdum|kısalttım|taşıdım|sildim|uyguladım|yazdım|kaydettim|"
+    r"güncellendi|ayarlandı|eklendi|kaydedildi|değiştirildi|yapıldı|kaldırıldı|oluşturuldu|artırıldı|kısaltıldı|uygulandı|düzeltildi|silindi|başarıyla eklendi|"
+    r"i(?:'ve)? (?:updated|added|changed|removed|set|created|fixed))\b", re.IGNORECASE)
+_READ_ONLY_TOOLS = frozenset({
+    "find_category", "shop_defaults", "similar_listings", "keyword_pool", "shop_options", "search_listings", "get_listing", "get_category_attributes", "workspace_status",
+    "market_research", "suggest_price", "listing_health_status", "generation_options", "list_description_templates", "personalization_library", "ask_user",
+})
+
+
+def _stalled(text: str, called: set[str], failed: bool, effective: int) -> bool:
+    """Model işi bitirmek yerine kullanıcıdan onay mı bekliyor? (Onay gerektiren araç çağrıldıysa bu meşrudur.)"""
+    if called & _CONFIRM_TOOLS or "ask_user" in called:
+        return False  # onay gerektiren iş ya da seçenek kartı: kullanıcının cevabı beklenir
+    if not called:
+        return bool(_ASKS_CONFIRMATION.search(text) or _claims_tool_use(text) or _DONE_CLAIM.search(text))
+    if effective == 0 and _DONE_CLAIM.search(text):
+        return True  # "yaptım" dendi ama hiçbir araç gerçekten bir şey değiştirmedi
+    return failed  # son araç hata verdiyse iş bitmemiştir (cevap "tekrar deneyeceğim" ya da soru da olsa)
+
+
 # Model bazen talimata rağmen "[düzenleyici](https://www.etsy.com/listings/-1/edit)" gibi uydurma bağlantılar yazıyor; kartın
 # düğmesi zaten doğru sayfaya götürüyor. Listing düzenleme bağlantıları metinden çıkarılır, bağlantı metni kalır.
 _EDIT_LINK = re.compile(r"\[([^\]]+)\]\((?:https?://[^)\s]*)?/listings/-?\d+/edit\)")
@@ -301,11 +340,33 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
     en = lang == "en"
     set_progress(shop.id, request_id, "Thinking" if en else "Düşünüyor")
     tool_lines: list[str] = []
+    called: set[str] = set()  # bu istekte çağrılan araçlar
+    failed = False  # son araç çağrısı hata döndürdü mü ya da hiçbir şeyi değiştirmedi mi
+    effective = 0  # gerçekten bir şey değiştiren (doğrulanmış) araç çağrısı sayısı
+    last_error: list[str] = []  # o hatanın metni (yeniden denemede modele söylenir)
 
     def run_tool(name: str, args: dict) -> dict:
+        nonlocal failed, effective
         set_progress(shop.id, request_id, (tools.TOOL_LABELS_EN.get(name, "Working") if en else tools.TOOL_LABELS.get(name, "Çalışıyor")), tools.TOOL_KIND.get(name))
+        called.add(name)
         try:
+            before = tools.listing_fingerprint(ctx, args) if name in tools.WRITE_TOOLS else None
             result = tools.execute(ctx, name, args)
+            failed = bool(result.get("error")) if isinstance(result, dict) else False
+            if name in tools.WRITE_TOOLS:
+                if not failed and before is not None and tools.listing_fingerprint(ctx, args) == before and effective > 0:
+                    result = {**result, "degisiklik_yok": True, "not": "Taslak bu turda zaten değişti (istenen büyük olasılıkla uygulanmış); yeniden yazma, gerekirse get_listing ile doğrula."}
+                elif not failed and before is not None and tools.listing_fingerprint(ctx, args) == before:
+                    # Araç "tamam" dese de taslak hiç değişmedi: model bunu yapıldı diye sunamasın.
+                    result = {**result, "degisiklik_yok": True, "UYARI": "Bu çağrı taslakta HİÇBİR şeyi değiştirmedi (değer zaten böyleydi ya da araç/alan yanlış). get_listing ile gerçek durumu oku: istenen zaten uygulanmışsa bunu söyle; değilse doğru aracı/alanı bulup yeniden dene; olmuyorsa yapamadığını söyle. Değişiklik görmeden yapıldı DEME."}
+                    failed = True
+                    last_error[:] = [result["UYARI"]]
+                elif not failed:
+                    effective += 1
+            elif name not in _READ_ONLY_TOOLS and not failed:
+                effective += 1  # diğer yazma/üretim araçları (taslak oluşturma, resim, toplu işlem…)
+            if failed:
+                last_error[:] = [str(result["error"])[:700]]
             tool_lines.append(context.summarize_tool_call(name, args, result))
             return result
         finally:
@@ -327,15 +388,15 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
         db.commit()
         clear_progress(shop.id, request_id)
         raise
-    if not tool_lines and _claims_tool_use(result.text or ""):
-        # Model hiçbir araç çağırmadan "araçla yaptım" diye anlattı (geçmişteki araç özetlerini taklit etmiş): bir kez gerçekten yapması istenir.
-        first = result.usage
-        _record_usage(db, shop.id, user_id, session.id, first)
-        metering.record("assistant", model, first.input_tokens, first.output_tokens)
+    for _ in range(MAX_STALL_RETRIES):
+        # Model işi yapmadan "başlıyorum" dedi, araç çağırmadan "yaptım" diye anlattı ya da hata sonrası kullanıcıdan onay istedi: gerçekten yapması istenir.
+        if not _stalled(result.text or "", called, failed, effective):
+            break
+        _record_usage(db, shop.id, user_id, session.id, result.usage)
+        metering.record("assistant", model, result.usage.input_tokens, result.usage.output_tokens)
         try:
             result = llm.run_agent(
-                model, prompt.static_rules(mode, groups), dynamic, history,
-                _with_attachments(message, current) + "\n\n[SİSTEM NOTU: Önceki denemende hiçbir araç çağırmadın ama çağırmış gibi anlattın. Şimdi isteği gerçekten ilgili araçlarla yap; çağırmadığın hiçbir şeyi yapılmış gibi yazma. Cevapta araç adı ya da parametre adı geçirme.]",
+                model, prompt.static_rules(mode, groups), dynamic, history, _with_attachments(message, current) + _STALL_NOTE + (f"\n[Son araç hatası, bunu düzelt: {last_error[0]}]" if failed and last_error else ""),
                 [{"path": i.path, "content_type": i.content_type} for i in current if i.content_type in IMAGE_TYPES][:MODEL_IMAGES_PER_MESSAGE],
                 tools.tools_for(mode, groups), run_tool,
             )
@@ -344,8 +405,15 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
             db.commit()
             clear_progress(shop.id, request_id)
             raise
+    tools.auto_choices(ctx)
     reply = _strip_app_links(result.text or "")
-    ctx.cards.sort(key=lambda c: c.get("type") == "listing_draft")  # güncel listing kartı(ları) cevabın en altında (sıra korunur)
+    if effective == 0 and _DONE_CLAIM.search(reply) and not (called & _CONFIRM_TOOLS):
+        # Denemelere rağmen hiçbir şey değişmedi ama model "yaptım" diyor: yalan kullanıcıya gösterilmez.
+        reply = tr(
+            "Bu değişikliği taslağa uygulayamadım; ilgili araç bir şeyi değiştirmedi. İstersen farklı bir yolla yeniden deneyeyim ya da editörden yapabilirsin.",
+            "I could not apply that change to the draft; the tool did not change anything. I can try another way, or you can do it in the editor.",
+        )
+    ctx.cards.sort(key=lambda c: {"listing_draft": 1, "choices": 2}.get(c.get("type"), 0))  # güncel listing kartı(ları) cevabın en altında (sıra korunur)
     assistant = ChatMessage(
         session_id=session.id, role="assistant", content=reply or tr("Bir cevap üretemedim, tekrar dener misin?", "I couldn't produce an answer, could you try again?"),
         cards_json=json.dumps(ctx.cards, ensure_ascii=False, default=str), tool_notes=context.tool_notes(tool_lines),

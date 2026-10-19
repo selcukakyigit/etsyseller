@@ -15,8 +15,8 @@ from dataclasses import dataclass, field
 
 from sqlalchemy import func, select
 
-from app.assistant import listing_view
-from app.listings import fields, inventory_edit
+from app.assistant import listing_view, prefill
+from app.listings import dimensions, fields, inventory_edit
 from app.ai import catalog, video_gen
 from app.listings import generation
 from app.core import blobstore
@@ -63,11 +63,14 @@ def _taxonomy() -> dict[int, str]:
                     _taxonomy_leaves.add(n["id"])
                 walk(n.get("children") or [], p)
 
-        roots = taxonomy_service.get_seller_taxonomy_nodes()
+        roots = taxonomy_service.cached_nodes()
         walk(roots, [])
         _taxonomy_roots[:] = roots
         _taxonomy_cache = flat
     return _taxonomy_cache
+
+
+MAX_DRAFT_REJECTIONS = 2
 
 
 @dataclass
@@ -80,6 +83,8 @@ class Ctx:
     cards: list[dict] = field(default_factory=list)
     session_id: int | None = None  # sohbet oturumu: üretilen resimler bu oturuma kaydedilir
     keyword_checked: bool = False  # create_listing_draft anahtar kelime denetimini tur başına bir kez yapar (model düzeltip tekrar çağırır)
+    draft_rejections: int = 0  # create_listing_draft kalite denetimiyle en fazla bu kadar reddedilir; sonra taslak uyarılarla yine de oluşur (kullanıcı hata döngüsünde kalmasın)
+    edit_jobs: dict = field(default_factory=dict)  # aynı turda istenen edit_chat_image'lar: {_edit_key: Future}
     image_jobs: list = field(default_factory=list)  # aynı turda istenen görseller önceden paralel başlatılır: [(prompt, referans kimliği, Future)]
 
 
@@ -817,28 +822,63 @@ def _keyword_feedback(ctx: Ctx, a: dict, title: str, tags: list[str]) -> str | N
         return None
 
 
+def _normalize_sizes(ctx: Ctx, variations: list[dict]) -> tuple[list[dict], list[str]]:
+    """Ölçü seçeneklerini ("35x45", '35"x45"') tek biçime getirir. Birim yazılmadıysa mağazanın alışkanlığı varsayılır (soru sorulmaz);
+    varsayım sonuçta döner ve kullanıcıya tek cümleyle söylenir. Ölçü olmayan varyasyonlara dokunulmaz."""
+    assumed: list[str] = []
+    out: list[dict] = []
+    unit: str | None = None
+    for v in variations:
+        vals = [x if isinstance(x, dict) else {"value": x} for x in v.get("values") or []]
+        labels = [str(x.get("value", "")) for x in vals]
+        if dimensions.parse_all(labels) is None:
+            out.append(v)
+            continue
+        if unit is None:
+            unit = prefill.size_unit(ctx.db, ctx.shop, creation._shop_currency(ctx.db, ctx.shop))
+        new, guess = dimensions.normalize_options(labels, unit)
+        if guess:
+            assumed.append(guess)
+        out.append({**v, "values": [{**x, "value": n} for x, n in zip(vals, new)]})
+    return out, sorted(set(assumed))
+
+
+def _user_facts(ctx: Ctx, variations: dict[str, list[str]]) -> str:
+    """Yeni listing metninin "kaynağı": kullanıcının bu sohbette yazdıkları ve varyasyon seçenekleri. Metindeki ölçü/renk bunlarda yoksa uydurma sayılır."""
+    from app.assistant.models import ChatMessage
+
+    said = ctx.db.scalars(select(ChatMessage.content).where(ChatMessage.session_id == ctx.session_id, ChatMessage.role == "user").order_by(ChatMessage.id.desc()).limit(8)).all()
+    return "\n".join([ctx.message, *said, *(f"{n}: {', '.join(v)}" for n, v in variations.items())])
+
+
 def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     title = " ".join(str(a.get("title", "")).split())[: bulk.TITLE_MAX]
     if not title:
         return {"error": "Başlık gerekli."}
+    size_variations, unit_assumed = _normalize_sizes(ctx, a.get("variations") or [])
+    a = {**a, "variations": size_variations}
     a = {**a, "description": layout.normalize(str(a.get("description") or ""))}  # düzen: bölüm başlıkları, tek tip madde işareti, emoji yok (ai/layout.py)
     tags_checked, _short = _tags(a.get("tags") or [])
     others = quality.shop_others(ctx.db, ctx.shop.id)
     draft_variations = {str(v.get("name") or ""): [str(x.get("value") or "") for x in v.get("values") or []] for v in a.get("variations") or []}
-    problems_pre = audit.generation_problems(title, tags_checked, str(a.get("description") or ""), others, None, draft_variations, a.get("listing_type") == "download", bool(a.get("personalizable")))
+    source = _user_facts(ctx, draft_variations)  # kullanıcının söylediği ölçü/renk/malzeme "uydurma" sayılmaz
+    problems_pre = audit.generation_problems(title, tags_checked, str(a.get("description") or ""), others, source, draft_variations, a.get("listing_type") == "download", bool(a.get("personalizable")))
+    quality_warnings: list[str] = []
     if problems_pre:
-        return {"error": "Taslak henüz oluşturulmadı. Önce şunları düzelt ve create_listing_draft'ı tekrar çağır (mağazanın diğer listing'lerinin kopyası olmamalı): " + " ".join(problems_pre)}
-    if not ctx.keyword_checked:
+        if ctx.draft_rejections < MAX_DRAFT_REJECTIONS:
+            ctx.draft_rejections += 1
+            return {"error": "Taslak henüz oluşturulmadı. Kullanıcıya SORMA, onay isteme: şunları kendin düzelt ve create_listing_draft'ı HEMEN tekrar çağır (mağazanın diğer listing'lerinin kopyası olmamalı): " + " ".join(problems_pre)}
+        quality_warnings = problems_pre  # düzeltme hakkı doldu: taslak yine oluşur, kalanlar update_listing ile düzeltilir
+    keyword_hint = None
+    if not ctx.keyword_checked:  # anahtar kelime denetimi taslağı engellemez (fazladan tur = fazladan token); öneri sonuçta döner
         ctx.keyword_checked = True
-        hint = _keyword_feedback(ctx, a, title, tags_checked)
-        if hint:
-            return {"error": "Taslak henüz oluşturulmadı. Etiketleri ölçülü anahtar kelime verisine göre gözden geçirip create_listing_draft'ı tekrar çağır (ürüne uymayan öneriyi kullanma): " + hint}
+        keyword_hint = _keyword_feedback(ctx, a, title, tags_checked)
     _, norm_qty = _shop_norms(ctx)
     qty_assumed = not a.get("quantity")
     # Fiyat yalnızca kullanıcının söylediği değerdir: verilmediyse 0 kalır ve taslak "Fiyat gir." ile yayına hazır sayılmaz.
-    price_missing = not a.get("price")
-    price = 0.0 if price_missing else float(a["price"])
-    if not price_missing and price < bulk.MIN_PRICE:
+    price_missing = not a.get("price") and not any(isinstance(x, dict) and x.get("price") for v in a.get("variations") or [] for x in v.get("values") or [])  # seçenek başına fiyat da fiyattır
+    price = float(a["price"]) if a.get("price") else 0.0
+    if a.get("price") and price < bulk.MIN_PRICE:
         return {"error": f"Fiyat en az {bulk.MIN_PRICE} olmalı."}
     is_digital = a.get("listing_type") == "download"
     created = creation.create_local_new(ctx.db, ctx.shop, None, "download" if is_digital else "physical")
@@ -902,6 +942,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     else:
         work["shipping_profile_id"] = int(a["shipping_profile_id"]) if a.get("shipping_profile_id") else defaults["en_cok_kullanilan_kargo_profili_id"]
         work["return_policy_id"] = int(a["return_policy_id"]) if a.get("return_policy_id") else defaults["en_cok_kullanilan_iade_politikasi_id"]
+    learned = _apply_shop_prefill(ctx, work, a, is_digital, title)
     if tpl is not None:
         work["description"] = templates.applier(ctx.db, ctx.shop, tpl)(work)
 
@@ -1008,17 +1049,95 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
             "yeni üretilen görsellerin alt metni için resimler eklendikten sonra generate_missing_alt_texts çağır; "
             "doldurulabilecek_bos_ozellikler'den ürüne uyanları doldur."
         )
+    if keyword_hint:
+        completion["etiket_onerisi"] = "İsteğe bağlı (kullanıcıya sorma): etiketleri ürüne uyarsa update_listing ile iyileştir; zorunlu değil. " + keyword_hint
+    if unit_assumed:
+        completion["olcu_birimi_varsayildi"] = f"Ölçülerde birim yazılmamıştı; mağazanın alışkanlığı olan '{unit_assumed[0]}' varsayıldı. Özetin sonunda bunu tek cümleyle söyle (yanlışsa kullanıcı düzeltir); soru sorma."
+    if quality_warnings:
+        completion["kalite_uyarilari"] = quality_warnings
+        completion["kalite_uyarilari_not"] = "Taslak oluştu ama metin kalite denetimini tam geçmedi: update_listing ile bunları düzelt (kullanıcıya sorma), sonra kısa özet yaz."
     return {
         "listing_id": lid,
         **completion,
         "duzenleyici_baglantisi": f"/listings/{lid}/edit", "eklenen_resim": attached, "kategori": category_note,
         "varyasyon_kombinasyonu": len(work["inventory"]["products"]) if work["inventory"]["products"][0]["property_values"] else 0,
-        "kisaltilan_etiketler": shortened, "yayin_icin_eksikler": problems,
+        "kisaltilan_etiketler": shortened, "yayin_icin_eksikler": problems, "mağazadan_otomatik_secilenler": learned,
         "mağaza_sabit_bolumleri_eklendi": std_count, "kullanilan_aciklama_sablonu": tpl.name if tpl is not None else None,
         "acilmayan_tek_secenekli_varyasyon": dropped_variations,
         "varsayilanlar": {"fiyat_verilmedi": price_missing, "adet_mağaza_tipik_degeri_kullanildi": qty_assumed, "fiyat": None if price_missing else price},
         "not": "Bu yalnızca yerel taslaktır; Etsy'ye gitmedi. Kullanıcı düzenleyicide kontrol edip 'Etsy'de yayınla' düğmesine basmalı.",
     }
+
+
+def _apply_shop_prefill(ctx: Ctx, work: dict, a: dict, is_digital: bool, title: str) -> dict:
+    """Etsy'nin "yeni listing"i gibi: işlem profili, mağaza bölümü, üretim ortağı, kim yaptı ve yenileme, mağazanın aynı kategorideki (yoksa tüm)
+    listing'lerinden öğrenilir; kullanıcı/model açıkça verdiyse o kalır. Döner: kullanıcıya özetlenecek, neyin otomatik seçildiği."""
+    try:
+        got = prefill.learn(ctx.db, ctx.shop, work.get("taxonomy_id"), title)
+    except Exception:  # noqa: BLE001 - öğrenme yardımcıdır; başarısızsa alanlar boş kalır, taslak oluşur
+        log.warning("Mağaza varsayılanları öğrenilemedi", exc_info=True)
+        return {}
+    chosen: dict = {}
+    section = int(a["shop_section_id"]) if a.get("shop_section_id") else got["shop_section_id"]
+    if section:
+        work["shop_section_id"] = section
+        names = {s.get("shop_section_id"): s.get("title") for s in reference_cache.peek(ctx.db, ctx.shop.id, "sections") or []}
+        chosen["magaza_bolumu"] = names.get(section) or section
+    if got["should_auto_renew"] is not None:
+        work["should_auto_renew"] = got["should_auto_renew"]
+    if not a.get("who_made") and got["who_made"]:
+        work["who_made"], work["when_made"], work["is_supply"] = got["who_made"], a.get("when_made") or got["when_made"], got["is_supply"]
+    if is_digital:
+        return chosen
+    if got["production_partner_ids"]:
+        work["production_partner_ids"] = got["production_partner_ids"]
+    ready = int(a["readiness_state_id"]) if a.get("readiness_state_id") else got["readiness_state_id"]
+    if ready:  # Etsy fiziksel üründe her teklifte işlem profili ister
+        for p in work["inventory"]["products"]:
+            for o in p["offerings"]:
+                o["readiness_state_id"] = ready
+        chosen["islem_profili_id"] = ready
+    return chosen
+
+
+def ask_user(ctx: Ctx, a: dict) -> dict:
+    """Sohbette dokunulabilir seçenek kartı gösterir: eksik bilgi sorusu (kind=question) ya da sıradaki adım önerileri (kind=suggestions). Seçilen metin
+    kullanıcının bir sonraki mesajı olarak gelir; yazı kutusu her zaman açıktır. Yanıtta yalnızca bir kart kalır."""
+    question = " ".join(str(a.get("question") or "").split())[:160]
+    options = [" ".join(str(o).split())[:60] for o in a.get("options") or [] if str(o).strip()][:4]
+    if not question or len(options) < 2:
+        return {"error": "question ve en az 2 kısa seçenek ver."}
+    kind = "suggestions" if a.get("kind") == "suggestions" else "question"
+    if kind == "question":
+        options.append(tr("Sen karar ver", "You decide"))  # her soruda "makul olanı seç" kaçışı: onay döngüsüne düşmesin
+    ctx.cards[:] = [c for c in ctx.cards if c.get("type") != "choices"]
+    ctx.cards.append({"type": "choices", "kind": kind, "question": question, "options": options})
+    return {"ok": True, "not": "Seçenek kartı gösterildi. Aynı soruyu ya da önerileri metinde tekrar yazma; kullanıcının dokunmasını ya da yazmasını bekle."}
+
+
+def auto_choices(ctx: Ctx) -> None:
+    """Model seçenek kartı çağırmadıysa, listing kartının durumundan dokunulabilir kart üretir (zayıf modeller ask_user'ı kullanmıyor): fiyat yoksa fiyat seçenekleri
+    (mağazanın tipik fiyatı etrafında), aksi halde sıradaki adım önerileri. Yalnızca bu yanıtta bir listing kartı varsa ve zaten kart yoksa."""
+    if any(c.get("type") == "choices" for c in ctx.cards):
+        return
+    card = next((c for c in reversed(ctx.cards) if c.get("type") == "listing_draft"), None)
+    if card is None:
+        return
+    if card.get("price_missing"):
+        try:
+            typical = _shop_norms(ctx)[0]
+        except Exception:  # noqa: BLE001 - mağaza fiyat özeti alınamazsa genel öneriler
+            typical = None
+        base = float(typical) if typical else 25.0
+        prices = sorted({max(1, round(base * f)) for f in (0.8, 1, 1.25)})
+        options = [tr(f"Fiyat {p} dolar olsun", f"Set the price to ${p}") for p in prices[:3]]
+        ctx.cards.append({"type": "choices", "kind": "question", "question": tr("Fiyat ne olsun?", "What should the price be?"), "options": [*options, tr("Sen karar ver", "You decide")]})
+        return
+    options = []
+    if (card.get("images") or 0) < 4:
+        options.append(tr("Ek görsel üret", "Generate more images"))
+    options += [tr("Boş özellikleri doldur", "Fill the empty attributes"), tr("Etiketleri iyileştir", "Improve the tags")]
+    ctx.cards.append({"type": "choices", "kind": "suggestions", "question": tr("Sıradaki adım?", "Next step?"), "options": options[:3]})
 
 
 def _pick_template(ctx: Ctx, a: dict):
@@ -1213,6 +1332,9 @@ def update_listing(ctx: Ctx, a: dict) -> dict:
     elif a.get("price_change_percent") is not None:
         ch["price"] = bulk.PriceOp(mode="percent", value=float(a["price_change_percent"]))
     ch.update(_ref_changes(a))
+    bad_ref = _unknown_reference(ctx, ch)
+    if bad_ref:
+        return {"error": bad_ref}
     variations = a.get("set_variations")
     if not ch and variations is None:
         return {"error": "Değişiklik belirtilmedi."}
@@ -1270,7 +1392,7 @@ def _update_variations(ctx: Ctx, lid: int, work: dict, ch: dict, a: dict, variat
     first = offers[0] if offers else {}
     price = float(a["set_price"]) if a.get("set_price") is not None else min((o["price"]["amount"] / o["price"]["divisor"] for o in offers), default=0.0)
     quantity = max(1, int(a.get("quantity") or first.get("quantity") or 1))
-    wanted = [v for v in variations if len(v.get("values") or []) > 1]
+    wanted, _unit_assumed = _normalize_sizes(ctx, [v for v in variations if len(v.get("values") or []) > 1])
     err = _build_inventory(work, price, quantity, wanted)
     if err:
         return {"error": err}
@@ -1292,6 +1414,7 @@ def _update_variations(ctx: Ctx, lid: int, work: dict, ch: dict, a: dict, variat
     drafts.save_local(ctx.db, ctx.shop, lid, work, live)
     _show_listing(ctx, lid, work, ["variations", *ch.keys()])
     return {"ok": True, "listing_id": lid, "varyasyon_kombinasyonu": len(inv["products"]), "fiyat": price, "adet": quantity, "standart_varyasyona_cevrilen": standardized,
+            **({"olcu_birimi_varsayildi": f"Birim yazılmamıştı; mağazanın alışkanlığı '{_unit_assumed[0]}' varsayıldı: tek cümleyle söyle, sorma."} if _unit_assumed else {}),
             "not": "Aynı listing'in yerel taslağı güncellendi (yeni taslak açılmadı); Etsy'ye gitmedi."}
 
 
@@ -1308,6 +1431,24 @@ def _ref_changes(a: dict) -> dict:
             continue
         out[k] = [int(x) for x in a[k]] if k == "production_partner_ids" else (bool(a[k]) if k == "should_auto_renew" else int(a[k]))
     return out
+
+
+_REF_KINDS = {
+    "shop_section_id": ("sections", "shop_section_id", "bölüm"), "shipping_profile_id": ("shipping_profiles", "shipping_profile_id", "kargo profili"),
+    "return_policy_id": ("return_policies", "return_policy_id", "iade politikası"), "readiness_state_id": ("readiness_state_definitions", "readiness_state_id", "işlem profili"),
+}
+
+
+def _unknown_reference(ctx: Ctx, ch: dict) -> str | None:
+    """Modelin uydurduğu kimliği (bölüm 8 gibi) yazmadan reddeder: kimlik mağazanın kayıtlı bölüm/profil/politika listesinde olmalı. Liste yerelde yoksa denetlenmez."""
+    for key, (kind, id_key, label) in _REF_KINDS.items():
+        if ch.get(key) is None:
+            continue
+        known = reference_cache.peek(ctx.db, ctx.shop.id, kind)
+        if known and int(ch[key]) not in {int(x[id_key]) for x in known if x.get(id_key) is not None}:
+            options = ", ".join(f'{x.get(id_key)}={x.get("title") or x.get("name") or ""}' for x in known[:15])
+            return f"Bu {label} kimliği ({ch[key]}) mağazada yok; uydurma. shop_options ile bakıp listedeki kimliği ver. Mevcutlar: {options}"
+    return None
 
 
 def shop_options(ctx: Ctx, a: dict) -> dict:
@@ -1599,10 +1740,22 @@ def prefetch_images(ctx: Ctx, calls: list[tuple[str, dict]]) -> None:
 
     from app.ai.image_gen import generate_from_text
 
+    from app.ai.image_gen import regenerate_image
+
     wanted = [a for name, a in calls if name == "generate_chat_image" and str(a.get("prompt") or "").strip()]
-    if len(wanted) < 2:
+    edits = [a for name, a in calls if name == "edit_chat_image" and (a.get("prompt") or a.get("azimuth") or a.get("elevation") or a.get("distance"))]
+    if len(wanted) + len(edits) < 2:
         return
     pool = ThreadPoolExecutor(max_workers=IMAGE_PARALLEL)
+    for a in edits:  # "bu resmi çoğalt / 5 farklı açı": kaynak resimden üretimler de aynı anda başlar
+        cam, dist, bad = _camera_prompts(a)
+        resolved = None if bad else _edit_source(ctx, a)
+        if bad or isinstance(resolved, dict):
+            continue  # hatalı çağrı sırayla yürütülürken hata olarak döner
+        job = contextvars.copy_context().run
+        ctx.edit_jobs[_edit_key(a)] = pool.submit(
+            job, regenerate_image, resolved[0][0], resolved[0][1], a.get("prompt"), None, cam, dist, None, int(a["model_id"]) if a.get("model_id") else None, a.get("variant")
+        )
     for a in wanted:
         reference = None
         if a.get("reference_image_id"):
@@ -1682,6 +1835,31 @@ def _write_alt(ctx: Ctx, lid: int, listing_image_id: int, path: str, content_typ
     _save_draft_work(ctx, lid, work)
 
 
+def _edit_source(ctx: Ctx, a: dict):
+    """edit_chat_image kaynağı: ((bayt, tür), sohbet resim kimliği, listing foto no) ya da {"error"}."""
+    lid = int(a["listing_id"]) if a.get("listing_id") else None
+    if a.get("image_id"):
+        img = ctx.db.get(ChatImage, str(a["image_id"]))
+        if img is None or img.shop_id != ctx.shop.id or not img.path or not img.content_type.startswith("image/"):
+            return {"error": "Resim bulunamadı; sistem mesajındaki resim listesinden bir kimlik ver."}
+        return (blobstore.read(img.path), img.content_type), img.id, None
+    if lid is not None and a.get("photo_number"):
+        work, err = _work_or_error(ctx, lid)
+        if err:
+            return err
+        ordered, photo = _photo_at(work, int(a["photo_number"]))
+        if photo is None:
+            return {"error": f"Fotoğraf bulunamadı; listing'de {len(ordered)} fotoğraf var."}
+        return drafts._source_image_bytes(ctx.db, ctx.shop, lid, photo["listing_image_id"], photo.get("draft_file_id")), None, int(a["photo_number"])
+    return {"error": "Kaynak belirt: sohbetteki resim için image_id, listing fotoğrafı için listing_id + photo_number."}
+
+
+def _edit_key(a: dict) -> str:
+    """Aynı turdaki edit_chat_image çağrılarını paralel iş ile eşleştirir (kaynak + istek)."""
+    keys = ("image_id", "listing_id", "photo_number", "prompt", "azimuth", "elevation", "distance", "model_id", "variant")
+    return json.dumps({k: a.get(k) for k in keys}, sort_keys=True, default=str)
+
+
 def edit_chat_image(ctx: Ctx, a: dict) -> dict:
     """AI ile YENİ bir görsel üretir: kaynak sohbetteki bir resim (image_id) ya da bir listing fotoğrafı (listing_id + photo_number).
     Sonuç sohbette gösterilir; kaynak olduğu gibi kalır. Listing'e YALNIZCA add_to_listing=true ise eklenir (yeni fotoğraf olarak,
@@ -1696,33 +1874,25 @@ def edit_chat_image(ctx: Ctx, a: dict) -> dict:
     if bad:
         return {"error": bad}
     lid = int(a["listing_id"]) if a.get("listing_id") else None
-    source_chat_id = source_photo = None
     try:
-        if a.get("image_id"):
-            img = ctx.db.get(ChatImage, str(a["image_id"]))
-            if img is None or img.shop_id != ctx.shop.id or not img.path or not img.content_type.startswith("image/"):
-                return {"error": "Resim bulunamadı; sistem mesajındaki resim listesinden bir kimlik ver."}
-            source, source_chat_id = (blobstore.read(img.path), img.content_type), img.id
-        elif lid is not None and a.get("photo_number"):
-            work, err = _work_or_error(ctx, lid)
-            if err:
-                return err
-            ordered, photo = _photo_at(work, int(a["photo_number"]))
-            if photo is None:
-                return {"error": f"Fotoğraf bulunamadı; listing'de {len(ordered)} fotoğraf var."}
-            source, source_photo = drafts._source_image_bytes(ctx.db, ctx.shop, lid, photo["listing_image_id"], photo.get("draft_file_id")), int(a["photo_number"])
-        else:
-            return {"error": "Kaynak belirt: sohbetteki resim için image_id, listing fotoğrafı için listing_id + photo_number."}
+        resolved = _edit_source(ctx, a)
+        if isinstance(resolved, dict):
+            return resolved
+        source, source_chat_id, source_photo = resolved
         add = bool(a.get("add_to_listing"))
         if add:
             lid = lid if lid is not None else _latest_new_draft(ctx)
             err = _photo_slot_error(ctx, lid) if lid is not None else "Eklenecek bir listing taslağı yok; listing_id ver."
             if err:
                 return {"error": err}
-        new_bytes, mime = regenerate_image(
-            source[0], source[1], a.get("prompt"), None, camera_prompt, distance_prompt, None,
-            int(a["model_id"]) if a.get("model_id") else None, a.get("variant"),
-        )
+        future = ctx.edit_jobs.pop(_edit_key(a), None)  # aynı turda paralel başlatılmışsa sonucunu bekle
+        if future is not None:
+            new_bytes, mime = future.result()
+        else:
+            new_bytes, mime = regenerate_image(
+                source[0], source[1], a.get("prompt"), None, camera_prompt, distance_prompt, None,
+                int(a["model_id"]) if a.get("model_id") else None, a.get("variant"),
+            )
     except (ImageGenError, ValueError, FileNotFoundError) as exc:
         return {"error": str(exc)}
     name = f"ai-edit{guess_extension(mime)}"
@@ -1937,8 +2107,9 @@ def _autofill_in_work(ctx: Ctx, lid: int, work: dict) -> tuple[list[str], list[s
             continue
         names = [v["name"] for v in d["possible_values"]]
         brief.append({"name": d["display_name"], "required": bool(d.get("is_required")), "max_choices": fields._max_values(d), "allowed": names[:80]})
+    dim_items = _dimension_items(ctx, work, defs)
     if not brief:
-        return [], []
+        return fields.apply_attributes(work, defs, dim_items) if dim_items else ([], [])
     photos = []
     for img in sorted(work.get("images") or [], key=lambda i: i.get("rank") or 0)[: ai_attributes.MAX_PHOTOS]:
         try:
@@ -1950,9 +2121,59 @@ def _autofill_in_work(ctx: Ctx, lid: int, work: dict) -> tuple[list[str], list[s
         items = ai_attributes.suggest(html.unescape(work.get("title") or ""), html.unescape(work.get("description") or ""), work.get("tags") or [], work.get("materials") or [], variations, brief, photos)
     except VisionError as exc:
         return [], [str(exc)]
-    items = [x for x in items if not inventory_edit.covered_by_variation(work, x["name"])]
+    facts = f"{work.get('title') or ''} {work.get('description') or ''} {_user_facts(ctx, {})}".lower()
+    items = [x for x in items if not inventory_edit.covered_by_variation(work, x["name"]) and _has_evidence(x["name"], facts, bool(photos))] + dim_items
     changed, errors = fields.apply_attributes(work, defs, items)
     return changed, errors
+
+
+_CLAIM_ATTR = re.compile(r"safe|waterproof|water.?resistant|hypoallergenic|flammab|food|toxic|organic|certified|sterile|eco", re.I)
+_COLOR_ATTR = re.compile(r"colou?r", re.I)
+
+
+def _has_evidence(attr: str, facts: str, has_photos: bool) -> bool:
+    """Otomatik özellik doldurma kanıtsız iddia yazmasın: güvenlik/işlev iddiaları (bulaşık makinesi, mikrodalga, su geçirmez…) yalnızca kullanıcı ya da metin
+    söylediyse; renk özelliği yalnızca fotoğraf varsa ya da metinde renk geçiyorsa."""
+    if _CLAIM_ATTR.search(attr):
+        words = [w for w in re.findall(r"[a-z]+", attr.lower()) if len(w) > 3 and w not in ("safe", "free")]
+        return any(w in facts for w in words) or any(w in facts for w in ("güvenli", "bulaşık", "mikrodalga", "su geçirmez", "waterproof"))
+    if _COLOR_ATTR.search(attr):
+        return has_photos or any(c in facts for c in (*quality.COLORS, *quality._TR_COLORS))
+    return True
+
+
+def _dimension_items(ctx: Ctx, work: dict, defs: list[dict]) -> list[dict]:
+    """Ölçü özellikleri (Width/Height/Length/Depth, sayı + birim) için kanıta dayalı değerler: kullanıcının verdiği ölçü, metinde açıkça yazan kalınlık
+    ("2 mm thickness") ya da mağazanın aynı kategorideki listing'lerinde en çok kullandığı derinlik. Ölçü bir varyasyonla karşılanıyorsa (ör. 35x45 "Size"
+    varyasyonu Genişlik/Yükseklik'i kapsar) o özellik atlanır. Kanıt yoksa boş kalır (uydurulmaz)."""
+    chosen = {p["property_id"] for p in work.get("properties", []) if p.get("values")}
+    unit = work.get("item_dimensions_unit")
+    given = {"width": work.get("item_width"), "height": work.get("item_height"), "length": work.get("item_length")}
+    if not any(str(d.get("display_name", "")).lower() == "length" for d in defs):
+        given["depth"] = given.pop("length")  # kategoride Length yoksa "15x15x20"deki ikinci ölçü derinliktir
+    learned = None
+    items: list[dict] = []
+    for d in fields.attribute_defs(defs):
+        name = d["display_name"]
+        low = name.lower()
+        if not fields._is_dimension(d) or d["property_id"] in chosen or low not in ("width", "height", "length", "depth") or inventory_edit.covered_by_variation(work, name):
+            continue
+        found: tuple[float, str] | None = None
+        if given.get(low) and unit:
+            found = (float(given[low]), unit)
+        elif low == "depth":
+            found = dimensions.depth_from_text(f"{work.get('title') or ''} {work.get('description') or ''}")
+            if found is None:
+                if learned is None:
+                    learned = prefill.learn(ctx.db, ctx.shop, work.get("taxonomy_id"), work.get("title") or "").get("depth") or {}
+                scale = next((s for s in d["scales"] if s["scale_id"] == learned.get("scale_id")), None)
+                if scale is not None and learned.get("value"):
+                    items.append({"name": name, "values": [str(learned["value"])], "unit": scale["display_name"]})
+                    continue
+        scale = dimensions.scale_for(found[1], d["scales"]) if found else None
+        if found and scale is not None:
+            items.append({"name": name, "values": [f"{found[0]:g}"], "unit": scale["display_name"]})
+    return items
 
 
 def autofill_listing_attributes(ctx: Ctx, a: dict) -> dict:
@@ -2244,7 +2465,11 @@ def add_variation_option(ctx: Ctx, a: dict) -> dict:
                 std_values = next((d["possible_values"] for d in _category_defs(int(trial["taxonomy_id"])) if d["property_id"] == pid), None)
             except Exception:  # noqa: BLE001 - değerler alınamazsa seçenek özel değer olarak eklenir
                 std_values = None
-        added, error = inventory_edit.add_option(trial, str(a["variation"]), str(a["option"]), a.get("price"), a.get("quantity"), a.get("copy_from"), std_values)
+        option = str(a["option"])
+        existing = inventory_edit.options(trial, str(a["variation"])) if pid is not None else []
+        if existing and dimensions.parse_all([*existing, option]) is not None:  # ölçü seçeneği: mevcutlarla aynı biçim ve birim ("70x100" → '70 x 100 cm')
+            option = dimensions.normalize_options([*existing, option], prefill.size_unit(ctx.db, ctx.shop, creation._shop_currency(ctx.db, ctx.shop)))[0][-1]
+        added, error = inventory_edit.add_option(trial, str(a["variation"]), option, a.get("price"), a.get("quantity"), a.get("copy_from"), std_values)
         total = len(trial["inventory"]["products"])
         if not error and total > MAX_COMBOS:
             error = f"Kombinasyon sayısı çok fazla ({total}); en fazla {MAX_COMBOS}."
@@ -2368,6 +2593,25 @@ def personalization_library(ctx: Ctx, a: dict) -> dict:
     rows = listing_service.get_personalization_library(ctx.db, ctx.shop)
     return {"sorular": [{**listing_view.question_view(q), "kullanim_sayisi": q["count"]} for q in rows[:20]],
             "not": "En fazla 5 soru eklenebilir. Önerini kullanıcıya göster; onaylarsa add_personalization_questions ile ekle."}
+
+
+# Listing taslağını değiştiren araçlar: çağrıdan önce/sonra taslağın parmak izi karşılaştırılır (bkz. listing_fingerprint). Değişmediyse "yapıldı" denmesi yalan olur.
+WRITE_TOOLS = frozenset({
+    "update_listing", "edit_inventory", "add_variation_option", "remove_variation_option", "set_listing_fields", "set_listing_attributes", "autofill_listing_attributes",
+    "edit_personalization_question", "delete_listing_photo", "move_listing_photo", "crop_listing_photo", "set_photo_alt_text", "set_variation_photo", "generate_missing_alt_texts",
+})
+
+
+def listing_fingerprint(ctx: Ctx, args: dict) -> str | None:
+    """Aracın etkileyeceği listing taslağının içerik özeti (yoksa None). Yazma aracı sonrası değişip değişmediğini anlamak için."""
+    import hashlib
+
+    try:
+        lid = int(args["listing_id"]) if args.get("listing_id") else _latest_new_draft(ctx)
+        work = _current_work(ctx, lid) if lid is not None else None
+    except Exception:  # noqa: BLE001 - doğrulama yardımcıdır; okunamazsa karşılaştırma yapılmaz
+        return None
+    return hashlib.md5(json.dumps(work, sort_keys=True, default=str).encode()).hexdigest() if work is not None else None
 
 
 def _latest_new_draft(ctx: Ctx) -> int | None:
@@ -2716,8 +2960,11 @@ TOOLS: list[dict] = [
     {"name": "mark_order_shipped", "description": "ONAY GEREKİR. Siparişi Etsy'de kargoya verildi işaretler (alıcıya bildirim gidebilir). confirm=true verilmeden yalnızca ne olacağını özetler.", "input_schema": _obj({"receipt_id": {"type": "integer"}, "confirm": {"type": "boolean"}, "tracking_code": {"type": "string"}, "carrier_name": {"type": "string"}}, ["receipt_id"])},
 ]
 
+TOOLS.append({"name": "ask_user", "description": "Sohbette DOKUNULABİLİR seçenek kartı gösterir. kind=question: yalnızca gerçekten bilinemeyen bir bilgiyi (fiyat, ürün adı…) ya da geri dönüşü zor bir işin onayını sorarken (ör. 'Evet, yayınla' / 'Vazgeç'); 2-4 kısa seçenek, 'Sen karar ver' sunucu tarafından eklenir. kind=suggestions: cevabın sonundaki sıradaki adım önerileri (2-3 kısa komut: 'Fiyatı ekle', 'Ek görsel üret'). Seçenek metni kullanıcının mesajı olarak gönderilir, bu yüzden tam ve anlaşılır bir istek olsun. Cevap başına en fazla bir kez çağır; aynı metni cevaba da yazma.", "input_schema": _obj({"question": {"type": "string", "description": "Kısa soru ya da başlık (ör. 'Fiyat ne olsun?', 'Sıradaki adım?')"}, "options": {"type": "array", "items": {"type": "string"}, "description": "2-4 kısa seçenek"}, "kind": {"type": "string", "enum": ["question", "suggestions"]}}, ["question", "options"])})
+
 # Kullanıcıya gösterilen ilerleme metinleri ("asistan şu an ne yapıyor").
 TOOL_LABELS = {
+    "ask_user": "Seçenekleri hazırlıyor",
     "finance_summary": "Finans verilerine bakıyor",
     "monthly_pnl": "Aylık kâr-zarar tablosunu hazırlıyor",
     "top_products": "En iyi ürünleri karşılaştırıyor",
@@ -2784,6 +3031,7 @@ TOOL_LABELS = {
 
 # Arayüz İngilizce olduğunda gösterilen ilerleme metinleri (TOOL_LABELS ile aynı anahtarlar).
 TOOL_LABELS_EN = {
+    "ask_user": "Preparing options",
     "finance_summary": "Checking finance data",
     "monthly_pnl": "Building the monthly profit and loss table",
     "top_products": "Comparing top products",
@@ -2849,6 +3097,7 @@ TOOL_LABELS_EN = {
 }
 
 EXECUTORS = {
+    "ask_user": ask_user,
     "finance_summary": finance_summary, "monthly_pnl": monthly_pnl, "top_products": top_products, "listing_performance": listing_performance, "stale_listings": stale_listings, "save_ad_report": save_ad_report, "ad_reports": ad_reports, "compare_periods": compare_periods, "ads_summary": ads_summary, "list_orders": list_orders,
     "search_listings": search_listings, "get_listing": get_listing, "shop_defaults": shop_defaults, "find_category": find_category, "similar_listings": similar_listings,
     "create_listing_draft": create_listing_draft, "update_listing": update_listing,
@@ -2911,6 +3160,7 @@ for _t in TOOLS:
 
 # Listing modunda (bkz. service._pick_mode) modele yalnızca bu araçlar gösterilir; sipariş/finans/reklam araçları gönderilmez.
 LISTING_TOOL_NAMES = frozenset({
+    "ask_user",
     "shop_defaults", "shop_options", "similar_listings", "find_category", "search_listings", "get_listing", "create_listing_draft", "update_listing",
     "regenerate_listing_image", "edit_chat_image", "generate_chat_image", "add_chat_image_to_listing", "crop_listing_photo", "delete_listing_photo", "move_listing_photo", "set_photo_alt_text",
     "generate_missing_alt_texts", "get_category_attributes", "set_listing_attributes", "autofill_listing_attributes", "set_listing_fields", "edit_personalization_question",

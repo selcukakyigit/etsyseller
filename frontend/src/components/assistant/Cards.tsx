@@ -50,7 +50,7 @@ const changeLabel = (c: string, t: (tr: string, en: string) => string): string =
 
 /** Asistanın araç sonuçlarını gösteren görsel kartlar. */
 /** `onAsk`: karttaki düğmeler sohbete kullanıcı mesajı olarak bir istek gönderir (ör. "Listing'e ekle"). */
-export default function Card({ card, shopId, onAsk }: { card: ChatCard; shopId: number; onAsk?: (text: string) => void }) {
+export default function Card({ card, shopId, onAsk, active = true }: { card: ChatCard; shopId: number; onAsk?: (text: string) => void; active?: boolean }) {
   const [preview, setPreview] = useState(false);
   const { t, lang, locale } = useT();
   const fmt = currencyFormatter(locale);
@@ -318,6 +318,28 @@ export default function Card({ card, shopId, onAsk }: { card: ChatCard; shopId: 
             ))}
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (card.type === "choices") {
+    // Dokunulabilir seçenekler: seçilen metin kullanıcının bir sonraki mesajı olur. Yalnızca en son cevapta etkin (eski kartlar soluk kalır).
+    return (
+      <div className="mt-2">
+        <p className="mb-1.5 text-xs font-medium text-neutral-500 dark:text-neutral-400">{card.question}</p>
+        <div className="flex flex-wrap gap-2">
+          {card.options.map((o) => (
+            <button
+              key={o}
+              type="button"
+              disabled={!active || !onAsk}
+              onClick={() => onAsk?.(o)}
+              className="rounded-full border border-[#D97757] bg-white px-3.5 py-1.5 text-sm font-medium text-[#C6613F] transition hover:bg-[#D97757] hover:text-white disabled:cursor-default disabled:border-neutral-200 disabled:text-neutral-400 disabled:hover:bg-white dark:bg-neutral-900 dark:text-[#E8956F] dark:hover:bg-[#D97757] dark:hover:text-white dark:disabled:border-neutral-700 dark:disabled:text-neutral-500 dark:disabled:hover:bg-neutral-900"
+            >
+              {o}
+            </button>
+          ))}
+        </div>
       </div>
     );
   }

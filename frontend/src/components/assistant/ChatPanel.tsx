@@ -516,7 +516,7 @@ export default function ChatPanel({
             </div>
           </div>
         )}
-        {messages.map((m) => (
+        {messages.map((m, mi) => (
           <div key={m.id} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
             <div className={`max-w-[92%] ${m.role === "user" ? "" : "w-full"}`}>
               {m.images.length > 0 && (
@@ -543,7 +543,7 @@ export default function ChatPanel({
                 </div>
               )}
               {m.cards.map((c, i) => (
-                <Card key={i} card={c} shopId={shopId} onAsk={(text) => void send(text)} />
+                <Card key={i} card={c} shopId={shopId} onAsk={(text) => void send(text)} active={mi === messages.length - 1 && !busy} />
               ))}
             </div>
           </div>
