@@ -59,6 +59,18 @@ export function settingsProblem(propertyCount: number, s: VarSettings): string |
 
 export const isCustom = (id: number) => CUSTOM_IDS.includes(id);
 
+// Hızlı ölçü ("Size"): A x B (x C) + birim. Etiket biçimi sunucudaki app/listings/dimensions.py ile aynıdır (35" x 45", 35 x 45 cm).
+export const SIZE_UNITS = ["in", "cm", "mm", "ft", "m"] as const;
+export type SizeUnit = (typeof SIZE_UNITS)[number];
+
+export function sizeLabel(parts: string[], unit: SizeUnit): string {
+  const nums = parts.map((p) => String(Number(p.replace(",", "."))));
+  return unit === "in" ? nums.map((n) => `${n}"`).join(" x ") : `${nums.join(" x ")} ${unit}`;
+}
+
+/** Etsy'nin ölçü özelliği (Width/Height/Depth/Length/Diameter…): değeri seçilebilir liste yok, birimli sayı var. */
+export const isScaled = (d?: { possible_values: unknown[]; scales?: unknown[] }) => !!d && d.possible_values.length === 0 && (d.scales?.length ?? 0) > 0;
+
 export function comboCount(props: VarProperty[]) {
   return props.reduce((n, p) => n * Math.max(p.values.length, 1), props.length ? 1 : 0);
 }

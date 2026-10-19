@@ -265,6 +265,12 @@ def describe(defs: list[dict], work: dict, max_values: int = 40) -> dict:
         else:
             names = [v["name"] for v in d["possible_values"]]
             row["izin_verilen_degerler"] = names[:max_values] + ([f"… (+{len(names) - max_values} daha)"] if len(names) > max_values else [])
+            if d.get("scales") and any(v.get("scale_id") is not None for v in d["possible_values"]):  # ölçekli (beden): değerler ölçeğe göre gruplu
+                by_scale: dict[str, list[str]] = {}
+                for sc in d["scales"]:
+                    by_scale[sc["display_name"]] = [v["name"] for v in d["possible_values"] if v.get("scale_id") == sc["scale_id"]][:12]
+                row["olcekler"] = by_scale
+                row["tur"] = "ölçekli (tek ölçek seç: değerler ölçeğe aittir)"
         rows.append(row)
     return {"ozellikler": rows, "eksik_zorunlu": [r["ad"] for r in rows if r["zorunlu"] and not r["secili"]]}
 
@@ -333,7 +339,12 @@ def apply_attributes(work: dict, defs: list[dict], items: list[dict]) -> tuple[l
             errors.append(f'{label}: "{", ".join(unknown)}" izin verilen değerlerde yok. İzin verilenler: ' + ", ".join(allowed[:30]) + (" …" if len(allowed) > 30 else ""))
             continue
         chosen = list({m["value_id"]: m for m in matched}.values())
-        properties[pid] = {"property_id": pid, "property_name": label, "scale_id": None, "value_ids": [m["value_id"] for m in chosen], "values": [m["name"] for m in chosen]}
+        scale_ids = {m.get("scale_id") for m in chosen} - {None}
+        if len(scale_ids) > 1:  # ölçekli özellik (Size): bir listing'de tek ölçek kullanılır
+            scales = {s["scale_id"]: s.get("display_name", "") for s in d.get("scales", [])}
+            errors.append(f'{label}: seçimler farklı ölçeklerde ({", ".join(sorted(str(scales.get(s, s)) for s in scale_ids))}); tek bir ölçekten seç.')
+            continue
+        properties[pid] = {"property_id": pid, "property_name": label, "scale_id": next(iter(scale_ids), None), "value_ids": [m["value_id"] for m in chosen], "values": [m["name"] for m in chosen]}
         changed.append(label)
     work["properties"] = list(properties.values())
     work["managed_property_ids"] = managed

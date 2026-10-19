@@ -17,7 +17,7 @@ import {
 } from "./variationTypes";
 import { tNow as t } from "@/lib/i18n";
 
-type EditorState = { index: number | null; draft: VarProperty };
+type EditorState = { index: number | null; draft: VarProperty; quickSize?: boolean };
 
 const selectCls =
   "rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
@@ -189,6 +189,7 @@ export default function VariationManager({
                           <span className="h-5 w-5 rounded-full bg-neutral-200 dark:bg-neutral-700" />
                         ))}
                       {v.name}
+                      {p.scale_id !== null && ` ${taxonomyProps.find((x) => x.property_id === p.property_id)?.scales?.find((s) => s.scale_id === p.scale_id)?.display_name ?? ""}`}
                     </span>
                   ))}
                 </div>
@@ -278,6 +279,15 @@ export default function VariationManager({
               draft: { property_id: t.property_id, property_name: t.display_name, scale_id: null, values: [], linkPhotos: false },
             });
           }}
+          onQuickSize={() => {
+            setAdding(false);
+            if (customFree !== undefined)
+              setEditor({
+                index: null,
+                quickSize: true,
+                draft: { property_id: customFree, property_name: "Size", scale_id: null, values: [], linkPhotos: false },
+              });
+          }}
           onCreateCustom={() => {
             setAdding(false);
             if (customFree !== undefined)
@@ -292,6 +302,7 @@ export default function VariationManager({
       {editor && (
         <VariationEditor
           initial={editor.draft}
+          quickSize={editor.quickSize}
           taxDef={taxonomyProps.find((t) => t.property_id === editor.draft.property_id)}
           images={images}
           photoLocked={props.some((p, i) => p.linkPhotos && i !== editor.index)}

@@ -4,14 +4,17 @@ import { useState } from "react";
 import { ListingImage, TaxonomyProperty } from "@/lib/api";
 import { Modal, Switch, btnGhost, btnPrimary } from "./Modal";
 import PhotoPicker from "./PhotoPicker";
-import { VarProperty, cleanName, isCustom } from "./variationTypes";
+import DecimalInput from "@/components/ui/NumberInputs";
+import { SIZE_UNITS, SizeUnit, VarProperty, cleanName, isCustom, isScaled, sizeLabel } from "./variationTypes";
 import { tNow as t } from "@/lib/i18n";
+import { useT } from "@/lib/i18n-client";
 
 const inputCls =
   "w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
 
 export default function VariationEditor({
   initial,
+  quickSize,
   taxDef,
   images,
   photoLocked,
@@ -19,6 +22,7 @@ export default function VariationEditor({
   onCancel,
 }: {
   initial: VarProperty;
+  quickSize?: boolean; // "Hızlı ölçü": tek "Size" varyasyonu, seçenekler A x B (x C) + birim
   taxDef?: TaxonomyProperty;
   images: ListingImage[];
   photoLocked: boolean; // başka bir varyasyon fotoğraf bağlıyor (Etsy tek varyasyona izin verir)
@@ -29,7 +33,15 @@ export default function VariationEditor({
   const [text, setText] = useState("");
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [picking, setPicking] = useState<number | null>(null);
+  const { locale } = useT();
+  const [axes, setAxes] = useState<2 | 3>(2);
+  const [parts, setParts] = useState<string[]>(["", "", ""]);
+  const [sizeUnit, setSizeUnit] = useState<SizeUnit>(locale === "en" ? "in" : "cm");
 
+  const scaled = isScaled(taxDef);
+  const scales = taxDef?.scales ?? [];
+  const scaleName = scales.find((s) => s.scale_id === draft.scale_id)?.display_name ?? "";
+  const quickReady = parts.slice(0, axes).every((p) => Number(p.replace(",", ".")) > 0);
   const custom = isCustom(draft.property_id);
   const standard = (taxDef?.possible_values ?? []).filter((v) => !draft.values.some((x) => x.name === v.name));
   const imgUrl = (id: number | null) => images.find((i) => i.listing_image_id === id)?.url_170x135;
@@ -56,7 +68,13 @@ export default function VariationEditor({
     });
   }
 
-  const valid = draft.property_name.trim() !== "" && draft.values.length > 0;
+  const valid = draft.property_name.trim() !== "" && draft.values.length > 0 && (!scaled || draft.scale_id !== null);
+
+  function addSize() {
+    if (!quickReady) return;
+    addOption(sizeLabel(parts.slice(0, axes), sizeUnit));
+    setParts(["", "", ""]);
+  }
 
   return (
     <>
@@ -118,27 +136,105 @@ export default function VariationEditor({
             )}
           </p>
 
-          <div className="mb-2 flex gap-2">
-            <input
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addOption(text);
-                }
-              }}
-              placeholder={t("Bir seçenek yaz…", "Type an option…")}
-              className={inputCls}
-            />
-            <button
-              onClick={() => addOption(text)}
-              disabled={!cleanName(text)}
-              className="px-3 text-sm font-semibold text-neutral-700 disabled:opacity-40 dark:text-neutral-200"
-            >
-              {t("Ekle", "Add")}
-            </button>
-          </div>
+          {quickSize ? (
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              {parts.slice(0, axes).map((p, i) => (
+                <span key={i} className="flex items-center gap-2">
+                  {i > 0 && <span className="text-neutral-500">x</span>}
+                  <DecimalInput
+                    value={p}
+                    onValue={(v) => setParts((cur) => cur.map((c, j) => (j === i ? v : c)))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addSize();
+                      }
+                    }}
+                    aria-label={[t("Genişlik", "Width"), t("Yükseklik", "Height"), t("Derinlik", "Depth")][i]}
+                    placeholder={[t("Genişlik", "Width"), t("Yükseklik", "Height"), t("Derinlik", "Depth")][i]}
+                    className={`${inputCls} w-24`}
+                  />
+                </span>
+              ))}
+              <select value={sizeUnit} onChange={(e) => setSizeUnit(e.target.value as SizeUnit)} className={`${inputCls} w-auto`} aria-label={t("Birim", "Unit")}>
+                {SIZE_UNITS.map((u) => (
+                  <option key={u} value={u}>
+                    {u === "in" ? t("inç", "in") : u}
+                  </option>
+                ))}
+              </select>
+              <select value={axes} onChange={(e) => setAxes(Number(e.target.value) as 2 | 3)} className={`${inputCls} w-auto`} aria-label={t("Ölçü sayısı", "Number of dimensions")}>
+                <option value={2}>{t("2 ölçü (A x B)", "2 dimensions (W x H)")}</option>
+                <option value={3}>{t("3 ölçü (A x B x C)", "3 dimensions (W x H x D)")}</option>
+              </select>
+              <button
+                onClick={addSize}
+                disabled={!quickReady}
+                className="px-3 text-sm font-semibold text-neutral-700 disabled:opacity-40 dark:text-neutral-200"
+              >
+                {t("Ekle", "Add")}
+              </button>
+            </div>
+          ) : (
+            <>
+              {scaled && (
+                <div className="mb-3">
+                  <label className="mb-1 block text-sm font-semibold text-neutral-800 dark:text-neutral-200">
+                    {t("Birim", "Unit")} <span className="text-red-600">*</span>
+                  </label>
+                  <select
+                    value={draft.scale_id ?? ""}
+                    onChange={(e) => setDraft((d) => ({ ...d, scale_id: e.target.value === "" ? null : Number(e.target.value) }))}
+                    className={inputCls}
+                  >
+                    <option value="">{t("Birim seç", "Select a unit")}</option>
+                    {scales.map((s) => (
+                      <option key={s.scale_id} value={s.scale_id}>
+                        {s.display_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="mb-2 flex gap-2">
+                {scaled ? (
+                  <DecimalInput
+                    value={text}
+                    onValue={setText}
+                    unit={scaleName}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addOption(text);
+                      }
+                    }}
+                    placeholder={t("Bir değer yaz…", "Enter a value…")}
+                    className={`${inputCls} pr-24`}
+                  />
+                ) : (
+                  <input
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addOption(text);
+                      }
+                    }}
+                    placeholder={t("Bir seçenek yaz…", "Type an option…")}
+                    className={inputCls}
+                  />
+                )}
+                <button
+                  onClick={() => addOption(text)}
+                  disabled={!cleanName(text) || (scaled && draft.scale_id === null)}
+                  className="px-3 text-sm font-semibold text-neutral-700 disabled:opacity-40 dark:text-neutral-200"
+                >
+                  {t("Ekle", "Add")}
+                </button>
+              </div>
+            </>
+          )}
 
           {standard.length > 0 && (
             <select
@@ -184,7 +280,7 @@ export default function VariationEditor({
                     )}
                   </span>
                 )}
-                <span className="flex-1 text-sm text-neutral-800 dark:text-neutral-200">{v.name}</span>
+                <span className="flex-1 text-sm text-neutral-800 dark:text-neutral-200">{scaled ? `${v.name} ${scaleName}` : v.name}</span>
                 {draft.linkPhotos && (
                   <button
                     onClick={() => setPicking(i)}

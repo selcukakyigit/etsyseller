@@ -6,6 +6,8 @@ göre değiştiği `*_on_property` listelerinde belirtilmelidir. Her değişikli
 import copy
 import re
 
+from app.listings import dimensions
+
 
 MAX_QUANTITY = 999
 
@@ -301,6 +303,59 @@ def link_photo(work: dict, name: str, option: str, image_id: int | None) -> str 
     return None
 
 
+def _size_key(text: str) -> str:
+    """Beden yazılışı eşanlamlıları: XXL = 2XL = 2X, XXXL = 3XL = 3X (Etsy unisex ölçeği "2X", "3X" kullanır)."""
+    t = _norm(text).replace("-", " ")
+    t = {"extra small": "xs", "x small": "xs", "small": "s", "medium": "m", "large": "l", "extra large": "xl", "x large": "xl"}.get(t, t).replace(" ", "")
+    if len(t) >= 3 and t.endswith("l") and set(t[:-1]) == {"x"}:
+        return f"{len(t) - 1}x"
+    if len(t) == 3 and t[0].isdigit() and t.endswith("xl"):
+        return t[0] + "x"
+    return t
+
+
+def _pick_scale(d: dict, opts: list[str]) -> int | None:
+    """Ölçekli özellikte (Size) tüm seçenekleri içeren ölçek. Birden çoksa harfli seçeneklere (S, M, L) "letter", sayılılara "numeric" ölçeği, yoksa en küçük kimlik. Hiçbirinde yoksa None
+    (değerler Etsy'nin beden ölçeğinde bulunamaz; varyasyon özel kalır)."""
+    wanted = {_size_key(o) for o in opts}
+    by_scale: dict[int, set[str]] = {}
+    for v in d.get("possible_values", []):
+        if v.get("scale_id") is not None:
+            by_scale.setdefault(v["scale_id"], set()).add(_size_key(v["name"]))
+    fits = sorted(s for s, names in by_scale.items() if wanted <= names)
+    if len(fits) <= 1:
+        return fits[0] if fits else None
+    names = {s["scale_id"]: str(s.get("display_name", "")).lower() for s in d.get("scales", [])}
+    numeric = all(any(ch.isdigit() for ch in o) for o in wanted)
+    key = "numeric" if numeric else "letter"
+    return next((s for s in fits if key in names.get(s, "")), fits[0])
+
+
+def _standard_options(d: dict, opts: list[str]) -> dict[str, dict] | None:
+    """Özel varyasyonun seçeneklerinin standart özellikteki karşılığı {norm(seçenek): {name, value_id, scale_id}}; hepsi eşleşmiyorsa None.
+    Değerli özellikte (Color…) izin verilen değerlerle, birimli özellikte (Width/Height/Depth…) "35 cm" gibi tek birimli ölçülerle eşleşir (Etsy'de değer sayı, birim scale)."""
+    if d.get("possible_values"):
+        values = d["possible_values"]
+        scaled = any(v.get("scale_id") is not None for v in values)
+        if scaled:  # ölçekli özellik (tişört "Size"): değerler bir ölçeğe (Unisex letter, US numeric…) aittir
+            picked = _pick_scale(d, opts)
+            if picked is None:
+                return None
+            values = [v for v in values if v.get("scale_id") == picked]
+        key = _size_key if scaled else _norm
+        by_key = {key(v["name"]): v for v in values}
+        if any(key(o) not in by_key for o in opts):
+            return None
+        return {_norm(o): {"name": by_key[key(o)]["name"], "value_id": by_key[key(o)]["value_id"], "scale_id": by_key[key(o)].get("scale_id")} for o in opts}
+    parsed = [dimensions.parse(o) for o in opts]
+    if not d.get("scales") or any(p is None or len(p.values) != 1 or not p.unit for p in parsed) or len({p.unit for p in parsed}) != 1:
+        return None
+    scale = dimensions.scale_for(parsed[0].unit, d["scales"])
+    if scale is None:
+        return None
+    return {_norm(o): {"name": f"{p.values[0]:g}", "value_id": None, "scale_id": scale["scale_id"]} for o, p in zip(opts, parsed)}
+
+
 def standardize(work: dict, defs: list[dict]) -> list[str]:
     """Özel (513/514/516) kimlikle kurulmuş bir varyasyonun adı kategorinin bir standart varyasyon özelliğiyle (supports_variations) eşleşiyorsa ve
     TÜM seçenekleri o özelliğin izin verilen değerlerindeyse, varyasyonu standart özelliğe çevirir (alıcı filtrelerinde görünür). Kısmi eşleşmede dokunmaz.
@@ -314,20 +369,22 @@ def standardize(work: dict, defs: list[dict]) -> list[str]:
     for pv0 in list(products[0]["property_values"]):
         if pv0["property_id"] not in CUSTOM_PROPERTY_IDS:
             continue
-        d = next((x for x in defs if x.get("supports_variations") and x["property_id"] not in used
-                  and _norm(pv0["property_name"]) in (_norm(x.get("display_name", "")), _norm(x.get("name", "")))), None)
-        if d is None:
-            continue
-        by_name = {_norm(v["name"]): v for v in d.get("possible_values", [])}
         opts = options(work, pv0["property_name"])
-        if not opts or any(_norm(o) not in by_name for o in opts):
+        d = by_name = None
+        for x in defs:  # aynı adlı birden çok özellik olabilir (Bath Towels: değerli "Size" ve ölçekli "Size"): seçenekleri karşılayan ilki alınır
+            if x.get("supports_variations") and x["property_id"] not in used and _norm(pv0["property_name"]) in (_norm(x.get("display_name", "")), _norm(x.get("name", ""))):
+                found = _standard_options(x, opts) if opts else None
+                if found is not None:
+                    d, by_name = x, found
+                    break
+        if d is None:
             continue
         old_id, new_id = pv0["property_id"], d["property_id"]
         for p in products:
             for pv in p["property_values"]:
                 if pv["property_id"] == old_id:
                     match = by_name[_norm(pv["values"][0])]
-                    pv.update(property_id=new_id, property_name=d["display_name"], scale_id=None, value_ids=[match["value_id"]], values=[match["name"]])
+                    pv.update(property_id=new_id, property_name=d["display_name"], scale_id=match["scale_id"], value_ids=[match["value_id"]] if match["value_id"] else [], values=[match["name"]])
         for key in ("price_on_property", "quantity_on_property", "sku_on_property", "readiness_state_on_property"):
             inv[key] = [new_id if x == old_id else x for x in inv.get(key) or []]
         links = work.get("variation_links")
@@ -350,6 +407,8 @@ def covered_by_variation(work: dict, attr_name: str) -> bool:
     n = _norm(attr_name)
     for v in variation_names(work):
         vn = _norm(v)
+        if n in (a.lower() for a in dimensions.axes_covered(options(work, v))):  # "Size" seçenekleri 35x45 cm gibi ölçüyse Genişlik/Yükseklik (3 ölçüyse Derinlik de) varyasyonda durur
+            return True
         if vn == n or any(any(w in vn for w in words) and any(w in n for w in words) for words in VARIATION_WORD_GROUPS):
             return True
     return False
