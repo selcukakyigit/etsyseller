@@ -6,6 +6,7 @@ import { addressText, copyText, fmtDate, shipBucket, shipByLabel } from "./order
 import { useT } from "@/lib/i18n-client";
 import FulfillmentTimes from "./FulfillmentTimes";
 import StepMenu from "./StepMenu";
+import { ClockIcon, MoreIcon } from "@/components/icons";
 
 const btn =
   "rounded-full border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-800 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800";
@@ -32,7 +33,7 @@ function MoreMenu({ order, onPrint }: { order: Order; onPrint: () => void }) {
   return (
     <div ref={ref} className="relative">
       <button type="button" onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open} aria-label={t("Diğer işlemler", "More actions")} className={iconBtn}>
-        ⋮
+        <MoreIcon className="h-5 w-5" />
       </button>
       {open && (
         <div role="menu" className="absolute right-0 top-full z-30 mt-1 w-60 overflow-hidden rounded-xl border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
@@ -118,6 +119,8 @@ export default function OrderCard({
   }, [highlighted]);
   const stepName = order.step_id != null ? steps.find((s) => s.id === order.step_id)?.name : undefined;
   const open_ = !order.is_shipped && !order.is_canceled;
+  // Etsy, bazı bölgelerde adres alanlarını (sokak, şehir, posta kodu) yalnızca Etsy'nin ortak programındaki uygulamalara verir; gelen veride yalnızca alıcı adı kalır.
+  const addressHidden = !order.address.first_line && !order.address.city && !order.address.zip;
   const urgent = !order.is_shipped && !order.is_canceled && (bucket === "overdue" || bucket === "today");
 
   async function copy(text: string, key: string) {
@@ -245,7 +248,7 @@ export default function OrderCard({
           <div className="-mt-1 flex shrink-0 items-center">
             {open_ && (
               <StepMenu steps={steps} current={order.step_id ?? null} onMove={onMove} onComplete={onShip} className={iconBtn} label={t("İlerlemeyi güncelle", "Update progress")}>
-                <span aria-hidden>🕒</span>
+                <ClockIcon className="h-5 w-5" />
               </StepMenu>
             )}
             <MoreMenu order={order} onPrint={onPrint} />
@@ -264,13 +267,25 @@ export default function OrderCard({
             {addrOpen ? (
               <div className="mt-1.5">
                 <p className="whitespace-pre-line">{addressText(order)}</p>
-                <button type="button" onClick={() => copy(addressText(order), "addr")} className="mt-1 underline underline-offset-2">
-                  {copied === "addr" ? t("Kopyalandı ✓", "Copied ✓") : t("Adresi kopyala", "Copy address")}
-                </button>
+                {addressHidden ? (
+                  <p className="mt-1.5 rounded-lg bg-amber-50 p-2 text-[11px] leading-snug text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                    {t(
+                      "Etsy bu siparişin adres ayrıntılarını (sokak, şehir, posta kodu) API ile paylaşmıyor; bazı bölgelerde yalnızca Etsy'nin ortak programındaki uygulamalara açık. Adresi Etsy'de görebilirsin.",
+                      "Etsy does not share this order's address details (street, city, postal code) through the API; in some regions they are only available to apps in Etsy's partner program. You can see the address on Etsy.",
+                    )}{" "}
+                    <a href={`https://www.etsy.com/your/orders/sold/${order.receipt_id}`} target="_blank" rel="noreferrer" className="font-semibold underline underline-offset-2">
+                      {t("Etsy'de aç ↗", "Open on Etsy ↗")}
+                    </a>
+                  </p>
+                ) : (
+                  <button type="button" onClick={() => copy(addressText(order), "addr")} className="mt-1 underline underline-offset-2">
+                    {copied === "addr" ? t("Kopyalandı ✓", "Copied ✓") : t("Adresi kopyala", "Copy address")}
+                  </button>
+                )}
               </div>
             ) : (
               <p className="mt-0.5 text-neutral-500">
-                {[order.address.city, order.address.state, order.address.country_iso].filter(Boolean).join(", ")}
+                {addressHidden ? t("Adres ayrıntısı Etsy'de", "Address details on Etsy") : [order.address.city, order.address.state, order.address.country_iso].filter(Boolean).join(", ")}
               </p>
             )}
           </div>

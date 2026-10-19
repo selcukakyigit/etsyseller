@@ -9,6 +9,7 @@ import OrderCard from "@/components/orders/OrderCard";
 import OrderFilterPanel from "@/components/orders/OrderFilterPanel";
 import ShipModal from "@/components/orders/ShipModal";
 import StepMenu from "@/components/orders/StepMenu";
+import { ClockIcon } from "@/components/icons";
 import OrderStepsModal from "@/components/orders/OrderStepsModal";
 import PrintOrdersModal from "@/components/orders/PrintOrdersModal";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
@@ -456,7 +457,7 @@ export default function OrdersPage() {
                     label={t("İlerlemeyi güncelle", "Update progress")}
                     className="inline-flex h-8 items-center gap-1 rounded-full border border-neutral-300 px-3 text-sm font-medium text-neutral-800 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800"
                   >
-                    🕒 {t("İlerlemeyi güncelle", "Update progress")} ▾
+                    <ClockIcon className="h-4 w-4" /> {t("İlerlemeyi güncelle", "Update progress")} ▾
                   </StepMenu>
                   <div ref={menuRef} className="relative">
                     <button
