@@ -30,6 +30,7 @@ from app.contact import models as _contact_models  # noqa: E402,F401
 from app.insights import models as _insights_models  # noqa: E402,F401
 from app.modkit import models as _modkit_models  # noqa: E402,F401
 from app.supply import models as _supply_models  # noqa: E402,F401
+from app.taxonomy import models as _taxonomy_models  # noqa: E402,F401
 
 target_metadata = Base.metadata
 config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))

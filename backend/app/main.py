@@ -38,6 +38,7 @@ from app.billing import models as _billing_models  # noqa: F401
 from app.admin import models as _admin_models  # noqa: F401
 from app.modkit import models as _modkit_models  # noqa: F401
 from app.supply import models as _supply_models  # noqa: F401
+from app.taxonomy import models as _taxonomy_models  # noqa: F401
 from app.core import app_settings as _app_settings  # noqa: F401
 
 from app.account.router import router as account_router

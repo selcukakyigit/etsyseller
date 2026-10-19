@@ -37,7 +37,14 @@ def search_active_listings(keywords: str, limit: int = 50) -> dict:
 
 
 def cached_properties(taxonomy_id: int) -> list[dict]:
-    """Bir kategorinin özellik tanımları (süreç içi önbellekli; düzenleyici, asistan ve toplu işlemler aynı veriyi kullanır)."""
-    from app.core.ttl_cache import cached
+    """Bir kategorinin özellik tanımları (bellek → veritabanı → Etsy; düzenleyici, asistan ve toplu işlemler aynı veriyi kullanır, bkz. store.py)."""
+    from app.taxonomy import store
 
-    return cached(("tax", "props", taxonomy_id), lambda: get_properties_by_taxonomy_id(taxonomy_id))
+    return store.get(f"props:{int(taxonomy_id)}", lambda: get_properties_by_taxonomy_id(int(taxonomy_id)))
+
+
+def cached_nodes() -> list[dict]:
+    """Etsy kategori ağacı (bellek → veritabanı → Etsy)."""
+    from app.taxonomy import store
+
+    return store.get("nodes", get_seller_taxonomy_nodes)
