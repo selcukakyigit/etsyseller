@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.etsy.client import EtsyAuthError
+from app.core.i18n import tr
+from app.etsy.client import EtsyApiError, EtsyAuthError
 from app.orders import service
 from app.orders.schemas import MoveIn, OrderInsightsOut, OrderOut, OrdersPageOut, OrdersSyncStatus, ShipRequest, StepOut, StepsIn
 from app.shops.deps import get_owned_shop
@@ -101,5 +102,12 @@ def ship(
         return service.mark_shipped(db, shop, receipt_id, payload.tracking_code, payload.carrier_name)
     except EtsyAuthError as exc:
         raise HTTPException(401, str(exc)) from exc
+    except EtsyApiError as exc:
+        if exc.status_code == 403:  # createReceiptShipment yalnızca Etsy'nin onayladığı uygulamalara açıktır (Commercial Access tek başına yetmez)
+            raise HTTPException(403, tr(
+                "Etsy bu uygulamaya 'gönderildi olarak işaretleme' (createReceiptShipment) izni vermemiş; Etsy kısıtlı bir uç nokta olarak sunuyor. Siparişi Etsy'de tamamla; uygulama için izin istemek üzere developers@etsy.com'a yazılabilir.",
+                "Etsy has not approved this app for marking orders as shipped (createReceiptShipment is a restricted endpoint). Complete the order on Etsy; you can ask developers@etsy.com about approval for this app.",
+            )) from exc
+        raise
     except service.OrderNotFound as exc:
         raise HTTPException(404, str(exc)) from exc
