@@ -42,8 +42,22 @@ def _min_expected_ship_date(receipt: dict) -> dt.datetime | None:
 _DROPPED_RECEIPT_FIELDS = ("buyer_email", "payment_email")
 
 
-def _receipt_json(receipt: dict) -> str:
-    return json.dumps({k: v for k, v in receipt.items() if k not in _DROPPED_RECEIPT_FIELDS}, ensure_ascii=False)
+# Etsy bu alanları bazı bölgelerde yalnızca ortak programdaki uygulamalara verir (bkz. getShopReceipt notu); gelmezse boş döner. Daha önce alınmış adres,
+# yeni (maskeli) bir senkronda üzerine yazılıp kaybolmasın diye korunur.
+_ADDRESS_FIELDS = ("first_line", "second_line", "city", "state", "zip", "country_iso", "formatted_address")
+
+
+def _receipt_json(receipt: dict, previous_json: str | None = None) -> str:
+    data = {k: v for k, v in receipt.items() if k not in _DROPPED_RECEIPT_FIELDS}
+    if previous_json:
+        try:
+            old = json.loads(previous_json)
+        except ValueError:
+            old = {}
+        for field in _ADDRESS_FIELDS:
+            if not data.get(field) and old.get(field):
+                data[field] = old[field]
+    return json.dumps(data, ensure_ascii=False)
 
 
 def _upsert(db: Session, shop: Shop, receipt: dict) -> None:
@@ -62,9 +76,9 @@ def _upsert(db: Session, shop: Shop, receipt: dict) -> None:
     row.is_shipped = receipt["is_shipped"]
     row.created_at = dt.datetime.utcfromtimestamp(receipt["created_timestamp"])
     row.expected_ship_date = _min_expected_ship_date(receipt)
-    row.raw_json = _receipt_json(receipt)
+    row.raw_json = _receipt_json(receipt, row.raw_json)
     row.synced_at = dt.datetime.utcnow()
-    for k, v in derive(receipt).items():
+    for k, v in derive(json.loads(row.raw_json)).items():
         setattr(row, k, v)
 
 
@@ -389,7 +403,7 @@ def mark_shipped(db: Session, shop: Shop, receipt_id: int, tracking_code: str | 
     if row.is_shipped:
         row.step_id = None  # tamamlanan sipariş artık bir ilerleme adımında durmaz
     row.status = receipt["status"]
-    row.raw_json = _receipt_json(receipt)
+    row.raw_json = _receipt_json(receipt, row.raw_json)
     row.synced_at = dt.datetime.utcnow()
     db.commit()
     return _serialize_order(row)
