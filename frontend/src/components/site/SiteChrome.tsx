@@ -132,13 +132,13 @@ export function SiteHeader({ lang, active }: { lang: Lang; active?: (typeof NAV)
         </div>
       </div>
       {/* Telefonda sekmeler başlığın altında, yatay kaydırılabilir bir satırda. */}
-      <nav className="flex gap-1 overflow-x-auto px-3 pb-2 text-sm [scrollbar-width:none] md:hidden">
+      <nav className="flex flex-wrap justify-center gap-x-0.5 px-2 pb-2 text-[13px] md:hidden">
         {NAV.map((n) => (
           <Link
             key={n.href}
             href={n.href}
             aria-current={n.key === active ? "page" : undefined}
-            className={`shrink-0 rounded-full px-3 py-1.5 ${link(n.key)} ${n.key === active ? "bg-black/[0.06] dark:bg-white/10" : ""}`}
+            className={`rounded-full px-2.5 py-1.5 ${link(n.key)} ${n.key === active ? "bg-black/[0.06] dark:bg-white/10" : ""}`}
           >
             {n.label[lang]}
           </Link>
@@ -155,7 +155,7 @@ export async function SiteFooter({ lang }: { lang: Lang }) {
     <footer className="border-t border-black/5 dark:border-white/10">
       <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
         <div className="flex flex-col gap-10 md:flex-row md:justify-between">
-          <div className="max-w-sm space-y-3">
+          <div className="flex max-w-sm flex-col items-center gap-3 text-center sm:items-start sm:text-left">
             <Wordmark />
             <p className="text-sm text-neutral-500 dark:text-neutral-400">
               {lang === "tr"
@@ -164,9 +164,9 @@ export async function SiteFooter({ lang }: { lang: Lang }) {
             </p>
           </div>
           {/* Telefonda (sm altı) iki liste alt alta, bağlantılar yan yana akar; sm ve üstünde eski iki sütun düzeni. */}
-          <div className="grid grid-cols-1 gap-7 sm:grid-cols-[auto_auto] sm:gap-10">
-            <nav className="flex flex-wrap gap-x-5 gap-y-2.5 text-sm sm:flex-col sm:gap-2">
-              <p className="mb-0 w-full text-xs font-semibold uppercase tracking-wider text-neutral-400 sm:mb-1 sm:w-auto dark:text-neutral-500">
+          <div className="grid grid-cols-1 justify-items-center gap-7 sm:justify-items-stretch sm:grid-cols-[auto_auto] sm:gap-10">
+            <nav className="flex flex-wrap justify-center gap-x-5 gap-y-2.5 text-sm sm:justify-start sm:flex-col sm:gap-2">
+              <p className="mb-0 w-full text-center text-xs font-semibold sm:text-left uppercase tracking-wider text-neutral-400 sm:mb-1 sm:w-auto dark:text-neutral-500">
                 {lang === "tr" ? "Ürün" : "Product"}
               </p>
               {NAV.map((n) => (
@@ -175,8 +175,8 @@ export async function SiteFooter({ lang }: { lang: Lang }) {
                 </Link>
               ))}
             </nav>
-            <nav className="flex flex-wrap gap-x-4 gap-y-2 text-xs sm:flex-col sm:gap-2 sm:text-sm">
-              <p className="mb-0 w-full text-xs font-semibold uppercase tracking-wider text-neutral-400 sm:mb-1 sm:w-auto dark:text-neutral-500">
+            <nav className="flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs sm:justify-start sm:flex-col sm:gap-2 sm:text-sm">
+              <p className="mb-0 w-full text-center text-xs font-semibold sm:text-left uppercase tracking-wider text-neutral-400 sm:mb-1 sm:w-auto dark:text-neutral-500">
                 {lang === "tr" ? "Yasal" : "Legal"}
               </p>
               {LEGAL_LINKS.map((l) => (
@@ -187,9 +187,9 @@ export async function SiteFooter({ lang }: { lang: Lang }) {
             </nav>
           </div>
         </div>
-        <p className="mt-8 max-w-3xl text-xs leading-relaxed text-neutral-500 sm:mt-10 sm:text-sm sm:text-neutral-600 dark:text-neutral-400 dark:sm:text-neutral-300">{ETSY_DISCLAIMER}</p>
-        <div className="mt-6 flex flex-col-reverse gap-4 border-t border-black/5 pt-6 sm:flex-row sm:items-center sm:justify-between dark:border-white/10">
-          <p className="text-xs text-neutral-400 dark:text-neutral-500">© {new Date().getFullYear()} {BRAND}</p>
+        <p className="mx-auto mt-8 max-w-3xl text-center text-xs leading-relaxed text-neutral-500 sm:mx-0 sm:mt-10 sm:text-left sm:text-sm sm:text-neutral-600 dark:text-neutral-400 dark:sm:text-neutral-300">{ETSY_DISCLAIMER}</p>
+        <div className="mt-6 flex flex-col-reverse items-center gap-4 border-t border-black/5 pt-6 sm:flex-row sm:justify-between dark:border-white/10">
+          <p className="text-center text-xs text-neutral-400 dark:text-neutral-500">© {new Date().getFullYear()} {BRAND}</p>
           {social.length > 0 && (
             <ul className="flex items-center gap-3">
               {social.map((s) => (
