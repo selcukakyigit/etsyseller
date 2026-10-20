@@ -1126,9 +1126,15 @@ def _apply_shop_prefill(ctx: Ctx, work: dict, a: dict, is_digital: bool, title: 
     return chosen
 
 
+# Kendi etkileşimli kartı olan akışlar: bu kartlarla birlikte "seçenek menüsü" (ask_user) gösterilmez.
+_NO_CHOICE_CARDS = frozenset({"description_edit", "bulk_result"})
+
+
 def ask_user(ctx: Ctx, a: dict) -> dict:
     """Sohbette dokunulabilir seçenek kartı gösterir: eksik bilgi sorusu (kind=question) ya da sıradaki adım önerileri (kind=suggestions). Seçilen metin
     kullanıcının bir sonraki mesajı olarak gelir; yazı kutusu her zaman açıktır. Yanıtta yalnızca bir kart kalır."""
+    if any(c.get("type") in _NO_CHOICE_CARDS for c in ctx.cards):  # kendi kartı olan akışlarda seçenek menüsü sunulmaz (model istemdeki istisnayı atlasa bile)
+        return {"ok": True, "not": "Bu yanıtta zaten etkileşimli bir kart var; seçenek kartı gösterilmedi, kullaniciya_yaz metniyle yetin ve kullanıcının karttan devam etmesini bekle."}
     question = " ".join(str(a.get("question") or "").split())[:160]
     options = [" ".join(str(o).split())[:60] for o in a.get("options") or [] if str(o).strip()][:4]
     if not question or len(options) < 2:
