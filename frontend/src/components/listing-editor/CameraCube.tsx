@@ -26,17 +26,18 @@ const ELEVATION_STEPS = [
   { key: "high", deg: 28, label: ["Yüksek", "High"] },
 ] as const;
 
-// Yönler ÜRÜNÜN kendi yönüdür (izleyicinin sağı/solu değil): küpte "SAĞ" yüzü görünüyorsa kamera ürünün sağ yanındadır.
-// Model "sağdan" sözünü iki türlü okuyabildiği için kameranın konumu, kaç derece döndüğü ve hangi yüzlerin görüneceği açıkça yazılır.
+// Kamera, sabit duran sahnenin/ürünün çevresinde hareket eder (ürün ya da nesneler döndürülmez). Yönler SAHNENİN/ÜRÜNÜN kendi yönüdür
+// (izleyicinin sağı/solu değil): küpte "SAĞ" yüzü görünüyorsa kamera ürünün sağ tarafındadır. Model "sağdan" sözünü iki türlü
+// okuyabildiği için kameranın konumu ve kaç derece döndüğü açıkça yazılır.
 const AZIMUTH_PHRASE: Record<string, string> = {
-  front: "kamera ürünün tam önünde, ürüne dik bakar (yalnızca ön yüz görünür)",
-  front_right: "kamera ürünün önünden ürünün kendi SAĞ tarafına doğru yaklaşık 45° kaymış (3/4 görünüm: ön yüz ve sağ yan yüz birlikte görünür)",
-  right: "kamera ürünün kendi SAĞ yanında, ürüne tam yandan bakar (yalnızca sağ yan yüz/profil görünür)",
-  back_right: "kamera ürünün arkasına doğru, kendi SAĞ tarafında, yaklaşık 135° dönmüş (arka yüz ve sağ yan yüz birlikte görünür)",
-  back: "kamera ürünün tam arkasında (yalnızca arka yüz görünür)",
-  back_left: "kamera ürünün arkasına doğru, kendi SOL tarafında, yaklaşık 135° dönmüş (arka yüz ve sol yan yüz birlikte görünür)",
-  left: "kamera ürünün kendi SOL yanında, ürüne tam yandan bakar (yalnızca sol yan yüz/profil görünür)",
-  front_left: "kamera ürünün önünden ürünün kendi SOL tarafına doğru yaklaşık 45° kaymış (3/4 görünüm: ön yüz ve sol yan yüz birlikte görünür)",
+  front: "kamera ürünün tam karşısında, ona dik bakar (0°)",
+  front_right: "kamera ürünün önünden, ürünün kendi SAĞ tarafına doğru yaklaşık 45° kaymış ve ürüne çapraz bakar",
+  right: "kamera ürünün kendi SAĞ tarafına 90° geçmiş, ona tam yandan bakar",
+  back_right: "kamera ürünün kendi SAĞ tarafından arkasına doğru yaklaşık 135° dönmüş, çapraz arkadan bakar",
+  back: "kamera ürünün tam arkasında (180°), arkadan bakar",
+  back_left: "kamera ürünün kendi SOL tarafından arkasına doğru yaklaşık 135° dönmüş, çapraz arkadan bakar",
+  left: "kamera ürünün kendi SOL tarafına 90° geçmiş, ona tam yandan bakar",
+  front_left: "kamera ürünün önünden, ürünün kendi SOL tarafına doğru yaklaşık 45° kaymış ve ürüne çapraz bakar",
 };
 
 const ELEVATION_PHRASE: Record<string, string> = {

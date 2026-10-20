@@ -704,11 +704,6 @@ export default function MediaManager({
           title={`${t("Fotoğraf", "Photo")} ${viewIdx + 1}/${ordered.length}`}
           onClose={() => setViewIdx(null)}
           closeButton
-          footer={
-            <button type="button" onClick={() => setViewIdx(null)} className={`${btnGhost} ml-auto`}>
-              {t("Vazgeç", "Cancel")}
-            </button>
-          }
         >
           <div className="relative">
             <RegenImage

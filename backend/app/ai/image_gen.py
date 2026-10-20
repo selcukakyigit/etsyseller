@@ -33,17 +33,20 @@ QUALITY_BASELINE = (
 )
 
 CAMERA_DIRECTIVE_TPL = (
-    "\n\nKAMERA/ÇEKİM TALİMATI — bunu MUTLAKA uygula: {camera_prompt} Bu bir kamera/kompozisyon değişikliğidir; "
-    "sahneyi bu açıya göre yeniden düzenlemen, gerekirse şu an görünmeyen kısımları (ör. ürünün başka bir yüzü, "
-    "arkasındaki duvar/zemin) mantıklı biçimde tamamlaman NORMAL ve BEKLENEN bir şeydir. ÖNEMLİ: ürünün kendisi de "
-    "bu yeni kamera açısına göre DOĞAL PERSPEKTİFLE (açılı/kısalmış) görünmeli — sahne dönerken ürünü olduğu gibi "
-    "düz/karşıdan bakan bir çıkartma gibi sabit bırakma, o da yeni açıya göre 3 boyutlu şekilde dönmüş görünsün. "
-    "Yukarıdaki \"ürünü koru\" kuralı yalnızca ürünün KİMLİĞİNİ (ne olduğunu, rengini, desenini) korumanı ister — "
-    "kamerayı, kompozisyonu ya da ürünün perspektifini sabit tutmanı istemez, bu talimatı görmezden gelme."
+    "\n\nKAMERA TALİMATI — bunu MUTLAKA uygula: {camera_prompt}\n"
+    "Bu bir KAMERA konumu değişikliğidir: dünya (duvar, zemin, mobilya, ürün, ışık, gölgeler) sabit kalır, yalnızca kameranın bakış noktası "
+    "değişir. Ürünü ya da başka bir nesneyi tek başına döndürme, eğme, çarpıtma. Görüntünün TAMAMINI (arka plan, duvar/zemin düzlemleri, "
+    "mobilya, ürün) yeni bakış noktasından tutarlı tek bir perspektifle yeniden çiz: aynı düzlemdeki nesneler aynı kaçış noktalarını paylaşır "
+    "(ör. duvardaki bir ürün, duvarla birlikte aynı açıyla kısalır; duvardan bağımsız dönmüş gibi görünmez). Yeni bakış noktasında görünmeyen "
+    "kısımları (ürünün yan yüzü, odanın görünmeyen köşesi, arka plan) mantıklı biçimde tamamla. Ürünün kimliği (şekil, renk, desen, yazı, oran, "
+    "malzeme) değişmez; yalnızca bakış noktasına göre görünümü değişir. \"Ürünü koru\" kuralı kompozisyonu ya da perspektifi sabit tutmanı "
+    "istemez; bu kamera talimatını görmezden gelme."
 )
 
 DISTANCE_DIRECTIVE_TPL = (
-    "\n\nÇEKİM MESAFESİ/KADRAJ TALİMATI — bunu MUTLAKA uygula: {distance_prompt}"
+    "\n\nÇEKİM MESAFESİ/KADRAJ TALİMATI — bunu MUTLAKA uygula: {distance_prompt}\n"
+    "Kadraj kamera mesafesiyle belirlenir: kamerayı ürüne yaklaştır ya da geri çek; görüntüyü dijital olarak büyütüp küçültme. Perspektif "
+    "tutarlı kalır, ürünün kimliği (şekil, renk, yazı, oran) değişmez, kadrajın dışında kalan çevreyi gerekiyorsa mantıklı biçimde tamamla."
 )
 
 SCENE_DIRECTIVE_TPL = (
