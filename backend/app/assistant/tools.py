@@ -862,6 +862,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     others = quality.shop_others(ctx.db, ctx.shop.id)
     draft_variations = {str(v.get("name") or ""): [str(x.get("value") or "") for x in v.get("values") or []] for v in a.get("variations") or []}
     source = _user_facts(ctx, draft_variations)  # kullanıcının söylediği ölçü/renk/malzeme "uydurma" sayılmaz
+    a = {**a, "description": quality.strip_claims(str(a.get("description") or ""), source)}  # kaynakta olmayan "warranty/hardware included" gibi iddialar koddan silinir (SEO önerisiyle aynı kural)
     problems_pre = audit.generation_problems(title, tags_checked, str(a.get("description") or ""), others, source, draft_variations, a.get("listing_type") == "download", bool(a.get("personalizable")))
     quality_warnings: list[str] = []
     if problems_pre:
@@ -1616,25 +1617,8 @@ def keyword_pool(ctx: Ctx, a: dict) -> dict:
     }
 
 
-# ------------------------------------------------------------------ fotoğraf araçları (küple/mesafe seçiciyle AYNI hazır
-# cümleler — bkz. frontend CameraCube.tsx / DistancePicker.tsx; serbest metne bırakılırsa tutarlılık/kalite düşüyor)
-
-_AZIMUTH_PHRASE = {
-    "front": "ürünü tam önden", "front_right": "ürünü ön-sağ 3/4 açıdan", "right": "ürünü tam sağ yandan (profilden)",
-    "back_right": "ürünü arka-sağ açıdan, arkaya yakın bir açıdan", "back": "ürünü arkadan",
-    "back_left": "ürünü arka-sol açıdan, arkaya yakın bir açıdan", "left": "ürünü tam sol yandan (profilden)",
-    "front_left": "ürünü ön-sol 3/4 açıdan",
-}
-_ELEVATION_PHRASE = {
-    "low": "alçak açıdan, aşağıdan yukarıya bakan bir kamerayla", "eye": "göz hizasında, düz bir kamerayla",
-    "high": "yüksek açıdan, yukarıdan aşağıya bakan bir kamerayla",
-}
-_DISTANCE_PHRASE = {
-    "close": "Yakın çekim (close-up) kadrajla, ürünü ve dokusunu/detayını doldurarak çek; arka plan hafifçe bulanıklaşsın (sığ alan derinliği), odak tamamen üründe olsun.",
-    "medium": "Orta plan kadrajla çek: ürün net ve öne çıkmış olsun, etrafındaki sahne de bir miktar görünsün, dengeli bir odak-bağlam dengesi kur.",
-    "wide": "Geniş plan/kadrajla çek: ürünü bulunduğu ortamla/mekânla birlikte, biraz uzaktan göster; sahnenin tamamı kadrajda olsun.",
-}
-
+# ------------------------------------------------------------------ fotoğraf araçları (küple/kadraj seçiciyle AYNI hazır
+# cümleler — bkz. ai/camera.py; serbest metne bırakılırsa tutarlılık/kalite düşüyor)
 
 def _draft_work(ctx: Ctx, listing_id: int) -> dict:
     """Ekrandaki güncel çalışma kopyası: taslak varsa o, yoksa kaydedilmiş yerel sürüm, o da yoksa canlı Etsy
@@ -1670,18 +1654,10 @@ def _image_entry(shop_id: int, listing_id: int, file_id: str, alt_text: str | No
 
 
 def _camera_prompts(a: dict) -> tuple[str | None, str | None, str | None]:
-    """Kamera açısı ve mesafe seçeneklerini görsel üretim talimatına çevirir: (kamera, mesafe, hata)."""
-    camera = distance = None
-    if a.get("azimuth") or a.get("elevation"):
-        az, el = a.get("azimuth", "front"), a.get("elevation", "eye")
-        if az not in _AZIMUTH_PHRASE or el not in _ELEVATION_PHRASE:
-            return None, None, "azimuth front/front_right/right/back_right/back/back_left/left/front_left; elevation low/eye/high olmalı."
-        camera = f"Kamera açısı: {_AZIMUTH_PHRASE[az]}, {_ELEVATION_PHRASE[el]} çek."
-    if a.get("distance"):
-        if a["distance"] not in _DISTANCE_PHRASE:
-            return None, None, "distance close/medium/wide olmalı."
-        distance = _DISTANCE_PHRASE[a["distance"]]
-    return camera, distance, None
+    """Kamera açısı ve kadraj seçeneklerini görsel üretim talimatına çevirir: (kamera, kadraj, hata). Düzenleyiciyle AYNI cümleler (ai/camera.py)."""
+    from app.ai import camera
+
+    return camera.prompts(a.get("azimuth"), a.get("elevation"), a.get("distance"))
 
 
 def regenerate_listing_image(ctx: Ctx, a: dict) -> dict:
@@ -1718,15 +1694,56 @@ def regenerate_listing_image(ctx: Ctx, a: dict) -> dict:
         )
     except (ImageGenError, ValueError) as exc:
         return {"error": str(exc)}
-    new_entry = _image_entry(ctx.shop.id, lid, result["file_id"], None, img.get("rank", 0))  # eski alt metin yeni görsele uymayabilir
-    work["images"] = [new_entry if i.get("listing_image_id") == image_id else i for i in images]
+    _put_photo(ctx, lid, work, img, result["file_id"])
+    _show_listing(ctx, lid, _draft_work(ctx, lid), ["photo"])
+    return {"ok": True, "not": "Yeni görsel taslağa kaydedildi; Etsy'ye gitmesi için yayınlanması gerekiyor."}
+
+
+def _put_photo(ctx: Ctx, lid: int, work: dict, img: dict, file_id: str, keep_alt: bool = False) -> None:
+    """Üretilen taslak dosyasını fotoğrafın yerine koyar ve taslağa yazar. `keep_alt`: içerik değişmediyse (yükseltme) eski alt metin kalır;
+    yoksa (yeniden oluşturma) eski alt metin yeni görsele uymayabilir, sunucu yenisini yazar."""
+    new_entry = _image_entry(ctx.shop.id, lid, file_id, img.get("alt_text") if keep_alt else None, img.get("rank", 0))
+    work["images"] = [new_entry if i.get("listing_image_id") == img.get("listing_image_id") else i for i in work.get("images") or []]
     _save_draft_work(ctx, lid, work)
-    new_file = drafts.get_file(ctx.db, ctx.shop, lid, result["file_id"])
+    new_file = None if keep_alt else drafts.get_file(ctx.db, ctx.shop, lid, file_id)
     if new_file is not None:
         _write_alt(ctx, lid, new_entry["listing_image_id"], new_file.path, new_file.content_type)
-        work = _draft_work(ctx, lid)
-    _show_listing(ctx, lid, work, ["photo"])
-    return {"ok": True, "not": "Yeni görsel taslağa kaydedildi; Etsy'ye gitmesi için yayınlanması gerekiyor."}
+
+
+def upscale_listing_photo(ctx: Ctx, a: dict) -> dict:
+    """Listing fotoğrafını (photo_number; verilmezse hepsini) yalnızca 2K/4K'ya yükseltir: içerik ve kadraj değişmez (düzenleyicideki "Yükselt" ile
+    aynı yol). Yeni sürüm fotoğrafın yerine geçer, alt metin korunur; yalnızca taslağa yazar."""
+    from app.ai.image_gen import ImageGenError
+
+    size = str(a.get("size") or "").upper()
+    offered = {o["size"]: o["credits"] for o in generation.upscale_options()}
+    if size not in offered:
+        return {"error": f"Yükseltme boyutu şunlardan biri olmalı: {', '.join(offered) or 'şu an yükseltme kullanılamıyor'}."}
+    lid = int(a["listing_id"])
+    work = _draft_work(ctx, lid)
+    ordered = sorted(work.get("images") or [], key=lambda x: x.get("rank") or 0)
+    if a.get("photo_number"):
+        _, photo = _photo_at(work, int(a["photo_number"]))
+        targets = [photo] if photo else []
+    else:
+        targets = ordered
+    if not targets:
+        return {"error": f"Fotoğraf bulunamadı; listing'de {len(ordered)} fotoğraf var. get_listing'in fotograflar listesine bak."}
+    done, errors = 0, []
+    for img in targets:
+        try:
+            result = drafts.upscale_image(ctx.db, ctx.shop, lid, img["listing_image_id"], img.get("draft_file_id"), size)
+        except (ImageGenError, ValueError) as exc:
+            errors.append(str(exc))
+            break  # aynı hata (kota, model yok) sıradakilerde de çıkar; krediyi boşa harcama
+        _put_photo(ctx, lid, work, img, result["file_id"], keep_alt=True)
+        done += 1
+    if done:
+        _show_listing(ctx, lid, _draft_work(ctx, lid), ["photo"])
+    out = {"ok": done > 0, "yukseltilen": done, "boyut": size, "kredi": done * offered[size], "not": "Yeni sürümler taslağa kaydedildi; Etsy'ye gitmesi için yayınlanması gerekiyor."}
+    if errors:
+        out["hata"] = errors[0]
+    return out
 
 
 IMAGE_PARALLEL = 3  # aynı turda istenen görsellerden en fazla bu kadarı aynı anda üretilir
@@ -2310,7 +2327,8 @@ def generation_options(ctx: Ctx, a: dict) -> dict:
         "krediler_acik": credit_settings.enabled(),
         "gorsel": _option_rows(generation.kind_options("image")),
         "video": _video_alternatives(),
-        "not": "Kredi 'birim başına': görselde bir görsel, videoda bir saniye. Etsy en az ~2000 piksel önerir; görselde 2K bu yüzden uygun varsayılandır, daha yüksek çözünürlük yalnızca kullanıcı isterse.",
+        "yukseltme": generation.upscale_options(),
+        "not": "Kredi 'birim başına': görselde bir görsel, videoda bir saniye; yükseltmede (yukseltme) fotoğraf başına. Etsy en az ~2000 piksel önerir; görselde 2K bu yüzden uygun varsayılandır, daha yüksek çözünürlük yalnızca kullanıcı isterse.",
     }
 
 
@@ -2796,7 +2814,7 @@ def _obj(props: dict, required: list[str] | None = None) -> dict:
 DATE = {"type": "string", "description": "YYYY-MM-DD"}
 
 # Uzun süren (resim/video üreten) araçlar: sohbet bekleme sırasında buna göre ilerleme kartı gösterir.
-TOOL_KIND = {"generate_chat_image": "image", "edit_chat_image": "image", "regenerate_listing_image": "image"}
+TOOL_KIND = {"generate_chat_image": "image", "edit_chat_image": "image", "regenerate_listing_image": "image", "upscale_listing_photo": "image"}
 
 # Görsel/video model ve kalite seçimi (generation_options'taki id ve key değerleri). Verilmezse yönetim panelindeki varsayılan.
 _QUALITY_SCHEMA = {
@@ -2885,6 +2903,7 @@ TOOLS: list[dict] = [
         "subject_image_id": {"type": "integer"},
         **_QUALITY_SCHEMA,
     }, ["listing_id"])},
+    {"name": "upscale_listing_photo", "description": "Listing fotoğrafını YALNIZCA yüksek çözünürlüğe (2K ya da 4K) çıkarır: içerik, kadraj, yazı ve renkler değişmez (düzenleyicideki 'Yükselt' ile aynı). photo_number verilmezse listing'in TÜM fotoğrafları. Kredi harcar (generation_options.yukseltme: fotoğraf başına kredi); kullanıcı açıkça '2K/4K yap, çözünürlüğü artır, netleştir' dediyse onay sorma, hemen yap ve kaç kredi harcandığını söyle. Yeni sürüm fotoğrafın yerine geçer, alt metin korunur; yalnızca taslağa yazar.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer", "description": "1'den başlayan sıra; yoksa tüm fotoğraflar"}, "size": {"type": "string", "enum": ["2K", "4K"]}}, ["size"])},
     {"name": "get_category_attributes", "description": "Listing'in kategorisinin özelliklerini (renk, malzeme, kullanım yeri, ölçü…) verir: hangileri ZORUNLU, izin verilen değerler, birimler ve şu anki seçimler. Özellik yazmadan ve kategori değişince çağır; kullanıcının söylediklerinden (ör. 'metal') ve varyasyon renklerinden uygun olanları set_listing_attributes ile kendin doldur, yalnızca bilmediğin ZORUNLU olanları kullanıcıya sor.", "input_schema": _obj({"listing_id": {"type": "integer"}}, ["listing_id"])},
     {"name": "autofill_listing_attributes", "description": "Listing'in BOŞ kategori özelliklerini (malzeme, kullanım yeri, tatil, yön, çerçeve, el yapımı vb.) ürüne, fotoğraflara ve varyasyonlara bakarak otomatik doldurur; yalnızca Etsy'nin izin verdiği değerleri yazar, varyasyonla karşılanan renk/boyutu atlar. 'Özellikleri doldur', 'eksik alanları tamamla' isteklerinde bunu çağır; özellikleri tek tek sen yazma. Yeni taslakta zaten otomatik yapılır.", "input_schema": _obj({"listing_id": {"type": "integer"}}, [])},
     {"name": "set_listing_attributes", "description": "Kategori özelliklerini izin verilen değerlere göre yazar (yerel taslak). attributes: [{name: 'Primary color', values: ['Black']}, {name: 'Width', values: ['30'], unit: 'cm'}]. İzin verilen listede olmayan değer yazılmaz ve hata olarak döner (uydurma). Boş values özelliği kaldırır. Önce get_category_attributes'e bak.", "input_schema": _obj({"listing_id": {"type": "integer"}, "attributes": {"type": "array", "items": _obj({"name": {"type": "string"}, "values": {"type": "array", "items": {"type": "string"}}, "unit": {"type": "string", "description": "Yalnızca ölçü özelliklerinde (cm, in…)"}}, ["name"])}}, ["listing_id", "attributes"])},
@@ -2992,6 +3011,7 @@ TOOL_LABELS = {
     "keyword_pool": "Anahtar kelime havuzuna bakıyor",
     "shipping_invoices": "Kargo faturalarına bakıyor",
     "regenerate_listing_image": "Fotoğrafı yeniden oluşturuyor",
+    "upscale_listing_photo": "Fotoğrafı yüksek çözünürlüğe çıkarıyor",
     "generate_chat_image": "Görsel üretiyor",
     "edit_chat_image": "Resmi düzenliyor",
     "move_listing_photo": "Fotoğraf sırasını değiştiriyor",
@@ -3059,6 +3079,7 @@ TOOL_LABELS_EN = {
     "keyword_pool": "Checking the keyword pool",
     "shipping_invoices": "Checking shipping invoices",
     "regenerate_listing_image": "Regenerating the photo",
+    "upscale_listing_photo": "Upscaling the photo",
     "generate_chat_image": "Generating an image",
     "edit_chat_image": "Editing the image",
     "move_listing_photo": "Reordering the photos",
@@ -3105,7 +3126,7 @@ EXECUTORS = {
     "create_listing_draft": create_listing_draft, "update_listing": update_listing,
     "shop_options": shop_options, "workspace_status": workspace_status, "orders_overview": orders_overview, "order_detail": order_detail,
     "orders_missing_costs": orders_missing_costs, "keyword_pool": keyword_pool, "shipping_invoices": shipping_invoices,
-    "regenerate_listing_image": regenerate_listing_image, "edit_chat_image": edit_chat_image, "generate_chat_image": generate_chat_image, "move_listing_photo": move_listing_photo, "crop_listing_photo": crop_listing_photo, "generate_listing_video": generate_listing_video, "generation_options": generation_options, "edit_inventory": edit_inventory, "remove_variation_option": remove_variation_option, "add_variation_option": add_variation_option,
+    "regenerate_listing_image": regenerate_listing_image, "upscale_listing_photo": upscale_listing_photo, "edit_chat_image": edit_chat_image, "generate_chat_image": generate_chat_image, "move_listing_photo": move_listing_photo, "crop_listing_photo": crop_listing_photo, "generate_listing_video": generate_listing_video, "generation_options": generation_options, "edit_inventory": edit_inventory, "remove_variation_option": remove_variation_option, "add_variation_option": add_variation_option,
     "set_variation_photo": set_variation_photo, "remove_listing_video": remove_listing_video, "copy_listing": copy_listing,
     "discard_listing_changes": discard_listing_changes, "delete_listing": delete_listing, "personalization_library": personalization_library, "add_video_to_listing": add_video_to_listing, "get_category_attributes": get_category_attributes, "set_listing_attributes": set_listing_attributes, "autofill_listing_attributes": autofill_listing_attributes,
     "set_listing_fields": set_listing_fields, "delete_listing_photo": delete_listing_photo, "edit_personalization_question": edit_personalization_question, "set_photo_alt_text": set_photo_alt_text, "add_chat_image_to_listing": add_chat_image_to_listing, "generate_missing_alt_texts": generate_missing_alt_texts,
@@ -3126,7 +3147,7 @@ for _mod in toolsets.MODULES:
 
 # listing_id verilmezse (ya da önceki konuşmadan unutulduysa) sohbette en son oluşturulan yeni taslak kullanılır.
 _DEFAULT_DRAFT_TOOLS = (
-    "get_listing", "update_listing", "regenerate_listing_image", "crop_listing_photo", "get_category_attributes", "set_listing_attributes", "autofill_listing_attributes", "set_listing_fields",
+    "get_listing", "update_listing", "regenerate_listing_image", "upscale_listing_photo", "crop_listing_photo", "get_category_attributes", "set_listing_attributes", "autofill_listing_attributes", "set_listing_fields",
     "edit_personalization_question", "delete_listing_photo", "set_photo_alt_text", "edit_inventory", "add_variation_option", "remove_variation_option",
     "set_variation_photo", "remove_listing_video", "move_listing_photo", "generate_missing_alt_texts", "add_digital_file", "remove_digital_file", "set_listing_type",
 )
@@ -3164,7 +3185,7 @@ for _t in TOOLS:
 LISTING_TOOL_NAMES = frozenset({
     "ask_user",
     "shop_defaults", "shop_options", "similar_listings", "find_category", "search_listings", "get_listing", "create_listing_draft", "update_listing",
-    "regenerate_listing_image", "edit_chat_image", "generate_chat_image", "add_chat_image_to_listing", "crop_listing_photo", "delete_listing_photo", "move_listing_photo", "set_photo_alt_text",
+    "regenerate_listing_image", "upscale_listing_photo", "edit_chat_image", "generate_chat_image", "add_chat_image_to_listing", "crop_listing_photo", "delete_listing_photo", "move_listing_photo", "set_photo_alt_text",
     "generate_missing_alt_texts", "get_category_attributes", "set_listing_attributes", "autofill_listing_attributes", "set_listing_fields", "edit_personalization_question",
     "personalization_library", "edit_inventory", "add_variation_option", "remove_variation_option", "set_variation_photo", "copy_listing", "discard_listing_changes",
     "delete_listing", "generation_options", "generate_listing_video", "add_video_to_listing", "remove_listing_video", "publish_listing_draft", "deactivate_listing",

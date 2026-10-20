@@ -2018,8 +2018,9 @@ export const api = {
       opts?: {
         prompt?: string;
         referenceDraftFileId?: string;
-        cameraPrompt?: string;
-        distancePrompt?: string;
+        azimuth?: string;
+        elevation?: string;
+        distance?: string;
         subjectImageId?: number;
         subjectDraftFileId?: string;
       }
@@ -2033,8 +2034,9 @@ export const api = {
             draft_file_id: draftFileId,
             prompt: opts?.prompt || undefined,
             reference_draft_file_id: opts?.referenceDraftFileId || undefined,
-            camera_prompt: opts?.cameraPrompt || undefined,
-            distance_prompt: opts?.distancePrompt || undefined,
+            azimuth: opts?.azimuth || undefined,
+            elevation: opts?.elevation || undefined,
+            distance: opts?.distance || undefined,
             subject_image_id: opts?.subjectImageId ?? undefined,
             subject_draft_file_id: opts?.subjectDraftFileId || undefined,
           }),

@@ -13,18 +13,6 @@ const DISTANCE_STEPS = [
 
 export type Distance = (typeof DISTANCE_STEPS)[number]["key"];
 
-// Kadraj kamera mesafesiyle tanımlanır ve ölçülebilirdir (ürün kadrajın yüzde kaçını kaplar): "yakın/uzak" göreli kalırsa model, orijinal
-// zaten yakın ya da uzaksa ne yapacağını bilemez.
-const DISTANCE_PHRASE: Record<Distance, string> = {
-  close: "Yakın çekim: kamera ürüne yaklaşsın; ürün kadrajın yaklaşık %80–90'ını kaplasın, dokusu ve detayları net görünsün, arka plan hafifçe bulanık olsun (sığ alan derinliği).",
-  medium: "Orta plan: kamera ürüne orta mesafede olsun; ürün kadrajın yaklaşık %40–50'sini kaplasın, çevresindeki sahne de belirgin biçimde görünsün.",
-  wide: "Geniş plan: kamera geri çekilsin; ürün kadrajın yaklaşık %15–25'ini kaplasın, çevresindeki ortam/mekân ağırlıkta görünsün.",
-};
-
-export function distancePrompt(d: Distance): string {
-  return DISTANCE_PHRASE[d];
-}
-
 export default function DistancePicker({
   value,
   onChange,

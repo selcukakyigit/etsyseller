@@ -23,6 +23,21 @@ Do this from the start, for every new page, component, message or notification. 
 - Page data that is shown again when the user comes back: `useCached(key)` from `@/lib/pageCache`.
 - The demo shop (`shops.is_demo`) never calls Etsy; `EtsyClient` raises `DemoShopError`.
 
+## Every new capability must also be available to the assistant
+
+The chat assistant (`backend/app/assistant/`) is a second front end of the product. When you add or change something a user can do on a screen
+(editor action, generation option, report, setting, import), make it available to the assistant **in the same change**, without being asked.
+
+- Expose it as an assistant tool that calls the **same backend function** the screen uses. Never write a second implementation for the assistant.
+- Anything both sides need (prompt phrases, option lists, limits, prices) lives in ONE backend module that both import (e.g. `app/ai/camera.py`,
+  `generation.upscale_options()`). The frontend sends choices (keys), not text the backend should have built.
+- Register the tool everywhere it is needed in `assistant/tools.py`: the `TOOLS` schema, `EXECUTORS`, `TOOL_LABELS` and `TOOL_LABELS_EN`
+  (plain, non-technical progress text), `LISTING_TOOL_NAMES`, `_DEFAULT_DRAFT_TOOLS` (listing-scoped tools), `WRITE_TOOLS` (draft-writing tools) and
+  `TOOL_KIND` where it applies. New topic-specific tools go into a `TOOL_GROUPS` group instead of the core list.
+- Mention it in `assistant/prompt.py` (when to use it, what it costs, what it never does). Tools that spend credits report the cost back.
+- When you change behavior the assistant already uses (standards, prompts, limits, option lists), check `tools.py` and `prompt.py` too.
+- If something is deliberately NOT for the assistant, say so in your final message so the user can overrule it.
+
 ## Account isolation (multi-tenant) — check on every new route, query and screen
 
 Shops and workspaces of different customers must never see each other's data, and an invited supplier (guest) must never see shop, order,
@@ -32,6 +47,12 @@ finance, cost-split, external-share or profit data.
 - Any sub-resource fetched by an id from the request (`db.get(Model, id)`) is checked against `entity_id` / `shop_id` / `workspace_id`; mismatch = 404.
 - Reports, summaries and lists must not return internal fields to guests (`access.internal`).
 - New table: enable RLS in its migration and tie it to `workspace_id` / `entity_id`.
+
+## Long explanations go behind a "?" icon
+
+Do not leave long help text, hints or notes always visible on a screen. Put them in `HelpTip` from `@/components/ui/HelpTip` next to the
+title or field (hover on desktop, tap on mobile). Keep visible only: short labels, warnings the user must act on, and live results
+(totals, errors). Write the tip text in both languages like any other UI text.
 
 ## Number fields and display helpers
 

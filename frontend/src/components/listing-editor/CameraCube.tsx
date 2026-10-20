@@ -6,7 +6,7 @@ import { tNow as t } from "@/lib/i18n";
 /**
  * Sürüklenerek döndürülen küp — kamera açısını seçmenin arayüzü. Gerçek bir 3D render/önizleme YAPMAZ
  * (ürünün 3D modeli yok); yalnızca en yakın açı "kovasına" yuvarlanıp karşılığı olan hazır fotoğrafçılık
- * cümlesini (bkz. `cameraAnglePrompt`) üretir, bu cümle "Yeniden oluştur" promptunun başına eklenir.
+ * seçimi (anahtar) üretir; sunucu bunu kamera cümlesine çevirir (bkz. backend ai/camera.py) ve "Yeniden oluştur" promptuna ekler.
  */
 
 const AZIMUTH_STEPS = [
@@ -26,31 +26,7 @@ const ELEVATION_STEPS = [
   { key: "high", deg: 28, label: ["Yüksek", "High"] },
 ] as const;
 
-// Kamera, sabit duran sahnenin/ürünün çevresinde hareket eder (ürün ya da nesneler döndürülmez). Yönler SAHNENİN/ÜRÜNÜN kendi yönüdür
-// (izleyicinin sağı/solu değil): küpte "SAĞ" yüzü görünüyorsa kamera ürünün sağ tarafındadır. Model "sağdan" sözünü iki türlü
-// okuyabildiği için kameranın konumu ve kaç derece döndüğü açıkça yazılır.
-const AZIMUTH_PHRASE: Record<string, string> = {
-  front: "kamera ürünün tam karşısında, ona dik bakar (0°)",
-  front_right: "kamera ürünün önünden, ürünün kendi SAĞ tarafına doğru yaklaşık 45° kaymış ve ürüne çapraz bakar",
-  right: "kamera ürünün kendi SAĞ tarafına 90° geçmiş, ona tam yandan bakar",
-  back_right: "kamera ürünün kendi SAĞ tarafından arkasına doğru yaklaşık 135° dönmüş, çapraz arkadan bakar",
-  back: "kamera ürünün tam arkasında (180°), arkadan bakar",
-  back_left: "kamera ürünün kendi SOL tarafından arkasına doğru yaklaşık 135° dönmüş, çapraz arkadan bakar",
-  left: "kamera ürünün kendi SOL tarafına 90° geçmiş, ona tam yandan bakar",
-  front_left: "kamera ürünün önünden, ürünün kendi SOL tarafına doğru yaklaşık 45° kaymış ve ürüne çapraz bakar",
-};
-
-const ELEVATION_PHRASE: Record<string, string> = {
-  low: "kamera ürünün biraz altında (yaklaşık 25° aşağıdan), yukarı doğru bakar",
-  eye: "kamera ürünle aynı yükseklikte, yatay bakar",
-  high: "kamera ürünün üstünde (yaklaşık 30° yukarıdan), aşağı doğru bakar",
-};
-
 export type CameraAngle = { azimuth: (typeof AZIMUTH_STEPS)[number]["key"]; elevation: (typeof ELEVATION_STEPS)[number]["key"] };
-
-export function cameraAnglePrompt(a: CameraAngle): string {
-  return `Kamera açısı: ${AZIMUTH_PHRASE[a.azimuth]}; ${ELEVATION_PHRASE[a.elevation]}. ("Sağ/sol" ürünün kendi yönüdür, izleyicinin değil.)`;
-}
 
 function nearestAzimuth(deg: number) {
   const norm = ((deg % 360) + 360) % 360;

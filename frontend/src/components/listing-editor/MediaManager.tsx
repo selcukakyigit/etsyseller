@@ -8,8 +8,8 @@ import ResolutionBadge from "./ResolutionBadge";
 import { Modal, btnGhost, btnPrimary } from "./Modal";
 import { getRegenJob, runRegenJob, useRegenJobs } from "@/lib/regenJobs";
 import RegenImage from "./RegenImage";
-import CameraCube, { CameraAngle, cameraAnglePrompt } from "./CameraCube";
-import DistancePicker, { Distance, distancePrompt } from "./DistancePicker";
+import CameraCube, { CameraAngle } from "./CameraCube";
+import DistancePicker, { Distance } from "./DistancePicker";
 import VersionDots from "./VersionDots";
 import GenerateModal from "./generate/GenerateModal";
 import { SHOT_PRESETS } from "./generate/shots";
@@ -259,8 +259,9 @@ export default function MediaManager({
     opts?: {
       prompt?: string;
       referenceFileId?: string;
-      cameraPrompt?: string;
-      distancePrompt?: string;
+      azimuth?: string;
+      elevation?: string;
+      distance?: string;
       subjectImageId?: number;
       subjectDraftFileId?: string;
     }
@@ -270,8 +271,9 @@ export default function MediaManager({
       api.listings.regenerateImage(shopId, listingId, img.listing_image_id, img.draft_file_id ?? null, {
         prompt: opts?.prompt,
         referenceDraftFileId: opts?.referenceFileId,
-        cameraPrompt: opts?.cameraPrompt,
-        distancePrompt: opts?.distancePrompt,
+        azimuth: opts?.azimuth,
+        elevation: opts?.elevation,
+        distance: opts?.distance,
         subjectImageId: opts?.subjectImageId,
         subjectDraftFileId: opts?.subjectDraftFileId,
       })
@@ -857,8 +859,9 @@ export default function MediaManager({
                   const subject = viewSubjectId !== null ? ordered.find((x) => x.listing_image_id === viewSubjectId) : undefined;
                   void regenerateOne(ordered[viewIdx], {
                     prompt: viewPrompt || undefined,
-                    cameraPrompt: viewCameraAngle ? cameraAnglePrompt(viewCameraAngle) : undefined,
-                    distancePrompt: viewDistance ? distancePrompt(viewDistance) : undefined,
+                    azimuth: viewCameraAngle?.azimuth,
+                    elevation: viewCameraAngle?.elevation,
+                    distance: viewDistance ?? undefined,
                     subjectImageId: subject?.listing_image_id,
                     subjectDraftFileId: subject?.draft_file_id,
                   });

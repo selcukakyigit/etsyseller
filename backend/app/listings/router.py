@@ -268,10 +268,11 @@ class RegenerateImageIn(BaseModel):
     draft_file_id: str | None = None
     prompt: str | None = None
     reference_draft_file_id: str | None = None
-    # Kamera açısı küpü / mesafe seçiciden gelen hazır cümleler — sahne talimatından (prompt) AYRI, kendi
-    # öncelikli talimat katmanları olarak modele gider (bkz. ai/image_gen.py _build_prompt).
-    camera_prompt: str | None = None
-    distance_prompt: str | None = None
+    # Kamera açısı küpü / kadraj seçiciden gelen SEÇİM (anahtar); cümleleri ai/camera.py kurar ve sahne talimatından (prompt) AYRI,
+    # kendi öncelikli talimat katmanları olarak modele gider (bkz. ai/image_gen.py _build_prompt). Asistan da aynı yolu kullanır.
+    azimuth: str | None = Field(default=None, max_length=20)
+    elevation: str | None = Field(default=None, max_length=20)
+    distance: str | None = Field(default=None, max_length=20)
     # Sahnede birden fazla obje olduğunda "ürün bu" diye işaret eden ayrı referans (listing'in kendi
     # fotoğraflarından biri, id>0 Etsy'de yayında / id<0 henüz taslak).
     subject_image_id: int | None = None
@@ -299,12 +300,16 @@ def regenerate_draft_image(
 ):
     """Sihirli değnek: tek bir görseli Gemini ile yeniden oluşturur. Toplu düzenleme, frontend'in bu aynı
     uç noktayı seçilen her görsel için sırayla çağırmasıyla yapılır — davranış ikisinde de birebir aynıdır."""
+    from app.ai import camera
     from app.ai.image_gen import ImageGenError
 
+    camera_prompt, distance_prompt, bad = camera.prompts(payload.azimuth, payload.elevation, payload.distance)
+    if bad:
+        raise HTTPException(400, bad)
     try:
         return drafts.regenerate_image(
             db, shop, listing_id, payload.image_id, payload.draft_file_id, payload.prompt,
-            payload.reference_draft_file_id, payload.camera_prompt, payload.distance_prompt,
+            payload.reference_draft_file_id, camera_prompt, distance_prompt,
             payload.subject_image_id, payload.subject_draft_file_id,
         )
     except ImageGenError as exc:
