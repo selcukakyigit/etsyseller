@@ -409,15 +409,14 @@ def search_listings(ctx: Ctx, a: dict) -> dict:
     limit = max(1, min(int(a.get("limit") or 10), 50))
     state = a.get("state") if a.get("state") in _LISTING_STATES else None
     if a.get("description_contains"):  # "bu yazı kaç listing'de var": toplu bul-değiştirmeyle aynı ortak süzgeç ve eşleşme
-        flt = selection.ListingFilter(description_contains=str(a["description_contains"]), title_contains=a.get("query") or None, state=state or "any")
-        rows = selection.select_rows(ctx.db, ctx.shop, flt)
-        listings = []
-        for r in rows[:limit]:
-            listings.append({"listing_id": r.listing_id, "baslik": html.unescape(r.title), "durum": json.loads(r.raw_json).get("state")})
+        found = selection.description_search(ctx.db, ctx.shop, str(a["description_contains"]).strip(), state or "any", a.get("query") or None)
+        rows = found["rows"]
+        listings = [{"listing_id": r.listing_id, "baslik": html.unescape(r.title), "durum": json.loads(r.raw_json).get("state")} for r in rows[:limit]]
         return {
-            "toplam": len(rows), "en_az": len(rows) >= selection.MAX_SELECTED, "listingler": listings,
-            "not": "Birebir eşleşme (büyük/küçük harf, boşluk ve noktalama dahil); yazılış farkı olan listing'ler sayılmaz. 'toplam' tüm eşleşenlerin sayısıdır, 'listingler' yalnızca ilk "
-                   f"{limit} tanesi. Yerel (yayınlanmamış) değişiklik varsa o hâli aranır. Değiştirmek için bulk_update_listings description_find/description_replace; hepsini yayınlamak için sonuç kartındaki 'Etsy'de yayınla' düğmesi.",
+            "toplam": len(rows), "en_az": len(rows) >= selection.MAX_SELECTED, "aranan": found["phrase"], "birebir_eslesti": found["exact"], "buyuk_kucuk_harf_farkiyla_toplam": found["loose_total"], "satirlar": [{"tam_satir": x["line"], "listing_sayisi": x["count"]} for x in found["lines"]], "listingler": listings,
+            "not": "Sonuç bulunamazsa arama kendiliğinden gevşer (büyük/küçük harf yok sayılır, metnin sondaki kelimeleri atılır): 'birebir_eslesti' false ise kullanıcıya hangi metnin bulunduğunu ve kaç listing'de olduğunu söyle, "
+                   "'buyuk_kucuk_harf_farkiyla_toplam' 'toplam'dan büyükse aynı metnin büyük/küçük harf ya da tırnak farkıyla yazılmış hâlleri de var demektir, söyle; 'satirlar' eşleşen satırın TAM hâlidir (farklı yazılış varyantları ve her birinin kaç listing'de olduğuyla): kullanıcıya kesmeden tam metinleri göster. Kullanıcı düzenlenmiş metni verip 'kaydet/uygula/hepsine yaz' derse HER varyant için ayrı bulk_update_listings çağır (description_find = o varyantın tam satırı, description_replace = kullanıcının metni), sonra özetle ve 'hepsini Etsy'ye gönderelim mi' diye sor (toplu değiştirme birebir eşleşir). 'toplam' tüm eşleşenlerin sayısı, 'listingler' ilk "
+                   f"{limit} tanesi. Yerel (yayınlanmamış) değişiklik varsa o hâli aranır. Değiştirmek için bulk_update_listings description_find/description_replace; hepsini yayınlamak için publish_staged_batch.",
         }
     q = select(ListingCache).where(ListingCache.shop_id == ctx.shop.id)
     if a.get("query"):
@@ -3199,7 +3198,7 @@ LISTING_TOOL_NAMES = frozenset({
     "regenerate_listing_image", "upscale_listing_photo", "edit_chat_image", "generate_chat_image", "add_chat_image_to_listing", "crop_listing_photo", "delete_listing_photo", "move_listing_photo", "set_photo_alt_text",
     "generate_missing_alt_texts", "get_category_attributes", "set_listing_attributes", "autofill_listing_attributes", "set_listing_fields", "edit_personalization_question",
     "personalization_library", "edit_inventory", "add_variation_option", "remove_variation_option", "set_variation_photo", "copy_listing", "discard_listing_changes",
-    "delete_listing", "generation_options", "generate_listing_video", "add_video_to_listing", "remove_listing_video", "publish_listing_draft", "deactivate_listing",
+    "delete_listing", "generation_options", "analyze_listing_values", "generate_listing_video", "add_video_to_listing", "remove_listing_video", "publish_listing_draft", "deactivate_listing",
     "list_description_templates", "save_description_template", "delete_description_templates", "listing_health_status", "workspace_status", "keyword_pool",
     "remember_note", "forget_note", "market_research", "suggest_price", "bulk_update_listings", "rewrite_listings", "continue_rewrite", "stop_rewrite", "pinterest_content", "make_pin_image", "add_digital_file", "remove_digital_file", "set_listing_type",
 })
