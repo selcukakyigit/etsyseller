@@ -2106,7 +2106,7 @@ export const api = {
     recent: (shopId: number) => request<BannerImage[]>(`/api/shops/${shopId}/banners/recent`),
   },
   assistant: {
-    progress: (shopId: number, requestId: string) => request<{ step: string; kind: "image" | "video" | null; cards: ChatCard[] }>(`/api/shops/${shopId}/assistant/progress/${requestId}`),
+    progress: (shopId: number, requestId: string) => request<{ step: string; kind: "image" | "video" | null; cards: ChatCard[]; trail: string[] }>(`/api/shops/${shopId}/assistant/progress/${requestId}`),
     rewriteJob: (shopId: number, jobId: string, action?: "start" | "stop") =>
       request<RewriteState>(`/api/shops/${shopId}/assistant/rewrite-jobs/${jobId}${action ? `/${action}` : ""}`, { method: action ? "POST" : "GET" }),
     deleteImage: (shopId: number, imageId: string) => request<{ ok: boolean }>(`/api/shops/${shopId}/assistant/images/${imageId}`, { method: "DELETE" }),

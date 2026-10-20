@@ -92,6 +92,10 @@ const isDoc = (f: File) => DOC_EXT.some((ext) => f.name.toLowerCase().endsWith(e
 const VIDEO_EXT = [".mp4", ".mov", ".webm", ".m4v"];
 const MAX_VIDEO_MB = 100;
 const MAX_VIDEOS = 2;
+// İlerleme yazıları: her adım en az bu kadar görünür; adım bu kadar uzarsa sabır cümlesi gelir.
+const STEP_MIN_MS = 1100;
+const FILLER_AFTER_MS = 7000;
+const AWAY_POLL_TRIES = 150; // sayfaya dönünce yanıt için 4 sn aralıkla en çok 10 dk beklenir
 const isVideo = (f: File) => f.type.startsWith("video/") || VIDEO_EXT.some((ext) => f.name.toLowerCase().endsWith(ext));
 const maxMb = (f: File) => (isVideo(f) ? MAX_VIDEO_MB : MAX_FILE_MB);
 
@@ -155,6 +159,21 @@ export default function ChatPanel({
       if (saved) setInput((current) => current || saved);
     } catch {}
   }, [draftKey]);
+  // Bir adım uzun sürerse dönüşümlü gösterilen sabır cümleleri.
+  const patienceLine = useCallback(
+    (i: number) => {
+      const lines = [
+        t("Sabırlı ol, az kaldı…", "Hang in there, almost done…"),
+        t("Detaylara bakıyorum, çay demlenirken biter", "Checking the details, done before the tea is ready"),
+        t("Biraz daha, boş durmuyorum", "Just a bit more, I am not slacking"),
+        t("Neredeyse bitti, söz", "Nearly there, promise"),
+        t("Mükemmel olsun diye uğraşıyorum", "Making it just right"),
+      ];
+      return lines[i % lines.length];
+    },
+    [t]
+  );
+  const [awayReply, setAwayReply] = useState(false); // sayfadan çıkılırken sürmekte olan istek: sunucu bitirir, yanıt dönünce gösterilir
   const [pending, setPending] = useState<Pending[]>([]);
   const [uploading, setUploading] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -243,6 +262,11 @@ export default function ChatPanel({
     const last = messages[messages.length - 1];
     if (busy || sessionId === null || !last || last.role !== "user" || last.id < 0) return;
     let tries = 0;
+    setAwayReply(true);
+    const finish = () => {
+      clearInterval(timer);
+      setAwayReply(false);
+    };
     const timer = setInterval(async () => {
       tries += 1;
       try {
@@ -250,24 +274,47 @@ export default function ChatPanel({
         const tail = s.messages[s.messages.length - 1];
         if (tail && tail.role !== "user") {
           setMessages(s.messages);
-          clearInterval(timer);
+          finish();
         }
       } catch {}
-      if (tries >= 45) clearInterval(timer);
+      if (tries >= AWAY_POLL_TRIES) finish();
     }, 4000);
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      setAwayReply(false);
+    };
   }, [messages, busy, sessionId, shopId]);
 
   // Bekleme sırasında asistanın ne yaptığını yokla (ör. "Benzer listing'leri inceliyor").
   useEffect(() => {
     if (!busy || !requestId) return;
     let stop = false;
+    // Sunucu adımları hızlı geçebilir: sıraya alınır ve her biri okunacak kadar süre gösterilir. Bir adım uzun sürerse
+    // arada sabır cümleleri döner.
+    const queue: string[] = [];
+    let seen = 0;
+    let shownAt = Date.now();
+    let filler = 0;
+    const show = (text: string) => {
+      shownAt = Date.now();
+      setStep(text);
+    };
+    const pace = setInterval(() => {
+      const idle = Date.now() - shownAt;
+      if (queue.length > 0 && idle >= STEP_MIN_MS) {
+        filler = 0;
+        show(queue.shift() as string);
+      } else if (queue.length === 0 && idle >= FILLER_AFTER_MS) {
+        show(patienceLine(filler++));
+      }
+    }, 300);
     const tick = () =>
       api.assistant
         .progress(shopId, requestId)
         .then((p) => {
           if (stop) return;
-          setStep(p.step);
+          queue.push(...p.trail.slice(seen));
+          seen = p.trail.length;
           setLiveCards((prev) => (p.cards.length === prev.length ? prev : p.cards));
           if (p.kind !== lastKind.current) {
             lastKind.current = p.kind;
@@ -280,8 +327,9 @@ export default function ChatPanel({
     return () => {
       stop = true;
       clearInterval(id);
+      clearInterval(pace);
     };
-  }, [busy, requestId, shopId]);
+  }, [busy, requestId, shopId, patienceLine]);
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -555,7 +603,7 @@ export default function ChatPanel({
             </div>
           </div>
         ))}
-        {busy && stepKind ? <GeneratingTile key={kindSince.current} kind={stepKind} startedAt={kindSince.current} /> : busy && <Thinking step={step} />}
+        {busy && stepKind ? <GeneratingTile key={kindSince.current} kind={stepKind} startedAt={kindSince.current} /> : busy ? <Thinking step={step} /> : awayReply && <Thinking step={t("Sen başka sayfadayken de çalıştım, cevap birazdan burada", "I kept working while you were away, the answer will be here shortly")} />}
         <div ref={bottom} />
       </div>
 

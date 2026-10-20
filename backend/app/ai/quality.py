@@ -20,7 +20,7 @@ MAX_INTRO_SIMILARITY = 0.6  # açıklamanın ilk ~60 kelimesinin benzerliği
 _WORD = re.compile(r"[^\W_]+")  # her dildeki harf ve rakamlar (ä, ß, é, ç, ğ…)
 _STOP = {"the", "and", "for", "with", "your", "our", "you", "from", "this", "that", "a", "an", "of", "in", "to", "or", "by", "on", "at", "is", "it"}
 RISKY_CLAIMS = re.compile(
-    r"\b(hardware|warranty|lifetime|(?:water|weather|rust|fade|scratch|uv)[- ]?(?:proof|resistant)|certified|fireproof|hypoallergenic)\b", re.I
+    r"\b(hardware (?:is |are )?(?:included|provided)|(?:included|free) hardware|warranty|lifetime|(?:water|weather|rust|fade|scratch|uv)[- ]?(?:proof|resistant)|certified|fireproof|hypoallergenic)\b", re.I
 )
 
 
@@ -305,10 +305,29 @@ def tag_problems(tags: list[str]) -> list[str]:
     return out
 
 
+def _unverified_claims(text: str, source_text: str | None) -> list[str]:
+    src = html.unescape(source_text or "").lower()
+    return sorted({c for c in (m.group(0).lower() for m in RISKY_CLAIMS.finditer(text)) if not re.search(rf"\b{re.escape(c)}\b", src)})
+
+
+def strip_claims(description: str, source_text: str | None = None) -> str:
+    """Model yeniden denemelerde de bırakmadıysa doğrulanmamış iddia geçen cümleyi (madde satırıysa satırı) açıklamadan siler;
+    `clean_title`in açıklama karşılığı. Kaynakta (listing'in mevcut metni) geçen iddialara dokunmaz."""
+    out: list[str] = []
+    for line in description.split("\n"):
+        if not _unverified_claims(line, source_text):
+            out.append(line)
+            continue
+        sentences = re.split(r"(?<=[.!?])\s+", line)
+        kept = [s for s in sentences if not _unverified_claims(s, source_text)]
+        if len(sentences) > 1 and kept:
+            out.append(" ".join(kept))
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
+
+
 def claim_problems(product_description: str, source_text: str | None = None) -> list[str]:
     """Doğrulanmamış iddialar. `source_text` (listing'in mevcut metni) verilirse, orada zaten geçenler (ör. su geçirmez bir çantada "waterproof") sorun sayılmaz."""
-    src = html.unescape(source_text or "").lower()
-    claims = sorted({c for c in (m.group(0).lower() for m in RISKY_CLAIMS.finditer(product_description)) if not re.search(rf"\b{re.escape(c)}\b", src)})
+    claims = _unverified_claims(product_description, source_text)
     if not claims:
         return []
     return [tr(

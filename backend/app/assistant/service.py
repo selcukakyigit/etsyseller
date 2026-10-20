@@ -19,7 +19,7 @@ from app.core.i18n import tr
 from app.core.uploads import MAX_VIDEO_BYTES
 from app.listings import creation, templates
 from app.ai import catalog
-from app.assistant import cleanup, context, llm, memory, prompt, tools
+from app.assistant import cleanup, context, llm, memory, progress, prompt, tools
 from app.assistant.models import AssistantUsage, ChatImage, ChatMessage, ChatSession
 from app.billing import metering
 from app.finance import service as fin
@@ -58,24 +58,29 @@ MAX_STALL_RETRIES = 2  # model onay isteyip işi yapmazsa en fazla bu kadar kez 
 
 # (adım metni, zaman, iş türü: "image" | "video" | None, şimdiye kadar üretilen kartlar). Kartlar yanıt bitmeden gösterilir:
 # üretilen resim, asistanın son cümlesini yazmasını beklemez.
-_progress: dict[tuple[int, str], tuple[str, float, str | None, list[dict]]] = {}
+_progress: dict[tuple[int, str], tuple[str, float, str | None, list[dict], list[str]]] = {}
 _progress_lock = threading.Lock()
+MAX_TRAIL = 60  # bir istekte tutulan adım yazısı sayısı
 
 
 def set_progress(shop_id: int, request_id: str | None, text: str, kind: str | None = None, cards: list[dict] | None = None) -> None:
+    """`text` adım geçmişine (trail) eklenir: istemci hızlı geçen adımları da sırayla, okunacak hızda gösterir."""
     if not request_id:
         return
     with _progress_lock:
         now = time.time()
-        for k in [k for k, (_, ts, _k, _c) in _progress.items() if now - ts > 600]:  # 10 dakikadan eski kayıtları temizle
+        for k in [k for k, v in _progress.items() if now - v[1] > 600]:  # 10 dakikadan eski kayıtları temizle
             del _progress[k]
-        _progress[(shop_id, request_id)] = (text, now, kind, list(cards) if cards is not None else _progress.get((shop_id, request_id), ("", 0.0, None, []))[3])
+        _, _, _, old_cards, trail = _progress.get((shop_id, request_id), ("", 0.0, None, [], []))
+        if not trail or trail[-1] != text:
+            trail = [*trail, text][-MAX_TRAIL:]
+        _progress[(shop_id, request_id)] = (text, now, kind, list(cards) if cards is not None else old_cards, trail)
 
 
 def get_progress(shop_id: int, request_id: str) -> dict:
     with _progress_lock:
-        text, _, kind, cards = _progress.get((shop_id, request_id), ("", 0.0, None, []))
-    return {"step": text, "kind": kind, "cards": cards}
+        text, _, kind, cards, trail = _progress.get((shop_id, request_id), ("", 0.0, None, [], []))
+    return {"step": text, "kind": kind, "cards": cards, "trail": trail}
 
 
 def clear_progress(shop_id: int, request_id: str | None) -> None:
@@ -347,7 +352,9 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
 
     def run_tool(name: str, args: dict) -> dict:
         nonlocal failed, effective
-        set_progress(shop.id, request_id, (tools.TOOL_LABELS_EN.get(name, "Working") if en else tools.TOOL_LABELS.get(name, "Çalışıyor")), tools.TOOL_KIND.get(name))
+        lines = progress.steps_for(db, shop.id, name, args, en) or [tools.TOOL_LABELS_EN.get(name, "Working") if en else tools.TOOL_LABELS.get(name, "Çalışıyor")]
+        for line in lines:
+            set_progress(shop.id, request_id, line, tools.TOOL_KIND.get(name))
         called.add(name)
         try:
             before = tools.listing_fingerprint(ctx, args) if name in tools.WRITE_TOOLS else None

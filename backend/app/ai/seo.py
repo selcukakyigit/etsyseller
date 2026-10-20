@@ -18,6 +18,7 @@ Bu listing'e özgü ek kurallar:
 - "Mevcut listing verisi"ndeki başlık daha önceki bir yapay zekâ önerisi olabilir; içindeki ölçü/renk bilgisine güvenme, "variations"a bak
 - Açıklamada seçenekleri (renk, boyut) sayıyorsan "variations"taki seçeneklerin TAMAMINI yaz; eksik ya da fazla olmasın. Listing'e yeni bir seçenek eklendiyse açıklamadaki listeye de ekle
 - Açıklamanın sonundaki sabit/standart bölümleri (kargo-teslimat süreleri, garanti/iade politikası, iletişim bilgisi, telif/yasal uyarı, özel boyut talebi gibi mağaza genelinde tekrar eden kısımlar) OLDUĞU GİBİ, kısaltmadan, sembollerini (☛ ➲ ✔ ツ vb.) ve formatını koruyarak açıklamanın sonuna aynen ekle; asla silme, kısaltma veya parafraze etme
+- Açıklamadaki kısa olgu maddelerini (malzeme, ölçü, seçenekler) yalnızca verilen veriden yaz. Kurulum/montaj, donanım, garanti, su/hava dayanımı gibi verilmeyen bilgiyi ASLA ekleme; bir madde için veri yoksa o maddeyi hiç yazma
 - Orijinal dile (Türkçe/İngilizce vb.) sadık kal, ürünün gerçek özelliklerini uydurma, sadece verilen bilgiyi yeniden düzenle ve genişlet
 - Sana "Kullanılabilir anahtar kelime havuzu" verilirse: ifadeler ROLLERE ayrılmış ve puana göre sıralıdır; her birinin yanında verinin durumu yazar.
   * ÖNCE alaka: ürüne gerçekten uymayan ifadeyi puanı ne olursa olsun kullanma. Sonra rollere göre seç: başlık ana öbeği ve etiketlerde ana ürün ifadesi, orta kapsam, uzun kuyruk, vesile/alıcı ve stil/malzeme etiketlerinden dengeli bir karışım kur; 13 etiketin hepsi aynı geniş ifadenin varyasyonu olmasın
@@ -163,7 +164,9 @@ def generate_seo_suggestion(
         )
 
     suggestion["tags"] = _fit_tags(suggestion.get("tags", []), keyword_pool or [], str(suggestion.get("title", "")))
-    if suggestion["tags"] != tags:  # düzeltme sonrası uyarılar yeniden hesaplanır (artık geçersiz etiket kalmadı)
+    description = str(suggestion.get("description", ""))
+    suggestion["description"] = quality.strip_claims(description, source_text)  # model denemelerde bırakmadığı uydurma iddia koddan silinir
+    if suggestion["tags"] != tags or suggestion["description"] != description:  # düzeltme sonrası uyarılar yeniden hesaplanır
         problems = audit.generation_problems(suggestion["title"], suggestion["tags"], str(suggestion.get("description", "")), others, source_text, variations or {}, listing.get("listing_type") == "download", bool(listing.get("is_personalizable")))
     if len(suggestion.get("tags", [])) != standard.TAG_COUNT:
         raise ValueError(f"Beklenen {standard.TAG_COUNT} etiket, alınan: {len(suggestion.get('tags', []))}")
