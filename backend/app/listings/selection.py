@@ -115,11 +115,11 @@ def description_search(db: Session, shop: Shop, phrase: str, state: str = "any",
         part = " ".join(words[:k])
         if len(part) >= 4:  # bir iki harflik parça her şeyi bulur
             candidates += [(part, False), (part, True)]
-    for needle, loose in candidates:
-        if loose and loose_texts is None:
+    for needle, relaxed in candidates:
+        if relaxed and loose_texts is None:
             loose_texts = [loose(text) for _, text in texts]
-        wanted = loose(needle) if loose else _norm_text(needle)
-        haystacks = loose_texts if loose else [text for _, text in texts]
+        wanted = loose(needle) if relaxed else _norm_text(needle)
+        haystacks = loose_texts if relaxed else [text for _, text in texts]
         hits = [i for i, hay in enumerate(haystacks) if wanted in hay]
         if not hits:
             continue
@@ -127,12 +127,12 @@ def description_search(db: Session, shop: Shop, phrase: str, state: str = "any",
         counts: Counter[str] = Counter()
         for i in hits:
             for line in texts[i][1].split("\n"):
-                if wanted in (loose(line) if loose else line):
+                if wanted in (loose(line) if relaxed else line):
                     counts[line.strip()[:MAX_LINE_CHARS]] += 1
                     break
         lines = [{"line": text, "count": n} for text, n in counts.most_common(MAX_LINE_VARIANTS)]
         if loose_texts is None:
             loose_texts = [loose(text) for _, text in texts]
         loose_total = sum(1 for hay in loose_texts if loose(needle) in hay)  # büyük/küçük harf ve tırnak farkıyla yazılmış olanlar da dahil
-        return {"phrase": needle, "exact": needle == phrase and not loose, "rows": [texts[i][0] for i in hits], "lines": lines, "loose_total": loose_total}
+        return {"phrase": needle, "exact": needle == phrase and not relaxed, "rows": [texts[i][0] for i in hits], "lines": lines, "loose_total": loose_total}
     return {"phrase": phrase, "exact": True, "rows": [], "lines": [], "loose_total": 0}
