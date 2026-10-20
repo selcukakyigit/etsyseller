@@ -88,6 +88,7 @@ export default function DescriptionEditCard({ card, shopId }: { card: Descriptio
               onChange={(e) => setTexts((prev) => prev.map((x, j) => (j === i ? e.target.value : x)))}
               rows={Math.min(8, Math.max(3, Math.ceil(texts[i].length / 80)))}
               disabled={busy}
+              spellCheck={false} // listing metni çoğu zaman başka dilde; tarayıcının kırmızı çizgileri yalnızca gürültü yapar
               className="w-full resize-y rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-[#D97757] disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
             />
           </div>
