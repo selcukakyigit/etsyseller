@@ -11,6 +11,7 @@ import InvoiceReviewCard from "./InvoiceReviewCard";
 import EtsyDataReviewCard from "./EtsyDataReviewCard";
 import SocialPinsCard from "./SocialPinsCard";
 import BulkResultCard from "./BulkResultCard";
+import DescriptionEditCard from "./DescriptionEditCard";
 import RewriteJobCard from "./RewriteJobCard";
 import { useT } from "@/lib/i18n-client";
 import EtsyLink from "@/components/ui/EtsyLink";
@@ -362,6 +363,7 @@ export default function Card({ card, shopId, onAsk, active = true }: { card: Cha
 
   if (card.type === "social_pins") return <SocialPinsCard card={card} />;
   if (card.type === "bulk_result") return <BulkResultCard card={card} shopId={shopId} />;
+  if (card.type === "description_edit") return <DescriptionEditCard card={card} shopId={shopId} />;
   if (card.type === "rewrite_job") return <RewriteJobCard card={card} shopId={shopId} />;
 
   if (card.type === "etsy_data_review") {

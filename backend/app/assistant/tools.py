@@ -406,12 +406,11 @@ def _state_like(state: str):
 
 
 def _description_search_message(asked: str, found: dict, total: int) -> str:
-    """Açıklama aramasının kullanıcıya olduğu gibi aktarılacak cevabı: bulunan sayı, satırın TAM hâli (varyantlarıyla) ve sıradaki adım (düzenle, kaydet)."""
+    """Açıklama aramasının kullanıcıya olduğu gibi aktarılacak cevabı: bulunan sayı ve sıradaki adım. Satırın kendisi sohbetteki düzenleme kartında durur."""
     if not total:
         return f"Açıklamasında \"{found['phrase']}\" geçen listing bulunamadı."
     relaxed = "" if found["exact"] else f" (\"{asked}\" birebir bulunamadı; \"{found['phrase']}\" ile arandı)"
-    lines = "\n".join(f"{i}) ({x['count']} listing) {x['line']}" for i, x in enumerate(found["lines"], 1))
-    next_step = f" Eşleşen satır:\n\n{lines}\n\nDeğiştirmek için yeni metni yaz; \"kaydet\" dediğinde hepsine taslak olarak uygularım." if lines else ""
+    next_step = " Satırı aşağıdaki kutuda düzenleyip \"Hepsinde değiştir\"e bas; hepsi taslak olarak güncellenir." if found["lines"] else ""
     return f"Açıklamasında \"{found['phrase']}\" geçen {total} listing var{relaxed}.{next_step}"
 
 
@@ -422,10 +421,15 @@ def search_listings(ctx: Ctx, a: dict) -> dict:
         found = selection.description_search(ctx.db, ctx.shop, str(a["description_contains"]).strip(), state or "any", a.get("query") or None)
         rows = found["rows"]
         listings = [{"listing_id": r.listing_id, "baslik": html.unescape(r.title), "durum": json.loads(r.raw_json).get("state")} for r in rows[:limit]]
+        if found["lines"]:  # düzenlenebilir kart: kullanıcı satırı düzenleyip "Hepsinde değiştir"e basar (toplu değiştirme motoru, yalnızca yerel taslak)
+            ctx.cards.append({
+                "type": "description_edit", "phrase": found["phrase"], "total": len(rows), "others": len(rows) - sum(x["count"] for x in found["lines"]),
+                "listing_ids": [r.listing_id for r in rows], "variants": [{"line": x["line"], "count": x["count"]} for x in found["lines"]],
+            })
         return {
             "kullaniciya_yaz": _description_search_message(str(a["description_contains"]).strip(), found, len(rows)),
             "toplam": len(rows), "en_az": len(rows) >= selection.MAX_SELECTED, "aranan": found["phrase"], "birebir_eslesti": found["exact"], "buyuk_kucuk_harf_farkiyla_toplam": found["loose_total"], "satirlar": [{"tam_satir": x["line"], "listing_sayisi": x["count"]} for x in found["lines"]], "listingler": listings,
-            "not": "CEVABI kullaniciya_yaz metniyle ver (menü/öneri kartı, CSV ya da başka teklif ekleme). Sonuç bulunamazsa arama kendiliğinden gevşer (büyük/küçük harf yok sayılır, metnin sondaki kelimeleri atılır): 'birebir_eslesti' false ise kullanıcıya hangi metnin bulunduğunu ve kaç listing'de olduğunu söyle, "
+            "not": "CEVABI kullaniciya_yaz metniyle ver; satır sohbette düzenlenebilir bir kartta gösterilir, onu metinde tekrar yazma (menü/öneri kartı, CSV ya da başka teklif ekleme). Sonuç bulunamazsa arama kendiliğinden gevşer (büyük/küçük harf yok sayılır, metnin sondaki kelimeleri atılır): 'birebir_eslesti' false ise kullanıcıya hangi metnin bulunduğunu ve kaç listing'de olduğunu söyle, "
                    "'buyuk_kucuk_harf_farkiyla_toplam' 'toplam'dan büyükse aynı metnin büyük/küçük harf ya da tırnak farkıyla yazılmış hâlleri de var demektir, söyle; 'satirlar' eşleşen satırın TAM hâlidir (farklı yazılış varyantları ve her birinin kaç listing'de olduğuyla): kullanıcıya kesmeden tam metinleri göster. Kullanıcı düzenlenmiş metni verip 'kaydet/uygula/hepsine yaz' derse HER varyant için ayrı bulk_update_listings çağır (description_find = o varyantın tam satırı, description_replace = kullanıcının metni), sonra özetle ve 'hepsini Etsy'ye gönderelim mi' diye sor (toplu değiştirme birebir eşleşir). 'toplam' tüm eşleşenlerin sayısı, 'listingler' ilk "
                    f"{limit} tanesi. Yerel (yayınlanmamış) değişiklik varsa o hâli aranır. Değiştirmek için bulk_update_listings description_find/description_replace; hepsini yayınlamak için publish_staged_batch.",
         }
