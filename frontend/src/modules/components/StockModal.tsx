@@ -13,7 +13,7 @@ import { errMsg } from "../core/errors";
 import { btnLink, btnPrimary, input, label, muted, rowBorder, td, th } from "../core/ui";
 import { currencySymbol, money, qty, unitLabel } from "../core/units";
 
-type Tab = "in" | "count" | "history";
+type Tab = "in" | "count" | "history" | "settings";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -38,7 +38,7 @@ export default function StockModal({
   const [tab, setTab] = useState<Tab>("in");
   const units = item.entry_units ?? [item.unit];
   const [amount, setAmount] = useState("");
-  const [unit, setUnit] = useState(item.pack_size ? "pack" : item.unit);
+  const [unit, setUnit] = useState(item.unit); // paket miktarı olsa bile kalemin kendi birimiyle başlar: yanlışlıkla "650 paket" girilmesin
   const [priceMode, setPriceMode] = useState<"total" | "unit">("total");
   const [price, setPrice] = useState("");
   const [vat, setVat] = useState(false);
@@ -46,6 +46,8 @@ export default function StockModal({
   const [date, setDate] = useState(today());
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pack, setPack] = useState(item.pack_size == null ? "" : String(item.pack_size));
+  const [min, setMin] = useState(item.min_stock == null ? "" : String(item.min_stock));
   const { data: hist, reload } = useApiData<{ items: StockMovement[] }>(`modkit-stock-history:${api.base}:${entityId}:${item.id}`, () => api.prices.stockHistory(entityId, item.id));
   const n = Number(amount.replace(",", "."));
   const p = price.trim() === "" ? null : Number(price.replace(",", "."));
@@ -82,9 +84,27 @@ export default function StockModal({
     setBusy(false);
   }
 
+  async function saveSettings() {
+    const pk = pack.trim() === "" ? null : Number(pack.replace(",", "."));
+    const mn = min.trim() === "" ? null : Number(min.replace(",", "."));
+    if ((pk !== null && !(Number.isFinite(pk) && pk > 0)) || (mn !== null && !(Number.isFinite(mn) && mn >= 0))) {
+      toast.error(t("Paket miktarı sıfırdan büyük, en az stok sıfır ya da daha büyük bir sayı olmalı.", "Pack size must be above zero and minimum stock zero or more."));
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.prices.update(entityId, item.id, { pack_size: pk, min_stock: mn });
+      toast.success(t("Stok ayarları kaydedildi", "Stock settings saved"));
+      onChanged();
+    } catch (e) {
+      toast.error(errMsg(e, t("Kaydedilemedi", "Could not save")));
+    }
+    setBusy(false);
+  }
+
   const kindLabel = (m: StockMovement) =>
     ({ opening: t("Açılış", "Opening"), purchase: t("Alım", "Purchase"), use: m.ref_type ? t("İş kullanımı", "Used in job") : t("Kullanım", "Use"), adjust: t("Sayım düzeltmesi", "Count correction") })[m.kind];
-  const tabLabel = { in: t("Alım gir", "Add purchase"), count: t("Sayım düzelt", "Correct count"), history: t("Geçmiş", "History") };
+  const tabLabel = { in: t("Alım gir", "Add purchase"), count: t("Sayım düzelt", "Correct count"), history: t("Geçmiş", "History"), settings: t("Ayarlar", "Settings") };
 
   return (
     <Modal title={t(`Stok: ${item.name}`, `Stock: ${item.name}`)} widthClass="max-w-2xl" onClose={onClose}>
@@ -106,7 +126,7 @@ export default function StockModal({
           )}
         </div>
         <div className="flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
-          {(["in", "count", "history"] as const).map((k) => (
+          {(["in", "count", "history", "settings"] as const).map((k) => (
             <button
               key={k}
               type="button"
@@ -118,7 +138,7 @@ export default function StockModal({
           ))}
         </div>
 
-        {tab !== "history" && (
+        {(tab === "in" || tab === "count") && (
           <div className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-3">
               <label className="block sm:col-span-2">
@@ -190,6 +210,37 @@ export default function StockModal({
             <div className="text-right">
               <button type="button" disabled={busy} onClick={() => void submit()} className={btnPrimary}>
                 {tab === "in" ? t("Girişi ekle", "Add entry") : t("Düzeltmeyi kaydet", "Save correction")}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {tab === "settings" && (
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block">
+                <span className={label}>
+                  {t("Bir paketteki miktar", "Quantity per pack")} ({itemUnit}){" "}
+                  <HelpTip>
+                    {t(
+                      "Stok miktarı değil. Bir paketin içindeki miktar: strafor paketi 20 adet, streç rulosu 2 kg. Paketle alıyorsan doldur ki alımı “30 paket” diye girebil; paketle almıyorsan boş bırak.",
+                      "Not the stock level. The quantity inside one pack: a styrofoam pack of 20 pieces, a stretch roll of 2 kg. Fill it in if you buy by the pack so you can enter “30 packs”; leave it empty otherwise.",
+                    )}
+                  </HelpTip>
+                </span>
+                <DecimalInput value={pack} onValue={setPack} placeholder={t("paketle almıyorsan boş", "empty if not bought by pack")} className={`${input} w-full`} />
+              </label>
+              <label className="block">
+                <span className={label}>
+                  {t("En az stok", "Minimum stock")} ({itemUnit}){" "}
+                  <HelpTip>{t("Eldeki miktar bu seviyeye inince kalem kırmızı görünür. Boşsa son alımın %10'u kullanılır.", "The item turns red when the quantity on hand falls to this level. When empty, 10% of the last purchase is used.")}</HelpTip>
+                </span>
+                <DecimalInput value={min} onValue={setMin} placeholder="—" className={`${input} w-full`} />
+              </label>
+            </div>
+            <div className="text-right">
+              <button type="button" disabled={busy} onClick={() => void saveSettings()} className={btnPrimary}>
+                {t("Kaydet", "Save")}
               </button>
             </div>
           </div>

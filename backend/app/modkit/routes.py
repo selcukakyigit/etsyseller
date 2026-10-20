@@ -77,10 +77,6 @@ class PriceItemIn(BaseModel):
     roll_width: float | None = Field(None, gt=0, le=pricebook.MAX_STOCK)
     film_um: float | None = Field(None, gt=0, le=pricebook.MAX_STOCK)
     roll_length: float | None = Field(None, gt=0, le=pricebook.MAX_STOCK)
-    track_stock: bool | None = None  # yalnızca malzeme kalemi, yalnızca üye
-    min_stock: float | None = Field(None, ge=0, le=stock.MAX_QTY)
-    pack_size: float | None = Field(None, gt=0, le=stock.MAX_QTY)
-    opening_stock: float | None = Field(None, gt=0, le=stock.MAX_QTY)  # stok takibi açıksa açılış miktarı (kalemin biriminde)
 
 
 class PriceItemPatch(BaseModel):
@@ -232,8 +228,7 @@ def build_entity_router(module: str, prefix: str, tag: str, item_in_use: Callabl
     def add_price_item(payload: PriceItemIn, a: acc.EntityAccess = Depends(entity_access), db: Session = Depends(get_db)):
         ratelimit.hit("prices.write", f"user:{a.user.id}", 300, 3600)
         item = pricebook.create_item(db, a, payload.kind, payload.name, payload.unit, payload.spec, payload.price, payload.auto_qty,
-                                    payload.model_dump(include=set(pricebook.STOCK_FIELDS), exclude_unset=True),
-                                    payload.model_dump(include=set(stock.TRACKING_FIELDS), exclude_unset=True), payload.opening_stock)
+                                    payload.model_dump(include=set(pricebook.STOCK_FIELDS), exclude_unset=True))
         _notify_guest_change(db, a, "price_item_added", item.name)
         return _item_out(db, a, item)
 

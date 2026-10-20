@@ -161,9 +161,8 @@ def serialize(item: PriceItem, version: PriceVersion | None, versions: int = 0, 
 
 
 def create_item(db: Session, access: EntityAccess, kind: str, name: str, unit: str, spec: str, price: float, auto_qty: float | None = None,
-                fields: dict | None = None, tracking: dict | None = None, opening: float | None = None) -> PriceItem:
-    """`fields`: malzeme alanları (tür, kalınlık…); `tracking`: stok ayarları (`stock.clean_tracking`); `opening`: stok takibi açıksa açılış stoğu
-    (kalemin biriminde, fiyat listesindeki fiyatla değerlenir)."""
+                fields: dict | None = None) -> PriceItem:
+    """`fields`: malzeme alanları (tür, kalınlık…). Stok takibi kalem eklenirken değil, kalem satırındaki anahtarla (`update_item`) açılır."""
     access.require("prices.edit")
     name = (name or "").strip()[:120]
     if not name:
@@ -177,7 +176,7 @@ def create_item(db: Session, access: EntityAccess, kind: str, name: str, unit: s
     if n >= MAX_ITEMS:
         raise HTTPException(422, "Kalem sınırına ulaşıldı")
     item = PriceItem(entity_id=access.entity.id, kind=kind, name=name, unit=unit, spec=(spec or "").strip()[:200], position=n,
-                     auto_qty=_clean_auto_qty(access, kind, auto_qty), **_clean_stock(db, access, kind, fields or {}), **stock.clean_tracking(access, kind, tracking or {}))
+                     auto_qty=_clean_auto_qty(access, kind, auto_qty), **_clean_stock(db, access, kind, fields or {}))
     if kind == "material":
         _check_material(item, complete=True)
     db.add(item)
@@ -186,8 +185,6 @@ def create_item(db: Session, access: EntityAccess, kind: str, name: str, unit: s
     db.add(PriceVersion(item_id=item.id, price=p, valid_from=dt.datetime.utcnow(), source="guest" if access.is_guest else "owner", created_by=access.user.id))
     activity.log(db, access.entity.id, access.user, "price_item_added", {"item": name, "kind": kind, "unit": unit, "price": p, "by_guest": access.is_guest})
     db.commit()
-    if opening and item.track_stock:
-        stock.add_in(db, access, item, opening, item.unit, None, p, False, None, "", kind="opening")
     return item
 
 

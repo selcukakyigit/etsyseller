@@ -7,7 +7,7 @@ import { BlockSpinner } from "@/components/ui/Spinner";
 import { useT } from "@/lib/i18n-client";
 import { toast } from "@/lib/toast";
 import { useApiData } from "@/lib/useApiData";
-import { EntityAccess, EntityApi, PriceItem, PriceKind, PriceVersion, StockPatch, TrackingPatch, can, isInternal, isMember } from "../core/api";
+import { EntityAccess, EntityApi, PriceItem, PriceKind, PriceVersion, StockPatch, can, isInternal, isMember } from "../core/api";
 import { errMsg } from "../core/errors";
 import { btnDanger, btnLink, btnOutline, btnPrimary, card, h2, input, label as labelCls, muted, rowBorder, th, td } from "../core/ui";
 import { currencySymbol, money, perUnit, unitLabel } from "../core/units";
@@ -16,9 +16,8 @@ import { materialLabel, useMaterialCatalog } from "../core/materials";
 import MaterialTypeSelect from "./MaterialTypeSelect";
 import MaterialTypesModal from "./MaterialTypesModal";
 import StockFields, { allowedUnits, applyType, emptyStock, missingFields, pruneStock, StockForm, stockOf, stockPayload, useMissingLabels } from "./StockFields";
-import StockGauge from "./StockGauge";
+import StockLine from "./StockGauge";
 import StockModal from "./StockModal";
-import StockTrackFields, { emptyTrack, TrackForm, trackOf, trackPayload } from "./StockTrackFields";
 import UnitSelect from "./UnitSelect";
 
 const SECTIONS: { kinds: PriceKind[]; tr: string; en: string; addTr: string; addEn: string; hintTr: string; hintEn: string; units?: string[]; addKind: PriceKind }[] = [
@@ -60,6 +59,18 @@ export default function PriceBookTable({ api, entityId, currency, access }: { ap
     } catch (e) {
       toast.error(errMsg(e, t("Kaydedilemedi", "Could not save")));
     }
+  }
+
+  /** Stok takibini aç/kapat. Kapatmak onay ister (stok geçmişi saklanır ama iş onaylarında düşmez, uyarılar kapanır); açınca stok penceresi açılır (ilk alım girilsin). */
+  async function setTracking(item: PriceItem, on: boolean) {
+    if (!on && !(await confirm({
+      title: t(`“${item.name}” için stok takibi kapatılsın mı?`, `Turn off stock tracking for “${item.name}”?`),
+      message: t("Eldeki stok ve geçmiş saklanır, ama iş onaylarında stoktan düşülmez ve azalma uyarıları kapanır.", "The stock level and history are kept, but jobs no longer take from stock and low-stock alerts stop."),
+      destructive: true,
+      confirmLabel: t("Kapat", "Turn off"),
+    }))) return;
+    await run(() => api.prices.update(entityId, item.id, { track_stock: on }));
+    if (on) setStockFor(item.id);
   }
 
   async function removeItem(item: PriceItem) {
@@ -132,6 +143,7 @@ export default function PriceBookTable({ api, entityId, currency, access }: { ap
                             )
                           }
                           onStock={() => setStockFor(item.id)}
+                          onTrack={(on) => void setTracking(item, on)}
                           onHistory={() => setHistory(item)}
                           onArchive={(v) => run(() => api.prices.archive(entityId, item.id, v))}
                           onDelete={() => void removeItem(item)}
@@ -179,6 +191,7 @@ function PriceRow({
   onSaveMeta,
   onSavePrice,
   onStock,
+  onTrack,
   onHistory,
   onArchive,
   onDelete,
@@ -190,9 +203,10 @@ function PriceRow({
   editable: boolean;
   member: boolean;
   units?: string[];
-  onSaveMeta: (patch: { name?: string; spec?: string; auto_qty?: number | null; unit?: string } & StockPatch & TrackingPatch) => Promise<void>;
+  onSaveMeta: (patch: { name?: string; spec?: string; auto_qty?: number | null; unit?: string } & StockPatch) => Promise<void>;
   onSavePrice: (price: number, validFrom?: string) => Promise<void>;
   onStock: () => void;
+  onTrack: (on: boolean) => void;
   onHistory: () => void;
   onArchive: (archived: boolean) => Promise<void>;
   onDelete: () => void;
@@ -209,7 +223,6 @@ function PriceRow({
   const [from, setFrom] = useState(since);
   const [auto, setAuto] = useState(item.auto_qty !== null ? String(item.auto_qty) : "");
   const [stock, setStock] = useState<StockForm>(() => stockOf(item));
-  const [track, setTrack] = useState<TrackForm>(() => trackOf(item));
   const [busy, setBusy] = useState(false);
   const ruleAllowed = member && (item.kind === "service" || item.kind === "material");
   const kindTag = item.kind === "minimum" ? t("minimum", "minimum") : item.kind === "fee" ? t("iş başına", "per job") : "";
@@ -230,11 +243,6 @@ function PriceRow({
       toast.error(t("Kalınlık ve plaka değerleri sıfırdan büyük sayı olmalı.", "Thickness and plate values must be numbers above zero."));
       return;
     }
-    const trackPatch = item.kind === "material" && member ? trackPayload(track, trackOf(item)) : {};
-    if (trackPatch === null) {
-      toast.error(t("Paket miktarı sıfırdan büyük, en az stok sıfır ya da daha büyük bir sayı olmalı.", "Pack size must be above zero and minimum stock zero or more."));
-      return;
-    }
     // eski kalem yalnızca adı ya da fiyatı değişirken eksik sayılmaz; tür/alan/birim değişince sayılır (sunucu da aynı kuralla doğrular)
     const gaps = item.kind === "material" && (Object.keys(stockPatch).length > 0 || unit !== item.unit) ? missingFields(catalog, stock, unit) : [];
     if (gaps.length > 0) {
@@ -242,7 +250,7 @@ function PriceRow({
       return;
     }
     setBusy(true);
-    const patch: { name?: string; spec?: string; auto_qty?: number | null; unit?: string } & StockPatch & TrackingPatch = { ...stockPatch, ...trackPatch };
+    const patch: { name?: string; spec?: string; auto_qty?: number | null; unit?: string } & StockPatch = { ...stockPatch };
     if (name.trim() !== item.name) patch.name = name.trim();
     if (unit !== item.unit) patch.unit = unit;
     if (spec.trim() !== item.spec) patch.spec = spec.trim();
@@ -330,7 +338,6 @@ function PriceRow({
               )}
             </div>
             {item.kind === "material" && <StockFields value={stock} unit={unit} onChange={setStock} />}
-            {item.kind === "material" && member && <StockTrackFields value={track} unit={unit} onChange={setTrack} />}
             <p className={muted}>
               {t(
                 "Fiyat, “Geçerlilik başlangıcı” tarihinden itibaren geçerli olur; geçmiş tarihli işleri etkilemesi için işin tarihinden önceki bir gün seç.",
@@ -360,7 +367,7 @@ function PriceRow({
         </div>
         {item.spec && <div className={muted}>{item.spec}</div>}
         {item.kind === "material" && <StockSummary item={item} currency={currency} />}
-        {item.kind === "material" && <StockGauge item={item} />}
+        {item.kind === "material" && member && !item.archived && <StockLine item={item} currency={currency} onOpen={onStock} onToggle={onTrack} />}
         {item.auto_qty !== null && (
           <div className="text-[11px] text-[#C6613F] dark:text-[#E8A48C]">
             {t("her işe otomatik eklenir", "added to every job")}: {item.auto_qty} {unitLabel(item.unit, t)}
@@ -454,7 +461,7 @@ function AddRow({
   entityId: number;
   canAuto: boolean;
   addLabel: string;
-  onAdd: (v: { kind: PriceKind; name: string; unit: string; spec?: string; price: number; auto_qty?: number | null; opening_stock?: number } & StockPatch & TrackingPatch) => Promise<void>;
+  onAdd: (v: { kind: PriceKind; name: string; unit: string; spec?: string; price: number; auto_qty?: number | null } & StockPatch) => Promise<void>;
 }) {
   const { t, locale } = useT();
   const catalog = useMaterialCatalog();
@@ -466,7 +473,6 @@ function AddRow({
   const [price, setPrice] = useState("");
   const [auto, setAuto] = useState("");
   const [stock, setStock] = useState<StockForm>(emptyStock);
-  const [track, setTrack] = useState<TrackForm>(emptyTrack);
   const [busy, setBusy] = useState(false);
   const fixed = kind === "fee" || kind === "minimum";
 
@@ -476,7 +482,6 @@ function AddRow({
     setPrice("");
     setAuto("");
     setStock(emptyStock);
-    setTrack(emptyTrack);
   }
 
   async function add() {
@@ -500,12 +505,6 @@ function AddRow({
       toast.error(t(`Eksik bilgi: ${missingLabels(gaps)}.`, `Missing: ${missingLabels(gaps)}.`));
       return;
     }
-    const trackPatch = kind === "material" && canAuto && track.track ? trackPayload(track) : {};
-    const opening = track.opening.trim() === "" ? null : Number(track.opening.replace(",", "."));
-    if (trackPatch === null || (opening !== null && !(Number.isFinite(opening) && opening > 0))) {
-      toast.error(t("Paket miktarı ve başlangıç stoğu sıfırdan büyük, en az stok sıfır ya da daha büyük bir sayı olmalı.", "Pack size and opening stock must be above zero and minimum stock zero or more."));
-      return;
-    }
     setBusy(true);
     await onAdd({
       kind,
@@ -514,8 +513,6 @@ function AddRow({
       price: p,
       ...(autoQty !== null ? { auto_qty: autoQty } : {}),
       ...stockPatch,
-      ...trackPatch,
-      ...(trackPatch.track_stock && opening !== null ? { opening_stock: opening } : {}),
     });
     setBusy(false);
     close();
@@ -604,7 +601,6 @@ function AddRow({
         )}
       </div>
       {kind === "material" && <StockFields value={stock} unit={unit} onChange={setStock} />}
-      {kind === "material" && canAuto && <StockTrackFields value={track} unit={unit} onChange={setTrack} showOpening />}
       <div className="flex justify-end gap-3">
         <button type="button" onClick={close} className={btnLink}>
           {t("Vazgeç", "Cancel")}

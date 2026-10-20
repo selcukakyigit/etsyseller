@@ -187,8 +187,8 @@ def entry_net_unit_price(access: EntityAccess, item: PriceItem, qty: float, unit
 
 
 def add_in(db: Session, access: EntityAccess, item: PriceItem, qty: float, unit: str, total: float | None, unit_price: float | None, vat_included: bool,
-           moved_on: dt.date | None, note: str, kind: str = "purchase") -> StockMovement:
-    """Stok girişi (alım ya da açılış). Tutar toplam (`total`) ya da giriş birimi başına (`unit_price`) yazılır; ikisi de yoksa kayıt ortalama maliyetle
+           moved_on: dt.date | None, note: str) -> StockMovement:
+    """Stok girişi (alım). Tutar toplam (`total`) ya da giriş birimi başına (`unit_price`) yazılır; ikisi de yoksa kayıt ortalama maliyetle
     (yoksa fiyat listesi fiyatıyla) değerlenir. KDV: tutar KDV dahilse ayrılır; maliyete eklenip eklenmeyeceği kaydın ayarına göredir (`pricing.cost_basis`)."""
     _writable(access, item)
     given = _qty(qty)
@@ -196,7 +196,7 @@ def add_in(db: Session, access: EntityAccess, item: PriceItem, qty: float, unit:
     net = _entry_net(access, given, total, unit_price, vat_included)
     e = access.entity
     unit_cost = pricing.cost_basis(net, e.vat_rate, e.vat_in_cost) / q if net is not None else None
-    row = StockMovement(entity_id=access.entity.id, item_id=item.id, kind=kind, qty=round(q, 6), unit_cost=round(unit_cost, 6) if unit_cost is not None else None,
+    row = StockMovement(entity_id=access.entity.id, item_id=item.id, kind="purchase", qty=round(q, 6), unit_cost=round(unit_cost, 6) if unit_cost is not None else None,
                         moved_on=moved_on or dt.date.today(), note=(note or "").strip()[:200], created_by=access.user.id)
     db.add(row)
     db.commit()

@@ -294,7 +294,7 @@ export function entityApi<TEntity extends Entity = Entity, TSummary = unknown>(b
 
     prices: {
       list: (id: number, archived = false) => apiRequest<{ items: PriceItem[] }>(`${one(id)}/prices${archived ? "?archived=true" : ""}`),
-      add: (id: number, item: { kind: PriceKind; name: string; unit: string; spec?: string; price: number; auto_qty?: number | null; opening_stock?: number } & StockPatch & TrackingPatch) =>
+      add: (id: number, item: { kind: PriceKind; name: string; unit: string; spec?: string; price: number; auto_qty?: number | null } & StockPatch) =>
         apiRequest<PriceItem>(`${one(id)}/prices`, { method: "POST", ...json(item) }),
       update: (id: number, itemId: number, patch: { name?: string; spec?: string; auto_qty?: number | null; unit?: string } & StockPatch & TrackingPatch) =>
         apiRequest<{ ok: true }>(`${one(id)}/prices/${itemId}`, { method: "PATCH", ...json(patch) }),
