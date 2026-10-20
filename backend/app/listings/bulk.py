@@ -127,13 +127,37 @@ def snapshot_cached(row: ListingCache) -> dict:
 
 
 def _text(value: str, op: TextOp) -> str:
+    """Metin işlemi. Tekrar çalıştırılınca çoğalmaz: işlem zaten uygulanmışsa değer aynen döner (ör. yeni metin eski ifadeyi içeriyorsa
+    "A." → "A. B." ikinci kez "A. B. B." yapmaz; başa/sona ekleme aynı metni ikinci kez eklemez)."""
     if op.mode == "prefix":
-        return op.text + value
+        return value if value.startswith(op.text) else op.text + value
     if op.mode == "suffix":
-        return value + op.text
+        return value if value.rstrip().endswith(op.text.strip()) else value + op.text
     if op.mode == "find_replace":
+        if op.replace and op.find in op.replace and op.replace in value:
+            return value
         return value.replace(op.find, op.replace)
     return op.text
+
+
+def description_excerpt(before: str, after: str, context: int = 40, limit: int = 160) -> dict | None:
+    """Açıklamada değişen kısmın çevresinden kısa önce/sonra alıntısı (sonuç kartı ve asistan için; tamamını taşımaz). Değişmediyse None."""
+    if before == after:
+        return None
+    shortest = min(len(before), len(after))
+    i = 0
+    while i < shortest and before[i] == after[i]:
+        i += 1
+    j = 0
+    while j < shortest - i and before[-1 - j] == after[-1 - j]:
+        j += 1
+    start = max(0, i - context)
+
+    def cut(text: str) -> str:
+        piece = text[start : max(start, len(text) - j + context)]
+        return ("…" if start > 0 else "") + (piece[:limit] + "…" if len(piece) > limit else piece).replace("\n", " ")
+
+    return {"before": cut(before), "after": cut(after)}
 
 
 def _round(v: float, rounding: str) -> float:
@@ -282,6 +306,7 @@ def stage_edit(db: Session, shop: Shop, lid: int, row: ListingCache | None, edit
     local = drafts._local_row(db, shop, lid)
     work = json.loads(local.data_json) if local else copy.deepcopy(live)
     before = _brief(work)
+    before_description = work.get("description") or ""
     err = edit(work)
     if err:
         return {"id": lid, "ok": False, "changed": False, "error": err, "title": before["title"]}
@@ -289,7 +314,11 @@ def stage_edit(db: Session, shop: Shop, lid: int, row: ListingCache | None, edit
         drafts.discard_local(db, shop, lid)  # Etsy ile aynı: yerel sürüme gerek yok
         return {"id": lid, "ok": True, "changed": False, "error": None, "title": before["title"]}
     drafts.save_local(db, shop, lid, work, live)
-    return {"id": lid, "ok": True, "changed": True, "error": None, "title": before["title"], "before": before, "after": _brief(work)}
+    out = {"id": lid, "ok": True, "changed": True, "error": None, "title": before["title"], "before": before, "after": _brief(work)}
+    excerpt = description_excerpt(before_description, work.get("description") or "")
+    if excerpt:
+        out["description"] = excerpt  # açıklama değiştiyse önce/sonra özetinde görünmez; değişen kısmın alıntısı
+    return out
 
 
 def bulk_stage(db: Session, shop: Shop, payload: BulkStageIn) -> list[dict]:

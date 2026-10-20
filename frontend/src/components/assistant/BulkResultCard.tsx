@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, BulkBrief, ChatCard } from "@/lib/api";
 import { startPublish, usePublishJobs } from "@/lib/publishJobs";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
@@ -10,6 +10,8 @@ import { useT } from "@/lib/i18n-client";
 
 type Bulk = Extract<ChatCard, { type: "bulk_result" }>;
 
+const AUTOSTART_WINDOW_MS = 2 * 60 * 1000;
+
 const range = (r: [number, number] | null | undefined, fmt: (n: number) => string) => (r ? (r[0] === r[1] ? fmt(r[0]) : `${fmt(r[0])}–${fmt(r[1])}`) : "—");
 
 /** Toplu işlemin sonucu: değişenler yerel taslak olarak durur; kullanıcı hepsini Etsy'de yayınlar, hepsinden vazgeçer ya da Listing'ler sayfasında tek tek bakar. */
@@ -17,7 +19,11 @@ export default function BulkResultCard({ card, shopId }: { card: Bulk; shopId: n
   const { t, locale } = useT();
   const [confirm, confirmElement] = useConfirm();
   const jobs = usePublishJobs();
-  const [started, setStarted] = useState(false);
+  // Asistanın "hepsini gönder"i: kullanıcı sohbette onayladı, yayın kartla birlikte sırayla başlar. Yalnızca TAZE kartta (sohbet geçmişi yeniden
+  // açılınca eski kart yeniden yayın başlatmasın); karar kart ilk çizildiğinde bir kez verilir.
+  const [autostart] = useState(() => !!card.autostart && Date.now() - (card.started_at ?? 0) < AUTOSTART_WINDOW_MS);
+  const [started, setStarted] = useState(autostart);
+  const autostarted = useRef(false);
   const [discarded, setDiscarded] = useState(false);
   const [busy, setBusy] = useState(false);
   const num = (n: number) => n.toLocaleString(locale, { maximumFractionDigits: 2 });
@@ -37,6 +43,13 @@ export default function BulkResultCard({ card, shopId }: { card: Bulk; shopId: n
     setStarted(true);
     for (const id of card.listing_ids) void startPublish(shopId, id); // yayın sırası ortaktır (lib/publishJobs): sırayla çalışır
   }
+
+  useEffect(() => {
+    if (!autostart || autostarted.current) return;
+    autostarted.current = true;
+    for (const id of card.listing_ids) void startPublish(shopId, id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function discardAll() {
     const ok = await confirm({
@@ -97,6 +110,12 @@ export default function BulkResultCard({ card, shopId }: { card: Bulk; shopId: n
             <li key={s.id} className="py-2">
               <div className="truncate font-medium text-neutral-800 dark:text-neutral-100">{s.title}</div>
               <div className="text-neutral-500 dark:text-neutral-400">{row(s.before, s.after)}</div>
+              {s.description && (
+                <div className="mt-1 space-y-0.5 rounded-md bg-neutral-50 px-2 py-1.5 dark:bg-neutral-950">
+                  <div className="text-neutral-400 line-through dark:text-neutral-500">{s.description.before}</div>
+                  <div className="text-neutral-700 dark:text-neutral-200">{s.description.after}</div>
+                </div>
+              )}
             </li>
           ))}
         </ul>

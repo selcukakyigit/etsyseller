@@ -29,7 +29,7 @@ from app.assistant import toolsets
 from app.assistant.models import AdReport, ChatImage
 from app.finance import invoices
 from app.finance import service as fin
-from app.listings import bulk, creation, drafts, performance, templates
+from app.listings import bulk, creation, drafts, performance, selection, templates
 from app.listings import service as listing_service
 from app.keywords import scoring
 from app.keywords import service as keyword_service
@@ -408,6 +408,17 @@ def _state_like(state: str):
 def search_listings(ctx: Ctx, a: dict) -> dict:
     limit = max(1, min(int(a.get("limit") or 10), 50))
     state = a.get("state") if a.get("state") in _LISTING_STATES else None
+    if a.get("description_contains"):  # "bu yazı kaç listing'de var": toplu bul-değiştirmeyle aynı ortak süzgeç ve eşleşme
+        flt = selection.ListingFilter(description_contains=str(a["description_contains"]), title_contains=a.get("query") or None, state=state or "any")
+        rows = selection.select_rows(ctx.db, ctx.shop, flt)
+        listings = []
+        for r in rows[:limit]:
+            listings.append({"listing_id": r.listing_id, "baslik": html.unescape(r.title), "durum": json.loads(r.raw_json).get("state")})
+        return {
+            "toplam": len(rows), "en_az": len(rows) >= selection.MAX_SELECTED, "listingler": listings,
+            "not": "Birebir eşleşme (büyük/küçük harf, boşluk ve noktalama dahil); yazılış farkı olan listing'ler sayılmaz. 'toplam' tüm eşleşenlerin sayısıdır, 'listingler' yalnızca ilk "
+                   f"{limit} tanesi. Yerel (yayınlanmamış) değişiklik varsa o hâli aranır. Değiştirmek için bulk_update_listings description_find/description_replace; hepsini yayınlamak için sonuç kartındaki 'Etsy'de yayınla' düğmesi.",
+        }
     q = select(ListingCache).where(ListingCache.shop_id == ctx.shop.id)
     if a.get("query"):
         q = q.where(ListingCache.title.like(f"%{str(a['query']).strip()}%"))
@@ -2844,7 +2855,7 @@ TOOLS: list[dict] = [
     {"name": "ad_reports", "description": "Daha önce kaydedilmiş reklam raporları (isteğe bağlı listing'e göre), dönemler arası karşılaştırma için.", "input_schema": _obj({"listing_id": {"type": "integer"}, "limit": {"type": "integer"}})},
     {"name": "top_products", "description": "Dönemin en iyi ürünleri (satış, kâr, adet, marj) ve her ürünün geçen yılın AYNI dönemindeki adet/satışı.", "input_schema": _obj({"start_date": DATE, "end_date": DATE, "sort_by": {"type": "string", "enum": ["sales", "profit", "units"]}, "limit": {"type": "integer"}})},
     {"name": "list_orders", "description": "Siparişleri listeler: to_ship (gönderilecek), overdue (gecikmiş), recent (son siparişler) ya da search (alıcı/ürün/sipariş no arama).", "input_schema": _obj({"filter": {"type": "string", "enum": ["to_ship", "overdue", "recent", "search"]}, "query": {"type": "string"}, "limit": {"type": "integer"}})},
-    {"name": "search_listings", "description": "Mağazadaki listing'lerde başlığa göre arar (en çok görüntülenenden başlar). state ile durumuna göre süzer (draft = Etsy'de yayında olmayan taslaklar, ayrıca henüz Etsy'ye hiç gitmemiş yeni taslaklar da gelir). Sonuçta durum_sayilari de döner: \"kaç taslak var\" sorusu için bunu kullan.", "input_schema": _obj({"query": {"type": "string"}, "limit": {"type": "integer"}, "state": {"type": "string", "enum": ["active", "inactive", "draft", "sold_out", "expired"]}})},
+    {"name": "search_listings", "description": "Mağazadaki listing'lerde başlığa göre arar; description_contains verilirse AÇIKLAMADA birebir geçen metni arar ve kaç listing'de olduğunu (toplam) ve hangileri olduğunu döner ('şu yazı hangi listing'lerde var?') (en çok görüntülenenden başlar). state ile durumuna göre süzer (draft = Etsy'de yayında olmayan taslaklar, ayrıca henüz Etsy'ye hiç gitmemiş yeni taslaklar da gelir). Sonuçta durum_sayilari de döner: \"kaç taslak var\" sorusu için bunu kullan.", "input_schema": _obj({"query": {"type": "string"}, "description_contains": {"type": "string", "description": "Açıklamada birebir aranan metin (kullanıcının verdiği gibi, simgeler ve noktalama dahil)"}, "limit": {"type": "integer"}, "state": {"type": "string", "enum": ["active", "inactive", "draft", "sold_out", "expired"]}})},
     {"name": "get_listing", "description": "Bir listing'in mevcut başlığı, etiketleri, açıklaması ve fiyatı (düzenlemeden önce bakmak için).", "input_schema": _obj({"listing_id": {"type": "integer"}}, ["listing_id"])},
     {"name": "shop_defaults", "description": "Yeni listing için mağazanın en çok kullanılan kategorileri, kargo profili ve iade politikası.", "input_schema": _obj({})},
     {"name": "similar_listings", "description": "Mağazadaki benzer listing'leri bulur (İngilizce anahtar kelimelerle): fiyatlarını, etiketlerini, başlık üslubunu ve açıklama örneğini verir. Yeni listing'de fiyat ve üslup için MUTLAKA bak.", "input_schema": _obj({"query": {"type": "string", "description": "İngilizce ürün anahtar kelimeleri, ör. 'mountain metal wall art'"}, "limit": {"type": "integer"}}, ["query"])},
@@ -3198,7 +3209,7 @@ LISTING_TOOL_NAMES = frozenset({
 TOOL_GROUPS: dict[str, frozenset[str]] = {
     "market": frozenset({"market_research"}),
     "price": frozenset({"suggest_price"}),
-    "bulk": frozenset({"bulk_update_listings", "rewrite_listings", "continue_rewrite", "stop_rewrite"}),
+    "bulk": frozenset({"bulk_update_listings", "publish_staged_batch", "rewrite_listings", "continue_rewrite", "stop_rewrite"}),
     "social": frozenset({"pinterest_content", "make_pin_image"}),
     "digital": frozenset({"add_digital_file", "remove_digital_file", "set_listing_type"}),
 }

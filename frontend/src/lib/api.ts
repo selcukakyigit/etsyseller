@@ -1555,7 +1555,7 @@ export type ChatCard =
   | { type: "listing_draft"; listing_id: number; title: string; edit_url: string; price: [number, number]; quantity: number; tags: string[]; combos: number; image: string | null; images: number; problems: string[]; category?: string | null; changes?: string[]; price_missing?: boolean; quantity_assumed?: boolean }
   | { type: "choices"; kind: "question" | "suggestions"; question: string; options: string[] }
   | { type: "status"; title: string; rows: { label: string; value: number }[] }
-  | { type: "bulk_result"; listing_ids: number[]; inspected: number; changed: number; skipped: { reason: string; count: number }[]; samples: { id: number; title: string; before: BulkBrief; after: BulkBrief }[]; ops: string[] }
+  | { type: "bulk_result"; listing_ids: number[]; inspected: number; changed: number; skipped: { reason: string; count: number }[]; samples: { id: number; title: string; before: BulkBrief; after: BulkBrief; description?: { before: string; after: string } }[]; ops: string[]; /** Asistan 'hepsini gönder' dedi ve kullanıcı onayladı: kart görünür görünmez (taze kartta) sırayla yayını başlatır. */ autostart?: boolean; started_at?: number }
   | ({ type: "rewrite_job" } & RewriteState)
   | { type: "social_pins"; listing_id: number; title: string; pins: { title: string; description: string; hashtags: string[]; board: string }[] }
   | { type: "listing_update"; listing_id: number; title: string; edit_url: string; changes: string[]; tags: string[] }

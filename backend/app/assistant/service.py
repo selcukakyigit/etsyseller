@@ -252,7 +252,7 @@ _ASKS_CONFIRMATION = re.compile(
     r"yap[ae]yım m[ıi]|oluşturay[ıi]m m[ıi]|deneyeyim m[ıi]|\bse[çc]\b|are you sure|do you confirm|shall i|which (?:one|option)", re.IGNORECASE)
 
 # Etsy'ye gerçekten giden / geri dönüşü zor işler: bunlarda onay istemek doğrudur, ısrar edilmez.
-_CONFIRM_TOOLS = frozenset({"publish_listing_draft", "deactivate_listing", "mark_order_shipped", "delete_listing", "discard_listing_changes", "generate_listing_video", "rewrite_listings", "bulk_update_listings"})
+_CONFIRM_TOOLS = frozenset({"publish_listing_draft", "deactivate_listing", "mark_order_shipped", "delete_listing", "discard_listing_changes", "generate_listing_video", "rewrite_listings", "bulk_update_listings", "publish_staged_batch"})
 
 _STALL_NOTE = (
     "\n\n[SİSTEM NOTU: Önceki denemende kullanıcıdan onay/seçim istedin işi yapmadan 'başlıyorum' dedin ya da yazma aracı çağırmadan 'güncelledim/ekledim' dedin (araç sonucunu görmeden yapıldı denmez). Kullanıcının isteği zaten açık ve onaylı; "
