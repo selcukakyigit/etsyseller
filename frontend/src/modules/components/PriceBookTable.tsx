@@ -677,6 +677,7 @@ function HistoryModal({ api, entityId, item, currency, onClose }: { api: EntityA
       {!data ? (
         <BlockSpinner />
       ) : (
+        <div className="max-h-80 overflow-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className={rowBorder}>
@@ -698,6 +699,7 @@ function HistoryModal({ api, entityId, item, currency, onClose }: { api: EntityA
             ))}
           </tbody>
         </table>
+        </div>
       )}
       <div className="mt-4 text-right">
         <button type="button" onClick={onClose} className={btnOutline}>

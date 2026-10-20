@@ -138,6 +138,8 @@ export default function StockModal({
           ))}
         </div>
 
+        {/* Sekmelerin içeriği farklı yükseklikte: pencere sekme değişince zıplamasın diye alan sabit minimum yükseklikte (en uzun sekme: alım) */}
+        <div className="min-h-[19rem]">
         {(tab === "in" || tab === "count") && (
           <div className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-3">
@@ -281,6 +283,8 @@ export default function StockModal({
               </table>
             </div>
           ))}
+
+        </div>
 
         <div>
           <button type="button" onClick={onClose} className={btnLink}>

@@ -54,6 +54,15 @@ Do not leave long help text, hints or notes always visible on a screen. Put them
 title or field (hover on desktop, tap on mobile). Keep visible only: short labels, warnings the user must act on, and live results
 (totals, errors). Write the tip text in both languages like any other UI text.
 
+## Modals: steady size, long lists scroll inside
+
+A modal must not grow or jump while the user works in it. Check this on every new modal.
+
+- Use `Modal` from `@/components/listing-editor/Modal` (it caps at 90vh and scrolls its body). Set the width with `widthClass`; never let content decide it.
+- A list that can grow (history, rows, search results) gets its own limit inside the modal: `max-h-80 overflow-auto` (about 20 rem). The modal does not get taller as the list gets longer.
+- A modal with tabs or steps wraps its content in a fixed minimum height (`min-h-[...]`, sized to the tallest tab) so switching tabs does not resize the window.
+- Empty, loading and filled states should take roughly the same space (spinner/empty text inside the same area).
+
 ## Number fields and display helpers
 
 - Important numeric fields (price, credits, quantity, measures, durations, ids) never accept letters. Use the shared inputs from
