@@ -405,6 +405,16 @@ def _state_like(state: str):
     return ListingCache.raw_json.like(f'%"state": "{state}"%')  # kaba süzgeç; kesin kontrol satır okunurken yapılır
 
 
+def _description_search_message(asked: str, found: dict, total: int) -> str:
+    """Açıklama aramasının kullanıcıya olduğu gibi aktarılacak cevabı: bulunan sayı, satırın TAM hâli (varyantlarıyla) ve sıradaki adım (düzenle, kaydet)."""
+    if not total:
+        return f"Açıklamasında \"{found['phrase']}\" geçen listing bulunamadı."
+    relaxed = "" if found["exact"] else f" (\"{asked}\" birebir bulunamadı; \"{found['phrase']}\" ile arandı)"
+    lines = "\n".join(f"{i}) ({x['count']} listing) {x['line']}" for i, x in enumerate(found["lines"], 1))
+    next_step = f" Eşleşen satır:\n\n{lines}\n\nDeğiştirmek için yeni metni yaz; \"kaydet\" dediğinde hepsine taslak olarak uygularım." if lines else ""
+    return f"Açıklamasında \"{found['phrase']}\" geçen {total} listing var{relaxed}.{next_step}"
+
+
 def search_listings(ctx: Ctx, a: dict) -> dict:
     limit = max(1, min(int(a.get("limit") or 10), 50))
     state = a.get("state") if a.get("state") in _LISTING_STATES else None
@@ -413,8 +423,9 @@ def search_listings(ctx: Ctx, a: dict) -> dict:
         rows = found["rows"]
         listings = [{"listing_id": r.listing_id, "baslik": html.unescape(r.title), "durum": json.loads(r.raw_json).get("state")} for r in rows[:limit]]
         return {
+            "kullaniciya_yaz": _description_search_message(str(a["description_contains"]).strip(), found, len(rows)),
             "toplam": len(rows), "en_az": len(rows) >= selection.MAX_SELECTED, "aranan": found["phrase"], "birebir_eslesti": found["exact"], "buyuk_kucuk_harf_farkiyla_toplam": found["loose_total"], "satirlar": [{"tam_satir": x["line"], "listing_sayisi": x["count"]} for x in found["lines"]], "listingler": listings,
-            "not": "Sonuç bulunamazsa arama kendiliğinden gevşer (büyük/küçük harf yok sayılır, metnin sondaki kelimeleri atılır): 'birebir_eslesti' false ise kullanıcıya hangi metnin bulunduğunu ve kaç listing'de olduğunu söyle, "
+            "not": "CEVABI kullaniciya_yaz metniyle ver (menü/öneri kartı, CSV ya da başka teklif ekleme). Sonuç bulunamazsa arama kendiliğinden gevşer (büyük/küçük harf yok sayılır, metnin sondaki kelimeleri atılır): 'birebir_eslesti' false ise kullanıcıya hangi metnin bulunduğunu ve kaç listing'de olduğunu söyle, "
                    "'buyuk_kucuk_harf_farkiyla_toplam' 'toplam'dan büyükse aynı metnin büyük/küçük harf ya da tırnak farkıyla yazılmış hâlleri de var demektir, söyle; 'satirlar' eşleşen satırın TAM hâlidir (farklı yazılış varyantları ve her birinin kaç listing'de olduğuyla): kullanıcıya kesmeden tam metinleri göster. Kullanıcı düzenlenmiş metni verip 'kaydet/uygula/hepsine yaz' derse HER varyant için ayrı bulk_update_listings çağır (description_find = o varyantın tam satırı, description_replace = kullanıcının metni), sonra özetle ve 'hepsini Etsy'ye gönderelim mi' diye sor (toplu değiştirme birebir eşleşir). 'toplam' tüm eşleşenlerin sayısı, 'listingler' ilk "
                    f"{limit} tanesi. Yerel (yayınlanmamış) değişiklik varsa o hâli aranır. Değiştirmek için bulk_update_listings description_find/description_replace; hepsini yayınlamak için publish_staged_batch.",
         }
