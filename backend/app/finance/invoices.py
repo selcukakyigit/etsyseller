@@ -72,6 +72,30 @@ COLUMN_ALIASES = {
 }
 
 
+# Ana tutarın YANINDAKİ ayrı ücret sütunları (ör. "ABD Gümrük Vergisi($)"): her biri aynı gönderi için ayrı bir kalem olur.
+EXTRA_COLUMNS = (
+    ("gümrük", ("gümrük", "gumruk", "customs", "duty")),
+    ("ek hizmet", ("ek hizmet", "ek ücret", "surcharge", "extra fee")),
+)
+
+
+# Başlığında gümrük geçse de ücret olmayan sütunlar (beyan değeri, gümrük kodu, evet/hayır alanları): ücret kalemi sayılmaz.
+NOT_A_CHARGE = ("value", "değer", "deger", "declared", "beyan", "code", "kod", "gtip", "hs ", "tariff", "paid", "ödendi", "status", "durum", "weight", "ağırlık")
+
+
+# Tablo (CSV/Excel) faturasında firmayı tanıma: (firma, başlık ipuçları, "Etiket" sütunundaki önek). Yapay zekâ yolu firmayı zaten kendisi okur.
+KNOWN_VENDORS = (("ShipEntegra", ("faturalanan", "abd gümrük vergisi"), "shipentegra"),)
+
+
+def _detect_vendor(headers: list[str], rows: list[list]) -> str:
+    normed = " | ".join(_norm_header(h) for h in headers)
+    cells = [str(c).strip().lower() for row in rows[:50] for c in row]
+    for name, hints, prefix in KNOWN_VENDORS:
+        if any(h in normed for h in hints) or any(c.startswith(prefix) for c in cells):
+            return name
+    return ""
+
+
 def _norm_header(h: str) -> str:
     return re.sub(r"[^a-z0-9çğıöşü]+", " ", str(h).lower()).strip()
 
@@ -95,26 +119,44 @@ def _parse_table(rows: list[list]) -> dict:
         i = idx[key]
         return row[i] if i is not None and i < len(row) else None
 
+    # Ana tutar dışındaki ücret sütunları (gümrük vergisi, ek hizmet…): sütun indeksi, tür ve başlık.
+    used = {i for i in idx.values() if i is not None}
+    extras: list[tuple[int, str, str]] = []
+    normed = [_norm_header(h) for h in headers]
+    for i, h in enumerate(normed):
+        if i in used or any(w in f"{h} " for w in NOT_A_CHARGE):
+            continue
+        for kind, words in EXTRA_COLUMNS:
+            if any(w in h for w in words):
+                extras.append((i, kind, headers[i].strip()))
+                break
+    # Para birimi sütunu yoksa başlıkta "($)" ya da "USD" geçiyorsa dolar sayılır.
+    header_ccy = "USD" if any("$" in h or " usd" in f" {n}" for h, n in zip(headers, normed)) else None
+
     shipments, currency = [], None
     for row in rows[1:]:
         amount = _to_float(cell(row, "amount"))
-        if not amount:
+        extra_amounts = [(kind, label, _to_float(row[i] if i < len(row) else None)) for i, kind, label in extras]
+        extra_amounts = [e for e in extra_amounts if e[2]]
+        if not amount and not extra_amounts:
             continue
         currency = currency or (str(cell(row, "currency") or "").upper() or None)
-        shipments.append({
+        base = {
             "tracking_no": str(cell(row, "tracking_no") or "").strip().split(".")[0],
             "ship_date": _parse_date_cell(cell(row, "ship_date")),
             "recipient": str(cell(row, "recipient") or ""),
             "recipient_country": str(cell(row, "recipient_country") or ""),
             "reference": "",
-            "weight_kg": _to_float(cell(row, "weight_kg")),
-            "amount": amount,
-            "kind": _norm_kind(cell(row, "kind")),
-            "description": str(cell(row, "description") or ""),
-        })
+        }
+        if amount:
+            # Ana satırın türü eskisi gibi kalır: parmak izi (bkz. fingerprint) türü içerir, değişirse aynı dosya yeniden yüklenince çift sayılırdı.
+            shipments.append({**base, "weight_kg": _to_float(cell(row, "weight_kg")), "amount": amount, "kind": _norm_kind(cell(row, "kind")), "description": str(cell(row, "description") or "")})
+        for kind, label, value in extra_amounts:
+            shipments.append({**base, "weight_kg": None, "amount": value, "kind": kind, "description": label})
+    currency = currency or header_ccy
     if not shipments:
         raise InvoiceError("Dosyada geçerli tutarlı hiçbir satır bulunamadı.")
-    return {"vendor": "", "invoice_number": "", "invoice_date": None, "currency": currency, "stated_rate": None, "shipments": shipments}
+    return {"vendor": _detect_vendor(headers, rows[1:]), "invoice_number": "", "invoice_date": None, "currency": currency, "stated_rate": None, "shipments": shipments}
 
 
 def _to_float(v) -> float | None:

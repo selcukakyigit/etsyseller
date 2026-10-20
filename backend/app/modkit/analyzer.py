@@ -301,13 +301,14 @@ def _from_text(profile: Profile, text: str, gate: Gate = None) -> tuple[dict, st
 def analyze_file(db: Session, workspace_id: int, profile_key: str, content: bytes, filename: str, content_type: str, gate: Gate = None) -> Result:
     profile = _profile(profile_key)
     digest = sha256(content)
+    kind = file_kind(filename, content_type)
+    if kind == "table" and profile.parse_table is not None:
+        # Sütun okuyucu ücretsiz ve anlıktır: önbelleğe alınmaz, böylece okuyucu geliştiğinde aynı dosya yeniden yüklenince yeni sonucu verir.
+        return Result(profile.parse_table(read_table(content, filename)), "table", digest)
     hit = _cached(db, workspace_id, profile.key, digest)
     if hit is not None:
         return Result(hit, "cache", digest)
-    kind = file_kind(filename, content_type)
-    if kind == "table" and profile.parse_table is not None:
-        data, source = profile.parse_table(read_table(content, filename)), "table"
-    elif kind == "table":  # profilin sütun okuyucusu yok: tablo metne çevrilip metin yolundan okunur (yine ucuz)
+    if kind == "table":  # profilin sütun okuyucusu yok: tablo metne çevrilip metin yolundan okunur (yine ucuz)
         text = "\n".join(" | ".join("" if c is None else str(c) for c in row) for row in read_table(content, filename))
         got = _from_text(profile, text[:MAX_TEXT_CHARS], gate)
         if got is None:

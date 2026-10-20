@@ -248,6 +248,14 @@ ${t("Yine de kaydedilsin mi?", "Save it anyway?")}`);
                       <option value="ek hizmet">{t("Ek hizmet", "Extra service")}</option>
                       <option value="diğer">{t("Diğer", "Other")}</option>
                     </select>
+                    <input
+                      value={c.vendor}
+                      onChange={(e) => patch(r.id, { candidate: { ...c, vendor: e.target.value } })}
+                      maxLength={120}
+                      aria-label={t("Kargo firması", "Carrier")}
+                      placeholder={t("Firma (ör. FedEx)", "Carrier (e.g. FedEx)")}
+                      className={`${input} w-36`}
+                    />
                     {c.matches.length > 0 ? (
                       <select value={r.receiptId ?? ""} onChange={(e) => patch(r.id, { receiptId: e.target.value ? Number(e.target.value) : null })} className={`${input} max-w-sm`}>
                         <option value="">{t("Sipariş seç…", "Choose order…")}</option>
@@ -358,6 +366,10 @@ ${t("Yine de kaydedilsin mi?", "Save it anyway?")}`);
             <button type="button" onClick={() => setSelected(new Set())} className="text-xs text-neutral-500 underline">
               {t("Seçimi temizle", "Clear selection")}
             </button>
+            <span className="ml-auto text-neutral-600 dark:text-neutral-300">
+              {t("Seçilenlerin toplamı", "Selected total")}:{" "}
+              <b className="tabular-nums text-neutral-900 dark:text-neutral-100">{money2.format(selectedShipments.reduce((sum, g) => sum + g.total, 0))}</b>
+            </span>
           </div>
         )}
         {list === null ? (
