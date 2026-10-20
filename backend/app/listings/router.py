@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.auth.models import User
 from app.core import blobstore
 from app.core.byte_range import ranged
+from app.core.download import attachment
 from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.etsy.client import EtsyAuthError
@@ -348,6 +349,7 @@ def get_draft_file(
     listing_id: int,
     file_id: str,
     request: Request,
+    download: bool = False,
     shop: Shop = Depends(get_owned_shop),
     db: Session = Depends(get_db),
 ):
@@ -360,7 +362,9 @@ def get_draft_file(
         raise HTTPException(404, "Dosya bulunamadı")
     # Dosya kimliği değişmez (yeni sürüm yeni kimlik alır): tarayıcı uzun süre önbellekte tutabilir.
     headers = {"Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff", "Accept-Ranges": "bytes"}
-    if f.content_type.startswith("video/") and request.headers.get("range"):
+    if download:
+        headers.update(attachment(f.filename or f"ulagg-{file_id[:8]}"))
+    elif f.content_type.startswith("video/") and request.headers.get("range"):
         return ranged(content, f.content_type, request.headers["range"], headers)  # iOS Safari videoyu yalnızca bayt aralığı destekleyen sunucudan oynatır
     return Response(content, media_type=f.content_type, headers=headers)
 

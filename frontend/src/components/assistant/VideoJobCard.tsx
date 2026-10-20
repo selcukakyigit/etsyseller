@@ -5,28 +5,11 @@ import { api, ChatCard } from "@/lib/api";
 import { ImagePlusIcon, RefreshIcon, TrashIcon } from "@/components/icons";
 import { useT } from "@/lib/i18n-client";
 import GeneratingTile from "./GeneratingTile";
+import { CardIconButton as IconButton, DownloadLink } from "./CardIconButton";
 
 type VideoJob = Extract<ChatCard, { type: "video_job" }>;
 
 const POLL_MS = 4000;
-
-function IconButton({ label, onClick, primary, children }: { label: string; onClick: () => void; primary?: boolean; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      className={`flex h-9 w-9 items-center justify-center rounded-full transition ${
-        primary
-          ? "bg-[#D97757] text-white hover:bg-[#C6613F]"
-          : "border border-neutral-300 text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
 
 /** Sohbette üretilen video: iş sürerken ilerleme, bitince oynatıcı. Durum sunucudan sorulur (iş bileti kartta saklıdır), bu yüzden
  * sayfa değişse bile dönünce kaldığı yerden devam eder; kredi video kaydedilirken bir kez düşülür. */
@@ -83,6 +66,7 @@ export default function VideoJobCard({ card, shopId, onAsk }: { card: VideoJob; 
         <span className="text-neutral-600 dark:text-neutral-300">
           {fileId ? t(`Video hazır · ${card.credits} kredi`, `Video ready · ${card.credits} credits`) : error ? "" : t("Kredi video hazır olunca düşer", "Credits are charged when the video is ready")}
         </span>
+        {fileId && !unplayable && <DownloadLink href={src} label={t("Videoyu indir", "Download the video")} />}
       </div>
       {(fileId || error) && onAsk && (
         <div className="flex items-center justify-end gap-2 border-t border-neutral-100 bg-neutral-50 px-3 py-2 dark:border-neutral-800 dark:bg-neutral-950">

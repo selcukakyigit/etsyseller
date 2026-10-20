@@ -6,26 +6,9 @@ import { api, API_URL, ChatCard } from "@/lib/api";
 import { ImagePlusIcon, RefreshIcon, TrashIcon } from "@/components/icons";
 import { useT } from "@/lib/i18n-client";
 import ImageLightbox from "./ImageLightbox";
+import { CardIconButton as IconButton, DownloadLink } from "./CardIconButton";
 
 type Edited = Extract<ChatCard, { type: "chat_image_edited" }>;
-
-function IconButton({ label, onClick, primary, children }: { label: string; onClick: () => void; primary?: boolean; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      className={`flex h-9 w-9 items-center justify-center rounded-full transition ${
-        primary
-          ? "bg-[#D97757] text-white hover:bg-[#C6613F]"
-          : "border border-neutral-300 text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
 
 /** Asistanın düzenlediği resim: dokununca büyür, bulanıktan netleşerek açılır; simgeler yeniden üret / listing'e ekle / sil.
  * `onAsk` düğmelerin sohbete gönderdiği isteği iletir (ör. "Listing'e ekle"). */
@@ -75,11 +58,14 @@ export default function EditedImageCard({ card, shopId, onAsk }: { card: Edited;
         <span className="text-neutral-600 dark:text-neutral-300">
           {card.added ? t("Oluşturuldu ve listing taslağına eklendi", "Created and added to the listing draft") : t("Oluşturuldu · listing'e eklenmedi", "Created · not added to the listing")}
         </span>
-        {card.added && card.edit_url && (
-          <Link href={card.edit_url} className="flex-shrink-0 font-semibold text-[#B4553A] hover:underline dark:text-[#E89A7F]">
-            {t("Aç →", "Open →")}
-          </Link>
-        )}
+        <span className="flex flex-shrink-0 items-center gap-3">
+          {card.added && card.edit_url && (
+            <Link href={card.edit_url} className="font-semibold text-[#B4553A] hover:underline dark:text-[#E89A7F]">
+              {t("Aç →", "Open →")}
+            </Link>
+          )}
+          {!gone && <DownloadLink href={src} label={t("Resmi indir", "Download the image")} />}
+        </span>
       </div>
       {canAct && (
         <div className="flex items-center justify-end gap-2 border-t border-neutral-100 bg-neutral-50 px-3 py-2 dark:border-neutral-800 dark:bg-neutral-950">

@@ -1,5 +1,4 @@
 import datetime as dt
-from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
@@ -10,6 +9,7 @@ from app.assistant import llm, memory, service
 from app.auth.models import User
 from app.core import blobstore
 from app.core.byte_range import ranged
+from app.core.download import attachment
 from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.core.i18n import tr
@@ -146,7 +146,7 @@ def delete_image(image_id: str, shop: Shop = Depends(get_owned_shop), db: Sessio
 
 
 @router.get("/images/{image_id}")
-def image(image_id: str, request: Request, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+def image(image_id: str, request: Request, download: bool = False, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
     img = service.get_image(db, shop, image_id)
     if img is None:
         raise HTTPException(404, "Resim bulunamadı")
@@ -161,9 +161,9 @@ def image(image_id: str, request: Request, shop: Shop = Depends(get_owned_shop),
         headers["Accept-Ranges"] = "bytes"  # sohbetteki video oynatılır; iOS Safari yalnızca bayt aralığı destekleyen sunucudan oynatır
         if request.headers.get("range"):
             return ranged(content, img.content_type, request.headers["range"], headers)
-    elif img.content_type not in service.IMAGE_TYPES:
-        # Belgeler (PDF, HTML, Excel) tarayıcıda açılmaz, indirilir: yüklenen bir HTML'in API alanında çalışmasını önler.
-        headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(img.filename)}"
+    # Belgeler (PDF, HTML, Excel) tarayıcıda açılmaz, indirilir (yüklenen bir HTML'in API alanında çalışmasını önler); resim ve video istenirse indirilir.
+    if download or (img.content_type not in service.IMAGE_TYPES and img.content_type not in service.VIDEO_TYPES):
+        headers.update(attachment(img.filename or f"ulagg-{image_id[:8]}"))
     return Response(content, media_type=img.content_type, headers=headers)
 
 

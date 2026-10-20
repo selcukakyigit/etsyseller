@@ -8,6 +8,7 @@ from app.auth.models import User
 from app.banners import service
 from app.banners.models import BannerImage
 from app.core import blobstore
+from app.core.download import attachment
 from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.shops.deps import get_owned_shop, require_ai_enabled
@@ -79,5 +80,5 @@ def image(image_id: str, download: bool = False, shop: Shop = Depends(get_owned_
         raise HTTPException(404, "Görsel bulunamadı")
     headers = {"Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff"}
     if download:
-        headers["Content-Disposition"] = f'attachment; filename="banner-{row.style}-{row.slot + 1}-{row.width}x{row.height}.jpg"'
+        headers.update(attachment(f"banner-{row.style}-{row.slot + 1}-{row.width}x{row.height}.jpg"))
     return Response(content, media_type="image/jpeg", headers=headers)
