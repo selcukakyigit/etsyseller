@@ -13,6 +13,7 @@ from app.admin.schemas import AiModelIn, AiModelOut, AiVariantIn, AiVariantOut, 
 from app.ai import catalog
 from app.ai.models import AiModel, AiModelVariant, AiProviderKey, AiTaskModel
 from app.billing import pricing, settings as credit_settings
+from app.core import app_settings
 from app.core.i18n import tr
 
 IMAGE_SIZES = ("1K", "2K", "4K")
@@ -86,12 +87,17 @@ def get_catalog(db: Session) -> CatalogOut:
         variants = {}
     tasks = []
     for task, (kind, name_tr, name_en) in catalog.TASKS.items():
+        variant_key = None
         try:
             m = catalog.resolve(task)
             effective = f"{m.provider}/{m.model_id}"
+            if m.variants and task != "upscale":  # yükseltmede boyut (2K/4K) kullanıcı seçimidir, görev seçeneği yoktur
+                variant_key = catalog.task_variant_key(task)
+                shown = m.variant(variant_key)
+                effective += f" · {shown.key}" if shown else ""
         except catalog.NotConfigured:  # bu türde hiç model yok (ör. video)
             effective = "—"
-        tasks.append(TaskOut(task=task, kind=kind, name_tr=name_tr, name_en=name_en, model_id=assigned.get(task), effective=effective))
+        tasks.append(TaskOut(task=task, kind=kind, name_tr=name_tr, name_en=name_en, model_id=assigned.get(task), variant_key=variant_key, effective=effective))
     keys = [ProviderKeyOut(provider=p, masked=mask(catalog.api_key(p)), source=catalog.key_source(p)) for p in catalog.PROVIDERS]
     return CatalogOut(
         models=[_out(r, variants.get(r.id, [])) for r in rows], tasks=tasks, keys=keys,
@@ -225,19 +231,23 @@ def delete_model(db: Session, model_id: int) -> AiModel:
     return row
 
 
-def assign_task(db: Session, task: str, model_id: int) -> None:
+def assign_task(db: Session, task: str, model_id: int, variant_key: str | None = None) -> None:
     if task not in catalog.TASKS:
         raise AdminError(404, "Görev bulunamadı")
     row = db.get(AiModel, model_id)
     kind = catalog.TASKS[task][0]
     if row is None or not row.active or row.kind != kind or row.provider not in catalog.SUPPORTED_PROVIDERS.get(kind, ()):
         raise AdminError(422, "Bu görev için uygun (aktif, aynı türde ve desteklenen) bir model seç.")
+    if variant_key and not db.scalar(select(AiModelVariant.id).where(AiModelVariant.model_id == model_id, AiModelVariant.key == variant_key, AiModelVariant.active)):
+        raise AdminError(422, "Seçilen seçenek bu modelde yok ya da pasif.")
     current = db.get(AiTaskModel, task)
     if current is None:
         db.add(AiTaskModel(task=task, model_id=model_id))
     else:
         current.model_id = model_id
     db.commit()
+    # Seçenek ayar deposunda tutulur (göç gerektirmez); model değişince seçenek temizlenir, yeni modelin varsayılanı kullanılır.
+    app_settings.set_many(db, {f"task_variant:{task}": variant_key or None})
     catalog.invalidate()
 
 

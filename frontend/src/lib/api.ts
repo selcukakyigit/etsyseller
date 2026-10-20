@@ -1050,7 +1050,7 @@ export type AdminAiModelInput = Omit<AdminAiModel, "id" | "supported" | "variant
 /** Seçenek kredisini panelde canlı hesaplamak için (backend billing/pricing.py ile aynı kural). */
 export type AdminPricing = { credit_usd: number; credit_markup: number; platform_fee: number; units: Record<string, "image" | "second"> };
 
-export type AdminTask = { task: string; kind: string; name_tr: string; name_en: string; model_id: number | null; effective: string };
+export type AdminTask = { task: string; kind: string; name_tr: string; name_en: string; model_id: number | null; variant_key: string | null; effective: string };
 
 export type AdminCatalog = {
   models: AdminAiModel[];
@@ -1758,8 +1758,8 @@ export const api = {
     createModel: (body: AdminAiModelInput) => request<AdminAiModel>("/api/admin/models", { method: "POST", body: JSON.stringify(body) }),
     updateModel: (id: number, body: AdminAiModelInput) => request<AdminAiModel>(`/api/admin/models/${id}`, { method: "PUT", body: JSON.stringify(body) }),
     deleteModel: (id: number) => request<{ ok: boolean }>(`/api/admin/models/${id}`, { method: "DELETE" }),
-    assignTask: (task: string, modelId: number) =>
-      request<{ ok: boolean }>(`/api/admin/tasks/${encodeURIComponent(task)}`, { method: "PUT", body: JSON.stringify({ model_id: modelId }) }),
+    assignTask: (task: string, modelId: number, variant: string | null = null) =>
+      request<{ ok: boolean }>(`/api/admin/tasks/${encodeURIComponent(task)}`, { method: "PUT", body: JSON.stringify({ model_id: modelId, variant }) }),
     setKey: (provider: string, apiKey: string) =>
       request<{ ok: boolean }>(`/api/admin/keys/${encodeURIComponent(provider)}`, { method: "PUT", body: JSON.stringify({ api_key: apiKey }) }),
     clearKey: (provider: string) => request<{ ok: boolean }>(`/api/admin/keys/${encodeURIComponent(provider)}`, { method: "DELETE" }),

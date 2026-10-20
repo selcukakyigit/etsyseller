@@ -195,8 +195,8 @@ def delete_model(model_id: int, admin: User = Depends(admin_only), db: Session =
 
 @router.put("/tasks/{task}")
 def assign_task(task: str, payload: TaskIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
-    _run(ai_models.assign_task, db, task, payload.model_id)
-    audit.record(db, admin, "task.assign", task, f"model_id={payload.model_id}")
+    _run(ai_models.assign_task, db, task, payload.model_id, payload.variant)
+    audit.record(db, admin, "task.assign", task, f"model_id={payload.model_id} variant={payload.variant or '-'}")
     return {"ok": True}
 
 

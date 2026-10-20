@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.ai.models import AiModel, AiModelVariant, AiProviderKey, AiTaskModel
+from app.core import app_settings
 from app.core.config import settings
 from app.core.db import SessionLocal
 
@@ -285,12 +286,21 @@ def not_configured_message() -> str:
     )
 
 
+def task_variant_key(task: str) -> str | None:
+    """Yöneticinin göreve seçtiği seçenek (çözünürlük/kalite, ör. "2K"); seçilmediyse None (modelin varsayılan seçeneği). Ayar deposunda
+    ("task_variant:<görev>") tutulur, böylece her görev aynı modelden farklı seçenek kullanabilir."""
+    value = app_settings.get(f"task_variant:{task}", None)
+    return value if isinstance(value, str) and value else None
+
+
 def resolve_choice(task: str, model_db_id: int | None = None, variant_key: str | None = None) -> tuple[ResolvedModel, Variant | None]:
     """Kullanıcının seçtiği model ve seçenek (ör. üretim penceresindeki seçici). Seçilen model artık yoksa, pasifse ya da
     anahtarı yoksa görevin modeline; seçenek yoksa modelin varsayılan seçeneğine düşülür."""
     kind = TASKS[task][0]
     chosen = by_id(model_db_id, kind) if model_db_id is not None else None
     model = chosen if chosen is not None and ready(chosen) else resolve_ready(task)
+    if variant_key is None and chosen is None:
+        variant_key = task_variant_key(task)  # kullanıcı model seçmediyse görevin (Yönetim > Görevler) seçeneği
     return model, model.variant(variant_key)
 
 

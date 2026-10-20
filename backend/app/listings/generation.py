@@ -105,11 +105,19 @@ def kind_options(task: str, durations=None) -> dict:
     """Kullanıcıya açık modeller: aktif, anahtarı tanımlı ve en az bir aktif fiyat seçeneği olan. Videoda yalnızca
     Etsy'nin kabul ettiği süreler."""
     kind = catalog.TASKS[task][0]
+    try:
+        task_model_id = catalog.resolve_ready(task).id
+    except catalog.NotConfigured:
+        task_model_id = None
     models = []
     for m in catalog.choices(kind):
         if not catalog.ready(m) or not m.variants:
             continue
         item = {"id": m.id, "label": m.label, "variants": _variants(m)}
+        chosen = catalog.task_variant_key(task)
+        if chosen and m.id == task_model_id and any(v["key"] == chosen for v in item["variants"]):
+            for v in item["variants"]:  # Yönetim > Görevler'de seçilen seçenek pencerede varsayılan gelir
+                v["is_default"] = v["key"] == chosen
         if durations is not None:
             allowed = durations(m)
             if not allowed:

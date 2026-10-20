@@ -232,7 +232,8 @@ class TaskOut(BaseModel):
     name_tr: str
     name_en: str
     model_id: int | None  # atanmış katalog modeli
-    effective: str  # şu an gerçekte kullanılan "sağlayıcı/model"
+    variant_key: str | None = None  # göreve seçilen seçenek (çözünürlük/kalite); None: modelin varsayılanı
+    effective: str  # şu an gerçekte kullanılan "sağlayıcı/model · seçenek"
 
 
 class ProviderKeyOut(BaseModel):
@@ -261,6 +262,7 @@ class CatalogOut(BaseModel):
 
 class TaskIn(BaseModel):
     model_id: int
+    variant: str | None = Field(default=None, max_length=40)  # model seçeneği (ör. "2K"); boşsa modelin varsayılanı
 
 
 class KeyIn(BaseModel):
