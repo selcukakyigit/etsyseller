@@ -239,7 +239,16 @@ export type Listing = {
 };
 
 /** Listing kartındaki satış özeti: adet olarak bu ay, geçen ay ve toplam. */
-export type CardSale = { this_month: number; last_month: number; total: number };
+export type CardSale = {
+  this_month: number;
+  last_month: number;
+  total: number;
+  /** Görüntülenme/favori artışı (günlük kayıtların farkı); kayıt geçmişi yetmiyorsa null. */
+  views_this: number | null;
+  views_last: number | null;
+  favs_this: number | null;
+  favs_last: number | null;
+};
 export type CardSales = { month: string; listings: Record<string, CardSale> };
 
 export type BulkTextOp = {

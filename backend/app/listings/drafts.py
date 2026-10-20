@@ -219,7 +219,8 @@ def _origin_image_bytes(db: Session, shop: Shop, listing_id: int, origin_key: st
 
 def list_versions(db: Session, shop: Shop, listing_id: int, image_id: int, draft_file_id: str | None) -> list[dict]:
     """Bir fotoğraf yuvasının tüm geçmişi — orijinal Etsy fotoğrafı (varsa) + üretilen her sürüm, eskiden
-    yeniye. Hiçbir sürüm silinmez, bu yüzden geçmiş her zaman tam. Küpün yanındaki sürüm noktaları bunu kullanır."""
+    yeniye. Sürümler düzenleme sırasında durur; "Kaydet" ya da yayından sonra kullanılmayanlar silinir (bkz. `_prune_files`), bu yüzden
+    geçmiş yalnızca o oturumu kapsar. Küpün yanındaki sürüm noktaları bunu kullanır."""
     origin_key = _resolve_origin_key(db, shop, listing_id, image_id, draft_file_id)
     versions: list[dict] = []
     if origin_key.startswith("etsy-"):

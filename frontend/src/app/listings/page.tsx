@@ -735,7 +735,7 @@ export default function Home() {
                         faded={fadedOf(listing)}
                         rank={ranks?.listings[String(listing.listing_id)]}
                         rankMax={ranks?.max_results}
-                        sales={cardSales ? (cardSales.listings[String(listing.listing_id)] ?? { this_month: 0, last_month: 0, total: 0 }) : undefined}
+                        sales={cardSales ? (cardSales.listings[String(listing.listing_id)] ?? { this_month: 0, last_month: 0, total: 0, views_this: null, views_last: null, favs_this: null, favs_last: null }) : undefined}
                         salesMonth={cardSales?.month}
                       />
                     ))}

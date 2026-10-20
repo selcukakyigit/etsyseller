@@ -57,6 +57,7 @@ export default function ListingCard({
     return base.toLocaleDateString(locale, { month: "short" });
   };
   const [menuOpen, setMenuOpen] = useState(false);
+  const [totalsOpen, setTotalsOpen] = useState(false); // "?" ile açılan ömür boyu toplamlar
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -82,6 +83,8 @@ export default function ListingCard({
       {label}
     </button>
   );
+  // Aylık görüntülenme/favori yalnızca günlük kayıt geçmişi varsa gösterilir; yoksa ömür boyu toplam görünür.
+  const hasMonthly = !!sales && [sales.views_this, sales.views_last, sales.favs_this, sales.favs_last].some((v) => v !== null);
   const price = formatPrice(listing, locale);
   const renews = listing.ending_timestamp
     ? new Date(listing.ending_timestamp * 1000).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })
@@ -155,14 +158,51 @@ export default function ListingCard({
               </div>
             </div>
           )}
-          <p className="flex flex-wrap justify-between gap-x-3 text-[11px]">
-            <span>
-              <b className="font-semibold tabular-nums text-neutral-700 dark:text-neutral-200">{(listing.views ?? 0).toLocaleString(locale)}</b> {t("görüntülenme", "views")}
-            </span>
-            <span>
-              <b className="font-semibold tabular-nums text-neutral-700 dark:text-neutral-200">{(listing.favorites ?? 0).toLocaleString(locale)}</b> {t("favori", "favorites")}
-            </span>
-          </p>
+          {hasMonthly ? (
+            <div>
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-semibold uppercase tracking-wide">{t("Aylık ilgi", "Monthly interest")}</p>
+                <button
+                  type="button"
+                  onClick={() => setTotalsOpen((v) => !v)}
+                  aria-expanded={totalsOpen}
+                  aria-label={t("Toplamları göster", "Show totals")}
+                  title={t("Ömür boyu toplamlar", "Lifetime totals")}
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-neutral-300 text-[11px] font-semibold leading-none text-neutral-500 hover:border-[#D97757] hover:text-[#D97757] dark:border-neutral-600 dark:text-neutral-400"
+                >
+                  ?
+                </button>
+              </div>
+              {[
+                { label: t("Görüntülenme", "Views"), a: sales?.views_this ?? null, b: sales?.views_last ?? null },
+                { label: t("Favori", "Favorites"), a: sales?.favs_this ?? null, b: sales?.favs_last ?? null },
+              ].map((r) => (
+                <p key={r.label} className="mt-0.5 flex items-baseline justify-between gap-2 text-[11px]">
+                  <span>{r.label}</span>
+                  <span className="tabular-nums">
+                    <span className="capitalize">{monthLabel(salesMonth, 0)}</span> <b className="font-semibold text-neutral-700 dark:text-neutral-200">{r.a === null ? "—" : r.a.toLocaleString(locale)}</b>
+                    <span className="mx-1 text-neutral-300 dark:text-neutral-600">·</span>
+                    <span className="capitalize">{monthLabel(salesMonth, -1)}</span> <b className="font-semibold text-neutral-700 dark:text-neutral-200">{r.b === null ? "—" : r.b.toLocaleString(locale)}</b>
+                  </span>
+                </p>
+              ))}
+              {totalsOpen && (
+                <p className="mt-1 rounded-md bg-white px-2 py-1 text-[11px] dark:bg-neutral-900">
+                  {t("Toplam", "Total")}: <b className="tabular-nums text-neutral-800 dark:text-neutral-100">{(listing.views ?? 0).toLocaleString(locale)}</b> {t("görüntülenme", "views")} ·{" "}
+                  <b className="tabular-nums text-neutral-800 dark:text-neutral-100">{(listing.favorites ?? 0).toLocaleString(locale)}</b> {t("favori", "favorites")}
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="flex flex-wrap justify-between gap-x-3 text-[11px]">
+              <span>
+                <b className="font-semibold tabular-nums text-neutral-700 dark:text-neutral-200">{(listing.views ?? 0).toLocaleString(locale)}</b> {t("görüntülenme", "views")}
+              </span>
+              <span>
+                <b className="font-semibold tabular-nums text-neutral-700 dark:text-neutral-200">{(listing.favorites ?? 0).toLocaleString(locale)}</b> {t("favori", "favorites")}
+              </span>
+            </p>
+          )}
         </div>
         {publishError && <p className="text-red-600">{publishError}</p>}
       </div>

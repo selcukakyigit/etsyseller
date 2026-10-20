@@ -121,10 +121,10 @@ class ListingDraft(Base):
 
 
 class DraftFile(Base):
-    """Taslağa eklenen (henüz Etsy'ye yüklenmemiş) fotoğraf/video dosyası; içerik diskte durur. Bir dosya
-    ASLA silinmez (yeniden üretim eskisinin üstüne yazmaz, yeni bir satır ekler) — bu yüzden `origin_key`
-    ile aynı "fotoğraf yuvası"na ait tüm sürümler gruplanıp geçmiş olarak gösterilebiliyor
-    (bkz. listings/drafts.py list_versions, küpün yanındaki sürüm noktaları)."""
+    """Taslağa eklenen (henüz Etsy'ye yüklenmemiş) fotoğraf/video dosyası; içerik depoda durur. Yeniden üretim eskisinin üstüne
+    yazmaz, yeni bir satır ekler; `origin_key` aynı "fotoğraf yuvası"nın sürümlerini gruplar (bkz. drafts.py list_versions,
+    küpün yanındaki sürüm noktaları). Sürümler DÜZENLEME sırasında (otomatik taslakla) durur; "Kaydet", "Yayınla" ve
+    değişiklikleri atma, taslağın ya da yerel sürümün kullanmadığı dosyaları siler (bkz. drafts.py `_prune_files`)."""
 
     __tablename__ = "listing_draft_files"
 
