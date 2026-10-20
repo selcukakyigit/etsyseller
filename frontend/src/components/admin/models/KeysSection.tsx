@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Badge, Button, Section, errorText, inputClass } from "@/components/admin/ui";
 import { AdminCatalog, api } from "@/lib/api";
 import { useT } from "@/lib/i18n-client";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { toast } from "@/lib/toast";
 import { PROVIDER_NAMES } from "./catalog";
 
@@ -50,6 +51,7 @@ export default function KeysSection({ data, onChanged }: { data: AdminCatalog; o
 
 function KeyRow({ provider, masked, source, onChanged }: { provider: string; masked: string; source: string; onChanged: () => void }) {
   const { t } = useT();
+  const [confirm, confirmElement] = useConfirm();
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState<"save" | "test" | "clear" | null>(null);
 
@@ -66,7 +68,7 @@ function KeyRow({ provider, masked, source, onChanged }: { provider: string; mas
         setValue("");
         toast.success(t("Anahtar kaydedildi", "Key saved"));
       } else {
-        if (!window.confirm(t("Panelden girilen anahtar silinsin mi? Varsa .env'deki anahtar kullanılır.", "Remove the key entered here? The .env key is used if there is one."))) return;
+        if (!(await confirm({ title: t("Anahtar kaldırılsın mı?", "Remove the key?"), message: t("Panelden girilen anahtar silinsin mi? Varsa .env'deki anahtar kullanılır.", "Remove the key entered here? The .env key is used if there is one."), confirmLabel: t("Kaldır", "Remove"), destructive: true }))) return;
         await api.admin.clearKey(provider);
       }
       onChanged();
@@ -110,6 +112,7 @@ function KeyRow({ provider, masked, source, onChanged }: { provider: string; mas
           )}
         </div>
       </div>
+    {confirmElement}
     </li>
   );
 }

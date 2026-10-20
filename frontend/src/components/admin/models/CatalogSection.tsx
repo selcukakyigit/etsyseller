@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Badge, Button, EmptyState, Section, errorText } from "@/components/admin/ui";
 import { AdminAiModel, AdminCatalog, api } from "@/lib/api";
 import { useT } from "@/lib/i18n-client";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { toast } from "@/lib/toast";
 import { KINDS, Kind } from "./catalog";
 import ModelForm from "./ModelForm";
@@ -16,13 +17,14 @@ function llmPriceText(m: AdminAiModel, t: (tr: string, en: string) => string): s
 
 export default function CatalogSection({ data, onChanged }: { data: AdminCatalog; onChanged: () => void }) {
   const { t } = useT();
+  const [confirm, confirmElement] = useConfirm();
   const [kind, setKind] = useState<Kind>("image");
   const [editing, setEditing] = useState<AdminAiModel | "new" | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
   const models = data.models.filter((m) => m.kind === kind);
 
   async function remove(m: AdminAiModel) {
-    if (!window.confirm(t(`“${m.label}” katalogdan silinsin mi?`, `Remove “${m.label}” from the catalog?`))) return;
+    if (!(await confirm({ title: t("Model silinsin mi?", "Remove the model?"), message: t(`“${m.label}” katalogdan silinsin mi?`, `Remove “${m.label}” from the catalog?`), confirmLabel: t("Sil", "Delete"), destructive: true }))) return;
     setDeleting(m.id);
     try {
       await api.admin.deleteModel(m.id);
@@ -130,6 +132,7 @@ export default function CatalogSection({ data, onChanged }: { data: AdminCatalog
               `Image and video options have a fixed price: users see it before generating. Automatic credits = cost × ${data.pricing.credit_markup} ÷ $${data.pricing.credit_usd} (set on the Credits page). The multiplier is what we charge over cost; below 1.5× is amber, below 1× (a loss) is red.`,
             )}
       </p>
+    {confirmElement}
     </Section>
   );
 }

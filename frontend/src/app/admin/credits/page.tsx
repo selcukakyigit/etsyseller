@@ -9,6 +9,7 @@ import UsageBreakdown from "@/components/billing/UsageBreakdown";
 import { BlockSpinner, Spinner } from "@/components/ui/Spinner";
 import { AdminCreditSettings, AdminWorkspaceCredit, api } from "@/lib/api";
 import { useT } from "@/lib/i18n-client";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { toast } from "@/lib/toast";
 
 const PAGE_SIZE = 50;
@@ -27,6 +28,7 @@ export default function AdminCreditsPage() {
 
 function Settings() {
   const { t } = useT();
+  const [confirm, confirmElement] = useConfirm();
   const { data, setData, error } = useApiData("admin:credit-settings", api.admin.creditSettings);
   const [draft, setDraft] = useState<AdminCreditSettings | null>(null);
   const [saving, setSaving] = useState(false);
@@ -46,7 +48,7 @@ function Settings() {
     }
   }
 
-  function toggleEnabled(on: boolean) {
+  async function toggleEnabled(on: boolean) {
     if (!form) return;
     const msg = on
       ? t(
@@ -54,7 +56,7 @@ function Settings() {
           "Turn the credit system on? AI requests from users with a balance of 0 or less will be refused.",
         )
       : t("Kredi sistemi kapatılsın mı? Kullanım yine ölçülür ama bakiyeden düşülmez.", "Turn the credit system off? Usage is still measured but not deducted.");
-    if (window.confirm(msg)) void save({ ...form, credits_enabled: on });
+    if (await confirm({ title: on ? t("Kredi sistemi açılsın mı?", "Turn the credit system on?") : t("Kredi sistemi kapatılsın mı?", "Turn the credit system off?"), message: msg, confirmLabel: on ? t("Aç", "Turn on") : t("Kapat", "Turn off") })) void save({ ...form, credits_enabled: on });
   }
 
   if (error && !form) return <p className="text-sm text-red-600 dark:text-red-400">{error}</p>;
@@ -101,6 +103,7 @@ function Settings() {
           </Button>
         </div>
       </div>
+    {confirmElement}
     </Section>
   );
 }

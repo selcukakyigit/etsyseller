@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Badge, Button, EmptyState, Field, Section, Toggle, errorText, inputClass, useFormat } from "@/components/admin/ui";
 import { AdminBilling, AdminProduct, AdminProductInput, api } from "@/lib/api";
 import { useT } from "@/lib/i18n-client";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { toast } from "@/lib/toast";
 
 function money(cents: number, currency: string, locale: string): string {
@@ -19,12 +20,13 @@ function money(cents: number, currency: string, locale: string): string {
 export default function ProductsSection({ data, onChanged }: { data: AdminBilling; onChanged: () => void }) {
   const products = data.products;
   const { t, locale } = useT();
+  const [confirm, confirmElement] = useConfirm();
   const f = useFormat();
   const [editing, setEditing] = useState<AdminProduct | "new" | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
 
   async function remove(p: AdminProduct) {
-    if (!window.confirm(t(`“${p.name_tr}” silinsin mi?`, `Delete “${p.name_en}”?`))) return;
+    if (!(await confirm({ title: t("Ürün silinsin mi?", "Delete the product?"), message: t(`“${p.name_tr}” silinsin mi?`, `Delete “${p.name_en}”?`), confirmLabel: t("Sil", "Delete"), destructive: true }))) return;
     setDeleting(p.id);
     try {
       await api.admin.deleteProduct(p.id);
@@ -88,6 +90,7 @@ export default function ProductsSection({ data, onChanged }: { data: AdminBillin
           ))}
         </ul>
       )}
+    {confirmElement}
     </Section>
   );
 }

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { api, ApiError, InvoiceCandidate } from "@/lib/api";
 import { Spinner } from "@/components/ui/Spinner";
 import { useT } from "@/lib/i18n-client";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 
 type Row = { receiptId: number | null; checked: boolean; status: "idle" | "saving" | "saved" | "error"; error?: string };
 
@@ -14,6 +15,7 @@ const KIND_EN: Record<string, string> = { nakliye: "shipping", gümrük: "custom
  * kaydedilmez; kullanıcı siparişi kontrol edip (gerekirse değiştirip) onaylayınca Kargo faturaları'na yazılır. */
 export default function InvoiceReviewCard({ shopId, source, currency, candidates }: { shopId: number; source: string; currency: string; candidates: InvoiceCandidate[] }) {
   const { t, locale } = useT();
+  const [confirm, confirmElement] = useConfirm();
   const [rows, setRows] = useState<Row[]>(() =>
     candidates.map((c) => {
       const best = c.matches[0];
@@ -45,9 +47,7 @@ export default function InvoiceReviewCard({ shopId, source, currency, candidates
         try {
           await api.finance.invoices.confirm(shopId, receiptId, candidates[i], dup);
         } catch (e) {
-          if (!(e instanceof ApiError && e.status === 409) || !window.confirm(`${e.message}
-
-${t("Yine de kaydedilsin mi?", "Save it anyway?")}`)) throw e;
+          if (!(e instanceof ApiError && e.status === 409) || !(await confirm({ title: t("Aynı tutarda kalem zaten var", "A line with the same amount already exists"), message: e.message, confirmLabel: t("Yine de kaydet", "Save anyway") }))) throw e;
           await api.finance.invoices.confirm(shopId, receiptId, candidates[i], true);
         }
         patch(i, { status: "saved", checked: false });
@@ -159,6 +159,7 @@ ${t("Yine de kaydedilsin mi?", "Save it anyway?")}`)) throw e;
           {busy ? t("Kaydediliyor…", "Saving…") : t(`Seçilenleri onayla (${count})`, `Confirm selected (${count})`)}
         </button>
       </div>
+    {confirmElement}
     </div>
   );
 }

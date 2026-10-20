@@ -5,9 +5,15 @@ import { api, ApiError, FinProduct, InvoiceCandidate, InvoiceShipment } from "@/
 import { tNow as t } from "@/lib/i18n";
 import { useCached } from "@/lib/pageCache";
 import { BlockSpinner } from "@/components/ui/Spinner";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 import DateRangePicker, { presetOptions } from "@/components/ui/DateRangePicker";
 import DocumentAnalyzer from "@/modules/components/DocumentAnalyzer";
-import InvoiceReviewGroup, { Review, STRONG_FROM } from "./InvoiceReviewGroup";
+import InvoiceReviewGroup, { CHECK_FROM, Review, STRONG_FROM } from "./InvoiceReviewGroup";
+
+type ReviewFilter = "all" | "sure" | "check" | "weak" | "nomatch";
+
+// Aynı gönderinin kalemleri tek kartta toplanır: takip no, yoksa alıcı + tarih anahtarıdır.
+const groupKeyOf = (c: InvoiceCandidate) => c.tracking_no || `${c.recipient}|${c.ship_date ?? c.invoice_date}`;
 
 const card = "rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900";
 const input = "rounded-lg border border-neutral-300 bg-white px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900";
@@ -29,6 +35,7 @@ export default function ShippingInvoices({
   money2: Intl.NumberFormat;
   onSaved: () => void;
 }) {
+  const [confirm, confirmElement] = useConfirm();
   const [reviews, setReviews] = useState<Review[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -42,6 +49,9 @@ export default function ShippingInvoices({
   const PER_PAGE = 20;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<ReviewFilter>("all");
+  const [batch, setBatch] = useState<{ ids: number[]; reviews: Review[]; shipments: number } | null>(null); // son toplu onay (geri alınabilir)
+  const [notice, setNotice] = useState<string | null>(null); // yükleme sonucu bilgisi (ör. her şey zaten kayıtlı)
   const nextId = useRef(1);
   // Kayıtlı faturalar sekme belleğinde tutulur: sekmeye geri dönünce liste beklemeden görünür, arkada tazelenir.
   const [list, setList] = useCached<{ items: InvoiceShipment[]; total: number; total_amount: number }>(
@@ -88,7 +98,7 @@ export default function ShippingInvoices({
       `${selectedShipments.length} gönderi (${lineCount} fatura kalemi) silinsin mi? Bu siparişlerin kargo maliyeti tekrar 0'a döner. Bu işlem geri alınamaz.`,
       `Delete ${selectedShipments.length} shipments (${lineCount} invoice lines)? Shipping cost for these orders goes back to 0. This cannot be undone.`,
     );
-    if (!window.confirm(msg)) return;
+    if (!(await confirm({ title: t("Gönderiler silinsin mi?", "Delete shipments?"), message: msg, confirmLabel: t("Sil", "Delete"), destructive: true }))) return;
     await api.finance.invoices.removeMany(shopId, selectedShipments.flatMap((g) => g.lines.map((l) => l.id)));
     setSelected(new Set());
     loadSaved();
@@ -97,12 +107,28 @@ export default function ShippingInvoices({
 
   // Her dosya/metin ayrı okunur; adaylar onay listesine eklenir (satır kimliği yalnızca liste anahtarı içindir).
   function addCandidates(candidates: InvoiceCandidate[]) {
+    // Hiçbir kalemi yeni olmayan gönderiler listeye alınmaz (aynı belge tekrar yüklenince onlarca kart çıkmasın); tek bir not gösterilir.
+    const withNew = new Set(candidates.filter((c) => !c.already_saved).map(groupKeyOf));
+    const fullySaved = candidates.filter((c) => !withNew.has(groupKeyOf(c)));
+    const shipments = new Set(fullySaved.map(groupKeyOf)).size;
+    candidates = candidates.filter((c) => withNew.has(groupKeyOf(c)));
+    setNotice(
+      fullySaved.length === 0
+        ? null
+        : candidates.length === 0
+          ? t(
+              `Bu belgedeki ${fullySaved.length} kalemin (${shipments} gönderi) hepsi zaten kayıtlı. Eklenecek yeni bir şey yok, hiçbir değişiklik yapılmadı.`,
+              `All ${fullySaved.length} lines (${shipments} shipments) in this document are already saved. There is nothing new to add and nothing was changed.`,
+            )
+          : t(`${fullySaved.length} kalem (${shipments} gönderi) zaten kayıtlıydı, listeye alınmadı.`, `${fullySaved.length} lines (${shipments} shipments) were already saved and were left out of the list.`),
+    );
     const added: Review[] = candidates.map((c) => ({ id: nextId.current++, candidate: c, receiptId: c.already_saved ? null : (c.matches[0]?.receipt_id ?? null) }));
     setReviews((r) => [...r, ...added]);
   }
 
   async function readFile(file: File) {
     setError(null);
+    setNotice(null);
     try {
       addCandidates(await api.finance.invoices.parse(shopId, file));
     } catch (e) {
@@ -114,6 +140,7 @@ export default function ShippingInvoices({
 
   async function readText(text: string) {
     setError(null);
+    setNotice(null);
     try {
       addCandidates(await api.finance.invoices.parseText(shopId, text));
     } catch (e) {
@@ -122,31 +149,32 @@ export default function ShippingInvoices({
   }
 
   const duplicateOf = (r: Review) => r.candidate.matches.find((m) => m.receipt_id === r.receiptId)?.duplicate_of ?? null;
-  const askDuplicate = (msg: string) => window.confirm(`${msg}
+  const askDuplicate = (msg: string) =>
+    confirm({ title: t("Aynı tutarda kalem zaten var", "A line with the same amount already exists"), message: msg, confirmLabel: t("Yine de kaydet", "Save anyway"), cancelLabel: t("Vazgeç", "Cancel") });
 
-${t("Yine de kaydedilsin mi?", "Save it anyway?")}`);
-
-  async function confirmOne(r: Review): Promise<boolean> {
-    if (r.receiptId === null) return false;
+  // `dupAsked`: aynı gönderinin kalemleri için olası mükerrer sorusu zaten sorulup onaylandı (kalem başına tekrar sorulmaz).
+  async function confirmOne(r: Review, dupAsked = false): Promise<number[] | null> {
+    if (r.receiptId === null) return null;
     // Siparişte aynı tutarda kalem varsa (ör. aynı fatura hem ekran görüntüsü hem Excel olarak yüklendi) ikinci onay iste.
     const dup = duplicateOf(r);
-    if (dup && !askDuplicate(t(
+    if (dup && !dupAsked && !(await askDuplicate(t(
       `Bu siparişe aynı tutarda bir kalem zaten kayıtlı (${dup.invoice_no} · ${dup.invoice_date}). Aynı fatura iki kez yüklenmiş olabilir.`,
       `This order already has a line with the same amount (${dup.invoice_no} · ${dup.invoice_date}). The same invoice may have been uploaded twice.`,
-    ))) return false;
+    )))) return null;
     try {
+      let res: { ids: number[] };
       try {
-        await api.finance.invoices.confirm(shopId, r.receiptId, r.candidate, !!dup);
+        res = await api.finance.invoices.confirm(shopId, r.receiptId, r.candidate, !!dup);
       } catch (e) {
         // Sipariş elle girildiyse ya da aynı yüklemede iki kopya varsa mükerreri sunucu yakalar (409).
-        if (!(e instanceof ApiError && e.status === 409) || !askDuplicate(e.message)) throw e;
-        await api.finance.invoices.confirm(shopId, r.receiptId, r.candidate, true);
+        if (!(e instanceof ApiError && e.status === 409) || !(await askDuplicate(e.message))) throw e;
+        res = await api.finance.invoices.confirm(shopId, r.receiptId, r.candidate, true);
       }
       setReviews((list) => list.filter((x) => x.id !== r.id));
-      return true;
+      return res.ids;
     } catch (e) {
       setError(e instanceof Error ? e.message : t("Kaydedilemedi", "Could not save"));
-      return false;
+      return null;
     }
   }
 
@@ -155,7 +183,7 @@ ${t("Yine de kaydedilsin mi?", "Save it anyway?")}`);
   const groupIndex = new Map<string, number>();
   for (const r of reviews) {
     const c = r.candidate;
-    const key = c.tracking_no || `${c.recipient}|${c.ship_date ?? c.invoice_date}`;
+    const key = groupKeyOf(c);
     const at = groupIndex.get(key);
     if (at === undefined) {
       groupIndex.set(key, groups.length);
@@ -167,22 +195,88 @@ ${t("Yine de kaydedilsin mi?", "Save it anyway?")}`);
 
   async function confirmGroup(g: Review[]) {
     setSaving(true);
-    let ok = true;
-    for (const r of openLines(g)) ok = (await confirmOne(r)) && ok;
-    if (ok || openLines(g).length > 0) {
+    // Olası mükerrer (aynı tutarda kalem) uyarısı gönderi için BİR kez sorulur.
+    const dupLine = openLines(g).find((r) => duplicateOf(r));
+    const dup = dupLine ? duplicateOf(dupLine) : null;
+    const proceed = !dup || (await askDuplicate(t(
+      `Bu siparişe aynı tutarda bir kalem zaten kayıtlı (${dup.invoice_no} · ${dup.invoice_date}). Aynı fatura iki kez yüklenmiş olabilir.`,
+      `This order already has a line with the same amount (${dup.invoice_no} · ${dup.invoice_date}). The same invoice may have been uploaded twice.`,
+    )));
+    if (proceed) {
+      for (const r of openLines(g)) await confirmOne(r, true);
       loadSaved();
       onSaved();
     }
     setSaving(false);
   }
 
-  // Takip no ile kesin eşleşen (skor ≥ STRONG_FROM), daha önce kaydedilmemiş ve olası mükerrer olmayan gönderilerin tümünü tek tıkla onaylar.
-  const sure = groups.filter((g) => openLines(g).length > 0 && g[0].receiptId !== null && !g.some((r) => duplicateOf(r)) && scoreOf(g) >= STRONG_FROM);
-  async function confirmSure() {
+  // Süzgeç: eşleşme bandı (kesin / kontrol et / zayıf / eşleşmeyen). Toplu işlemler yalnızca GÖRÜNEN gönderilere uygulanır.
+  const bandKeyOf = (g: Review[]): Exclude<ReviewFilter, "all"> => {
+    const ms = g[0].candidate.matches;
+    if (ms.length === 0) return "nomatch";
+    const sc = g[0].receiptId !== null ? scoreOf(g) : ms[0].score;
+    return sc >= STRONG_FROM ? "sure" : sc >= CHECK_FROM ? "check" : "weak";
+  };
+  const counts = { all: groups.length, sure: 0, check: 0, weak: 0, nomatch: 0 };
+  for (const g of groups) counts[bandKeyOf(g)]++;
+  const visible = filter === "all" ? groups : groups.filter((g) => bandKeyOf(g) === filter);
+  // Toplu onaya yalnızca kesin ve "kontrol et" gönderiler girer: zayıf/eşleşmeyen ve olası mükerrer uyarılılar tek tek karar ister.
+  const bulkEligible = visible.filter((g) => openLines(g).length > 0 && g[0].receiptId !== null && !g.some((r) => duplicateOf(r)) && ["sure", "check"].includes(bandKeyOf(g)));
+  const bulkTotal = bulkEligible.reduce((sum, g) => sum + openLines(g).reduce((n, r) => n + r.candidate.amount, 0), 0);
+
+  async function confirmVisible() {
+    const left = visible.length - bulkEligible.length;
+    const ok = await confirm({
+      title: t(`${bulkEligible.length} gönderi onaylansın mı?`, `Confirm ${bulkEligible.length} shipments?`),
+      message: t(
+        `Toplam ${money2.format(bulkTotal)} kargo maliyeti eşleşen siparişlere yazılır.${left > 0 ? ` ${left} gönderi (zayıf/eşleşmeyen/mükerrer uyarılı) dahil değil, onlara tek tek bakmalısın.` : ""} Yanlış olursa "Geri al" ile kaldırabilirsin.`,
+        `A total of ${money2.format(bulkTotal)} shipping cost is written to the matched orders.${left > 0 ? ` ${left} shipments (weak, unmatched or possible duplicates) are not included; review them one by one.` : ""} If something is wrong you can undo it.`,
+      ),
+      confirmLabel: t("Onayla", "Confirm"),
+    });
+    if (!ok) return;
     setSaving(true);
-    for (const g of sure) for (const r of openLines(g)) await confirmOne(r);
+    const ids: number[] = [];
+    const done: Review[] = [];
+    for (const g of bulkEligible) {
+      for (const r of openLines(g)) {
+        const got = await confirmOne(r, true);
+        if (got) {
+          ids.push(...got);
+          done.push(r);
+        }
+      }
+    }
+    setBatch(ids.length > 0 ? { ids, reviews: done, shipments: bulkEligible.length } : null);
     loadSaved();
     onSaved();
+    setSaving(false);
+  }
+
+  async function skipVisible() {
+    const ok = await confirm({
+      title: t(`${visible.length} gönderi listeden çıkarılsın mı?`, `Remove ${visible.length} shipments from the list?`),
+      message: t("Hiçbir şey kaydedilmez. Bu gönderileri tekrar görmek için belgeyi yeniden yüklemen gerekir.", "Nothing is saved. To see these shipments again you need to upload the document again."),
+      confirmLabel: t("Listeden çıkar", "Remove from list"),
+    });
+    if (!ok) return;
+    const ids = new Set(visible.flat().map((r) => r.id));
+    setReviews((list) => list.filter((x) => !ids.has(x.id)));
+  }
+
+  // Toplu onayı geri alır: eklenen kalemler silinir, gönderiler onay listesine geri döner.
+  async function undoBatch() {
+    if (!batch) return;
+    setSaving(true);
+    try {
+      await api.finance.invoices.removeMany(shopId, batch.ids);
+      setReviews((list) => [...batch.reviews, ...list]);
+      setBatch(null);
+      loadSaved();
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t("Geri alınamadı", "Could not undo"));
+    }
     setSaving(false);
   }
 
@@ -217,6 +311,14 @@ ${t("Yine de kaydedilsin mi?", "Save it anyway?")}`);
           onText={readText}
         />
         {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
+        {notice && (
+          <div className="mt-3 flex items-start justify-between gap-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
+            <span>✓ {notice}</span>
+            <button type="button" onClick={() => setNotice(null)} aria-label={t("Kapat", "Close")} className="shrink-0 text-emerald-700 hover:underline dark:text-emerald-400">
+              {t("Kapat", "Close")}
+            </button>
+          </div>
+        )}
       </section>
 
       {reviews.length > 0 && (
@@ -225,21 +327,69 @@ ${t("Yine de kaydedilsin mi?", "Save it anyway?")}`);
             <h2 className="text-base font-semibold">
               {t("Onay bekleyenler", "Waiting for confirmation")} ({groups.length} {t("gönderi", "shipments")})
             </h2>
-            {sure.length > 0 && (
-              <button type="button" disabled={saving} onClick={() => void confirmSure()} className="rounded-full bg-[#D97757] px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-40">
-                {t("Kesin eşleşenleri onayla", "Confirm sure matches")} ({sure.length})
-              </button>
-            )}
           </div>
           <p className="mb-3 text-xs text-neutral-500">
             {t(`${lineCount} kalem`, `${lineCount} lines`)}
             {savedLines > 0 && ` · ${t(`${savedLines} tanesi zaten kayıtlı (eklenmez)`, `${savedLines} already saved (not added)`)}`}
-            {sure.length > 0 && ` · ${t(`${sure.length} kesin`, `${sure.length} sure`)}`}
+            {counts.sure > 0 && ` · ${t(`${counts.sure} kesin`, `${counts.sure} sure`)}`}
             {weakGroups > 0 && <b className="text-red-600 dark:text-red-400">{` · ${t(`${weakGroups} zayıf eşleşme`, `${weakGroups} weak matches`)}`}</b>}
             {noMatchGroups > 0 && ` · ${t(`${noMatchGroups} eşleşmeyen`, `${noMatchGroups} unmatched`)}`}
           </p>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            {(
+              [
+                ["all", t("Tümü", "All")],
+                ["sure", t("Kesin", "Sure")],
+                ["check", t("Kontrol et", "Check")],
+                ["weak", t("Zayıf", "Weak")],
+                ["nomatch", t("Eşleşmeyen", "Unmatched")],
+              ] as [ReviewFilter, string][]
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setFilter(key)}
+                aria-pressed={filter === key}
+                className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                  filter === key
+                    ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900"
+                    : "border-neutral-300 text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                }`}
+              >
+                {label} ({counts[key]})
+              </button>
+            ))}
+            <span className="ml-auto flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={saving || bulkEligible.length === 0}
+                onClick={() => void confirmVisible()}
+                title={t("Görünen gönderilerden kesin ve “kontrol et” olanları onaylar; zayıf, eşleşmeyen ve mükerrer uyarılılar dahil değildir", "Confirms the visible shipments that are sure or “check”; weak, unmatched and possible duplicates are not included")}
+                className="rounded-full bg-[#D97757] px-4 py-1.5 text-sm font-semibold text-white hover:bg-[#C6613F] disabled:opacity-40"
+              >
+                {t("Görünenleri onayla", "Confirm visible")} ({bulkEligible.length})
+              </button>
+              <button type="button" disabled={saving || visible.length === 0} onClick={() => void skipVisible()} className="rounded-full border border-neutral-300 px-4 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800">
+                {t("Görünenleri atla", "Skip visible")} ({visible.length})
+              </button>
+            </span>
+          </div>
+          {batch && (
+            <div className="mb-3 flex items-start justify-between gap-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
+              <span>✓ {t(`${batch.shipments} gönderi (${batch.reviews.length} kalem) kaydedildi.`, `${batch.shipments} shipments (${batch.reviews.length} lines) saved.`)}</span>
+              <span className="flex shrink-0 gap-3">
+                <button type="button" disabled={saving} onClick={() => void undoBatch()} className="font-semibold underline disabled:opacity-40">
+                  {t("Geri al", "Undo")}
+                </button>
+                <button type="button" onClick={() => setBatch(null)} className="hover:underline">
+                  {t("Kapat", "Close")}
+                </button>
+              </span>
+            </div>
+          )}
+          {visible.length === 0 && <p className="text-sm text-neutral-400">{t("Bu süzgeçte gönderi yok.", "No shipments in this filter.")}</p>}
           <div className="space-y-3">
-            {groups.map((g) => {
+            {visible.map((g) => {
               const ids = new Set(g.map((r) => r.id));
               return (
                 <InvoiceReviewGroup
@@ -433,6 +583,7 @@ ${t("Yine de kaydedilsin mi?", "Save it anyway?")}`);
           </div>
         )}
       </section>
+      {confirmElement}
     </div>
   );
 }

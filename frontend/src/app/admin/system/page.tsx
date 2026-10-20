@@ -7,6 +7,7 @@ import { useApiData } from "@/lib/useApiData";
 import { BlockSpinner, Spinner } from "@/components/ui/Spinner";
 import { AdminJob, api } from "@/lib/api";
 import { useT } from "@/lib/i18n-client";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { toast } from "@/lib/toast";
 
 // Zamanlanmış işlerin okunur adları (kimlikler backend/app/jobs/scheduler.py'deki `id`'lerdir).
@@ -130,12 +131,13 @@ function System() {
 
 function JobRow({ job, canRun, onStarted }: { job: AdminJob; canRun: boolean; onStarted: () => void }) {
   const { t } = useT();
+  const [confirm, confirmElement] = useConfirm();
   const f = useFormat();
   const [starting, setStarting] = useState(false);
   const name = JOB_NAMES[job.id];
 
   async function run() {
-    if (!window.confirm(t("Bu iş şimdi bir kez çalıştırılsın mı? Etsy kotasından harcar.", "Run this job once now? It uses Etsy quota."))) return;
+    if (!(await confirm({ title: t("İş çalıştırılsın mı?", "Run the job?"), message: t("Bu iş şimdi bir kez çalıştırılsın mı? Etsy kotasından harcar.", "Run this job once now? It uses Etsy quota."), confirmLabel: t("Çalıştır", "Run") }))) return;
     setStarting(true);
     try {
       await api.admin.runJob(job.id);
@@ -172,6 +174,7 @@ function JobRow({ job, canRun, onStarted }: { job: AdminJob; canRun: boolean; on
         </div>
       </div>
       {job.last_error && <p className="mt-1 break-words font-mono text-xs text-red-600 dark:text-red-400">{job.last_error}</p>}
+    {confirmElement}
     </li>
   );
 }

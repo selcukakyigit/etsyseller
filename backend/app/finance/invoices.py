@@ -372,6 +372,18 @@ def fingerprints(invoice_no: str, source_filename: str, tracking: str, receipt_i
     return [new] if new == old else [new, old]
 
 
+def _table_key(tracking: str, receipt_id: int | None, kind: str, original_amount: float) -> str:
+    """Fatura numarasız (tablo) bir kalemin dosya adından bağımsız anahtarı: "gönderi|tür|tutar"."""
+    return fingerprint("", tracking, receipt_id, kind, original_amount).split("|", 1)[1]
+
+
+def _table_keys(db: Session, shop: Shop) -> set[str]:
+    """Kayıtlı, fatura numarasız (dosya adıyla adlandırılmış) kalemlerin dosya adından bağımsız anahtarları. Bu kalemler eski dosya adıyla
+    yazıldığı için parmak izleri yeni bir dosya adıyla yüklenen aynı kalemle eşleşmez; bu anahtarlar eşleştirir."""
+    rows = db.execute(select(ShippingInvoice.fingerprint, ShippingInvoice.invoice_no, ShippingInvoice.source_filename).where(ShippingInvoice.shop_id == shop.id)).all()
+    return {fp.split("|", 1)[1] for fp, no, src in rows if fp and "|" in fp and no == _stem(src or "")}
+
+
 def fingerprint(invoice_no: str, tracking: str, receipt_id: int | None, kind: str, original_amount: float) -> str:
     """Bir fatura kaleminin kimliği: fatura no + gönderi + tür + tutar. Aynı faturayı tekrar yüklemek engellenir; aynı
     gönderiye kesilen FARKLI kalemler (farklı tutar/tür/fatura) ayrı kayıt olarak girebilir."""
@@ -443,6 +455,7 @@ def _candidates(db: Session, shop: Shop, raw: dict, filename: str, report_ccy: s
     """Çıkarılan fatura verisinden her gönderi satırı için bir aday (sipariş eşleşmeleriyle birlikte)."""
     index = _order_index(db, shop)
     saved_fp = set(db.scalars(select(ShippingInvoice.fingerprint).where(ShippingInvoice.shop_id == shop.id)))
+    saved_table_keys = _table_keys(db, shop)
     saved_by_order = _saved_lines_by_order(db, shop)
     invoice_date = raw.get("invoice_date") or dt.date.today().isoformat()
     candidates = []
@@ -476,7 +489,10 @@ def _candidates(db: Session, shop: Shop, raw: dict, filename: str, report_ccy: s
             "fx_rate": fx_rate,
             "fx_source": fx_source,
             "matches": matches,
-            "already_saved": bool(tracking) and any(fp in saved_fp for fp in fingerprints(invoice_no, filename, tracking, None, kind, amount)),
+            "already_saved": bool(tracking) and (
+                any(fp in saved_fp for fp in fingerprints(invoice_no, filename, tracking, None, kind, amount))
+                or (stable_invoice_no(invoice_no, filename) == "" and _table_key(tracking, None, kind, amount) in saved_table_keys)
+            ),
             "source_filename": filename,
         })
     if not candidates:
@@ -501,7 +517,8 @@ def confirm(db: Session, shop: Shop, receipt_id: int, candidate: dict, allow_dup
     original = float(candidate["original_amount"])
     fps = fingerprints(invoice_no, str(candidate.get("source_filename") or ""), tracking, receipt_id, kind, original)
     fp = fps[0]
-    if db.scalar(select(ShippingInvoice.id).where(ShippingInvoice.shop_id == shop.id, ShippingInvoice.fingerprint.in_(fps))):
+    table_dup = stable_invoice_no(invoice_no, str(candidate.get("source_filename") or "")) == "" and _table_key(tracking, receipt_id, kind, original) in _table_keys(db, shop)
+    if table_dup or db.scalar(select(ShippingInvoice.id).where(ShippingInvoice.shop_id == shop.id, ShippingInvoice.fingerprint.in_(fps))):
         raise InvoiceError("Bu fatura kalemi zaten kayıtlı (aynı fatura no, gönderi, tür ve tutar).")
     if not allow_duplicate:
         currency = str(candidate.get("original_currency") or "")
