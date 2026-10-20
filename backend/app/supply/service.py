@@ -232,7 +232,7 @@ def _auto_lines(db: Session, entity_id: int, when: dt.datetime) -> list[dict]:
         PriceItem.entity_id == entity_id, PriceItem.archived_at.is_(None), (PriceItem.kind == "fee") | PriceItem.auto_qty.is_not(None)
     ).order_by(PriceItem.position, PriceItem.id)))
     prices = pricebook.prices_at(db, [i.id for i in items], when)
-    return [{"price_item_id": i.id, "description": i.name, "qty": 1.0 if i.kind == "fee" else i.auto_qty, "unit": i.unit,
+    return [{"price_item_id": i.id, "description": i.name, "qty": 1.0 if i.kind == "fee" else i.auto_qty, "unit": "job" if i.unit == pricebook.PERCENT else i.unit,
              "unit_price": prices[i.id].price if i.id in prices else 0.0, "manual_price": False, "source_key": ""} for i in items]
 
 
@@ -301,7 +301,7 @@ def _resolve_lines(db: Session, access: EntityAccess, job: SupplyJob, raw: list[
         manual = bool(r.get("manual_price"))
         item = items.get(int(r["price_item_id"])) if r.get("price_item_id") else None
         if item is not None:
-            unit = item.unit
+            unit = "job" if item.unit == pricebook.PERCENT else item.unit
             desc = (r.get("description") or item.name).strip()[:200] or item.name
             unit_price = pricebook.clean_price(r.get("unit_price")) if manual else (prices[item.id].price if item.id in prices else 0.0)
         else:
@@ -316,7 +316,31 @@ def _resolve_lines(db: Session, access: EntityAccess, job: SupplyJob, raw: list[
     return out
 
 
+def _apply_percent(db: Session, job: SupplyJob, lines: list[dict]) -> bool:
+    """Yüzdelik sabit ücret satırlarının (kalem birimi "pct", elle değilse) tutarını hesaplar: işin hizmet ve malzeme satırlarının (sabit ücretler ve minimum
+    hariç, kalemsiz satırlar dahil) toplamının yüzdesi, kalemin "en az" tutarından küçükse o; yüzde işin tarihindeki fiyat sürümünden gelir. Satırların
+    `unit_price` ve `unit` alanı yerinde güncellenir; bir satır değiştiyse True. Gerçek tutar (tedarikçinin faturası) girilmişse yeniden hesaplanmaz, o zaten toplamdır."""
+    ids = {ln["price_item_id"] for ln in lines if ln.get("price_item_id")}
+    if not ids:
+        return False
+    items = {i.id: i for i in db.scalars(select(PriceItem).where(PriceItem.id.in_(ids)))}
+    pct = [ln for ln in lines if (i := items.get(ln.get("price_item_id"))) is not None and i.unit == pricebook.PERCENT and not ln.get("manual_price")]
+    if not pct:
+        return False
+    base = sum(pricing.line_amount(ln["qty"], ln["unit_price"]) for ln in lines
+               if (i := items.get(ln.get("price_item_id"))) is None or i.kind not in ("fee", "minimum"))
+    prices = pricebook.prices_at(db, [ln["price_item_id"] for ln in pct], job_when(job))
+    changed = False
+    for ln in pct:
+        item, version = items[ln["price_item_id"]], prices.get(ln["price_item_id"])
+        amount = pricing.percent_fee(base, version.price if version else 0.0, item.min_amount)
+        changed = changed or abs(ln["unit_price"] - amount) > 1e-9
+        ln["unit_price"], ln["unit"] = amount, "job"
+    return changed
+
+
 def _write_lines(db: Session, job: SupplyJob, lines: list[dict]) -> None:
+    _apply_percent(db, job, lines)
     db.execute(delete(SupplyJobLine).where(SupplyJobLine.job_id == job.id))
     objs = []
     for i, ln in enumerate(lines[:MAX_LINES]):
@@ -337,14 +361,24 @@ def refresh_prices(db: Session, job: SupplyJob) -> None:
     değişince ya da geçmişe tarihli düzeltilince açık işler kendiliğinden doğru tutarı gösterir. Onaylanmış işe dokunulmaz."""
     if job.status not in ("draft", "disputed"):
         return
-    lines = [ln for ln in _lines(db, job.id) if ln.price_item_id and not ln.manual_price]
+    current = _lines(db, job.id)
+    lines = [ln for ln in current if ln.price_item_id and not ln.manual_price]
     prices = pricebook.prices_at(db, list({ln.price_item_id for ln in lines}), job_when(job))
-    stale = [ln for ln in lines if ln.price_item_id in prices and abs(prices[ln.price_item_id].price - ln.unit_price) > 1e-9]
-    if not stale:
-        return
+    percent_ids = set(db.scalars(select(PriceItem.id).where(PriceItem.id.in_(list(prices)), PriceItem.unit == pricebook.PERCENT))) if prices else set()
+    stale = [ln for ln in lines if ln.price_item_id in prices and ln.price_item_id not in percent_ids and abs(prices[ln.price_item_id].price - ln.unit_price) > 1e-9]
     for ln in stale:
         ln.unit_price = prices[ln.price_item_id].price
         ln.amount = pricing.line_amount(ln.qty, ln.unit_price)
+    # yüzdelik ücretler diğer satırların toplamına ve yüzde fiyatına bağlıdır: onlar da yeniden hesaplanır
+    calc = [{"price_item_id": ln.price_item_id, "qty": ln.qty, "unit_price": ln.unit_price, "manual_price": ln.manual_price} for ln in current]
+    percent_changed = _apply_percent(db, job, calc)
+    if percent_changed:
+        for ln, c in zip(current, calc):
+            if ln.price_item_id in percent_ids and not ln.manual_price:
+                ln.unit_price, ln.unit = c["unit_price"], c["unit"]
+                ln.amount = pricing.line_amount(ln.qty, ln.unit_price)
+    if not stale and not percent_changed:
+        return
     db.flush()
     job.estimate = _totals(db, job, _lines(db, job.id)).net
     job.updated_at = utcnow()

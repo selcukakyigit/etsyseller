@@ -14,7 +14,7 @@ import UnitSelect from "../components/UnitSelect";
 import { DocumentRow, EntityAccess, PriceItem, can, isMember } from "../core/api";
 import { errMsg } from "../core/errors";
 import { badge, btnDanger, btnDark, btnLink, btnOutline, btnPrimary, card, h2, input, label, muted, rowBorder, td, th, warnBox } from "../core/ui";
-import { UNIT_GROUPS, currencySymbol, money, perUnit, qty as fmtQty, unitLabel } from "../core/units";
+import { UNIT_GROUPS, currencySymbol, money, perUnit, unitPrice, qty as fmtQty, unitLabel } from "../core/units";
 import AllocationEditor from "./AllocationEditor";
 import { ACCEPT, DocData, JobDetail, JobLine, PROFILE, supplyApi } from "./api";
 import { STATUS, statusLabel } from "./texts";
@@ -729,7 +729,7 @@ function LinesEditor({
             <option value="">+ {t("Listeden kalem ekle", "Add item from list")}</option>
             {active.map((i) => (
               <option key={i.id} value={i.id}>
-                {i.name} — {perUnit(money(i.price, currency, locale), i.unit, t)}
+                {i.name} — {unitPrice(i.price, i.unit, currency, locale, t)}
               </option>
             ))}
           </select>

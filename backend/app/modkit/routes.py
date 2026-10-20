@@ -77,6 +77,7 @@ class PriceItemIn(BaseModel):
     roll_width: float | None = Field(None, gt=0, le=pricebook.MAX_STOCK)
     film_um: float | None = Field(None, gt=0, le=pricebook.MAX_STOCK)
     roll_length: float | None = Field(None, gt=0, le=pricebook.MAX_STOCK)
+    min_amount: float | None = Field(None, ge=0, le=pricebook.MAX_PRICE)  # yalnızca yüzdelik ücrette: en az tutar
 
 
 class PriceItemPatch(BaseModel):
@@ -95,6 +96,7 @@ class PriceItemPatch(BaseModel):
     track_stock: bool | None = None
     min_stock: float | None = Field(None, ge=0, le=stock.MAX_QTY)
     pack_size: float | None = Field(None, gt=0, le=stock.MAX_QTY)
+    min_amount: float | None = Field(None, ge=0, le=pricebook.MAX_PRICE)  # yüzdelik ücretin en az tutarı; null = kaldır
     # (malzeme ve stok alanlarında da null gönderilirse alan boşaltılır)
 
 
@@ -228,7 +230,7 @@ def build_entity_router(module: str, prefix: str, tag: str, item_in_use: Callabl
     def add_price_item(payload: PriceItemIn, a: acc.EntityAccess = Depends(entity_access), db: Session = Depends(get_db)):
         ratelimit.hit("prices.write", f"user:{a.user.id}", 300, 3600)
         item = pricebook.create_item(db, a, payload.kind, payload.name, payload.unit, payload.spec, payload.price, payload.auto_qty,
-                                    payload.model_dump(include=set(pricebook.STOCK_FIELDS), exclude_unset=True))
+                                    payload.model_dump(include=set(pricebook.STOCK_FIELDS), exclude_unset=True), payload.min_amount)
         _notify_guest_change(db, a, "price_item_added", item.name)
         return _item_out(db, a, item)
 
@@ -238,7 +240,8 @@ def build_entity_router(module: str, prefix: str, tag: str, item_in_use: Callabl
         pricebook.update_item(db, a, item, payload.name, payload.spec, payload.auto_qty if "auto_qty" in payload.model_fields_set else pricebook.UNSET,
                              payload.model_dump(include=set(pricebook.STOCK_FIELDS), exclude_unset=True),
                              payload.unit, bool(payload.unit and payload.unit != item.unit and (item_in_use(db, item.id) or stock.has_movements(db, item.id))),
-                             payload.model_dump(include=set(stock.TRACKING_FIELDS), exclude_unset=True))
+                             payload.model_dump(include=set(stock.TRACKING_FIELDS), exclude_unset=True),
+                             payload.min_amount if "min_amount" in payload.model_fields_set else pricebook.UNSET)
         return {"ok": True}
 
     @router.post("/{entity_id}/prices/{item_id}/price")

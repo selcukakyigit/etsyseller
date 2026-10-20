@@ -28,6 +28,7 @@ const NAMES: Record<string, [string, string]> = {
   l: ["litre", "liter"],
   m3: ["m³", "m³"],
   job: ["iş", "job"],
+  pct: ["%", "%"], // yüzdelik sabit ücretin birimi: fiyat sürümündeki sayı yüzdedir
   pack: ["paket", "pack"], // yalnızca stok girişinde (kalemin paket miktarı); birim listelerinde yok
 };
 
@@ -39,6 +40,14 @@ export function unitLabel(code: string, t: T): string {
 /** "180 ₺ / dk" gibi birim fiyat. */
 export function perUnit(price: string, code: string, t: T): string {
   return code === "job" ? price : `${price} / ${unitLabel(code, t)}`;
+}
+
+/** Yüzdelik sabit ücretin birimi (backend `pricebook.PERCENT`): fiyatı para değil yüzdedir. */
+export const PERCENT = "pct";
+
+/** Kalemin fiyatı yazı olarak: yüzdelik ücret "%10", diğerleri "180 ₺ / dk". */
+export function unitPrice(price: number | null | undefined, code: string, currency: string, locale: string, t: T): string {
+  return code === PERCENT ? (price == null ? "—" : `%${qty(price, locale)}`) : perUnit(money(price, currency, locale), code, t);
 }
 
 export function money(n: number | null | undefined, currency: string, locale: string): string {

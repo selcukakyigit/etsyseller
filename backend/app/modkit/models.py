@@ -80,6 +80,9 @@ class PriceItem(EntityOwned, Base):
     roll_length: Mapped[float | None] = mapped_column(Numeric(12, 3, asdecimal=False), nullable=True)
     # Stok takibi (yalnızca malzeme kalemleri; bkz. stock.py): miktar `stock_movements` defterinin toplamıdır, burada tutulmaz.
     # `pack_size`: bir paketteki miktar (kalemin biriminde; strafor paketi 20 adet, streç rulosu 2 kg) — alım girerken "30 paket" yazılabilsin diye.
+    # Yüzdelik sabit ücret (`kind` fee, `unit` "pct"): fiyat sürümleri yüzde değerini tutar; ücret = işin hizmet/malzeme satırları toplamının yüzdesi,
+    # `min_amount`'tan küçükse o (bkz. pricing.percent_fee).
+    min_amount: Mapped[float | None] = mapped_column(Numeric(14, 4, asdecimal=False), nullable=True)
     track_stock: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     min_stock: Mapped[float | None] = mapped_column(Numeric(18, 6, asdecimal=False), nullable=True)
     pack_size: Mapped[float | None] = mapped_column(Numeric(18, 6, asdecimal=False), nullable=True)

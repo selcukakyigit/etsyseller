@@ -68,6 +68,8 @@ export interface PriceItem {
   /** Türün grubu (backend `materials.group_of`) ve maliyet/eşleşme için eksik kalan bilgiler: "material" | "thickness_mm" | "plate". */
   group?: MaterialGroup | null;
   missing?: string[];
+  /** Yüzdelik sabit ücretin (birim "pct") en az tutarı. */
+  min_amount?: number | null;
   /** Stok (yalnızca çalışma alanı üyesine gelir; yalnızca malzeme kalemlerinde). Miktarlar kalemin biriminde. */
   track_stock?: boolean;
   min_stock?: number | null;
@@ -294,9 +296,9 @@ export function entityApi<TEntity extends Entity = Entity, TSummary = unknown>(b
 
     prices: {
       list: (id: number, archived = false) => apiRequest<{ items: PriceItem[] }>(`${one(id)}/prices${archived ? "?archived=true" : ""}`),
-      add: (id: number, item: { kind: PriceKind; name: string; unit: string; spec?: string; price: number; auto_qty?: number | null } & StockPatch) =>
+      add: (id: number, item: { kind: PriceKind; name: string; unit: string; spec?: string; price: number; auto_qty?: number | null; min_amount?: number } & StockPatch) =>
         apiRequest<PriceItem>(`${one(id)}/prices`, { method: "POST", ...json(item) }),
-      update: (id: number, itemId: number, patch: { name?: string; spec?: string; auto_qty?: number | null; unit?: string } & StockPatch & TrackingPatch) =>
+      update: (id: number, itemId: number, patch: { name?: string; spec?: string; auto_qty?: number | null; unit?: string; min_amount?: number | null } & StockPatch & TrackingPatch) =>
         apiRequest<{ ok: true }>(`${one(id)}/prices/${itemId}`, { method: "PATCH", ...json(patch) }),
       setPrice: (id: number, itemId: number, price: number, validFrom?: string) =>
         apiRequest<{ ok: true }>(`${one(id)}/prices/${itemId}/price`, { method: "POST", ...json({ price, valid_from: validFrom || null }) }),

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Modal } from "@/components/listing-editor/Modal";
+import HelpTip from "@/components/ui/HelpTip";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { BlockSpinner } from "@/components/ui/Spinner";
 import { useT } from "@/lib/i18n-client";
@@ -10,7 +11,7 @@ import { useApiData } from "@/lib/useApiData";
 import { EntityAccess, EntityApi, PriceItem, PriceKind, PriceVersion, StockPatch, can, isInternal, isMember } from "../core/api";
 import { errMsg } from "../core/errors";
 import { btnDanger, btnLink, btnOutline, btnPrimary, card, h2, input, label as labelCls, muted, rowBorder, th, td } from "../core/ui";
-import { currencySymbol, money, perUnit, unitLabel } from "../core/units";
+import { currencySymbol, money, PERCENT, perUnit, unitLabel, unitPrice } from "../core/units";
 import DecimalInput from "@/components/ui/NumberInputs";
 import { materialLabel, useMaterialCatalog } from "../core/materials";
 import MaterialTypeSelect from "./MaterialTypeSelect";
@@ -33,8 +34,8 @@ const SECTIONS: { kinds: PriceKind[]; tr: string; en: string; addTr: string; add
   },
   {
     kinds: ["fee", "minimum"], addKind: "fee", tr: "Sabit ücretler", en: "Fixed charges", addTr: "Sabit ücret ekle", addEn: "Add fixed charge",
-    hintTr: "Her işe bir kez eklenen ücret (hazırlık) ve iş başına minimum tutar.",
-    hintEn: "A charge added once per job (setup) and a per-job minimum.",
+    hintTr: "Her işe bir kez eklenen ücret (hazırlık), işin tutarının yüzdesi olan ücret ve iş başına minimum tutar.",
+    hintEn: "A charge added once per job (setup), a charge that is a percentage of the job amount, and a per-job minimum.",
   },
 ];
 
@@ -203,7 +204,7 @@ function PriceRow({
   editable: boolean;
   member: boolean;
   units?: string[];
-  onSaveMeta: (patch: { name?: string; spec?: string; auto_qty?: number | null; unit?: string } & StockPatch) => Promise<void>;
+  onSaveMeta: (patch: { name?: string; spec?: string; auto_qty?: number | null; unit?: string; min_amount?: number | null } & StockPatch) => Promise<void>;
   onSavePrice: (price: number, validFrom?: string) => Promise<void>;
   onStock: () => void;
   onTrack: (on: boolean) => void;
@@ -225,7 +226,9 @@ function PriceRow({
   const [stock, setStock] = useState<StockForm>(() => stockOf(item));
   const [busy, setBusy] = useState(false);
   const ruleAllowed = member && (item.kind === "service" || item.kind === "material");
-  const kindTag = item.kind === "minimum" ? t("minimum", "minimum") : item.kind === "fee" ? t("iş başına", "per job") : "";
+  const pct = item.unit === PERCENT;
+  const [minAmount, setMinAmount] = useState(item.min_amount != null ? String(item.min_amount) : "");
+  const kindTag = item.kind === "minimum" ? t("minimum", "minimum") : pct ? t("yüzde", "percent") : item.kind === "fee" ? t("iş başına", "per job") : "";
 
   async function save() {
     const p = Number(price.replace(",", "."));
@@ -250,7 +253,13 @@ function PriceRow({
       return;
     }
     setBusy(true);
-    const patch: { name?: string; spec?: string; auto_qty?: number | null; unit?: string } & StockPatch = { ...stockPatch };
+    const minV = pct && minAmount.trim() !== "" ? Number(minAmount.replace(",", ".")) : null;
+    if (minV !== null && !(Number.isFinite(minV) && minV >= 0)) {
+      toast.error(t("En az tutar sıfır ya da daha büyük bir sayı olmalı.", "The minimum amount must be zero or more."));
+      return;
+    }
+    const patch: { name?: string; spec?: string; auto_qty?: number | null; unit?: string; min_amount?: number | null } & StockPatch = { ...stockPatch };
+    if (pct && minV !== (item.min_amount ?? null)) patch.min_amount = minV;
     if (name.trim() !== item.name) patch.name = name.trim();
     if (unit !== item.unit) patch.unit = unit;
     if (spec.trim() !== item.spec) patch.spec = spec.trim();
@@ -316,11 +325,18 @@ function PriceRow({
                 </label>
               )}
               <label className={field}>
-                <span className={labelCls}>
-                  {t("Fiyat", "Price")} ({perUnit(currency, unit, t)})
-                </span>
-                <DecimalInput value={price} onValue={setPrice} unit={currencySymbol(currency, locale)} className={`${input} w-full`} />
+                <span className={labelCls}>{pct ? t("Yüzde (%)", "Percentage (%)") : `${t("Fiyat", "Price")} (${perUnit(currency, unit, t)})`}</span>
+                <DecimalInput value={price} onValue={setPrice} unit={pct ? "%" : currencySymbol(currency, locale)} className={`${input} w-full`} />
               </label>
+              {pct && (
+                <label className={field}>
+                  <span className={labelCls}>
+                    {t("En az tutar", "Minimum amount")} ({currency}){" "}
+                    <HelpTip>{t("Yüzde bundan küçük çıkarsa bu tutar alınır. Boşsa alt sınır yoktur.", "If the percentage comes out lower, this amount is charged. When empty there is no floor.")}</HelpTip>
+                  </span>
+                  <DecimalInput value={minAmount} onValue={setMinAmount} unit={currencySymbol(currency, locale)} placeholder="—" className={`${input} w-full`} />
+                </label>
+              )}
               {member && (
                 <label className={field}>
                   <span className={labelCls}>{t("Geçerlilik başlangıcı", "Valid from")}</span>
@@ -375,7 +391,13 @@ function PriceRow({
         )}
       </td>
       <td className={td}>
-        <div className="font-medium text-neutral-900 dark:text-neutral-100">{perUnit(money(item.price, currency, locale), item.unit, t)}</div>
+        <div className="font-medium text-neutral-900 dark:text-neutral-100">{unitPrice(item.price, item.unit, currency, locale, t)}</div>
+        {pct && (
+          <div className="text-[11px] text-neutral-400">
+            {t("işin tutarının yüzdesi", "of the job amount")}
+            {item.min_amount ? ` · ${t("en az", "min.")} ${money(item.min_amount, currency, locale)}` : ""}
+          </div>
+        )}
         <div className="text-[11px] text-neutral-400">
           {item.price_from ? new Date(item.price_from).toLocaleDateString(locale) : ""}
           {item.price_source === "guest" && <span className="ml-1 text-[#C6613F] dark:text-[#E8A48C]">· {t("tedarikçi güncelledi", "updated by supplier")}</span>}
@@ -461,13 +483,15 @@ function AddRow({
   entityId: number;
   canAuto: boolean;
   addLabel: string;
-  onAdd: (v: { kind: PriceKind; name: string; unit: string; spec?: string; price: number; auto_qty?: number | null } & StockPatch) => Promise<void>;
+  onAdd: (v: { kind: PriceKind; name: string; unit: string; spec?: string; price: number; auto_qty?: number | null; min_amount?: number } & StockPatch) => Promise<void>;
 }) {
   const { t, locale } = useT();
   const catalog = useMaterialCatalog();
   const missingLabels = useMissingLabels();
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<PriceKind>(kinds[0]);
+  const [pct, setPct] = useState(false); // sabit ücret yüzdelik mi (işin tutarının %'si)
+  const [minAmount, setMinAmount] = useState("");
   const [name, setName] = useState("");
   const [unit, setUnit] = useState(kinds[0] === "material" ? "sheet" : "min");
   const [price, setPrice] = useState("");
@@ -479,6 +503,8 @@ function AddRow({
   function close() {
     setOpen(false);
     setName("");
+    setPct(false);
+    setMinAmount("");
     setPrice("");
     setAuto("");
     setStock(emptyStock);
@@ -488,6 +514,15 @@ function AddRow({
     const p = Number(price.replace(",", "."));
     if (!name.trim() || !Number.isFinite(p) || p < 0) {
       toast.error(t("Ad ve geçerli bir fiyat gir.", "Enter a name and a valid price."));
+      return;
+    }
+    if (pct && p > 1000) {
+      toast.error(t("Yüzde en fazla 1000 olabilir.", "The percentage can be at most 1000."));
+      return;
+    }
+    const minV = pct && minAmount.trim() !== "" ? Number(minAmount.replace(",", ".")) : null;
+    if (minV !== null && !(Number.isFinite(minV) && minV >= 0)) {
+      toast.error(t("En az tutar sıfır ya da daha büyük bir sayı olmalı.", "The minimum amount must be zero or more."));
       return;
     }
     const autoQty = !fixed && canAuto && auto.trim() !== "" ? Number(auto.replace(",", ".")) : null;
@@ -509,8 +544,9 @@ function AddRow({
     await onAdd({
       kind,
       name: name.trim(),
-      unit: fixed ? "job" : unit,
+      unit: pct ? PERCENT : fixed ? "job" : unit,
       price: p,
+      ...(minV !== null ? { min_amount: minV } : {}),
       ...(autoQty !== null ? { auto_qty: autoQty } : {}),
       ...stockPatch,
     });
@@ -532,8 +568,16 @@ function AddRow({
         {kinds.length > 1 && (
           <label className="block">
             <span className={labelCls}>{t("Tür", "Type")}</span>
-            <select value={kind} onChange={(e) => setKind(e.target.value as PriceKind)} className={`${input} w-full`}>
+            <select
+              value={kind === "fee" && pct ? "pct" : kind}
+              onChange={(e) => {
+                setPct(e.target.value === "pct");
+                setKind((e.target.value === "pct" ? "fee" : e.target.value) as PriceKind);
+              }}
+              className={`${input} w-full`}
+            >
               <option value="fee">{t("İş başına ücret", "Per-job charge")}</option>
+              <option value="pct">{t("Yüzde ücret (işin tutarının %'si)", "Percentage charge (% of the job)")}</option>
               <option value="minimum">{t("Minimum tutar", "Minimum amount")}</option>
             </select>
           </label>
@@ -582,11 +626,23 @@ function AddRow({
           </label>
         )}
         <label className="block">
-          <span className={labelCls}>
-            {t("Fiyat", "Price")} ({currency})
-          </span>
-          <DecimalInput value={price} onValue={setPrice} unit={currencySymbol(currency, locale)} placeholder="0" className={`${input} w-full`} />
+          <span className={labelCls}>{pct ? t("Yüzde (%)", "Percentage (%)") : `${t("Fiyat", "Price")} (${currency})`}</span>
+          <DecimalInput value={price} onValue={setPrice} unit={pct ? "%" : currencySymbol(currency, locale)} placeholder="0" className={`${input} w-full`} />
         </label>
+        {pct && (
+          <label className="block">
+            <span className={labelCls}>
+              {t("En az tutar", "Minimum amount")} ({currency}){" "}
+              <HelpTip>
+                {t(
+                  "İşin hizmet ve malzeme satırlarının toplamının bu yüzdesi eklenir; sonuç bu tutardan küçükse bu tutar alınır. Boşsa alt sınır yoktur. Sabit ücretler yüzdenin tabanına girmez.",
+                  "This percentage of the job's service and material lines is added; if the result is lower than this amount, this amount is charged. When empty there is no floor. Fixed charges are not part of the base.",
+                )}
+              </HelpTip>
+            </span>
+            <DecimalInput value={minAmount} onValue={setMinAmount} unit={currencySymbol(currency, locale)} placeholder="—" className={`${input} w-full`} />
+          </label>
+        )}
         {!fixed && canAuto && (
           <label className="block">
             <span className={labelCls}>{t("Her işe otomatik miktar", "Auto qty per job")}</span>
@@ -633,7 +689,7 @@ function HistoryModal({ api, entityId, item, currency, onClose }: { api: EntityA
             {data.items.map((v) => (
               <tr key={v.id} className={rowBorder}>
                 <td className={td}>{new Date(v.valid_from).toLocaleDateString(locale)}</td>
-                <td className={`${td} font-medium`}>{perUnit(money(v.price, currency, locale), item.unit, t)}</td>
+                <td className={`${td} font-medium`}>{unitPrice(v.price, item.unit, currency, locale, t)}</td>
                 <td className={td}>
                   {v.by || "—"}
                   {v.source === "guest" && <span className="ml-1 text-[11px] text-[#C6613F] dark:text-[#E8A48C]">({t("tedarikçi", "supplier")})</span>}

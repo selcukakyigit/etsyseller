@@ -17,9 +17,18 @@ KINDS = ("service", "material", "fee", "minimum")
 MAX_ITEMS = 500
 MAX_PRICE = 1e10
 MAX_AUTO_QTY = 1e6
+PERCENT = "pct"  # yüzdelik sabit ücretin birimi: fiyat sürümündeki sayı yüzdedir (UNITS'te değil, yalnızca `fee` kaleminde geçerli)
+MAX_PERCENT = 1000
 UNSET = object()  # güncellemede "bu alana dokunma" (None = kuralı kaldır)
 STOCK_FIELDS = ("material", "thickness_mm", "plate_width", "plate_height", "plate_kg", "roll_width", "film_um", "roll_length")  # yalnızca malzeme kalemleri
 MAX_STOCK = 1e6
+
+
+def _clean_min_amount(item_unit: str, value: float | None) -> float | None:
+    """Yüzdelik ücretin "en az" tutarı; başka kalemde anlamsızdır (yok sayılır)."""
+    if item_unit != PERCENT or value is None:
+        return None
+    return clean_price(value)
 
 
 def clean_price(price: float) -> float:
@@ -35,6 +44,8 @@ def clean_price(price: float) -> float:
 def _check_unit(kind: str, unit: str) -> str:
     if kind not in KINDS:
         raise HTTPException(422, "Geçersiz kalem türü")
+    if kind == "fee" and unit == PERCENT:
+        return PERCENT
     if kind in ("fee", "minimum"):
         return "job"  # sabit ücret ve minimum iş başınadır
     if unit not in units.UNITS:
@@ -147,6 +158,7 @@ def serialize(item: PriceItem, version: PriceVersion | None, versions: int = 0, 
     return {
         "id": item.id, "kind": item.kind, "name": item.name, "unit": item.unit, "spec": item.spec,
         "position": item.position, "archived": item.archived_at is not None, "auto_qty": item.auto_qty,
+        **({"min_amount": item.min_amount} if item.unit == PERCENT else {}),
         **({"material": item.material, "thickness_mm": item.thickness_mm, "plate_width": item.plate_width, "plate_height": item.plate_height,
             "plate_kg": item.plate_kg, "roll_width": item.roll_width, "film_um": item.film_um, "roll_length": item.roll_length,
             "group": materials.group_of(materials.spec_of(item)[0]), "missing": materials.missing(item),
@@ -161,7 +173,7 @@ def serialize(item: PriceItem, version: PriceVersion | None, versions: int = 0, 
 
 
 def create_item(db: Session, access: EntityAccess, kind: str, name: str, unit: str, spec: str, price: float, auto_qty: float | None = None,
-                fields: dict | None = None) -> PriceItem:
+                fields: dict | None = None, min_amount: float | None = None) -> PriceItem:
     """`fields`: malzeme alanları (tür, kalınlık…). Stok takibi kalem eklenirken değil, kalem satırındaki anahtarla (`update_item`) açılır."""
     access.require("prices.edit")
     name = (name or "").strip()[:120]
@@ -175,13 +187,15 @@ def create_item(db: Session, access: EntityAccess, kind: str, name: str, unit: s
     n = db.scalar(select(func.count()).select_from(PriceItem).where(PriceItem.entity_id == access.entity.id)) or 0
     if n >= MAX_ITEMS:
         raise HTTPException(422, "Kalem sınırına ulaşıldı")
-    item = PriceItem(entity_id=access.entity.id, kind=kind, name=name, unit=unit, spec=(spec or "").strip()[:200], position=n,
+    item = PriceItem(entity_id=access.entity.id, kind=kind, name=name, unit=unit, spec=(spec or "").strip()[:200], position=n, min_amount=_clean_min_amount(unit, min_amount),
                      auto_qty=_clean_auto_qty(access, kind, auto_qty), **_clean_stock(db, access, kind, fields or {}))
     if kind == "material":
         _check_material(item, complete=True)
     db.add(item)
     db.flush()
     p = clean_price(price)
+    if unit == PERCENT and p > MAX_PERCENT:
+        raise HTTPException(422, tr("Yüzde en fazla 1000 olabilir.", "The percentage can be at most 1000."))
     db.add(PriceVersion(item_id=item.id, price=p, valid_from=dt.datetime.utcnow(), source="guest" if access.is_guest else "owner", created_by=access.user.id))
     activity.log(db, access.entity.id, access.user, "price_item_added", {"item": name, "kind": kind, "unit": unit, "price": p, "by_guest": access.is_guest})
     db.commit()
@@ -189,7 +203,7 @@ def create_item(db: Session, access: EntityAccess, kind: str, name: str, unit: s
 
 
 def update_item(db: Session, access: EntityAccess, item: PriceItem, name: str | None, spec: str | None, auto_qty=UNSET, fields: dict | None = None,
-                unit: str | None = None, in_use: bool = False, tracking: dict | None = None) -> None:
+                unit: str | None = None, in_use: bool = False, tracking: dict | None = None, min_amount=UNSET) -> None:
     """Ad, açıklama, tüketim kuralı ve malzeme alanları değişir. Birim yalnızca hiçbir işte kullanılmamış kalemde değişir (kullanılmışsa
     eski fiyatlar ve miktarlar anlamsızlaşırdı — yeni kalem açılır); birim değişince tüketim kuralı (eski birimde) kalkar, fiyat
     yeni birimde yeniden girilir."""
@@ -206,6 +220,8 @@ def update_item(db: Session, access: EntityAccess, item: PriceItem, name: str | 
         item.auto_qty = None
     if spec is not None:
         item.spec = spec.strip()[:200]
+    if min_amount is not UNSET:
+        item.min_amount = _clean_min_amount(item.unit, min_amount)
     if auto_qty is not UNSET:
         item.auto_qty = _clean_auto_qty(access, item.kind, auto_qty)
     changes = _clean_stock(db, access, item.kind, fields or {})
@@ -225,6 +241,8 @@ def set_price(db: Session, access: EntityAccess, item: PriceItem, price: float, 
     if item.archived_at is not None:
         raise HTTPException(409, "Arşivlenmiş kalemin fiyatı değiştirilemez")
     p = clean_price(price)
+    if item.unit == PERCENT and p > MAX_PERCENT:
+        raise HTTPException(422, tr("Yüzde en fazla 1000 olabilir.", "The percentage can be at most 1000."))
     when = dt.datetime.utcnow()
     if valid_from is not None:
         if not access.is_member:

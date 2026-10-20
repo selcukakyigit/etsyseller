@@ -28,6 +28,13 @@ def line_amount(qty: float, unit_price: float) -> float:
     return r2(float(qty) * float(unit_price))
 
 
+def percent_fee(base: float, percent: float, minimum: float | None) -> float:
+    """Yüzdelik ücret: `base` tutarının yüzdesi, kalemin "en az" tutarından küçükse o; taban sıfırsa (işte satır yok) ücret de yok."""
+    if base <= 0:
+        return 0.0
+    return r2(max(base * float(percent or 0) / 100, float(minimum or 0)))
+
+
 def totals(line_amounts: list[float], minimum: float | None, vat_rate: float) -> Totals:
     s = r2(sum(line_amounts))
     adjust = r2(minimum - s) if minimum and s < minimum and s > 0 else 0.0
