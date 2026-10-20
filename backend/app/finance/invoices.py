@@ -271,6 +271,9 @@ def _order_items(o: dict) -> list[dict]:
     ]
 
 
+MAX_ORDER_TO_SHIP_DAYS = 90  # siparişten gönderiye en fazla bu kadar gün (adla eşleşirken)
+
+
 def match_orders(index: list[dict], line: dict, limit: int = 3) -> list[dict]:
     """Bir fatura satırını siparişlerle eşleştirir. Takip no birebir tutarsa kesin (1.0); değilse alıcı adı +
     ülke + tarih yakınlığından bir güven skoru üretilir."""
@@ -291,13 +294,20 @@ def match_orders(index: list[dict], line: dict, limit: int = 3) -> list[dict]:
         bw = _name_words(o["buyer"])
         if not rw or not bw:
             continue
-        name = len(rw & bw) / max(len(rw), len(bw))
+        shared = rw & bw
+        name = len(shared) / max(len(rw), len(bw))
         if name < 0.5:
+            continue
+        # Yalnızca ilk ad tutuyorsa (iki tarafta da en az iki kelime varken) aynı kişi sayılmaz ("Barbara Piccione" ≠ "Barbara Graves").
+        if len(shared) < 2 and len(rw) >= 2 and len(bw) >= 2:
             continue
         country = 1.0 if iso and o["country"] == iso else (0.0 if iso else 0.5)
         near = 0.5
         if ship_date:
             gap = (ship_date - o["date"]).days
+            # Sipariş, gönderiden sonra olamaz; aylar öncesi bir sipariş de aynı gönderi değildir: ad benzerliği tek başına yetmez.
+            if gap < -1 or gap > MAX_ORDER_TO_SHIP_DAYS:
+                continue
             near = 1.0 if 0 <= gap <= 30 else 0.0
         # Ad benzerliği "kesin" sayılamaz (aynı isimde farklı müşteri olabilir): tavan 0.89, yalnızca takip no 1.0 verir.
         scored.append((round(min(0.89, 0.6 * name + 0.25 * country + 0.15 * near), 2), "alıcı adı + ülke", o))
@@ -346,6 +356,20 @@ def resolve_fx(currency: str | None, amount: float, on: str | None, report_ccy: 
 
 def _stem(name: str) -> str:
     return (name or "").rsplit(".", 1)[0]
+
+
+def stable_invoice_no(invoice_no: str, source_filename: str) -> str:
+    """Parmak izinde kullanılan fatura no. Faturada numara yoksa (CSV/Excel) `invoice_no` dosya adından türer; dosya adı her dışa aktarmada
+    değişir ve örtüşen aralıklar çift kayıt yaratırdı, bu yüzden o durumda boş döner (kimlik: gönderi + tür + tutar)."""
+    return "" if invoice_no == _stem(source_filename or "") else invoice_no
+
+
+def fingerprints(invoice_no: str, source_filename: str, tracking: str, receipt_id: int | None, kind: str, original_amount: float) -> list[str]:
+    """[yeni, eski] parmak izi. Eski kayıtlar dosya adıyla yazıldığı için kontrol ikisine birden bakar; yeni kayıtlar yenisiyle yazılır."""
+    stable = stable_invoice_no(invoice_no, source_filename)
+    new = fingerprint(stable, tracking, receipt_id, kind, original_amount)
+    old = fingerprint(invoice_no, tracking, receipt_id, kind, original_amount)
+    return [new] if new == old else [new, old]
 
 
 def fingerprint(invoice_no: str, tracking: str, receipt_id: int | None, kind: str, original_amount: float) -> str:
@@ -452,7 +476,7 @@ def _candidates(db: Session, shop: Shop, raw: dict, filename: str, report_ccy: s
             "fx_rate": fx_rate,
             "fx_source": fx_source,
             "matches": matches,
-            "already_saved": bool(tracking) and fingerprint(invoice_no, tracking, None, kind, amount) in saved_fp,
+            "already_saved": bool(tracking) and any(fp in saved_fp for fp in fingerprints(invoice_no, filename, tracking, None, kind, amount)),
             "source_filename": filename,
         })
     if not candidates:
@@ -475,8 +499,9 @@ def confirm(db: Session, shop: Shop, receipt_id: int, candidate: dict, allow_dup
     kind = candidate.get("kind") if candidate.get("kind") in KINDS else "nakliye"
     invoice_no = (str(candidate.get("invoice_number") or "").strip() or _stem(str(candidate.get("source_filename") or "")))[:60]
     original = float(candidate["original_amount"])
-    fp = fingerprint(invoice_no, tracking, receipt_id, kind, original)
-    if db.scalar(select(ShippingInvoice.id).where(ShippingInvoice.shop_id == shop.id, ShippingInvoice.fingerprint == fp)):
+    fps = fingerprints(invoice_no, str(candidate.get("source_filename") or ""), tracking, receipt_id, kind, original)
+    fp = fps[0]
+    if db.scalar(select(ShippingInvoice.id).where(ShippingInvoice.shop_id == shop.id, ShippingInvoice.fingerprint.in_(fps))):
         raise InvoiceError("Bu fatura kalemi zaten kayıtlı (aynı fatura no, gönderi, tür ve tutar).")
     if not allow_duplicate:
         currency = str(candidate.get("original_currency") or "")

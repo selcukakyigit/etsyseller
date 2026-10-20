@@ -7,12 +7,12 @@ import { useCached } from "@/lib/pageCache";
 import { BlockSpinner } from "@/components/ui/Spinner";
 import DateRangePicker, { presetOptions } from "@/components/ui/DateRangePicker";
 import DocumentAnalyzer from "@/modules/components/DocumentAnalyzer";
+import InvoiceReviewGroup, { Review, STRONG_FROM } from "./InvoiceReviewGroup";
 
 const card = "rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900";
 const input = "rounded-lg border border-neutral-300 bg-white px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900";
 
 
-type Review = { id: number; candidate: InvoiceCandidate; receiptId: number | null };
 /**
  * "Kargo faturaları" sekmesi: fatura dosyası (PDF/görsel/Excel/CSV/HTML) yükle → yapay zekâ gönderi satırlarını
  * çıkarır → her satır takip no / alıcı adına göre bir SİPARİŞLE eşleşir → onayla → tutar o siparişin ürünlerine
@@ -150,24 +150,47 @@ ${t("Yine de kaydedilsin mi?", "Save it anyway?")}`);
     }
   }
 
-  async function confirm(r: Review) {
+  // Aynı gönderinin kalemleri tek kartta toplanır: takip no, yoksa alıcı + tarih anahtarıdır.
+  const groups: Review[][] = [];
+  const groupIndex = new Map<string, number>();
+  for (const r of reviews) {
+    const c = r.candidate;
+    const key = c.tracking_no || `${c.recipient}|${c.ship_date ?? c.invoice_date}`;
+    const at = groupIndex.get(key);
+    if (at === undefined) {
+      groupIndex.set(key, groups.length);
+      groups.push([r]);
+    } else groups[at].push(r);
+  }
+  const openLines = (g: Review[]) => g.filter((r) => !r.candidate.already_saved);
+  const scoreOf = (g: Review[]) => g[0].candidate.matches.find((m) => m.receipt_id === g[0].receiptId)?.score ?? 0;
+
+  async function confirmGroup(g: Review[]) {
     setSaving(true);
-    if (await confirmOne(r)) {
+    let ok = true;
+    for (const r of openLines(g)) ok = (await confirmOne(r)) && ok;
+    if (ok || openLines(g).length > 0) {
       loadSaved();
       onSaved();
     }
     setSaving(false);
   }
 
-  // Takip no ile kesin eşleşen (skor ≥ 0,9), daha önce kaydedilmemiş ve olası mükerrer olmayan satırların tümünü tek tıkla onaylar.
-  const sure = reviews.filter((r) => !r.candidate.already_saved && r.receiptId !== null && !duplicateOf(r) && (r.candidate.matches.find((m) => m.receipt_id === r.receiptId)?.score ?? 0) >= 0.9);
+  // Takip no ile kesin eşleşen (skor ≥ STRONG_FROM), daha önce kaydedilmemiş ve olası mükerrer olmayan gönderilerin tümünü tek tıkla onaylar.
+  const sure = groups.filter((g) => openLines(g).length > 0 && g[0].receiptId !== null && !g.some((r) => duplicateOf(r)) && scoreOf(g) >= STRONG_FROM);
   async function confirmSure() {
     setSaving(true);
-    for (const r of sure) await confirmOne(r);
+    for (const g of sure) for (const r of openLines(g)) await confirmOne(r);
     loadSaved();
     onSaved();
     setSaving(false);
   }
+
+  // Yükleme özeti: kaç gönderi/kalem, kaçı zaten kayıtlı, kaçı kesin ya da şüpheli.
+  const lineCount = reviews.length;
+  const savedLines = reviews.filter((r) => r.candidate.already_saved).length;
+  const weakGroups = groups.filter((g) => openLines(g).length > 0 && g[0].candidate.matches.length > 0 && scoreOf(g) < 0.6).length;
+  const noMatchGroups = groups.filter((g) => openLines(g).length > 0 && g[0].candidate.matches.length === 0).length;
 
   async function remove(id: number) {
     await api.finance.invoices.remove(shopId, id);
@@ -199,107 +222,39 @@ ${t("Yine de kaydedilsin mi?", "Save it anyway?")}`);
       {reviews.length > 0 && (
         <section className={card}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-base font-semibold">{t("Onay bekleyenler", "Waiting for confirmation")} ({reviews.length})</h2>
+            <h2 className="text-base font-semibold">
+              {t("Onay bekleyenler", "Waiting for confirmation")} ({groups.length} {t("gönderi", "shipments")})
+            </h2>
             {sure.length > 0 && (
               <button type="button" disabled={saving} onClick={() => void confirmSure()} className="rounded-full bg-[#D97757] px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-40">
                 {t("Kesin eşleşenleri onayla", "Confirm sure matches")} ({sure.length})
               </button>
             )}
           </div>
+          <p className="mb-3 text-xs text-neutral-500">
+            {t(`${lineCount} kalem`, `${lineCount} lines`)}
+            {savedLines > 0 && ` · ${t(`${savedLines} tanesi zaten kayıtlı (eklenmez)`, `${savedLines} already saved (not added)`)}`}
+            {sure.length > 0 && ` · ${t(`${sure.length} kesin`, `${sure.length} sure`)}`}
+            {weakGroups > 0 && <b className="text-red-600 dark:text-red-400">{` · ${t(`${weakGroups} zayıf eşleşme`, `${weakGroups} weak matches`)}`}</b>}
+            {noMatchGroups > 0 && ` · ${t(`${noMatchGroups} eşleşmeyen`, `${noMatchGroups} unmatched`)}`}
+          </p>
           <div className="space-y-3">
-            {reviews.map((r) => {
-              const c = r.candidate;
-              const match = c.matches.find((m) => m.receipt_id === r.receiptId);
+            {groups.map((g) => {
+              const ids = new Set(g.map((r) => r.id));
               return (
-                <div key={r.id} className={`rounded-lg border p-3 text-sm ${c.already_saved || match?.duplicate_of ? "border-amber-300 dark:border-amber-800" : "border-neutral-200 dark:border-neutral-800"}`}>
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <span className="font-semibold">{c.recipient || t("Alıcı yok", "No recipient")}</span>
-                      {c.recipient_country && <span className="text-neutral-500"> · {c.recipient_country}</span>}
-                      <div className="text-xs text-neutral-500">
-                        {c.vendor} · {t("takip", "tracking")} {c.tracking_no || "—"} · {c.ship_date ?? c.invoice_date}
-                        {c.weight_kg ? ` · ${c.weight_kg} kg` : ""} · {c.description || c.kind}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-base font-semibold">{money2.format(c.amount)}</div>
-                      <div className="text-xs text-neutral-500">
-                        {c.original_currency} {c.original_amount.toFixed(2)} · {c.fx_source}
-                      </div>
-                    </div>
-                  </div>
-
-                  {c.already_saved && <div className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">{t("Bu gönderi zaten kayıtlı — tekrar eklenmez.", "This shipment is already saved — it will not be added again.")}</div>}
-                  {c.check_note && <div className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">⚠ {c.check_note}</div>}
-                  {!c.already_saved && match?.duplicate_of && (
-                    <div className="mt-2 rounded-md bg-amber-50 px-3 py-1.5 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-                      ⚠{" "}
-                      {t(
-                        `Bu siparişe aynı tutarda bir kalem zaten kayıtlı (${match.duplicate_of.invoice_no} · ${match.duplicate_of.invoice_date}). Aynı faturayı iki kez yüklemiş olabilirsiniz; mükerrerse "Atla" deyin.`,
-                        `This order already has a line with the same amount (${match.duplicate_of.invoice_no} · ${match.duplicate_of.invoice_date}). You may have uploaded the same invoice twice; if so, choose "Skip".`,
-                      )}
-                    </div>
-                  )}
-
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <select value={c.kind} onChange={(e) => patch(r.id, { candidate: { ...c, kind: e.target.value as InvoiceCandidate["kind"] } })} className={input}>
-                      <option value="nakliye">{t("Nakliye", "Freight")}</option>
-                      <option value="gümrük">{t("Gümrük", "Customs")}</option>
-                      <option value="ek hizmet">{t("Ek hizmet", "Extra service")}</option>
-                      <option value="diğer">{t("Diğer", "Other")}</option>
-                    </select>
-                    <input
-                      value={c.vendor}
-                      onChange={(e) => patch(r.id, { candidate: { ...c, vendor: e.target.value } })}
-                      maxLength={120}
-                      aria-label={t("Kargo firması", "Carrier")}
-                      placeholder={t("Firma (ör. FedEx)", "Carrier (e.g. FedEx)")}
-                      className={`${input} w-36`}
-                    />
-                    {c.matches.length > 0 ? (
-                      <select value={r.receiptId ?? ""} onChange={(e) => patch(r.id, { receiptId: e.target.value ? Number(e.target.value) : null })} className={`${input} max-w-sm`}>
-                        <option value="">{t("Sipariş seç…", "Choose order…")}</option>
-                        {c.matches.map((m) => (
-                          <option key={m.receipt_id} value={m.receipt_id}>
-                            %{Math.round(m.score * 100)} ({m.reason}) · {m.buyer} · {m.date} · {m.country}{m.canceled ? t(" · İPTAL", " · CANCELED") : ""}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type="number"
-                        placeholder={t("Sipariş no (eşleşme yok)", "Order no. (no match)")}
-                        onChange={(e) => patch(r.id, { receiptId: e.target.value ? Number(e.target.value) : null })}
-                        className={`${input} w-48`}
-                      />
-                    )}
-                    <button type="button" disabled={r.receiptId === null || c.already_saved || saving} onClick={() => void confirm(r)} className="rounded-full bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-40 dark:bg-neutral-100 dark:text-neutral-900">
-                      {t("Onayla", "Confirm")}
-                    </button>
-                    <button type="button" onClick={() => setReviews((l) => l.filter((x) => x.id !== r.id))} className="text-sm text-neutral-500 hover:underline">
-                      {t("Atla", "Skip")}
-                    </button>
-                  </div>
-                  {match?.canceled && (
-                    <div className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">
-                      ⚠{" "}
-                      {t(
-                        "Bu sipariş iptal edilmiş: Finans iptal edilen siparişleri saymadığı için bu kargo maliyeti hiçbir raporda görünmez.",
-                        "This order was canceled: finance ignores canceled orders, so this shipping cost will not appear in any report.",
-                      )}
-                    </div>
-                  )}
-                  {match && (
-                    <ul className="mt-1 text-xs text-neutral-500">
-                      {match.items.map((it, i) => (
-                        <li key={i} className="line-clamp-1">
-                          → {it.qty}× {it.title}
-                          {it.variant_key ? ` [${it.variant_key.slice(0, 40)}]` : ""}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
+                <InvoiceReviewGroup
+                  key={g[0].id}
+                  lines={g}
+                  money2={money2}
+                  saving={saving}
+                  duplicateOf={duplicateOf}
+                  onOrder={(receiptId) => setReviews((list) => list.map((x) => (ids.has(x.id) ? { ...x, receiptId } : x)))}
+                  onVendor={(vendor) => setReviews((list) => list.map((x) => (ids.has(x.id) ? { ...x, candidate: { ...x.candidate, vendor } } : x)))}
+                  onKind={(id, kind) => patch(id, { candidate: { ...(reviews.find((x) => x.id === id) as Review).candidate, kind } })}
+                  onSkipLine={(id) => setReviews((list) => list.filter((x) => x.id !== id))}
+                  onSkipAll={() => setReviews((list) => list.filter((x) => !ids.has(x.id)))}
+                  onConfirm={() => void confirmGroup(g)}
+                />
               );
             })}
           </div>
