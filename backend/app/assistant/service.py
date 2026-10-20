@@ -267,15 +267,17 @@ _DONE_CLAIM = re.compile(
     r"\b(?:güncelledim|ekledim|değiştirdim|yaptım|ayarladım|çıkardım|kaldırdım|artırdım|arttırdım|azalttım|düzelttim|oluşturdum|kısalttım|taşıdım|sildim|uyguladım|yazdım|kaydettim|"
     r"güncellendi|ayarlandı|eklendi|kaydedildi|değiştirildi|yapıldı|kaldırıldı|oluşturuldu|artırıldı|kısaltıldı|uygulandı|düzeltildi|silindi|başarıyla eklendi|"
     r"i(?:'ve)? (?:updated|added|changed|removed|set|created|fixed))\b", re.IGNORECASE)
+# Yalnızca kart gösteren araçlar: kullanıcının cevabı beklenir; geçmişe "araç özeti" olarak yazılmaz (model taklit edip cevaba sızdırıyordu).
+_CARD_TOOLS = frozenset({"ask_user", "brief_check"})
 _READ_ONLY_TOOLS = frozenset({
     "find_category", "shop_defaults", "similar_listings", "keyword_pool", "shop_options", "search_listings", "get_listing", "get_category_attributes", "workspace_status",
-    "market_research", "suggest_price", "listing_health_status", "generation_options", "list_description_templates", "personalization_library", "ask_user",
+    "market_research", "suggest_price", "listing_health_status", "generation_options", "list_description_templates", "personalization_library", "ask_user", "brief_check",
 })
 
 
 def _stalled(text: str, called: set[str], failed: bool, effective: int) -> bool:
     """Model işi bitirmek yerine kullanıcıdan onay mı bekliyor? (Onay gerektiren araç çağrıldıysa bu meşrudur.)"""
-    if called & _CONFIRM_TOOLS or "ask_user" in called:
+    if called & _CONFIRM_TOOLS or called & _CARD_TOOLS:
         return False  # onay gerektiren iş ya da seçenek kartı: kullanıcının cevabı beklenir
     if not called:
         return bool(_ASKS_CONFIRMATION.search(text) or _claims_tool_use(text) or _DONE_CLAIM.search(text))
@@ -300,7 +302,12 @@ _PERSONA_TAIL = re.compile(r"\n+[ \t]*(?:Ben\s+)?Ulagg\s*[—–-].*\Z", re.IGNO
 _SUMMARY_LEAD = re.compile(r"^[^\n]{0,60}?(?:—|-)\s*kısa özet\s*(?:\([^)]*\))?\s*:\s*", re.IGNORECASE)
 
 
+# Model araç çağrısını metne yazarsa ("ask_user(question=…, options=[…])"): kullanıcı teknik satır görmez.
+_TOOL_CALL_LINE = re.compile(r"^[ \t]*(?:" + "|".join(re.escape(n) for n in sorted(tools.EXECUTORS, key=len, reverse=True)) + r")\s*\(.*$", re.MULTILINE)
+
+
 def _strip_app_links(text: str) -> str:
+    text = _TOOL_CALL_LINE.sub("", text)
     text = _LEAKED_CONTEXT.sub("", _BARE_EDIT_URL.sub("", _EDIT_LINK.sub(r"\1", text))).strip()
     text = _PERSONA_TAIL.sub("", _PERSONA_LEAD.sub("", text)).strip()
     return _SUMMARY_LEAD.sub("", text).strip()
@@ -374,7 +381,8 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
                 effective += 1  # diğer yazma/üretim araçları (taslak oluşturma, resim, toplu işlem…)
             if failed:
                 last_error[:] = [str(result["error"])[:700]]
-            tool_lines.append(context.summarize_tool_call(name, args, result))
+            if name not in _CARD_TOOLS:
+                tool_lines.append(context.summarize_tool_call(name, args, result))
             return result
         finally:
             set_progress(shop.id, request_id, "Reviewing the result" if en else "Sonucu değerlendiriyor", None, ctx.cards)
@@ -420,7 +428,7 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
             "Bu değişikliği taslağa uygulayamadım; ilgili araç bir şeyi değiştirmedi. İstersen farklı bir yolla yeniden deneyeyim ya da editörden yapabilirsin.",
             "I could not apply that change to the draft; the tool did not change anything. I can try another way, or you can do it in the editor.",
         )
-    ctx.cards.sort(key=lambda c: {"listing_draft": 1, "choices": 2}.get(c.get("type"), 0))  # güncel listing kartı(ları) cevabın en altında (sıra korunur)
+    ctx.cards.sort(key=lambda c: {"listing_draft": 1, "brief": 2, "choices": 2}.get(c.get("type"), 0))  # güncel listing kartı(ları) cevabın en altında (sıra korunur)
     assistant = ChatMessage(
         session_id=session.id, role="assistant", content=reply or tr("Bir cevap üretemedim, tekrar dener misin?", "I couldn't produce an answer, could you try again?"),
         cards_json=json.dumps(ctx.cards, ensure_ascii=False, default=str), tool_notes=context.tool_notes(tool_lines),

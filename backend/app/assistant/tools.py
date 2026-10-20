@@ -880,6 +880,8 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     title = " ".join(str(a.get("title", "")).split())[: bulk.TITLE_MAX]
     if not title:
         return {"error": "Başlık gerekli."}
+    if a.get("price") in (None, "", 0) and a.get("listing_type") != "download" and not _brief_shown(ctx):
+        return {"error": "Taslak henüz oluşturulmadı: fiyat belli değil ve kullanıcıya eksikler sorulmadı. ÖNCE brief_check'i çağır (anladıklarını ve eksikleri tek kartta göster: fiyat, kişiselleştirme var mı, eksik ölçü/adet, inç eklensin mi gibi gerçekten bilinmeyenler), sonra kullanıcının cevabını bekle. Kullanıcı kişiselleştirmeyi söylemediyse ekleme."}
     size_variations, unit_assumed = _normalize_sizes(ctx, a.get("variations") or [])
     a = {**a, "variations": size_variations}
     a = {**a, "description": layout.normalize(str(a.get("description") or ""))}  # düzen: bölüm başlıkları, tek tip madde işareti, emoji yok (ai/layout.py)
@@ -1127,7 +1129,7 @@ def _apply_shop_prefill(ctx: Ctx, work: dict, a: dict, is_digital: bool, title: 
 
 
 # Kendi etkileşimli kartı olan akışlar: bu kartlarla birlikte "seçenek menüsü" (ask_user) gösterilmez.
-_NO_CHOICE_CARDS = frozenset({"description_edit", "bulk_result"})
+_NO_CHOICE_CARDS = frozenset({"description_edit", "bulk_result", "brief"})
 
 
 def ask_user(ctx: Ctx, a: dict) -> dict:
@@ -1147,10 +1149,54 @@ def ask_user(ctx: Ctx, a: dict) -> dict:
     return {"ok": True, "not": "Seçenek kartı gösterildi. Aynı soruyu ya da önerileri metinde tekrar yazma; kullanıcının dokunmasını ya da yazmasını bekle."}
 
 
+def brief_check(ctx: Ctx, a: dict) -> dict:
+    """Yeni listing'ten ÖNCE: anlaşılanları ve eksikleri tek kartta gösterir. Kullanıcının cevapları tek mesajda gelir, taslak tek seferde kurulur."""
+    understood = [
+        {"label": " ".join(str(r.get("label") or "").split())[:40], "value": " ".join(str(r.get("value") or "").split())[:200]}
+        for r in a.get("understood") or [] if isinstance(r, dict) and str(r.get("value") or "").strip()
+    ][:10]
+    questions = []
+    for q in a.get("questions") or []:
+        if not isinstance(q, dict) or not str(q.get("label") or "").strip():
+            continue
+        item = {
+            "label": " ".join(str(q["label"]).split())[:120],
+            "options": [" ".join(str(o).split())[:40] for o in q.get("options") or [] if str(o).strip()][:4],
+            "type": "price" if q.get("type") == "price" else "text",
+        }
+        if item["type"] == "price":
+            item["unit"] = "$"
+        questions.append(item)
+    questions = questions[:6]
+    if not questions:
+        return {"error": "Eksik yoksa kart gösterme: create_listing_draft'ı hemen çağır."}
+    ctx.cards[:] = [c for c in ctx.cards if c.get("type") not in ("brief", "choices")]
+    ctx.cards.append({"type": "brief", "understood": understood, "questions": questions})
+    return {"ok": True, "not": "Kart gösterildi. Cevaba soruları ya da anlaşılanları tekrar yazma; yalnızca tek kısa bir cümle yaz. Kullanıcının cevabını bekle; cevap gelince create_listing_draft'ı TEK çağrıda çağır."}
+
+
+def _brief_shown(ctx: Ctx) -> bool:
+    """Bu sohbette, son taslak kartından sonra bir ön kontrol kartı gösterildi mi (ya da bu turda gösteriliyor mu)?"""
+    if any(c.get("type") == "brief" for c in ctx.cards):
+        return True
+    if ctx.session_id is None:
+        return False
+    from app.assistant.models import ChatMessage
+
+    rows = ctx.db.scalars(select(ChatMessage.cards_json).where(ChatMessage.session_id == ctx.session_id, ChatMessage.role == "assistant").order_by(ChatMessage.id.desc()).limit(12)).all()
+    for raw in rows:
+        types = {c.get("type") for c in json.loads(raw or "[]")}
+        if "listing_draft" in types:
+            return False
+        if "brief" in types:
+            return True
+    return False
+
+
 def auto_choices(ctx: Ctx) -> None:
     """Model seçenek kartı çağırmadıysa, listing kartının durumundan dokunulabilir kart üretir (zayıf modeller ask_user'ı kullanmıyor): fiyat yoksa fiyat seçenekleri
     (mağazanın tipik fiyatı etrafında), aksi halde sıradaki adım önerileri. Yalnızca bu yanıtta bir listing kartı varsa ve zaten kart yoksa."""
-    if any(c.get("type") == "choices" for c in ctx.cards):
+    if any(c.get("type") in ("choices", "brief") for c in ctx.cards):
         return
     card = next((c for c in reversed(ctx.cards) if c.get("type") == "listing_draft"), None)
     if card is None:
@@ -3012,11 +3058,13 @@ TOOLS: list[dict] = [
     {"name": "mark_order_shipped", "description": "ONAY GEREKİR. Siparişi Etsy'de kargoya verildi işaretler (alıcıya bildirim gidebilir). confirm=true verilmeden yalnızca ne olacağını özetler.", "input_schema": _obj({"receipt_id": {"type": "integer"}, "confirm": {"type": "boolean"}, "tracking_code": {"type": "string"}, "carrier_name": {"type": "string"}}, ["receipt_id"])},
 ]
 
+TOOLS.append({"name": "brief_check", "description": "YENİ LİSTİNG'TEN ÖNCE (fiyat ya da başka eksik varken): anladıklarını ve eksikleri TEK kartta gösterir; kullanıcı butona basar ya da yazar, cevapları tek mesajda gelir, sonra taslağı TEK seferde kurarsın. Resimden/mesajdan belli olan şeyi sorma. Kartı yalnızca gerçekten eksik varsa çağır.", "input_schema": _obj({"understood": {"type": "array", "description": "Anladıkların: [{label, value}] (ürün, ölçüler, renkler, adet, ölçü birimleri). Kullanıcının dilinde, kısa.", "items": _obj({"label": {"type": "string"}, "value": {"type": "string"}}, ["label", "value"])}, "questions": {"type": "array", "description": "Eksikler, en fazla 6: [{label (kısa soru), options (en çok 4 kısa hazır cevap, boş olabilir), type (price = fiyat sorusu | text)}]. Kişiselleştirme (yalnızca resimde yazı alanı/isim gibi ipucu varsa ya da belirsizse) 'Var / Yok' seçenekleriyle sorulur.", "items": _obj({"label": {"type": "string"}, "options": {"type": "array", "items": {"type": "string"}}, "type": {"type": "string", "enum": ["price", "text"]}}, ["label"])}}, ["understood", "questions"])})
 TOOLS.append({"name": "ask_user", "description": "Sohbette DOKUNULABİLİR seçenek kartı gösterir. kind=question: yalnızca gerçekten bilinemeyen bir bilgiyi (fiyat, ürün adı…) ya da geri dönüşü zor bir işin onayını sorarken (ör. 'Evet, yayınla' / 'Vazgeç'); 2-4 kısa seçenek, 'Sen karar ver' sunucu tarafından eklenir. kind=suggestions: cevabın sonundaki sıradaki adım önerileri (2-3 kısa komut: 'Fiyatı ekle', 'Ek görsel üret'). Seçenek metni kullanıcının mesajı olarak gönderilir, bu yüzden tam ve anlaşılır bir istek olsun. Cevap başına en fazla bir kez çağır; aynı metni cevaba da yazma.", "input_schema": _obj({"question": {"type": "string", "description": "Kısa soru ya da başlık (ör. 'Fiyat ne olsun?', 'Sıradaki adım?')"}, "options": {"type": "array", "items": {"type": "string"}, "description": "2-4 kısa seçenek"}, "kind": {"type": "string", "enum": ["question", "suggestions"]}}, ["question", "options"])})
 
 # Kullanıcıya gösterilen ilerleme metinleri ("asistan şu an ne yapıyor").
 TOOL_LABELS = {
     "ask_user": "Seçenekleri hazırlıyor",
+    "brief_check": "Eksikleri belirliyor",
     "finance_summary": "Finans verilerine bakıyor",
     "monthly_pnl": "Aylık kâr-zarar tablosunu hazırlıyor",
     "top_products": "En iyi ürünleri karşılaştırıyor",
@@ -3085,6 +3133,7 @@ TOOL_LABELS = {
 # Arayüz İngilizce olduğunda gösterilen ilerleme metinleri (TOOL_LABELS ile aynı anahtarlar).
 TOOL_LABELS_EN = {
     "ask_user": "Preparing options",
+    "brief_check": "Finding what is missing",
     "finance_summary": "Checking finance data",
     "monthly_pnl": "Building the monthly profit and loss table",
     "top_products": "Comparing top products",
@@ -3152,6 +3201,7 @@ TOOL_LABELS_EN = {
 
 EXECUTORS = {
     "ask_user": ask_user,
+    "brief_check": brief_check,
     "finance_summary": finance_summary, "monthly_pnl": monthly_pnl, "top_products": top_products, "listing_performance": listing_performance, "stale_listings": stale_listings, "save_ad_report": save_ad_report, "ad_reports": ad_reports, "compare_periods": compare_periods, "ads_summary": ads_summary, "list_orders": list_orders,
     "search_listings": search_listings, "get_listing": get_listing, "shop_defaults": shop_defaults, "find_category": find_category, "similar_listings": similar_listings,
     "create_listing_draft": create_listing_draft, "update_listing": update_listing,
@@ -3214,7 +3264,7 @@ for _t in TOOLS:
 
 # Listing modunda (bkz. service._pick_mode) modele yalnızca bu araçlar gösterilir; sipariş/finans/reklam araçları gönderilmez.
 LISTING_TOOL_NAMES = frozenset({
-    "ask_user",
+    "ask_user", "brief_check",
     "shop_defaults", "shop_options", "similar_listings", "find_category", "search_listings", "get_listing", "create_listing_draft", "update_listing",
     "regenerate_listing_image", "upscale_listing_photo", "edit_chat_image", "generate_chat_image", "add_chat_image_to_listing", "crop_listing_photo", "delete_listing_photo", "move_listing_photo", "set_photo_alt_text",
     "generate_missing_alt_texts", "get_category_attributes", "set_listing_attributes", "autofill_listing_attributes", "set_listing_fields", "edit_personalization_question",

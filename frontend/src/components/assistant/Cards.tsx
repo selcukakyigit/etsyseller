@@ -13,6 +13,7 @@ import SocialPinsCard from "./SocialPinsCard";
 import BulkResultCard from "./BulkResultCard";
 import DescriptionEditCard from "./DescriptionEditCard";
 import RewriteJobCard from "./RewriteJobCard";
+import BriefCard from "./BriefCard";
 import { useT } from "@/lib/i18n-client";
 import EtsyLink from "@/components/ui/EtsyLink";
 
@@ -322,6 +323,8 @@ export default function Card({ card, shopId, onAsk, active = true }: { card: Cha
       </div>
     );
   }
+
+  if (card.type === "brief") return <BriefCard card={card} onAsk={onAsk} active={active} />;
 
   if (card.type === "choices") {
     // Dokunulabilir seçenekler: seçilen metin kullanıcının bir sonraki mesajı olur. Yalnızca en son cevapta etkin (eski kartlar soluk kalır).
