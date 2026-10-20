@@ -18,6 +18,7 @@ export default function RegenImage({
   onClick,
   jobKey,
   job,
+  onSize,
 }: {
   src: string;
   alt: string;
@@ -27,6 +28,8 @@ export default function RegenImage({
   onClick?: () => void;
   jobKey: number;
   job: RegenJob | undefined;
+  /** Görsel yüklenince gerçek piksel boyutu (çözünürlük rozeti için). */
+  onSize?: (width: number, height: number) => void;
 }) {
   const pct = useRegenProgress(job);
   const running = job?.phase === "running";
@@ -41,6 +44,7 @@ export default function RegenImage({
         alt={alt}
         draggable={draggable}
         onClick={onClick}
+        onLoad={onSize ? (e) => onSize(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight) : undefined}
         className={className}
         style={{ filter: running ? `blur(${blur}px)` : undefined, transition: "filter 0.2s linear" }}
       />

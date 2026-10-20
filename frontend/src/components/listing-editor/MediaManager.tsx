@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, ImageVersion, ListingImage, ListingVideo, UpscaleOption } from "@/lib/api";
 import ImageCropper from "./ImageCropper";
 import UpscaleMenu from "./UpscaleMenu";
+import ResolutionBadge from "./ResolutionBadge";
 import { Modal, btnGhost, btnPrimary } from "./Modal";
 import { getRegenJob, runRegenJob, useRegenJobs } from "@/lib/regenJobs";
 import RegenImage from "./RegenImage";
@@ -87,6 +88,8 @@ export default function MediaManager({
   });
 
   const regenJobs = useRegenJobs();
+  // Taslak fotoğrafların gerçek boyutu (tarayıcı yüklerken ölçer); Etsy fotoğraflarında boyut Etsy verisinden gelir.
+  const [measured, setMeasured] = useState<Record<number, { w: number; h: number }>>({});
   const [bulk, setBulk] = useState<"regen" | "upscale" | null>(null); // toplu işlem sürüyor mu (hangisi)
   const bulkRegen = bulk === "regen";
   const anyRegenBusy = bulk !== null || ordered.some((img) => regenJobs.get(img.listing_image_id)?.phase === "running");
@@ -454,6 +457,11 @@ export default function MediaManager({
               className="h-full w-full cursor-zoom-in object-cover"
               jobKey={img.listing_image_id}
               job={regenJobs.get(img.listing_image_id)}
+              onSize={
+                isDraft(img.listing_image_id)
+                  ? (w, h) => setMeasured((m) => (m[img.listing_image_id]?.w === w && m[img.listing_image_id]?.h === h ? m : { ...m, [img.listing_image_id]: { w, h } }))
+                  : undefined
+              }
             />
             <label
               className="absolute left-1.5 top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-white/90 shadow dark:bg-neutral-900/90"
@@ -513,6 +521,11 @@ export default function MediaManager({
                 🪄
               </button>
             </div>
+            <ResolutionBadge
+              width={isDraft(img.listing_image_id) ? measured[img.listing_image_id]?.w : img.full_width}
+              height={isDraft(img.listing_image_id) ? measured[img.listing_image_id]?.h : img.full_height}
+              className="pointer-events-auto absolute bottom-8 right-1.5"
+            />
             <button
               type="button"
               onClick={() => openAlt(i)}
@@ -713,6 +726,17 @@ export default function MediaManager({
               className="max-h-[55vh] w-full rounded-lg object-contain"
               jobKey={ordered[viewIdx].listing_image_id}
               job={regenJobs.get(ordered[viewIdx].listing_image_id)}
+              onSize={
+                isDraft(ordered[viewIdx].listing_image_id)
+                  ? (w, h) => setMeasured((m) => (m[ordered[viewIdx].listing_image_id]?.w === w && m[ordered[viewIdx].listing_image_id]?.h === h ? m : { ...m, [ordered[viewIdx].listing_image_id]: { w, h } }))
+                  : undefined
+              }
+            />
+            <ResolutionBadge
+              showPixels
+              width={isDraft(ordered[viewIdx].listing_image_id) ? measured[ordered[viewIdx].listing_image_id]?.w : ordered[viewIdx].full_width}
+              height={isDraft(ordered[viewIdx].listing_image_id) ? measured[ordered[viewIdx].listing_image_id]?.h : ordered[viewIdx].full_height}
+              className="absolute left-2 top-2 !text-xs !px-2.5 !py-1"
             />
             <VersionDots
               shopId={shopId}

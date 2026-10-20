@@ -592,6 +592,9 @@ export type ListingImage = {
   // Negatif id = henüz Etsy'ye yüklenmemiş taslak görsel (draft_file_id taşır).
   draft_file_id?: string;
   url_fullxfull?: string;
+  /** Etsy fotoğrafının gerçek boyutu (piksel); taslak dosyalarda yoktur, tarayıcı yüklerken ölçülür. */
+  full_width?: number;
+  full_height?: number;
   listing_image_id: number;
   rank: number;
   url_170x135: string;
