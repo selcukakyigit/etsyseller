@@ -70,6 +70,7 @@ def analyze(db: Session, shop: Shop, field: str, contains: str | None = None, st
             "ornek": listings[key],
         })
     groups.sort(key=lambda g: -g["listing_sayisi"])
-    return {
+    hint = {"ipucu": "Bu alanda bulunamadı. Aranan bir yazı/cümleyse açıklamada olabilir: search_listings description_contains ile açıklamada ara."} if contains and not groups else {}
+    return {**hint,
         "alan": field, "incelenen_listing": len(rows), "veri_olmayan_listing": unavailable, "farkli_deger": len(groups), "degerler": groups[: max(1, min(limit, MAX_GROUPS))],
     }
