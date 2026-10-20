@@ -2,30 +2,28 @@
 
 import { useState } from "react";
 import { ChatCard } from "@/lib/api";
-import { MoneyInput } from "@/components/ui/NumberInputs";
 import { useT } from "@/lib/i18n-client";
 
 type Brief = Extract<ChatCard, { type: "brief" }>;
 
 const chip =
-  "rounded-full border px-3 py-1 text-sm font-medium transition disabled:cursor-default disabled:opacity-60";
+  "rounded-full border px-3 py-1 text-left text-sm font-medium transition disabled:cursor-default disabled:opacity-60";
 const chipOff =
   "border-neutral-300 bg-white text-neutral-700 hover:border-[#D97757] dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200";
 const chipOn = "border-[#D97757] bg-[#D97757] text-white";
-const inputCls =
-  "w-full rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-[#D97757] focus:outline-none disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
 
-/** Listeyi kurmadan önce: yapay zekânın anladıkları + eksikler. Cevaplar TEK mesajda gider, liste tek seferde kurulur. */
+/** Listeyi kurmadan önce: anlaşılanlar + eksikler. Hazır cevaplı sorular düğmeyle, gerisi TEK yazı/ses kutusuyla cevaplanır; hepsi tek mesajda gider. */
 export default function BriefCard({ card, onAsk, active }: { card: Brief; onAsk?: (text: string) => void; active: boolean }) {
   const { t } = useT();
-  const [answers, setAnswers] = useState<Record<number, string>>({});
-  const set = (i: number, v: string) => setAnswers((a) => ({ ...a, [i]: v }));
+  const [picked, setPicked] = useState<Record<number, string>>({});
+  const [text, setText] = useState("");
   const live = active && !!onAsk;
+  const typed = card.questions.map((q, i) => ({ q, i })).filter(({ q }) => q.options.length === 0);
 
   const send = () => {
-    const decide = t("sen karar ver", "you decide");
-    const lines = card.questions.map((q, i) => `${q.label}: ${answers[i]?.trim() || decide}`);
-    onAsk?.(lines.join("\n"));
+    const lines = card.questions.flatMap((q, i) => (picked[i] ? [`${q.label}: ${picked[i]}`] : []));
+    if (text.trim()) lines.push(text.trim());
+    onAsk?.(lines.join("\n") || t("Sen karar ver", "You decide"));
   };
 
   return (
@@ -43,28 +41,38 @@ export default function BriefCard({ card, onAsk, active }: { card: Brief; onAsk?
           </dl>
         </div>
       )}
-      {card.questions.length > 0 && (
-        <div className="space-y-3 px-4 py-3">
-          <div className="text-xs font-semibold text-neutral-500 dark:text-neutral-400">{t("Eksik olanlar", "What is missing")}</div>
-          {card.questions.map((q, i) => (
+      <div className="space-y-3 px-4 py-3">
+        {card.questions.map((q, i) =>
+          q.options.length > 0 ? (
             <div key={i}>
               <div className="mb-1 text-sm font-medium text-neutral-800 dark:text-neutral-100">{q.label}</div>
-              <div className="mb-1.5 flex flex-wrap gap-2">
+              <div className={q.type === "title" ? "flex flex-col gap-1.5" : "flex flex-wrap gap-2"}>
                 {q.options.map((o) => (
-                  <button key={o} type="button" disabled={!live} onClick={() => set(i, answers[i] === o ? "" : o)} className={`${chip} ${answers[i] === o ? chipOn : chipOff}`}>
+                  <button key={o} type="button" disabled={!live} onClick={() => setPicked((p) => ({ ...p, [i]: p[i] === o ? "" : o }))} className={`${chip} ${picked[i] === o ? chipOn : chipOff} ${q.type === "title" ? "rounded-lg" : ""}`}>
                     {o}
                   </button>
                 ))}
               </div>
-              {q.type === "price" ? (
-                <MoneyInput value={answers[i] ?? ""} onValue={(v) => set(i, v)} disabled={!live} unit={q.unit || "$"} placeholder={t("veya fiyat yazın", "or type a price")} className={inputCls} />
-              ) : (
-                <input value={answers[i] ?? ""} onChange={(e) => set(i, e.target.value)} disabled={!live} placeholder={t("veya kendiniz yazın", "or type your own")} className={inputCls} />
-              )}
+              {q.type === "title" && <div className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">{t("Seçin ya da aşağıya kendi başlığınızı yazın", "Pick one or write your own below")}</div>}
             </div>
-          ))}
-        </div>
-      )}
+          ) : null,
+        )}
+        {typed.length > 0 && (
+          <ul className="list-disc space-y-0.5 pl-5 text-sm text-neutral-800 dark:text-neutral-100">
+            {typed.map(({ q, i }) => (
+              <li key={i}>{q.label}</li>
+            ))}
+          </ul>
+        )}
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          disabled={!live}
+          rows={3}
+          placeholder={t("Eksikleri tek paragrafta yazın ya da söyleyin", "Write or dictate the missing details in one paragraph")}
+          className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-[#D97757] focus:outline-none disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+        />
+      </div>
       <div className="border-t border-neutral-100 px-4 py-3 dark:border-neutral-800">
         <button
           type="button"

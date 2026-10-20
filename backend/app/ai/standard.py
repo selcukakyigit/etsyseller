@@ -9,7 +9,8 @@ asistanları (ChatGPT, Google AI) de aynı şeyi okur: net, olgusal, tutarlı ve
 açıklamadaki yapı (açılış cümlesi, olgu listesi, soru-cevap) topluluk kaynaklarındaki ortak bulgulara dayanır."""
 
 TITLE_MAX_CHARS = 140  # Etsy sınırı
-TITLE_MAX_WORDS = 15  # Etsy rehberi: "15 kelimeden az"
+TITLE_MAX_WORDS = 22  # 120 karakterlik hedef başlık ~18-20 kelimedir; bunun üstü şişirilmiş sayılır
+TITLE_TARGET_CHARS = (80, 120)  # arama kapsamı için hedef uzunluk (yayın öncesi kontrol de bunu kullanır)
 TITLE_MIN_CHARS = 20
 TITLE_LEAD_CHARS = 40  # ana arama öbeği bu sınırın içinde başlar
 TAG_COUNT = 13
@@ -20,7 +21,7 @@ DESCRIPTION_WORDS = (80, 200)  # ürüne özel kısım (mağazanın sabit bölü
 FAQ_COUNT = (2, 3)  # isteğe bağlı: yalnızca yeni bilgi veriyorsa
 
 TITLE_RULES = (
-    f"KISA ve NET: {TITLE_MAX_WORDS} kelimeden az. Önce ürünün NE olduğu (ana arama öbeği ilk {TITLE_LEAD_CHARS} karakterde), sonra renk, malzeme, stil gibi NESNEL tanımlar.",
+    f"UZUN ama TEMİZ: hedef {TITLE_TARGET_CHARS[0]}–{TITLE_TARGET_CHARS[1]} karakter (en çok {TITLE_MAX_WORDS} kelime). Önce ürünün NE olduğu (ana arama öbeği ilk {TITLE_LEAD_CHARS} karakterde), sonra alıcının aradığı NESNEL tanımlar: malzeme, stil, kullanım yeri/oda, ürün tipi eş anlamlısı. Okunur bir ifade olsun, virgüllü kelime yığını değil.",
     "Başlıkta OLMAYACAKLAR: hediye/alıcı ifadeleri (\"gift for dad\", \"for her\"), öznel sözcükler (\"beautiful\", \"perfect\", \"best\"), kargo/indirim bilgisi, aynı kelimenin tekrarı, virgülle sıralanmış kelime listesi.",
     "Başlıktan çıkardığın hediye/alıcı/kullanım yeri/vesile ifadelerini SİLME: etiketlere ve açıklamaya taşı (Etsy bunları oralardan da okur).",
     "Ölçü başlıkta yalnızca tek, sabit ölçülü üründe durur (\"11 oz mug\"); birden çok ölçü ya da renk seçeneği varsa başlığa tek bir seçenek yazma, seçenekler varyasyonlarda ve açıklamada durur.",
@@ -46,7 +47,8 @@ DESCRIPTION_RULES = (
     "OLGULAR (DETAILS, kısa maddeler): malzeme, ölçüler/seçenekler (varyasyonlardaki TÜM seçenekleri ADIYLA say: \"Sizes: 50 cm, 70 cm\"), kişiselleştirme nasıl yapılır, pakette ne var, bakım. Dijital üründe: dosya türü, çözünürlük/boyut, kaç dosya, nasıl indirilip kullanılır, kullanım hakkı. Yalnızca bildiğin bilgiler.",
     "HER BİLGİ BİR KEZ: ölçü, kişiselleştirme, malzeme yalnızca OLGULAR'da geçer; açılışta kısaca anılabilir ama GREAT FOR ve soru-cevapta TEKRAR EDİLMEZ. Dolgu cümle yazma (\"see variations\", \"options are set as variations\", \"choose from the size menu\", \"prices are listed in the variations\"): seçenekleri adıyla yaz.",
     "GREAT FOR (1–3 madde, isteğe bağlı): yalnızca aramada niyet yakalayan bilgi (oda, vesile, mevsim, alıcı); OLGULAR'daki bilgiyi tekrar etme; yeni bir şey katmıyorsa bu bölümü atla.",
-    f"SORU-CEVAP (isteğe bağlı, en fazla {FAQ_COUNT[1]}): YALNIZCA yukarıda cevabı olmayan, listing verisinden cevaplanabilen soru (ürüne göre: kişiselleştirmede teslim süresi/yazı sınırı, tekstilde bakım ve beden, dijitalde dosya ve indirme, hazırlık/kargo). OLGULAR'da zaten yazılan bir bilgiyi soru yapma (ör. kişiselleştirme anlatıldıysa \"How do I personalize?\" yazma). Cevabını bilmediğin ya da dayanıklılık, su/pas geçirmezlik gibi iddia gerektiren soruyu YAZMA; yeni bilgi yoksa bölümü atla.",
+    f"SORU-CEVAP (fiziksel üründe BEKLENİR, en fazla {FAQ_COUNT[1]}; dijital ya da çok basit üründe atlanabilir): alıcının satın almadan önce gerçekten soracağı, OLGULAR'da cevabı olmayan sorular. Ürün tipine göre tipik konular: dayanıklılık/pas ve yüzey (metalde \"Will it rust?\"), malzeme ve yüzey işlemi, montaj/asma (hangi duvara, ne ile, ne gönderilir), taşıma kapasitesi, iç/dış mekân, bakım, kişiselleştirmede yazı sınırı ve süre. Cevap YALNIZCA bilinen olgudan gelir (kullanıcının söylediği, varyasyon/özellik verisi, fotoğrafta görünen); cevabını bilmediğin kritik bilgiyi (malzeme, yüzey/boya, taşıma kapasitesi) UYDURMA: sohbette kullanıcıya tek kısa soru olarak sor. Kullanıcı bilmiyor/\"sen karar ver\" derse iddia içeren soruyu yazma, yalnızca bilinen konulardan yaz. OLGULAR'da yazılan bilgiyi soru yapma. Yazacak gerçek soru yoksa bölümü hiç ekleme; \"No questions\" gibi boş bölüm ASLA yazılmaz.",
+    "OLMAYAN bilgiyi yazma: \"Personalization: none\", \"Not included\", \"No questions\" gibi \"yok\" satırları ve boş bölümler ASLA yazılmaz; ürün kişiselleştirilemiyorsa kişiselleştirmeden hiç söz etme, soru-cevap yoksa QUESTIONS bölümünü hiç ekleme.",
     "Doğrulanamayan iddia (waterproof, lifetime, certified…) ve öznel övgü yazma; somut ve ölçülebilir ifadeleri tercih et.",
     *LAYOUT_RULES,
 )

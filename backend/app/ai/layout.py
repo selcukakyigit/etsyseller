@@ -53,7 +53,14 @@ def _split_inline(line: str) -> list[str]:
     return [x for x in final if x.strip()]
 
 
+# Olmayan bilgiyi söyleyen satırlar ("Personalization: none", boş QUESTIONS bölümü) açıklamadan çıkarılır.
+_NONE_LINE = re.compile(r"^[ \t]*[•\-*]?[ \t]*(?:Personali[sz]ation|Customi[sz]ation)[ \t]*:[ \t]*(?:none|no|n/a|not available|not personali[sz]able)\.?[ \t]*\n?", re.I | re.M)
+_NO_QUESTIONS = re.compile(r"^[ \t]*QUESTIONS[ \t]*\n+(?:[ \t]*[•\-*]?[ \t]*No (?:questions|faq)[^\n]*\n?)+", re.I | re.M)
+
+
+
 def normalize(text: str) -> str:
+    text = _NO_QUESTIONS.sub("", _NONE_LINE.sub("", text))
     raw = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     lines = [ln.rstrip() for src in raw for ln in (_split_inline(src) if src.strip() else [src])]
     out: list[str] = []

@@ -93,8 +93,8 @@ def title_problems(title: str, sizes_vary: bool = True) -> list[str]:
         out.append(tr(f"Başlık {len(title)} karakter; en fazla {TITLE_MAX_CHARS} olabilir.", f"The title is {len(title)} characters; the limit is {TITLE_MAX_CHARS}."))
     if len(words) > TITLE_MAX_WORDS:
         out.append(tr(
-            f"Başlık {len(words)} kelime; Etsy {TITLE_MAX_WORDS} kelimeden kısa, net başlık öneriyor. Önce ürünün ne olduğunu, sonra renk/boyut/malzemeyi yaz; gerisini etiketlere ve açıklamaya taşı.",
-            f"The title has {len(words)} words; Etsy recommends clear titles under {TITLE_MAX_WORDS} words. Say what the item is first, then color/size/material; move the rest to tags and the description.",
+            f"Başlık {len(words)} kelime; en fazla {TITLE_MAX_WORDS} olsun. Önce ürünün ne olduğunu, sonra malzeme/stil/kullanım yerini yaz; tekrarları at, gerisini etiketlere ve açıklamaya taşı.",
+            f"The title has {len(words)} words; keep it to {TITLE_MAX_WORDS} at most. Say what the item is first, then material/style/use; drop repeats and move the rest to tags and the description.",
         ))
     if len(title.strip()) < TITLE_MIN_CHARS:
         out.append(tr(

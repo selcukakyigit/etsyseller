@@ -1161,13 +1161,13 @@ def brief_check(ctx: Ctx, a: dict) -> dict:
             continue
         item = {
             "label": " ".join(str(q["label"]).split())[:120],
-            "options": [" ".join(str(o).split())[:40] for o in q.get("options") or [] if str(o).strip()][:4],
-            "type": "price" if q.get("type") == "price" else "text",
+            "options": [" ".join(str(o).split())[:140] for o in q.get("options") or [] if str(o).strip()][:4],
+            "type": q.get("type") if q.get("type") in ("price", "title") else "text",
         }
         if item["type"] == "price":
             item["unit"] = "$"
         questions.append(item)
-    questions = questions[:6]
+    questions = questions[:4]
     if not questions:
         return {"error": "Eksik yoksa kart gösterme: create_listing_draft'ı hemen çağır."}
     ctx.cards[:] = [c for c in ctx.cards if c.get("type") not in ("brief", "choices")]
@@ -3058,7 +3058,7 @@ TOOLS: list[dict] = [
     {"name": "mark_order_shipped", "description": "ONAY GEREKİR. Siparişi Etsy'de kargoya verildi işaretler (alıcıya bildirim gidebilir). confirm=true verilmeden yalnızca ne olacağını özetler.", "input_schema": _obj({"receipt_id": {"type": "integer"}, "confirm": {"type": "boolean"}, "tracking_code": {"type": "string"}, "carrier_name": {"type": "string"}}, ["receipt_id"])},
 ]
 
-TOOLS.append({"name": "brief_check", "description": "YENİ LİSTİNG'TEN ÖNCE (fiyat ya da başka eksik varken): anladıklarını ve eksikleri TEK kartta gösterir; kullanıcı butona basar ya da yazar, cevapları tek mesajda gelir, sonra taslağı TEK seferde kurarsın. Resimden/mesajdan belli olan şeyi sorma. Kartı yalnızca gerçekten eksik varsa çağır.", "input_schema": _obj({"understood": {"type": "array", "description": "Anladıkların: [{label, value}] (ürün, ölçüler, renkler, adet, ölçü birimleri). Kullanıcının dilinde, kısa.", "items": _obj({"label": {"type": "string"}, "value": {"type": "string"}}, ["label", "value"])}, "questions": {"type": "array", "description": "Eksikler, en fazla 6: [{label (kısa soru), options (en çok 4 kısa hazır cevap, boş olabilir), type (price = fiyat sorusu | text)}]. Kişiselleştirme (yalnızca resimde yazı alanı/isim gibi ipucu varsa ya da belirsizse) 'Var / Yok' seçenekleriyle sorulur.", "items": _obj({"label": {"type": "string"}, "options": {"type": "array", "items": {"type": "string"}}, "type": {"type": "string", "enum": ["price", "text"]}}, ["label"])}}, ["understood", "questions"])})
+TOOLS.append({"name": "brief_check", "description": "YENİ LİSTİNG'TEN ÖNCE (fiyat ya da başka eksik varken): anladıklarını ve eksikleri TEK kartta gösterir; kullanıcı butona basar ya da yazar, cevapları tek mesajda gelir, sonra taslağı TEK seferde kurarsın. Resimden/mesajdan belli olan şeyi sorma. Kartı yalnızca gerçekten eksik varsa çağır.", "input_schema": _obj({"understood": {"type": "array", "description": "Anladıkların: [{label, value}] (ürün, ölçüler, renkler, adet, ölçü birimleri). Kullanıcının dilinde, kısa.", "items": _obj({"label": {"type": "string"}, "value": {"type": "string"}}, ["label", "value"])}, "questions": {"type": "array", "description": "Eksikler, en fazla 4: [{label (kısa soru), options (en çok 4 hazır cevap, boş olabilir), type (price = fiyat | title = 3 başlık önerisi, kullanıcı seçer ya da yazar | text)}]. Kişiselleştirme (yalnızca resimde yazı alanı/isim gibi ipucu varsa ya da belirsizse) 'Var / Yok' seçenekleriyle sorulur.", "items": _obj({"label": {"type": "string"}, "options": {"type": "array", "items": {"type": "string"}}, "type": {"type": "string", "enum": ["price", "title", "text"]}}, ["label"])}}, ["understood", "questions"])})
 TOOLS.append({"name": "ask_user", "description": "Sohbette DOKUNULABİLİR seçenek kartı gösterir. kind=question: yalnızca gerçekten bilinemeyen bir bilgiyi (fiyat, ürün adı…) ya da geri dönüşü zor bir işin onayını sorarken (ör. 'Evet, yayınla' / 'Vazgeç'); 2-4 kısa seçenek, 'Sen karar ver' sunucu tarafından eklenir. kind=suggestions: cevabın sonundaki sıradaki adım önerileri (2-3 kısa komut: 'Fiyatı ekle', 'Ek görsel üret'). Seçenek metni kullanıcının mesajı olarak gönderilir, bu yüzden tam ve anlaşılır bir istek olsun. Cevap başına en fazla bir kez çağır; aynı metni cevaba da yazma.", "input_schema": _obj({"question": {"type": "string", "description": "Kısa soru ya da başlık (ör. 'Fiyat ne olsun?', 'Sıradaki adım?')"}, "options": {"type": "array", "items": {"type": "string"}, "description": "2-4 kısa seçenek"}, "kind": {"type": "string", "enum": ["question", "suggestions"]}}, ["question", "options"])})
 
 # Kullanıcıya gösterilen ilerleme metinleri ("asistan şu an ne yapıyor").
