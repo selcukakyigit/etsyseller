@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { InlineScript } from "@/components/InlineScript";
+import InstallBanner from "@/components/InstallBanner";
 import CookieNotice from "@/components/legal/CookieNotice";
 import Toaster from "@/components/ui/Toaster";
 import { BRAND } from "@/lib/legal";
@@ -50,6 +51,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col">
         {children}
         <CookieNotice />
+        <InstallBanner />
         <Toaster />
       </body>
     </html>

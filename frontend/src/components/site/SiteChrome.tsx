@@ -163,9 +163,10 @@ export async function SiteFooter({ lang }: { lang: Lang }) {
                 : "Listings, orders and profit tracking for Etsy sellers."}
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-10 sm:grid-cols-[auto_auto]">
-            <nav className="flex flex-col gap-2 text-sm">
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+          {/* Telefonda (sm altı) iki liste alt alta, bağlantılar yan yana akar; sm ve üstünde eski iki sütun düzeni. */}
+          <div className="grid grid-cols-1 gap-7 sm:grid-cols-[auto_auto] sm:gap-10">
+            <nav className="flex flex-wrap gap-x-5 gap-y-2.5 text-sm sm:flex-col sm:gap-2">
+              <p className="mb-0 w-full text-xs font-semibold uppercase tracking-wider text-neutral-400 sm:mb-1 sm:w-auto dark:text-neutral-500">
                 {lang === "tr" ? "Ürün" : "Product"}
               </p>
               {NAV.map((n) => (
@@ -174,19 +175,19 @@ export async function SiteFooter({ lang }: { lang: Lang }) {
                 </Link>
               ))}
             </nav>
-            <nav className="flex flex-col gap-2 text-sm">
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+            <nav className="flex flex-wrap gap-x-4 gap-y-2 text-xs sm:flex-col sm:gap-2 sm:text-sm">
+              <p className="mb-0 w-full text-xs font-semibold uppercase tracking-wider text-neutral-400 sm:mb-1 sm:w-auto dark:text-neutral-500">
                 {lang === "tr" ? "Yasal" : "Legal"}
               </p>
               {LEGAL_LINKS.map((l) => (
-                <Link key={l.href} href={l.href} className="text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-white">
+                <Link key={l.href} href={l.href} className="text-neutral-500 hover:text-neutral-900 sm:text-neutral-600 dark:text-neutral-400 dark:hover:text-white dark:sm:text-neutral-300">
                   {l.label[lang]}
                 </Link>
               ))}
             </nav>
           </div>
         </div>
-        <p className="mt-10 max-w-3xl text-sm leading-relaxed text-neutral-600 dark:text-neutral-300">{ETSY_DISCLAIMER}</p>
+        <p className="mt-8 max-w-3xl text-xs leading-relaxed text-neutral-500 sm:mt-10 sm:text-sm sm:text-neutral-600 dark:text-neutral-400 dark:sm:text-neutral-300">{ETSY_DISCLAIMER}</p>
         <div className="mt-6 flex flex-col-reverse gap-4 border-t border-black/5 pt-6 sm:flex-row sm:items-center sm:justify-between dark:border-white/10">
           <p className="text-xs text-neutral-400 dark:text-neutral-500">© {new Date().getFullYear()} {BRAND}</p>
           {social.length > 0 && (
