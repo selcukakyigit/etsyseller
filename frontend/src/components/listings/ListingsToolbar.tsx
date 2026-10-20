@@ -53,7 +53,8 @@ export default function ListingsToolbar({
   allSelected,
   selectedCount,
   onToggleAll,
-  onSelectUnpublished,
+  unpublishedOnly,
+  onToggleUnpublished,
   onFullSync,
 }: {
   total: number;
@@ -72,7 +73,8 @@ export default function ListingsToolbar({
   allSelected: boolean;
   selectedCount: number;
   onToggleAll: (on: boolean) => void;
-  onSelectUnpublished: () => void;
+  unpublishedOnly: boolean; // "Yayınlanmamışlar" süzgeci açık: yalnızca onlar listelenir
+  onToggleUnpublished: () => void;
   onFullSync: () => void;
 }) {
   const { t } = useT();
@@ -173,9 +175,14 @@ export default function ListingsToolbar({
         {draftCount > 0 && (
           <button
             type="button"
-            onClick={onSelectUnpublished}
-            title={t("Etsy'ye henüz gönderilmemiş değişikliği olan listing'leri seç", "Select listings with changes not yet sent to Etsy")}
-            className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-950/70"
+            onClick={onToggleUnpublished}
+            aria-pressed={unpublishedOnly}
+            title={unpublishedOnly ? t("Tüm listing'leri göster", "Show all listings") : t("Yalnızca Etsy'ye henüz gönderilmemiş değişikliği olan listing'leri göster ve seç", "Show and select only listings with changes not yet sent to Etsy")}
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+              unpublishedOnly
+                ? "bg-amber-500 text-white ring-2 ring-amber-300 hover:bg-amber-600 dark:bg-amber-500 dark:text-neutral-950 dark:ring-amber-700"
+                : "bg-amber-50 text-amber-800 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-950/70"
+            }`}
           >
             {t("Yayınlanmamışlar", "Unpublished")}
             <span className="rounded-full bg-amber-200/70 px-1.5 tabular-nums dark:bg-amber-900/60">{draftCount}</span>

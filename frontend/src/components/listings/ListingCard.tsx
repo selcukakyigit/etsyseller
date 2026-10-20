@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { FadedInfo, Listing, TrackedRank } from "@/lib/api";
+import { CardSale, FadedInfo, Listing, TrackedRank } from "@/lib/api";
 import { PublishJob } from "@/lib/publishJobs";
 import PublishBar from "@/components/listings/PublishBar";
 import { useT } from "@/lib/i18n-client";
@@ -31,8 +31,14 @@ export default function ListingCard({
   faded,
   rank,
   rankMax = 200,
+  sales,
+  salesMonth,
 }: {
   listing: Listing;
+  /** Satış adedi: bu ay, geçen ay, toplam (sipariş geçmişinden); henüz yüklenmediyse yok. */
+  sales?: CardSale;
+  /** `sales.this_month`'un ayı ("YYYY-MM"). */
+  salesMonth?: string;
   /** Sıra takibindeyse en iyi aramadaki sırası. */
   rank?: TrackedRank;
   rankMax?: number;
@@ -46,6 +52,10 @@ export default function ListingCard({
   job?: PublishJob;
 }) {
   const { t, locale } = useT();
+  const monthLabel = (key: string | undefined, offset: number) => {
+    const base = key ? new Date(Number(key.slice(0, 4)), Number(key.slice(5)) - 1 + offset, 1) : new Date();
+    return base.toLocaleDateString(locale, { month: "short" });
+  };
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -108,25 +118,50 @@ export default function ListingCard({
         >
           {listing.title}
         </Link>
-        {listing.quantity != null && <p>{t(`${listing.quantity} stokta`, `${listing.quantity} in stock`)}</p>}
+        <div className="flex items-baseline justify-between gap-2 pt-0.5">
+          {price ? <p className="text-sm font-semibold text-[#1a7f4b] dark:text-green-400">{price}</p> : <span />}
+          {listing.quantity != null && <p className="shrink-0">{t(`${listing.quantity} stokta`, `${listing.quantity} in stock`)}</p>}
+        </div>
         {skus && (
-          <p className="hidden truncate sm:block" title={skus}>
+          <p className="hidden truncate text-[11px] text-neutral-400 dark:text-neutral-500 sm:block" title={skus}>
             {skus}
           </p>
         )}
-        {price && <p className="text-[#1a7f4b] dark:text-green-400">{price}</p>}
         {(rank || faded || listing.updated_timestamp || listing.renewed_timestamp) && (
-          <p className="flex flex-wrap gap-1 text-xs">
+          <p className="flex flex-wrap gap-1 pt-1 text-xs">
             <RankBadge info={rank} maxResults={rankMax} />
             <FadedBadge info={faded} />
             <ListingDateBadges updated={listing.updated_timestamp} renewed={listing.renewed_timestamp} />
           </p>
         )}
-        {renews && <p className="hidden sm:block">{listing.should_auto_renew ? t("Otomatik yenilenir", "Auto-renews") : t("Sona erer", "Expires")} {renews}</p>}
-        <div className="mt-2 border-t border-neutral-100 pt-2 dark:border-neutral-800">
-          <p className="hidden text-[10px] font-semibold uppercase tracking-wide sm:block">{t("İstatistikler", "Stats")}</p>
-          <p>
-            {listing.views ?? 0} {t("görüntülenme", "views")} · {listing.favorites ?? 0} {t("favori", "favorites")}
+        {renews && <p className="hidden text-[11px] text-neutral-400 dark:text-neutral-500 sm:block">{listing.should_auto_renew ? t("Otomatik yenilenir", "Auto-renews") : t("Sona erer", "Expires")} {renews}</p>}
+        <div className="mt-2 space-y-1.5 rounded-lg bg-neutral-50 p-2 dark:bg-neutral-950/60">
+          {sales && (
+            <div>
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide">{t("Satış (adet)", "Sales (units)")}</p>
+              <div className="grid grid-cols-3 gap-1 text-center">
+                {[
+                  { label: monthLabel(salesMonth, 0), value: sales.this_month },
+                  { label: monthLabel(salesMonth, -1), value: sales.last_month },
+                  { label: t("Toplam", "Total"), value: sales.total, strong: true },
+                ].map((c) => (
+                  <div key={c.label} className={`rounded-md px-1 py-1 ${c.strong ? "bg-white dark:bg-neutral-900" : ""}`}>
+                    <p className="text-[10px] capitalize leading-none">{c.label}</p>
+                    <p className={`mt-1 text-sm font-semibold tabular-nums leading-none ${c.value > 0 ? "text-neutral-900 dark:text-neutral-100" : "text-neutral-400 dark:text-neutral-600"}`}>
+                      {c.value.toLocaleString(locale)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <p className="flex flex-wrap justify-between gap-x-3 text-[11px]">
+            <span>
+              <b className="font-semibold tabular-nums text-neutral-700 dark:text-neutral-200">{(listing.views ?? 0).toLocaleString(locale)}</b> {t("görüntülenme", "views")}
+            </span>
+            <span>
+              <b className="font-semibold tabular-nums text-neutral-700 dark:text-neutral-200">{(listing.favorites ?? 0).toLocaleString(locale)}</b> {t("favori", "favorites")}
+            </span>
           </p>
         </div>
         {publishError && <p className="text-red-600">{publishError}</p>}

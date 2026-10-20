@@ -8,7 +8,7 @@ import { AREA_FOCUS } from "@/components/listings/analysis/ContentLevelCard";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { api, ContentAudit, Suggestion } from "@/lib/api";
+import { api, ContentAudit, ListingEdit, Suggestion } from "@/lib/api";
 import { useListingWorkingCopy } from "@/lib/useListingWorkingCopy";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { dismissPublishJob, startPublish, usePublishJobs } from "@/lib/publishJobs";
@@ -130,7 +130,8 @@ export default function ListingEditPage() {
   const [aiError, setAiError] = useState<string | null>(null);
   const [ai, setAi] = useState<{
     suggestion: Suggestion;
-    previous: { title: string; tags: string[]; description: string; materials: string[] };
+    previous: { title: string; tags: string[]; description: string; materials: string[]; properties?: ListingEdit["properties"]; managed_property_ids?: number[] };
+    filled?: string[]; // öneriden sonra otomatik doldurulan kategori özellikleri
   } | null>(null);
 
   // Eski backend (taslak route'ları yok) "Not Found" döner; kullanıcıya ne yapacağını söyle.
@@ -160,6 +161,24 @@ export default function ListingEditPage() {
         ...(aiFields.includes("materials") && s.suggested_materials && s.suggested_materials.length > 0 ? { materials: s.suggested_materials } : {}),
       });
       setAi({ suggestion: s, previous });
+      // Öneri tek başına özellikleri (Materials, Craft…) doldurmaz: asistanla aynı hat, yeni metne bakarak boş özellikleri doldurur.
+      if (aiFields.includes("description") || aiFields.includes("materials")) {
+        const next = {
+          title: aiFields.includes("title") ? s.suggested_title : edit.title,
+          tags: aiFields.includes("tags") ? s.suggested_tags : edit.tags,
+          description: aiFields.includes("description") ? s.suggested_description : edit.description,
+          materials: aiFields.includes("materials") && s.suggested_materials?.length ? s.suggested_materials : edit.materials,
+        };
+        try {
+          const attrs = await api.assistant.autofillAttributes(activeShop.id, { listing_id: listingId, ...next, properties: edit.properties, today: new Date().toLocaleDateString("sv") });
+          if (attrs.filled.length > 0) {
+            wc.patch({ properties: attrs.properties, managed_property_ids: attrs.managed_property_ids });
+            setAi({ suggestion: s, previous: { ...previous, properties: edit.properties, managed_property_ids: edit.managed_property_ids }, filled: attrs.filled });
+          }
+        } catch {
+          // özellik doldurma başarısızsa öneri yine uygulanmış kalır; özellikler elle ya da asistanla doldurulur
+        }
+      }
       setCheckKey((k) => k + 1);
     } catch (e) {
       setAiError(e instanceof Error ? e.message : t("AI önerisi üretilemedi", "Could not generate an AI suggestion"));
@@ -488,6 +507,11 @@ export default function ListingEditPage() {
                     {t("Geri al", "Undo")}
                   </button>
                 </div>
+                {ai.filled && ai.filled.length > 0 && (
+                  <p className="mb-1 text-xs text-neutral-600 dark:text-neutral-300">
+                    {t("Özellikler de dolduruldu:", "Attributes were filled in too:")} {ai.filled.join(", ")}
+                  </p>
+                )}
                 {ai.suggestion.rationale && (
                   <details className="text-xs text-neutral-600 dark:text-neutral-300">
                     <summary className="cursor-pointer font-medium">{t("Gerekçe", "Rationale")}</summary>

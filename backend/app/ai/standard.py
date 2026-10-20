@@ -16,7 +16,7 @@ TAG_COUNT = 13
 TAG_MAX_LEN = 20
 MAX_SHARED_TAGS = 5  # başka tek bir listing'le en fazla bu kadar aynı etiket
 OPENING_CHARS = 160  # arama sonucu önizlemesi ve yapay zekâ özetleri açıklamanın başını okur
-DESCRIPTION_WORDS = (200, 300)  # ürüne özel kısım (mağazanın sabit bölümleri hariç)
+DESCRIPTION_WORDS = (80, 200)  # ürüne özel kısım (mağazanın sabit bölümleri hariç); veri azsa kısa kalabilir, doldurulmaz
 FAQ_COUNT = (2, 3)  # isteğe bağlı: yalnızca yeni bilgi veriyorsa
 
 TITLE_RULES = (
@@ -39,7 +39,9 @@ LAYOUT_RULES = (
 )
 
 DESCRIPTION_RULES = (
-    f"Yalnızca ürüne özel kısmı yaz ({DESCRIPTION_WORDS[0]}–{DESCRIPTION_WORDS[1]} kelime). Mağazanın sabit bölümleri (kargo, iade, iletişim, yasal) otomatik eklenir ya da olduğu gibi korunur; yazma, değiştirme.",
+    f"Yalnızca ürüne özel kısmı yaz (yaklaşık {DESCRIPTION_WORDS[0]}–{DESCRIPTION_WORDS[1]} kelime). Mağazanın sabit bölümleri (kargo, iade, iletişim, yasal) otomatik eklenir ya da olduğu gibi korunur; yazma, değiştirme.",
+    "NİYET ÖNCE: açıklama alıcının \"bu ne, kime/nereye uyar, neden bunu alayım\" sorusunu cevaplasın. Uzunluk hedef değildir: eldeki bilgi azsa kısa ve doğru yaz, dolgu ya da uydurma ile uzatma. Mevcut açılış cümlesi zaten ürünü, kullanım yerini ve ana özelliğini anlatıyorsa onu OLDUĞU GİBİ koru, yeniden yazıp şişirme. Kullanıcı (ya da talimat) ek bilgi verdiyse bunu ilgili yere ekle.",
+    "Fotoğraf ve başlıktan anlaşılan niyet bilgisi (oda, tarz, tema, vesile, kimler için) serbestçe yazılabilir; ölçü, malzeme, dayanıklılık gibi olgular ise yalnızca verilen veriden ya da fotoğrafta açıkça görünenden gelir.",
     f"AÇILIŞ (ilk {OPENING_CHARS} karakter): tek net cümlede ürünün ne olduğunu, kim/ne için olduğunu ve en önemli özelliğini (malzeme, ölçü) söyle; ana aranan ifadeler doğal geçsin. Selamlama, \"welcome\", abartı yok.",
     "OLGULAR (DETAILS, kısa maddeler): malzeme, ölçüler/seçenekler (varyasyonlardaki TÜM seçenekleri ADIYLA say: \"Sizes: 50 cm, 70 cm\"), kişiselleştirme nasıl yapılır, pakette ne var, bakım. Dijital üründe: dosya türü, çözünürlük/boyut, kaç dosya, nasıl indirilip kullanılır, kullanım hakkı. Yalnızca bildiğin bilgiler.",
     "HER BİLGİ BİR KEZ: ölçü, kişiselleştirme, malzeme yalnızca OLGULAR'da geçer; açılışta kısaca anılabilir ama GREAT FOR ve soru-cevapta TEKRAR EDİLMEZ. Dolgu cümle yazma (\"see variations\", \"options are set as variations\", \"choose from the size menu\", \"prices are listed in the variations\"): seçenekleri adıyla yaz.",

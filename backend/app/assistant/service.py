@@ -437,6 +437,18 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
     return {"session_id": session.id, "title": session.title, "user": _msg_out(user_msg, shop.id, files), "assistant": _msg_out(assistant, shop.id)}
 
 
+def autofill_attributes(db: Session, shop: Shop, user_id: int, today: dt.date, listing_id: int, form: dict) -> dict:
+    """Düzenleyicideki AI önerisinin devamı: forma yazılmış (henüz kaydedilmemiş) metinle kategorinin boş özelliklerini asistanın kullandığı
+    aynı hat doldurur (tools._autofill_in_work). Hiçbir şey kaydetmez; yeni özellik listesini döner, düzenleyici forma yazar."""
+    import copy
+
+    ctx = tools.Ctx(db=db, shop=shop, user_id=user_id, today=today)
+    work = copy.deepcopy(tools._draft_work(ctx, listing_id))
+    work.update({k: form[k] for k in ("title", "description", "tags", "materials", "properties") if form.get(k) is not None})
+    changed, errors = tools._autofill_in_work(ctx, listing_id, work)
+    return {"properties": work.get("properties", []), "managed_property_ids": work.get("managed_property_ids", []), "filled": changed, "errors": errors}
+
+
 def _record_usage(db: Session, shop_id: int, user_id: int, session_id: int, u: llm.Usage) -> None:
     """İsteğin token kullanımı (commit, sohbet kaydıyla birlikte yapılır)."""
     db.add(AssistantUsage(

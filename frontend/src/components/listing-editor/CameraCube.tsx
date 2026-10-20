@@ -26,27 +26,29 @@ const ELEVATION_STEPS = [
   { key: "high", deg: 28, label: ["Yüksek", "High"] },
 ] as const;
 
+// Yönler ÜRÜNÜN kendi yönüdür (izleyicinin sağı/solu değil): küpte "SAĞ" yüzü görünüyorsa kamera ürünün sağ yanındadır.
+// Model "sağdan" sözünü iki türlü okuyabildiği için kameranın konumu, kaç derece döndüğü ve hangi yüzlerin görüneceği açıkça yazılır.
 const AZIMUTH_PHRASE: Record<string, string> = {
-  front: "ürünü tam önden",
-  front_right: "ürünü ön-sağ 3/4 açıdan",
-  right: "ürünü tam sağ yandan (profilden)",
-  back_right: "ürünü arka-sağ açıdan, arkaya yakın bir açıdan",
-  back: "ürünü arkadan",
-  back_left: "ürünü arka-sol açıdan, arkaya yakın bir açıdan",
-  left: "ürünü tam sol yandan (profilden)",
-  front_left: "ürünü ön-sol 3/4 açıdan",
+  front: "kamera ürünün tam önünde, ürüne dik bakar (yalnızca ön yüz görünür)",
+  front_right: "kamera ürünün önünden ürünün kendi SAĞ tarafına doğru yaklaşık 45° kaymış (3/4 görünüm: ön yüz ve sağ yan yüz birlikte görünür)",
+  right: "kamera ürünün kendi SAĞ yanında, ürüne tam yandan bakar (yalnızca sağ yan yüz/profil görünür)",
+  back_right: "kamera ürünün arkasına doğru, kendi SAĞ tarafında, yaklaşık 135° dönmüş (arka yüz ve sağ yan yüz birlikte görünür)",
+  back: "kamera ürünün tam arkasında (yalnızca arka yüz görünür)",
+  back_left: "kamera ürünün arkasına doğru, kendi SOL tarafında, yaklaşık 135° dönmüş (arka yüz ve sol yan yüz birlikte görünür)",
+  left: "kamera ürünün kendi SOL yanında, ürüne tam yandan bakar (yalnızca sol yan yüz/profil görünür)",
+  front_left: "kamera ürünün önünden ürünün kendi SOL tarafına doğru yaklaşık 45° kaymış (3/4 görünüm: ön yüz ve sol yan yüz birlikte görünür)",
 };
 
 const ELEVATION_PHRASE: Record<string, string> = {
-  low: "alçak açıdan, aşağıdan yukarıya bakan bir kamerayla",
-  eye: "göz hizasında, düz bir kamerayla",
-  high: "yüksek açıdan, yukarıdan aşağıya bakan bir kamerayla",
+  low: "kamera ürünün biraz altında (yaklaşık 25° aşağıdan), yukarı doğru bakar",
+  eye: "kamera ürünle aynı yükseklikte, yatay bakar",
+  high: "kamera ürünün üstünde (yaklaşık 30° yukarıdan), aşağı doğru bakar",
 };
 
 export type CameraAngle = { azimuth: (typeof AZIMUTH_STEPS)[number]["key"]; elevation: (typeof ELEVATION_STEPS)[number]["key"] };
 
 export function cameraAnglePrompt(a: CameraAngle): string {
-  return `Kamera açısı: ${AZIMUTH_PHRASE[a.azimuth]}, ${ELEVATION_PHRASE[a.elevation]} çek.`;
+  return `Kamera açısı: ${AZIMUTH_PHRASE[a.azimuth]}; ${ELEVATION_PHRASE[a.elevation]}. ("Sağ/sol" ürünün kendi yönüdür, izleyicinin değil.)`;
 }
 
 function nearestAzimuth(deg: number) {
@@ -77,26 +79,91 @@ function nearestElevation(deg: number) {
 }
 
 const FACE_SIZE = 92;
-const HALF = FACE_SIZE / 2;
+const H = FACE_SIZE / 2;
+const CH = 13; // kırık kenar (pah) genişliği
+const S = H - CH; // ana yüzün yarı kenarı
 
-// Her yüz farklı tonda — yalnızca rotateY/rotateX ile küpün "3D" olduğu anlaşılmıyor (bkz. ekran görüntüsü
-// geri bildirimi), yüzler arasında belirgin ton/kenar farkı olunca bir küpe baktığın hissi oluşuyor.
-const faceStyle = (transform: string, shade: string): React.CSSProperties => ({
-  position: "absolute",
-  inset: 0,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontSize: 12,
-  fontWeight: 700,
-  letterSpacing: 0.5,
-  color: "#fff",
-  textShadow: "0 1px 2px rgba(0,0,0,0.35)",
-  background: shade,
-  border: "1px solid rgba(0,0,0,0.25)",
-  transform,
-  backfaceVisibility: "hidden" as const,
-});
+/**
+ * Pahlı küp: 6 ana yüz + 12 kenar şeridi + 8 köşe üçgeni. Her parça CSS koordinatlarında (x sağ, y aşağı, z izleyiciye) bir
+ * köşe noktası ve iki kenar vektörüyle tanımlanır, `matrix3d` ile yerleştirilir. Şerit ve köşeler iki yüzün ARASINDAKİ açıyı
+ * (ör. ön-sağ 45°, ön-üst) temsil eder: tıklayınca o açı seçilir.
+ */
+type V3 = [number, number, number];
+type Piece = { key: string; w: number; h: number; matrix: string; shade: string; dir: V3; tri: boolean; label?: [string, string] };
+
+const add = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const scale = (a: V3, k: number): V3 => [a[0] * k, a[1] * k, a[2] * k];
+const dot = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const len = (a: V3) => Math.hypot(a[0], a[1], a[2]);
+const unit = (a: V3) => scale(a, 1 / len(a));
+
+const LIGHT = unit([-0.45, -0.75, 0.5]); // sol-üst-önden ışık (y eksi = yukarı)
+const BASE_RGB: V3 = [217, 119, 87]; // marka rengi
+
+function piece(key: string, origin: V3, u0: V3, v0: V3, dir: V3, tri: boolean, label?: [string, string], fixedShade?: string): Piece {
+  // Dışa bakan yüz görünür olsun: normal merkezden uzaklaşmıyorsa kenarlar yer değiştirir (üçgende aynı üçgen kalır).
+  const mid = add(origin, scale(add(u0, v0), tri ? 1 / 3 : 1 / 2));
+  const flip = dot(cross(u0, v0), mid) < 0;
+  const u = flip ? v0 : u0;
+  const v = flip ? u0 : v0;
+  const eu = unit(u);
+  const ev = unit(v);
+  const n = cross(eu, ev);
+  const light = 0.55 + 0.45 * Math.max(0, dot(n, LIGHT));
+  const shade = fixedShade ?? `rgb(${BASE_RGB.map((c) => Math.min(255, Math.round(c * light * 1.12))).join(",")})`;
+  const m = [...eu, 0, ...ev, 0, ...n, 0, ...origin, 1].map((x) => Number(x.toFixed(5)));
+  return { key, w: len(u), h: len(v), matrix: `matrix3d(${m.join(",")})`, shade, dir, tri, label };
+}
+
+const point = (k: number, kv: number, i: number, iv: number, j: number, jv: number): V3 => {
+  const p: V3 = [0, 0, 0];
+  p[k] = kv;
+  p[i] = iv;
+  p[j] = jv;
+  return p;
+};
+
+function buildPieces(): Piece[] {
+  const out: Piece[] = [
+    // Ana yüzler: okuma yönü dışarıdan bakınca soldan sağa olacak şekilde köşe ve kenarlar seçilmiştir.
+    piece("front", [-S, -S, H], [2 * S, 0, 0], [0, 2 * S, 0], [0, 0, 1], false, ["ÖN", "FRONT"], "#D97757"),
+    piece("back", [S, -S, -H], [-2 * S, 0, 0], [0, 2 * S, 0], [0, 0, -1], false, ["ARKA", "BACK"], "#8a3610"),
+    piece("right", [H, -S, S], [0, 0, -2 * S], [0, 2 * S, 0], [1, 0, 0], false, ["SAĞ", "RIGHT"], "#c9540f"),
+    piece("left", [-H, -S, -S], [0, 0, 2 * S], [0, 2 * S, 0], [-1, 0, 0], false, ["SOL", "LEFT"], "#a8460f"),
+    piece("top", [-S, -H, -S], [2 * S, 0, 0], [0, 0, 2 * S], [0, -1, 0], false, ["ÜST", "TOP"], "#ff8a4c"),
+    piece("bottom", [-S, H, S], [2 * S, 0, 0], [0, 0, -2 * S], [0, 1, 0], false, ["ALT", "BOTTOM"], "#7a2f0c"),
+  ];
+  // 12 kenar şeridi: iki yüzün arasında 45° eğimli.
+  for (const [i, j, k] of [[0, 1, 2], [0, 2, 1], [1, 2, 0]] as const) {
+    for (const si of [-1, 1]) {
+      for (const sj of [-1, 1]) {
+        const p1 = point(k, -S, i, si * H, j, sj * S);
+        const p2 = point(k, S, i, si * H, j, sj * S);
+        const p4 = point(k, -S, i, si * S, j, sj * H);
+        const dir: V3 = [0, 0, 0];
+        dir[i] = si;
+        dir[j] = sj;
+        out.push(piece(`edge-${i}${j}${si}${sj}`, p1, sub(p2, p1), sub(p4, p1), dir, false));
+      }
+    }
+  }
+  // 8 köşe üçgeni.
+  for (const sx of [-1, 1]) {
+    for (const sy of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const a: V3 = [sx * S, sy * S, sz * H];
+        const b: V3 = [sx * H, sy * S, sz * S];
+        const c: V3 = [sx * S, sy * H, sz * S];
+        out.push(piece(`corner-${sx}${sy}${sz}`, a, sub(b, a), sub(c, a), [sx, sy, sz], true));
+      }
+    }
+  }
+  return out;
+}
+
+const PIECES = buildPieces();
 
 export default function CameraCube({ value, onChange }: { value: CameraAngle | null; onChange: (a: CameraAngle | null) => void }) {
   const [yaw, setYaw] = useState(-35);
@@ -131,25 +198,18 @@ export default function CameraCube({ value, onChange }: { value: CameraAngle | n
     onChange({ azimuth: az.key, elevation: el.key });
   };
 
-  // Yüze tıklayınca o yüzün ekseni doğrudan seçilir (sürüklemeye alternatif, daha hızlı); diğer eksen
-  // (varsa seçili değerde, yoksa varsayılanda: önden/göz hizası) korunur.
-  const selectAzimuth = (key: CameraAngle["azimuth"]) => {
+  // Yüze, kenar şeridine ya da köşeye tıklayınca o yönün açısı seçilir (sürüklemeye alternatif, daha hızlı). Yön vektörü CSS
+  // koordinatındadır (y aşağı); yatay bileşen yoksa (üst/alt yüz) seçili yön, dikey bileşen yoksa seçili yükseklik korunur.
+  const pick = (d: V3) => {
     if (dragged.current) return;
-    const elKey = value?.elevation ?? "eye";
-    const az = AZIMUTH_STEPS.find((s) => s.key === key)!;
-    const el = ELEVATION_STEPS.find((s) => s.key === elKey)!;
-    setYaw(-az.deg);
-    setPitch(el.deg);
-    onChange({ azimuth: key, elevation: elKey });
-  };
-  const selectElevation = (key: CameraAngle["elevation"]) => {
-    if (dragged.current) return;
-    const azKey = value?.azimuth ?? "front";
-    const az = AZIMUTH_STEPS.find((s) => s.key === azKey)!;
-    const el = ELEVATION_STEPS.find((s) => s.key === key)!;
-    setYaw(-az.deg);
-    setPitch(el.deg);
-    onChange({ azimuth: azKey, elevation: key });
+    const [x, y, z] = d;
+    const azKey = x !== 0 || z !== 0 ? nearestAzimuth((Math.atan2(x, z) * 180) / Math.PI).key : (value?.azimuth ?? "front");
+    const elKey: CameraAngle["elevation"] = y < 0 ? "high" : y > 0 ? "low" : (value?.elevation ?? "eye");
+    const azStep = AZIMUTH_STEPS.find((s) => s.key === azKey)!;
+    const elStep = ELEVATION_STEPS.find((s) => s.key === elKey)!;
+    setYaw(-azStep.deg);
+    setPitch(elStep.deg);
+    onChange({ azimuth: azKey, elevation: elKey });
   };
 
   const az = value ? AZIMUTH_STEPS.find((s) => s.key === value.azimuth)?.label : null;
@@ -189,12 +249,36 @@ export default function CameraCube({ value, onChange }: { value: CameraAngle | n
             }}
             className="select-none"
           >
-            <div onClick={() => selectAzimuth("front")} style={{ ...faceStyle(`translateZ(${HALF}px)`, "#D97757"), cursor: "pointer" }}>{t("ÖN", "FRONT")}</div>
-            <div onClick={() => selectAzimuth("back")} style={{ ...faceStyle(`rotateY(180deg) translateZ(${HALF}px)`, "#8a3610"), cursor: "pointer" }}>{t("ARKA", "BACK")}</div>
-            <div onClick={() => selectAzimuth("right")} style={{ ...faceStyle(`rotateY(90deg) translateZ(${HALF}px)`, "#c9540f"), cursor: "pointer" }}>{t("SAĞ", "RIGHT")}</div>
-            <div onClick={() => selectAzimuth("left")} style={{ ...faceStyle(`rotateY(-90deg) translateZ(${HALF}px)`, "#a8460f"), cursor: "pointer" }}>{t("SOL", "LEFT")}</div>
-            <div onClick={() => selectElevation("high")} style={{ ...faceStyle(`rotateX(90deg) translateZ(${HALF}px)`, "#ff8a4c"), cursor: "pointer" }}>{t("ÜST", "TOP")}</div>
-            <div onClick={() => selectElevation("low")} style={{ ...faceStyle(`rotateX(-90deg) translateZ(${HALF}px)`, "#7a2f0c"), cursor: "pointer" }}>{t("ALT", "BOTTOM")}</div>
+            {PIECES.map((p) => (
+              <div
+                key={p.key}
+                onClick={() => pick(p.dir)}
+                style={{
+                  position: "absolute",
+                  left: "50%",
+                  top: "50%",
+                  width: p.w,
+                  height: p.h,
+                  transformOrigin: "0 0",
+                  transform: p.matrix,
+                  background: p.shade,
+                  clipPath: p.tri ? "polygon(0 0, 100% 0, 0 100%)" : undefined,
+                  boxShadow: p.tri ? undefined : "inset 0 0 0 1px rgba(0,0,0,0.22)",
+                  backfaceVisibility: "hidden",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  letterSpacing: 0.5,
+                  color: "#fff",
+                  textShadow: "0 1px 2px rgba(0,0,0,0.35)",
+                }}
+              >
+                {p.label ? t(p.label[0], p.label[1]) : null}
+              </div>
+            ))}
           </div>
         </div>
         <div className="min-w-0 flex-1 text-xs text-neutral-500 dark:text-neutral-400">

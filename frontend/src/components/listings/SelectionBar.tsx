@@ -63,8 +63,8 @@ export default function SelectionBar({
   const inline = (a: Action) =>
     `rounded-full px-3 py-1.5 text-sm font-medium disabled:opacity-40 ${
       a.danger
-        ? "text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
-        : "text-neutral-700 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-800"
+        ? "text-red-400 hover:bg-white/10 dark:text-red-600 dark:hover:bg-black/5"
+        : "text-neutral-200 hover:bg-white/10 dark:text-neutral-700 dark:hover:bg-black/5"
     }`;
 
   return (
@@ -72,9 +72,10 @@ export default function SelectionBar({
       <div
         role="toolbar"
         aria-label={t("Toplu işlemler", "Bulk actions")}
-        className="flex w-full max-w-3xl items-center gap-2 rounded-2xl border border-neutral-200 bg-white/95 p-2 pl-4 shadow-2xl backdrop-blur dark:border-neutral-700 dark:bg-neutral-900/95"
+        // Ters ton: açık temada koyu, koyu temada açık çubuk; kartların (beyaz ya da siyah) üstünde net ayrışır.
+        className="flex w-full max-w-3xl items-center gap-2 rounded-2xl border border-neutral-700 bg-neutral-900 p-2 pl-4 shadow-2xl ring-1 ring-black/10 dark:border-neutral-300 dark:bg-neutral-100 dark:ring-white/20"
       >
-        <span className="mr-auto whitespace-nowrap text-sm font-semibold tabular-nums text-neutral-900 dark:text-neutral-100">
+        <span className="mr-auto whitespace-nowrap text-sm font-semibold tabular-nums text-white dark:text-neutral-900">
           {t(`${count} seçili`, `${count} selected`)}
         </span>
 
@@ -93,12 +94,12 @@ export default function SelectionBar({
             disabled={busy}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
-            className="rounded-full border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-800 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-100"
+            className="rounded-full border border-neutral-600 px-3 py-1.5 text-sm font-medium text-neutral-100 disabled:opacity-40 dark:border-neutral-400 dark:text-neutral-800"
           >
             {t("İşlemler", "Actions")} ▴
           </button>
           {menuOpen && (
-            <div role="menu" className="absolute bottom-full right-0 mb-2 w-56 overflow-hidden rounded-xl border border-neutral-200 bg-white py-1 text-sm shadow-xl dark:border-neutral-700 dark:bg-neutral-900">
+            <div role="menu" className="absolute bottom-full right-0 mb-2 w-56 overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 py-1 text-sm shadow-xl dark:border-neutral-300 dark:bg-neutral-100">
               {actions.map((a) => (
                 <button
                   key={a.key}
@@ -108,7 +109,7 @@ export default function SelectionBar({
                     setMenuOpen(false);
                     a.run();
                   }}
-                  className={`block w-full px-4 py-2.5 text-left hover:bg-neutral-100 dark:hover:bg-neutral-800 ${a.danger ? "text-red-600 dark:text-red-400" : "text-neutral-800 dark:text-neutral-100"}`}
+                  className={`block w-full px-4 py-2.5 text-left hover:bg-white/10 dark:hover:bg-black/5 ${a.danger ? "text-red-400 dark:text-red-600" : "text-neutral-100 dark:text-neutral-800"}`}
                 >
                   {a.label}
                 </button>
@@ -134,7 +135,7 @@ export default function SelectionBar({
           onClick={onClear}
           aria-label={t("Seçimi temizle", "Clear selection")}
           title={t("Seçimi temizle", "Clear selection")}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-400 hover:bg-white/10 dark:text-neutral-500 dark:hover:bg-black/5"
         >
           ✕
         </button>

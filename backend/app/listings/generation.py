@@ -87,6 +87,20 @@ def _variants(model: catalog.ResolvedModel) -> list[dict]:
     ]
 
 
+def upscale_options() -> list[dict]:
+    """Yükseltme için sunulan boyutlar ve kredileri (yöneticinin tanımladığı 2K/4K seçenekleri); kullanılamıyorsa boş."""
+    from app.ai import image_gen
+
+    out = []
+    for size in image_gen.UPSCALE_SIZES:
+        try:
+            _model, variant = image_gen.upscale_variant(size)
+        except (image_gen.ImageGenError, ValueError):
+            continue
+        out.append({"size": size, "credits": pricing.unit_credits(variant)})
+    return out
+
+
 def kind_options(task: str, durations=None) -> dict:
     """Kullanıcıya açık modeller: aktif, anahtarı tanımlı ve en az bir aktif fiyat seçeneği olan. Videoda yalnızca
     Etsy'nin kabul ettiği süreler."""

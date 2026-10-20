@@ -39,6 +39,27 @@ def chat(body: ChatIn, shop: Shop = Depends(get_owned_shop), user: User = Depend
         raise HTTPException(400, str(exc)) from exc
 
 
+class AutofillAttributesIn(BaseModel):
+    listing_id: int
+    title: str | None = Field(default=None, max_length=300)
+    description: str | None = Field(default=None, max_length=20000)
+    tags: list[str] | None = Field(default=None, max_length=20)
+    materials: list[str] | None = Field(default=None, max_length=30)
+    properties: list[dict] | None = Field(default=None, max_length=100)
+    today: dt.date | None = None
+
+
+@router.post("/autofill-attributes", dependencies=[Depends(require_ai_enabled)])
+def autofill_attributes(body: AutofillAttributesIn, shop: Shop = Depends(get_owned_shop), user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Editördeki AI önerisinden sonra kategori özelliklerini (malzeme, kullanım yeri…) doldurur; kaydetmez."""
+    try:
+        return service.autofill_attributes(db, shop, user.id, body.today or dt.date.today(), body.listing_id, body.model_dump(exclude={"listing_id", "today"}))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 - listing yok, kategori yok, sağlayıcı hatası: düzenleyici öneriyi yine de uygular
+        raise HTTPException(502, str(exc)[:300]) from exc
+
+
 @router.get("/progress/{request_id}")
 def progress(request_id: str, shop: Shop = Depends(get_owned_shop)):
     """Asistanın o an yaptığı işin kısa açıklaması (arayüz bekleme sırasında gösterir)."""

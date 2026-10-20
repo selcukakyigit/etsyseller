@@ -27,6 +27,7 @@ def generation_options(listing_id: int):
         "credits_enabled": credit_settings.enabled(),
         "image": generation.kind_options("image"),
         "video": generation.kind_options("video", generation.video_durations),
+        "upscale": generation.upscale_options(),
     }
 
 

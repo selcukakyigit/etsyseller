@@ -104,7 +104,7 @@ def coverage_issues(description: str, product: str, variations: dict[str, list[s
 
 
 # Soru-cevap yapay zekâya zorlanmaz (veri yetmiyorsa atlanır; zorlamak uydurmaya iter); denetçide yine bulgu olarak görünür.
-_NOT_ENFORCED = {"faq", "layout_headers", "layout_emoji"}
+_NOT_ENFORCED = {"faq", "layout_headers", "layout_emoji", "facts"}  # "facts": veri azken madde listesi zorlanırsa model dolgu yazar
 
 
 def generation_problems(

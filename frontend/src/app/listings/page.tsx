@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, BulkChanges, FadedInfo, FadedListings, Listing, RanksSummary, ShopAttention } from "@/lib/api";
+import { api, BulkChanges, CardSales, FadedInfo, FadedListings, Listing, RanksSummary, ShopAttention } from "@/lib/api";
 import { onRanksChanged } from "@/lib/syncEvents";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import { useIncrementalList } from "@/lib/useIncrementalList";
@@ -346,6 +346,21 @@ export default function Home() {
       cancelled = true;
     };
   }, [activeShop, setFaded]);
+  // Kart satış özeti (bu ay / geçen ay / toplam adet): sipariş geçmişinden, hafif istek.
+  const [cardSales, setCardSales] = useCached<CardSales>(activeShop ? `card-sales:${activeShop.id}` : null);
+  useEffect(() => {
+    if (!activeShop) return;
+    let cancelled = false;
+    api.insights
+      .cardSales(activeShop.id, new Date().toLocaleDateString("sv"))
+      .then((r) => {
+        if (!cancelled) setCardSales(r);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [activeShop, setCardSales]);
   // Yalnızca aktif listing'ler sönmüş sayılır (pasif/süresi dolmuş zaten satamaz).
   const fadedOf = useCallback(
     (l: Listing): FadedInfo | undefined => (l.state === "active" ? faded?.listings[String(l.listing_id)] : undefined),
@@ -635,7 +650,12 @@ export default function Home() {
                     return next;
                   })
                 }
-                onSelectUnpublished={() => setSelected(new Set(draftListings.map((l) => l.listing_id)))}
+                unpublishedOnly={filters.local === "unpublished"}
+                onToggleUnpublished={() => {
+                  const on = filters.local !== "unpublished";
+                  setFilters({ ...filters, local: on ? "unpublished" : "all" });
+                  if (on) setSelected(new Set(draftListings.map((l) => l.listing_id)));
+                }}
                 onFullSync={() => void fullSync()}
               />
             </div>
@@ -715,6 +735,8 @@ export default function Home() {
                         faded={fadedOf(listing)}
                         rank={ranks?.listings[String(listing.listing_id)]}
                         rankMax={ranks?.max_results}
+                        sales={cardSales ? (cardSales.listings[String(listing.listing_id)] ?? { this_month: 0, last_month: 0, total: 0 }) : undefined}
+                        salesMonth={cardSales?.month}
                       />
                     ))}
                   </div>

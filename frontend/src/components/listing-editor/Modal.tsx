@@ -2,6 +2,7 @@
 
 import { ReactNode, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { tNow } from "@/lib/i18n";
 
 export function Modal({
   title,
@@ -10,8 +11,11 @@ export function Modal({
   z = 50,
   widthClass = "max-w-5xl",
   onClose,
+  closeButton,
 }: {
   title: string;
+  /** Başlığın sağında ✕ düğmesi (yalnızca `onClose` ile birlikte). */
+  closeButton?: boolean;
   children: ReactNode;
   footer?: ReactNode;
   z?: number;
@@ -42,8 +46,19 @@ export function Modal({
         aria-label={title}
         className={`flex max-h-[90vh] w-full ${widthClass} flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-neutral-900`}
       >
-        <div className="px-6 pt-6 pb-3">
+        <div className="flex items-start justify-between gap-3 px-6 pt-6 pb-3">
           <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{title}</h2>
+          {closeButton && onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label={tNow("Kapat", "Close")}
+              title={tNow("Kapat", "Close")}
+              className="-mr-2 -mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+            >
+              ✕
+            </button>
+          )}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-6 pb-4">{children}</div>
         {footer && (

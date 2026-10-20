@@ -43,6 +43,8 @@ TASKS: dict[str, tuple[str, str, str]] = {
     "vision": ("llm", "Fotoğraf alt metni", "Photo alt text"),
     "document": ("llm", "Fatura ve tablo okuma", "Invoice and table reading"),
     "image": ("image", "Görsel üretimi", "Image generation"),
+    # Yalnızca çözünürlük artırma (2K/4K): atanmış model yoksa görsel üretimi modeli kullanılır; fiyatı modelin 2K/4K seçenekleri belirler.
+    "upscale": ("image", "Görsel yükseltme (2K / 4K)", "Image upscale (2K / 4K)"),
     "video": ("video", "Video üretimi", "Video generation"),
 }
 

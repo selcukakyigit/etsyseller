@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.core.uploads import read_limited
 from app.etsy.client import EtsyApiError
-from app.insights import diagnosis, etsy_data, impact, rank
+from app.insights import diagnosis, etsy_data, impact, rank, sales
 from app.listings import content_audit
 from app.shops.deps import get_owned_shop, require_ai_enabled
 from app.shops.models import Shop
@@ -25,6 +25,12 @@ def attention(shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db
 def faded(shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
     """Sönmüş listing'ler: eskiden satan ama 90 gündür satmayanlar (liste rozeti ve "Sönmüş" filtresi için)."""
     return diagnosis.faded(db, shop)
+
+
+@router.get("/card-sales")
+def card_sales(today: dt.date | None = None, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    """Listing kartlarındaki satış özeti: listing başına bu ay, geçen ay ve toplam satış adedi."""
+    return sales.card_summary(db, shop, today or dt.date.today())
 
 
 @router.get("/changes")

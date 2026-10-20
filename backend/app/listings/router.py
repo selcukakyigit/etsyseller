@@ -313,6 +313,31 @@ def regenerate_draft_image(
         raise HTTPException(400, str(exc)) from exc
 
 
+class UpscaleImageIn(BaseModel):
+    image_id: int
+    draft_file_id: str | None = None
+    size: str = Field(pattern="^(2K|4K)$")
+
+
+@router.post("/{listing_id}/draft/images/upscale", dependencies=[Depends(require_ai_enabled)])
+def upscale_draft_image(
+    listing_id: int,
+    payload: UpscaleImageIn,
+    shop: Shop = Depends(get_owned_shop),
+    db: Session = Depends(get_db),
+):
+    """Fotoğrafı yalnızca 2K/4K'ya yükseltir (içerik değişmez). Toplu yükseltme, frontend'in bu uç noktayı seçilen her fotoğraf için
+    çağırmasıyla yapılır; fiyat yönetici panelindeki "Görsel yükseltme" modelinin seçeneğinden gelir."""
+    from app.ai.image_gen import ImageGenError
+
+    try:
+        return drafts.upscale_image(db, shop, listing_id, payload.image_id, payload.draft_file_id, payload.size)
+    except ImageGenError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @router.get("/{listing_id}/draft/files/{file_id}")
 def get_draft_file(
     listing_id: int,

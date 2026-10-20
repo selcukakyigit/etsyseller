@@ -8,8 +8,8 @@ import { useT } from "@/lib/i18n-client";
 import { useApiData } from "@/lib/useApiData";
 import { CREDIT_CATEGORIES } from "./UsageBreakdown";
 
-/** Bakiye bu değerin altına inince rozet sarıya döner (bir görsel ya da birkaç SEO önerisi kadar). */
-const LOW_BALANCE = 50;
+/** Bakiye bu değerin altına inince rakamlar kırmızıya döner (simge hep altın kalır). */
+const LOW_BALANCE = 100;
 
 function CoinIcon() {
   return (
@@ -37,7 +37,7 @@ export default function CreditBadge() {
 
   if (!data) return null;
   const total = data.balance;
-  const tone = total <= 0 ? "text-red-600 dark:text-red-400" : total < LOW_BALANCE ? "text-amber-600 dark:text-amber-400" : "text-neutral-600 dark:text-neutral-300";
+  const tone = total < LOW_BALANCE ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"; // altın; azalınca kırmızı
   const compact = new Intl.NumberFormat(locale, { notation: total >= 10_000 ? "compact" : "standard", maximumFractionDigits: 1 }).format(total);
 
   return (
@@ -47,9 +47,11 @@ export default function CreditBadge() {
         onClick={() => setOpen((v) => !v)}
         title={t("Kredi bakiyesi", "Credit balance")}
         aria-expanded={open}
-        className={`mr-1 flex h-8 items-center gap-1.5 rounded-lg px-2 text-sm font-medium tabular-nums transition hover:bg-neutral-100 dark:hover:bg-neutral-800 ${tone}`}
+        className={`mr-1 flex h-8 items-center gap-1.5 rounded-lg px-2 text-sm font-semibold tabular-nums transition hover:bg-neutral-100 dark:hover:bg-neutral-800 ${tone}`}
       >
-        <CoinIcon />
+        <span className="text-amber-500 dark:text-amber-400">
+          <CoinIcon />
+        </span>
         {compact}
       </button>
       {open && <CreditMenu total={total} active={data.enabled} onClose={() => setOpen(false)} />}

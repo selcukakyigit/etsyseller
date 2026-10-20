@@ -9,6 +9,7 @@ import mimetypes
 
 from app.ai import catalog
 from app.billing import metering
+from app.core.i18n import tr
 
 """Prompt mimarisi: katmanlar birbiriyle çelişmesin diye ayrı tutulur.
   1. IDENTITY_LOCK  — her zaman: ürünün KİMLİĞİ (ne olduğu) değişmez.
@@ -74,19 +75,19 @@ class ImageGenError(Exception):
     pass
 
 
-def _choose(model_db_id: int | None, variant_key: str | None) -> tuple[catalog.ResolvedModel, catalog.Variant | None]:
-    """Kullanıcının seçtiği görsel modeli ve seçeneği; seçim yoksa "image" görevinin modeli ve varsayılan seçeneği.
+def _choose(model_db_id: int | None, variant_key: str | None, task: str = "image") -> tuple[catalog.ResolvedModel, catalog.Variant | None]:
+    """Kullanıcının seçtiği görsel modeli ve seçeneği; seçim yoksa görevin ("image", "upscale") modeli ve varsayılan seçeneği.
     Şimdilik yalnızca Google (Gemini görsel modelleri) destekleniyor."""
     try:
-        return catalog.resolve_choice("image", model_db_id, variant_key)
+        return catalog.resolve_choice(task, model_db_id, variant_key)
     except catalog.NotConfigured as exc:
         raise ImageGenError(str(exc)) from exc
 
 
-def _run(parts: list, aspect_ratio: str | None = None, model_db_id: int | None = None, variant_key: str | None = None) -> tuple[bytes, str]:
+def _run(parts: list, aspect_ratio: str | None = None, model_db_id: int | None = None, variant_key: str | None = None, task: str = "image") -> tuple[bytes, str]:
     """`aspect_ratio` verilmezse model girdi görselinin oranını korur (listing fotoğrafları); verilirse ("4:1", "8:1",
     "1:1"…) o oranda üretir. gemini-3.1-flash-image 4:1 ve 8:1'i de kabul ediyor (banner'lar, 2026-10-05'te denendi)."""
-    model, variant = _choose(model_db_id, variant_key)
+    model, variant = _choose(model_db_id, variant_key, task)
     from app.ai.client import get_google_client
     from google.genai import types
 
@@ -203,6 +204,38 @@ def generate_from_text(
         )
     parts.append(types.Part.from_text(text=full_prompt))
     return _run(parts, model_db_id=model_db_id, variant_key=variant_key)
+
+
+UPSCALE_SIZES = ("2K", "4K")
+
+UPSCALE_PROMPT = (
+    "Bu görseli YALNIZCA daha yüksek çözünürlüğe yükselt (upscale). İçeriği, kompozisyonu, kadrajı, renkleri, ürünü ve üzerindeki tüm "
+    "yazı/logoyu birebir koru; hiçbir nesne ekleme, çıkarma ya da değiştirme, sahneyi yeniden çizme. Yalnızca keskinliği ve ince "
+    "detayı artır, sıkıştırma gürültüsünü ve bulanıklığı gider. Orijinal en-boy oranını koru."
+)
+
+
+def upscale_variant(size: str) -> tuple[catalog.ResolvedModel, catalog.Variant]:
+    """"upscale" görevinin modeli ve istenen çözünürlüğün (2K/4K) fiyat seçeneği; yönetici o boyut için seçenek tanımlamadıysa hata."""
+    if size not in UPSCALE_SIZES:
+        raise ValueError(f"Boyut {' ya da '.join(UPSCALE_SIZES)} olmalı.")
+    try:
+        model = catalog.resolve_ready("upscale")
+    except catalog.NotConfigured as exc:
+        raise ImageGenError(str(exc)) from exc
+    variant = next((v for v in model.variants if str(v.params.get("image_size", "")).upper() == size), None)
+    if variant is None:
+        raise ImageGenError(tr(f"{size} yükseltme şu an kullanılamıyor.", f"{size} upscaling is not available right now."))
+    return model, variant
+
+
+def upscale_image(image_bytes: bytes, content_type: str, size: str) -> tuple[bytes, str]:
+    """Aynı fotoğrafı yalnızca çözünürlüğü artırarak yeniden üretir (içerik değişmez). Fiyat, modelin o boyuttaki seçeneğindendir."""
+    from google.genai import types
+
+    model, variant = upscale_variant(size)
+    parts = [types.Part.from_bytes(data=image_bytes, mime_type=content_type), types.Part.from_text(text=UPSCALE_PROMPT)]
+    return _run(parts, None, model.id, variant.key, "upscale")
 
 
 def generate_with_references(prompt: str, references: list[tuple[bytes, str]], aspect_ratio: str) -> tuple[bytes, str]:

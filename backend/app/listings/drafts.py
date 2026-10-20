@@ -292,6 +292,18 @@ def regenerate_image(
     return save_file(db, shop, listing_id, "image", filename, mime, new_bytes, origin_key=origin_key)
 
 
+def upscale_image(db: Session, shop: Shop, listing_id: int, image_id: int, draft_file_id: str | None, size: str) -> dict:
+    """Ekranda görünen fotoğrafı (şu anki sürüm) yalnızca 2K/4K'ya yükseltir; sonuç aynı fotoğraf yuvasının yeni bir sürümüdür
+    (orijinal silinmez, sürüm noktalarından geri dönülür). Yeniden oluşturmanın aksine kaynak zincirin kökü değil, görünen sürümdür:
+    yükseltilecek olan o an beğenilen görseldir."""
+    from app.ai import image_gen
+
+    origin_key = _resolve_origin_key(db, shop, listing_id, image_id, draft_file_id)
+    content, content_type = _source_image_bytes(db, shop, listing_id, image_id, draft_file_id)
+    new_bytes, mime = image_gen.upscale_image(content, content_type, size)
+    return save_file(db, shop, listing_id, "image", f"ai-upscale-{size}{image_gen.guess_extension(mime)}", mime, new_bytes, origin_key=origin_key)
+
+
 # ------------------------------------------------------------- publish ----
 
 def _price(offering: dict) -> float:

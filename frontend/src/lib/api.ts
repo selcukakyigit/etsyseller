@@ -238,6 +238,10 @@ export type Listing = {
   is_new?: boolean;
 };
 
+/** Listing kartındaki satış özeti: adet olarak bu ay, geçen ay ve toplam. */
+export type CardSale = { this_month: number; last_month: number; total: number };
+export type CardSales = { month: string; listings: Record<string, CardSale> };
+
 export type BulkTextOp = {
   mode: "prefix" | "suffix" | "find_replace" | "set";
   text?: string;
@@ -670,7 +674,9 @@ export type GenerationModel = {
 
 export type GenerationKindOptions = { models: GenerationModel[]; default_model: number | null };
 
-export type GenerationOptions = { credits_enabled: boolean; image: GenerationKindOptions; video: GenerationKindOptions };
+/** Yükseltme (upscale) için sunulan boyutlar ve kredileri; yönetici bir boyut için fiyat seçeneği tanımlamadıysa o boyut yoktur. */
+export type UpscaleOption = { size: "2K" | "4K"; credits: number };
+export type GenerationOptions = { credits_enabled: boolean; image: GenerationKindOptions; video: GenerationKindOptions; upscale: UpscaleOption[] };
 
 /** Ürün referansı: yeni yüklenen dosya ya da listing'in kendi fotoğraflarından biri. */
 export type GenerationReference = { draftFileId?: string; image?: { id: number; draftFileId?: string | null } };
@@ -1625,6 +1631,7 @@ export const api = {
     diagnosis: (shopId: number, listingId: number) => request<ListingDiagnosis>(`/api/shops/${shopId}/insights/listings/${listingId}/diagnosis`),
     attention: (shopId: number) => request<ShopAttention>(`/api/shops/${shopId}/insights/attention`),
     faded: (shopId: number) => request<FadedListings>(`/api/shops/${shopId}/insights/faded`),
+    cardSales: (shopId: number, today: string) => request<CardSales>(`/api/shops/${shopId}/insights/card-sales?today=${today}`),
     changes: (shopId: number) => request<ChangesSummary>(`/api/shops/${shopId}/insights/changes`),
     ranksSummary: (shopId: number) => request<RanksSummary>(`/api/shops/${shopId}/insights/ranks`),
     ranks: (shopId: number, listingId: number) => request<ListingRanks>(`/api/shops/${shopId}/insights/listings/${listingId}/ranks`),
@@ -1985,6 +1992,12 @@ export const api = {
     // `referenceDraftFileId`: ör. toplu üretimde daha önce üretilmiş model fotoğrafı — "aynı modeli koru" için.
     // `subjectImageId`/`subjectDraftFileId`: sahnede birden fazla obje olduğunda "ürün bu" diye işaret eden,
     // listing'in kendi fotoğraflarından biri (net/temiz ürün karesi).
+    // Fotoğrafı yalnızca 2K/4K'ya yükseltir (içerik değişmez); sonuç aynı yuvanın yeni sürümüdür.
+    upscaleImage: (shopId: number, listingId: number, imageId: number, draftFileId: string | null, size: "2K" | "4K") =>
+      request<{ file_id: string; kind: string; filename: string }>(`/api/shops/${shopId}/listings/${listingId}/draft/images/upscale`, {
+        method: "POST",
+        body: JSON.stringify({ image_id: imageId, draft_file_id: draftFileId, size }),
+      }),
     regenerateImage: (
       shopId: number,
       listingId: number,
@@ -2106,6 +2119,12 @@ export const api = {
     recent: (shopId: number) => request<BannerImage[]>(`/api/shops/${shopId}/banners/recent`),
   },
   assistant: {
+    // Editördeki AI önerisinin devamı: forma yazılmış metne göre boş kategori özelliklerini doldurur (kaydetmez).
+    autofillAttributes: (shopId: number, body: { listing_id: number; title: string; description: string; tags: string[]; materials: string[]; properties: ListingEdit["properties"]; today: string }) =>
+      request<{ properties: ListingEdit["properties"]; managed_property_ids: number[]; filled: string[]; errors: string[] }>(`/api/shops/${shopId}/assistant/autofill-attributes`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
     progress: (shopId: number, requestId: string) => request<{ step: string; kind: "image" | "video" | null; cards: ChatCard[]; trail: string[] }>(`/api/shops/${shopId}/assistant/progress/${requestId}`),
     rewriteJob: (shopId: number, jobId: string, action?: "start" | "stop") =>
       request<RewriteState>(`/api/shops/${shopId}/assistant/rewrite-jobs/${jobId}${action ? `/${action}` : ""}`, { method: action ? "POST" : "GET" }),

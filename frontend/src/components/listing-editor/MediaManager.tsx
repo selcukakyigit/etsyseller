@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { api, ImageVersion, ListingImage, ListingVideo } from "@/lib/api";
+import { api, ImageVersion, ListingImage, ListingVideo, UpscaleOption } from "@/lib/api";
 import ImageCropper from "./ImageCropper";
+import UpscaleMenu from "./UpscaleMenu";
 import { Modal, btnGhost, btnPrimary } from "./Modal";
 import { getRegenJob, runRegenJob, useRegenJobs } from "@/lib/regenJobs";
 import RegenImage from "./RegenImage";
@@ -86,8 +87,27 @@ export default function MediaManager({
   });
 
   const regenJobs = useRegenJobs();
-  const [bulkRegen, setBulkRegen] = useState(false);
-  const anyRegenBusy = bulkRegen || ordered.some((img) => regenJobs.get(img.listing_image_id)?.phase === "running");
+  const [bulk, setBulk] = useState<"regen" | "upscale" | null>(null); // toplu işlem sürüyor mu (hangisi)
+  const bulkRegen = bulk === "regen";
+  const anyRegenBusy = bulk !== null || ordered.some((img) => regenJobs.get(img.listing_image_id)?.phase === "running");
+
+  // Yükseltme (2K/4K) seçenekleri ve kredileri: yönetici bir boyut için fiyat tanımlamadıysa o boyut sunulmaz.
+  const [upscaleOptions, setUpscaleOptions] = useState<UpscaleOption[]>([]);
+  const [creditsEnabled, setCreditsEnabled] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    api.listings
+      .generationOptions(shopId, listingId)
+      .then((o) => {
+        if (cancelled) return;
+        setUpscaleOptions(o.upscale ?? []);
+        setCreditsEnabled(o.credits_enabled);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [shopId, listingId]);
 
   const fileUrl = (fileId: string) => api.listings.draftFileUrl(shopId, listingId, fileId);
   const imageEntry = (fileId: string, altText: string | null): ListingImage => ({
@@ -254,12 +274,23 @@ export default function MediaManager({
       })
     );
     if (!up) return null; // hata zaten kutucuk üstünde gösteriliyor, ya da iş zaten sürüyor
-    const entry = imageEntry(up.file_id, img.alt_text);
+    return applyNewVersion(img, up.file_id);
+  }
+
+  // Üretilen dosyayı (yeniden oluşturma ya da yükseltme) o fotoğraf yuvasının görünen sürümü yapar.
+  function applyNewVersion(img: ListingImage, fileId: string): string {
+    const entry = imageEntry(fileId, img.alt_text);
     const next = orderedRef.current.map((x) => (x.listing_image_id === img.listing_image_id ? entry : x));
     onImagesChange(withRanks(next));
     onImageReplaced(img.listing_image_id, entry.listing_image_id);
     setVersionsTick((t) => t + 1);
-    return up.file_id;
+    return fileId;
+  }
+
+  // Yalnızca çözünürlüğü 2K/4K'ya çıkarır (içerik değişmez); yeniden oluşturmayla aynı ilerleme/hata gösterimini kullanır.
+  async function upscaleOne(img: ListingImage, size: UpscaleOption["size"]): Promise<string | null> {
+    const up = await runRegenJob(img.listing_image_id, () => api.listings.upscaleImage(shopId, listingId, img.listing_image_id, img.draft_file_id ?? null, size));
+    return up ? applyNewVersion(img, up.file_id) : null;
   }
 
   // Sürüm noktalarından birine tıklayınca: o sürümü (orijinal Etsy fotoğrafı ya da üretilmiş bir AI sürümü)
@@ -291,9 +322,10 @@ export default function MediaManager({
   // işlenebiliyor (Gemini kotasını tek seferde boğmamak için CONCURRENCY ile sınırlı).
   const BATCH_CONCURRENCY = 3;
 
-  async function regenerateBatch(targets: ListingImage[]) {
+  // Toplu işlem: hedefleri en fazla BATCH_CONCURRENCY paralel işler; `task` başarılıysa yeni dosya id'sini, değilse null döner.
+  async function runBatch(kind: "regen" | "upscale", targets: ListingImage[], task: (img: ListingImage, i: number) => Promise<string | null>) {
     if (targets.length === 0) return;
-    setBulkRegen(true);
+    setBulk(kind);
     setError(null);
     try {
       let cursor = 0;
@@ -302,20 +334,21 @@ export default function MediaManager({
         while (cursor < targets.length) {
           const i = cursor++;
           const img = targets[i];
-          const preset = SHOT_PRESETS[i % SHOT_PRESETS.length];
-          const fileId = await regenerateOne(img, { prompt: preset.prompt });
+          const fileId = await task(img, i);
           if (!fileId && !firstError) {
             const jobErr = getRegenJob(img.listing_image_id)?.error;
-            firstError = `${t("Toplu üretimde bir fotoğraf başarısız oldu", "A photo failed during bulk generation")}${jobErr ? `: ${jobErr}` : ""}.`;
+            firstError = `${t("Toplu işlemde bir fotoğraf başarısız oldu", "A photo failed during the bulk action")}${jobErr ? `: ${jobErr}` : ""}.`;
           }
         }
       }
       await Promise.all(Array.from({ length: Math.min(BATCH_CONCURRENCY, targets.length) }, worker));
       if (firstError) setError(firstError);
     } finally {
-      setBulkRegen(false);
+      setBulk(null);
     }
   }
+
+  const regenerateBatch = (targets: ListingImage[]) => runBatch("regen", targets, (img, i) => regenerateOne(img, { prompt: SHOT_PRESETS[i % SHOT_PRESETS.length].prompt }));
 
   async function regenerateAll() {
     await regenerateBatch(orderedRef.current);
@@ -324,6 +357,13 @@ export default function MediaManager({
   async function regenerateSelected() {
     const targets = orderedRef.current.filter((img) => selected.has(img.listing_image_id));
     await regenerateBatch(targets);
+    setSelected(new Set());
+  }
+
+  // Toplu yükseltme: seçili fotoğraflar, seçim yoksa hepsi.
+  const upscaleTargets = () => (selected.size > 0 ? orderedRef.current.filter((img) => selected.has(img.listing_image_id)) : orderedRef.current);
+  async function upscaleBatch(size: UpscaleOption["size"]) {
+    await runBatch("upscale", upscaleTargets(), (img) => upscaleOne(img, size));
     setSelected(new Set());
   }
 
@@ -365,6 +405,15 @@ export default function MediaManager({
                 {t("Seçimi temizle", "Clear selection")}
               </button>
             )}
+            <UpscaleMenu
+              options={upscaleOptions}
+              showCredits={creditsEnabled}
+              count={selected.size > 0 ? selected.size : ordered.length}
+              busy={anyRegenBusy}
+              label={bulk === "upscale" ? `🔍 ${t("Yükseltiliyor…", "Upscaling…")}` : `🔍 ${t(selected.size > 0 ? "Seçilenleri yükselt" : "Tümünü yükselt", selected.size > 0 ? "Upscale selected" : "Upscale all")} (${selected.size > 0 ? selected.size : ordered.length})`}
+              className="rounded-full border border-sky-600 px-3 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-50 dark:border-sky-500 dark:text-sky-400 dark:hover:bg-sky-950"
+              onPick={(size) => void upscaleBatch(size)}
+            />
             <button
               type="button"
               onClick={() => void (selected.size > 0 ? regenerateSelected() : regenerateAll())}
@@ -649,7 +698,18 @@ export default function MediaManager({
       )}
 
       {viewIdx !== null && ordered[viewIdx] && (
-        <Modal z={120} widthClass="max-w-2xl" title={`${t("Fotoğraf", "Photo")} ${viewIdx + 1}/${ordered.length}`} onClose={() => setViewIdx(null)}>
+        <Modal
+          z={120}
+          widthClass="max-w-2xl"
+          title={`${t("Fotoğraf", "Photo")} ${viewIdx + 1}/${ordered.length}`}
+          onClose={() => setViewIdx(null)}
+          closeButton
+          footer={
+            <button type="button" onClick={() => setViewIdx(null)} className={`${btnGhost} ml-auto`}>
+              {t("Vazgeç", "Cancel")}
+            </button>
+          }
+        >
           <div className="relative">
             <RegenImage
               src={ordered[viewIdx].url_570xN}
@@ -687,6 +747,14 @@ export default function MediaManager({
             <button type="button" onClick={() => setCropIdx(viewIdx)} className={btnGhost}>
               ✂️ {t("Kırp", "Crop")}
             </button>
+            <UpscaleMenu
+              options={upscaleOptions}
+              showCredits={creditsEnabled}
+              busy={anyRegenBusy}
+              label={`🔍 ${t("Yükselt", "Upscale")}`}
+              className={btnGhost}
+              onPick={(size) => void upscaleOne(ordered[viewIdx], size)}
+            />
           </div>
           <div className="mt-4 border-t border-neutral-100 pt-4 dark:border-neutral-800 space-y-3">
             <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950">

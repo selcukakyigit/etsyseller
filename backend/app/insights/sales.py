@@ -49,6 +49,19 @@ def shop_monthly(idx: dict[int, list[tuple[dt.date, int, float]]]) -> dict[str, 
     return dict(out)
 
 
+def card_summary(db: Session, shop: Shop, today: dt.date) -> dict:
+    """Liste kartı için listing başına satış adedi: bu ay, geçen ay ve toplam (iptaller hariç). Hiç satışı olmayan listing yer almaz."""
+    this_key = ym(today)
+    last_key = add_months(this_key, -1)
+    out: dict[str, dict[str, int]] = {}
+    for listing_id, rows in index(db, shop).items():
+        by_month = monthly(rows)
+        out[str(listing_id)] = {
+            "this_month": int(by_month.get(this_key, [0])[0]), "last_month": int(by_month.get(last_key, [0])[0]), "total": int(sum(u for u, _ in by_month.values())),
+        }
+    return {"month": this_key, "listings": out}
+
+
 def units_between(rows: list[tuple[dt.date, int, float]], start: dt.date, end: dt.date) -> int:
     return sum(u for day, u, _ in rows if start <= day <= end)
 
