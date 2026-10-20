@@ -10,6 +10,7 @@ import copy
 import json
 import logging
 import mimetypes
+import time
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -29,8 +30,13 @@ def _file_url(shop: Shop, listing_id: int, file_id: str) -> str:
 
 
 def _next_temp_id(db: Session, shop: Shop) -> int:
-    ids = db.scalars(select(ListingLocal.listing_id).where(ListingLocal.shop_id == shop.id).where(ListingLocal.listing_id < 0)).all()
-    return min([-1, *[i - 1 for i in ids]])
+    """Geçici kimlik zamandan türer ve bir daha kullanılmaz: yayınlanan taslağın eski kimliği (sohbet kartlarında, bağlantılarda
+    kalır) sonradan açılan başka bir taslağı göstermesin. Eski kimlik artık hiçbir şeyi göstermez (404)."""
+    taken = set(db.scalars(select(ListingLocal.listing_id).where(ListingLocal.shop_id == shop.id).where(ListingLocal.listing_id < 0)).all())
+    candidate = -int(time.time())
+    while candidate in taken:
+        candidate -= 1
+    return candidate
 
 
 def _shop_currency(db: Session, shop: Shop) -> str:

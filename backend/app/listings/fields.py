@@ -27,10 +27,10 @@ MAX_MULTI_BY_NAME = {"material features": 1}
 _WORD_ONLY = re.compile(r"[^\w\s]|_", re.UNICODE)  # Etsy: malzeme/stil yalnızca harf, rakam ve boşluk içerir
 
 
-def _clean_words(values: list, limit: int, max_len: int | None = None) -> list[str]:
+def clean_words(values: list, limit: int, max_len: int | None = None) -> list[str]:
     out: list[str] = []
     for v in values:
-        text = " ".join(_WORD_ONLY.sub("", str(v)).split())
+        text = " ".join(_WORD_ONLY.sub(" ", re.sub(r"['’]", "", str(v))).split())  # "powder-coated" → "powder coated"; kesme işareti silinir
         if max_len:
             text = text[:max_len]
         if text and text.lower() not in {o.lower() for o in out}:
@@ -94,9 +94,9 @@ def apply_fields(work: dict, f: dict, *, category_names: dict[int, str] | None =
             changed.append(label or key)
 
     if "materials" in f:
-        put("materials", _clean_words(f["materials"] or [], MAX_MATERIALS))
+        put("materials", clean_words(f["materials"] or [], MAX_MATERIALS))
     if "style" in f:
-        put("style", _clean_words(f["style"] or [], MAX_STYLES, MAX_STYLE_LEN))
+        put("style", clean_words(f["style"] or [], MAX_STYLES, MAX_STYLE_LEN))
     for key, allowed in (("who_made", WHO_MADE), ("when_made", WHEN_MADE)):
         if key in f:
             if f[key] in allowed:

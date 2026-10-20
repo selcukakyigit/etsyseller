@@ -33,6 +33,7 @@ function IconButton({ label, onClick, primary, children }: { label: string; onCl
 export default function VideoJobCard({ card, shopId, onAsk }: { card: VideoJob; shopId: number; onAsk?: (text: string) => void }) {
   const { t } = useT();
   const [fileId, setFileId] = useState<string | null>(null);
+  const [fileListingId, setFileListingId] = useState(card.listing_id); // taslak yayınlanınca dosya yeni listing kimliğine taşınır
   const [error, setError] = useState<string | null>(null);
   const [unplayable, setUnplayable] = useState(false); // dosya listing'e taşınmış olabilir (taslak yayınlanınca listing kimliği değişir)
   const [gone, setGone] = useState(false);
@@ -45,7 +46,10 @@ export default function VideoJobCard({ card, shopId, onAsk }: { card: VideoJob; 
       try {
         const res = await api.listings.videoStatus(shopId, card.listing_id, card.job);
         if (!alive) return;
-        if (res.status === "done") setFileId(res.file_id);
+        if (res.status === "done") {
+          setFileListingId(res.listing_id);
+          setFileId(res.file_id);
+        }
         else timer = setTimeout(tick, POLL_MS);
       } catch (e) {
         if (alive) setError(e instanceof Error && e.message ? e.message : t("Video üretilemedi", "Could not generate the video"));
@@ -59,7 +63,7 @@ export default function VideoJobCard({ card, shopId, onAsk }: { card: VideoJob; 
   }, [fileId, error, shopId, card.listing_id, card.job, t]);
 
   if (gone) return null;
-  const src = fileId ? api.listings.draftFileUrl(shopId, card.listing_id, fileId) : "";
+  const src = fileId ? api.listings.draftFileUrl(shopId, fileListingId, fileId) : "";
 
   return (
     <div className="mt-2 overflow-hidden rounded-xl border border-emerald-300 bg-white dark:border-emerald-800 dark:bg-neutral-900">
@@ -84,7 +88,7 @@ export default function VideoJobCard({ card, shopId, onAsk }: { card: VideoJob; 
         <div className="flex items-center justify-end gap-2 border-t border-neutral-100 bg-neutral-50 px-3 py-2 dark:border-neutral-800 dark:bg-neutral-950">
           <IconButton
             label={t("Yeniden üret", "Regenerate")}
-            onClick={() => onAsk(t(`Videoyu yeniden üret${card.prompt ? `: ${card.prompt}` : ""} (listing id: ${card.listing_id}, ${card.duration} sn)`, `Regenerate the video${card.prompt ? `: ${card.prompt}` : ""} (listing id: ${card.listing_id}, ${card.duration}s)`))}
+            onClick={() => onAsk(t(`Videoyu yeniden üret${card.prompt ? `: ${card.prompt}` : ""} (listing id: ${fileListingId}, ${card.duration} sn)`, `Regenerate the video${card.prompt ? `: ${card.prompt}` : ""} (listing id: ${fileListingId}, ${card.duration}s)`))}
           >
             <RefreshIcon className="!h-4 !w-4" />
           </IconButton>
@@ -95,7 +99,7 @@ export default function VideoJobCard({ card, shopId, onAsk }: { card: VideoJob; 
             <IconButton
               primary
               label={t("Listing'e ekle", "Add to listing")}
-              onClick={() => onAsk(t(`Videoyu listing'e ekle (video dosya id: ${fileId}, listing id: ${card.listing_id})`, `Add the video to the listing (video file id: ${fileId}, listing id: ${card.listing_id})`))}
+              onClick={() => onAsk(t(`Videoyu listing'e ekle (video dosya id: ${fileId}, listing id: ${fileListingId})`, `Add the video to the listing (video file id: ${fileId}, listing id: ${fileListingId})`))}
             >
               <ImagePlusIcon className="!h-4 !w-4" />
             </IconButton>

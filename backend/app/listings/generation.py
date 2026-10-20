@@ -149,13 +149,17 @@ def _saved_video(db: Session, shop: Shop, filename: str) -> DraftFile | None:
 
 def poll_video(db: Session, shop: Shop, listing_id: int, token: str) -> dict:
     """{"status": "running"} ya da {"status": "done", "file_id": …}. Üretim başarısızsa VideoGenError."""
-    job = crypto.unseal(token, VIDEO_JOB_SECONDS)
-    if not job or job.get("s") != shop.id or job.get("l") != listing_id:
+    # Bilet imzası süresiz doğrulanır: video bir kez kaydedildiyse, sohbet kartı saatler sonra açılsa da oynatılır (süre yalnızca
+    # henüz kaydedilmemiş iş için geçerli; sağlayıcı çıktıyı bir saat tutuyor).
+    job = crypto.unseal(token, None)
+    if not job or job.get("s") != shop.id:
         raise LookupError(tr("Video işi bulunamadı ya da süresi doldu.", "The video job was not found or has expired."))
     filename = f"ai-video-{job['p']}.mp4"
     saved = _saved_video(db, shop, filename)
     if saved is not None:
-        return {"status": "done", "file_id": saved.id}
+        return {"status": "done", "file_id": saved.id, "listing_id": saved.listing_id}
+    if job.get("l") != listing_id or crypto.unseal(token, VIDEO_JOB_SECONDS) is None:
+        raise LookupError(tr("Video işi bulunamadı ya da süresi doldu.", "The video job was not found or has expired."))
 
     prediction = video_gen.status(job["p"])
     if prediction.status == "running":
@@ -172,4 +176,4 @@ def poll_video(db: Session, shop: Shop, listing_id: int, token: str) -> dict:
         # Başlarken gösterilen fiyat düşülür (arada panelden fiyat değişse bile).
         model = catalog.ResolvedModel(job.get("m"), "video", job["pr"], job["mi"], job["mi"])
         metering.record_quoted("video", model, job.get("v"), job["d"], pricing.Price(job["u"], job["c"]))
-    return {"status": "done", "file_id": out["file_id"]}
+    return {"status": "done", "file_id": out["file_id"], "listing_id": listing_id}

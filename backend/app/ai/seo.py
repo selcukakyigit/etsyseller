@@ -6,6 +6,7 @@ from app.ai.catalog import ResolvedModel
 from app.ai.client import get_anthropic_client, get_openai_client, openai_limits
 from app.billing import metering
 from app.keywords import scoring
+from app.listings import fields
 
 SYSTEM_PROMPT = f"""Sen bir Etsy SEO uzmanısın. Sana bir listing'in mevcut başlığı, etiketleri ve açıklaması verilecek. Görevin, Etsy'nin Ağustos 2025 başlık rehberine ve alıcı niyetini anlayan aramaya uygun; aynı zamanda yapay zekâ alışveriş asistanlarının rahat okuyup önerebileceği net, olgusal ve tutarlı bir başlık, {standard.TAG_COUNT} etiket ve açıklama önerisi üretmek.
 
@@ -167,10 +168,8 @@ def generate_seo_suggestion(
     if len(suggestion.get("tags", [])) != standard.TAG_COUNT:
         raise ValueError(f"Beklenen {standard.TAG_COUNT} etiket, alınan: {len(suggestion.get('tags', []))}")
 
-    # Malzeme: parantez Etsy'de kabul edilmiyor, en fazla 13 adet.
-    suggestion["materials"] = [
-        re.sub(r"[()]", "", str(m)).strip()[:45] for m in (suggestion.get("materials") or []) if str(m).strip()
-    ][:13]
+    # Malzeme: Etsy yalnızca harf, rakam ve boşluk kabul eder ("&", "-", "/", "," gibi işaretler "contains invalid characters" verir).
+    suggestion["materials"] = fields.clean_words(suggestion.get("materials") or [], fields.MAX_MATERIALS, 45)
     # Denemelerden sonra hâlâ kalanlar kullanıcıya gösterilir. Diğer listing'lerle çakışma ayrı döner: iki listing'in
     # ortak durumudur ve aynı nişteki ürünlerde kaçınılmaz olabilir; arayüz onu "hata" değil bilgi olarak gösterir.
     description_part = quality.strip_common_paragraphs(str(suggestion.get("description", "")), others)

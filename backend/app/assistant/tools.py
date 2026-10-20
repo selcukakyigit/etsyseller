@@ -2407,7 +2407,9 @@ def add_video_to_listing(ctx: Ctx, a: dict) -> dict:
         if bad:
             return {"error": bad}
     else:
-        file = ctx.db.get(DraftFile, str(a.get("file_id") or ""))
+        file = ctx.db.get(DraftFile, str(a["file_id"])) if a.get("file_id") else None
+        if file is None and not a.get("file_id"):  # kullanıcı "ekle" dedi, kimlik yok: bu listing'in en son üretilmiş videosu
+            file = ctx.db.scalars(select(DraftFile).where(DraftFile.shop_id == ctx.shop.id, DraftFile.listing_id == lid, DraftFile.kind == "video", DraftFile.filename.like("ai-video-%")).order_by(DraftFile.created_at.desc())).first()
         if file is None or file.shop_id != ctx.shop.id or file.listing_id != lid or file.kind != "video":
             return {"error": "Video dosyası bulunamadı (bu listing'e ait olmalı)."}
         if any(v.get("draft_file_id") == file.id for v in work.get("videos") or []):

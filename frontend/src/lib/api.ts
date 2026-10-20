@@ -2031,7 +2031,7 @@ export const api = {
         body: JSON.stringify({ prompt, duration, ...generationBody(reference, choice) }),
       }),
     videoStatus: (shopId: number, listingId: number, job: string) =>
-      request<{ status: "running" } | { status: "done"; file_id: string }>(
+      request<{ status: "running" } | { status: "done"; file_id: string; listing_id: number }>(
         `/api/shops/${shopId}/listings/${listingId}/draft/videos/generate/status`,
         { method: "POST", body: JSON.stringify({ job }) }
       ),

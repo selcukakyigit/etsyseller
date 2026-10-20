@@ -54,8 +54,8 @@ def seal(data: dict) -> str:
     return _get_fernet().encrypt(json.dumps(data, separators=(",", ":")).encode()).decode()
 
 
-def unseal(token: str, max_age_seconds: int) -> dict | None:
-    """`seal` biletini açar. Bozuk, değiştirilmiş ya da `max_age_seconds`'tan eskiyse None."""
+def unseal(token: str, max_age_seconds: int | None) -> dict | None:
+    """`seal` biletini açar. Bozuk, değiştirilmiş ya da `max_age_seconds`'tan eskiyse None (None: yaş denetlenmez)."""
     import json
 
     try:
