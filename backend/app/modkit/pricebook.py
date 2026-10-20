@@ -216,8 +216,8 @@ def update_item(db: Session, access: EntityAccess, item: PriceItem, name: str | 
         setattr(item, key, value)
     for key, value in changes.items():
         setattr(item, key, value)
-    if item.kind == "material":
-        _check_material(item, complete=bool(changes) or unit is not None)  # eski kalem yalnızca adı değişirken eksik sayılmaz
+    if item.kind == "material" and (changes or unit is not None):  # eski kalem yalnızca adı/fiyatı değişirken kurallara göre yeniden denetlenmez
+        _check_material(item, complete=True)
     db.commit()
 
 

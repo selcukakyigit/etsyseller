@@ -97,7 +97,7 @@ def group_of(key: str | None) -> str | None:
 _MASS, _LENGTH, _AREA, _VOLUME = ("kg", "g", "t"), ("mm", "cm", "m"), ("cm2", "m2"), ("ml", "l", "m3")
 _PLATE = ("thickness_mm", "plate_width", "plate_height", "plate_kg")
 GROUP_UNITS: dict[str, tuple[str, ...]] = {
-    "sheet": ("sheet", *_MASS, *_AREA, *_VOLUME),
+    "sheet": ("sheet", *_MASS, *_AREA, *_VOLUME, *_LENGTH),  # uzunluk: çıta, profil gibi metreyle alınan levha türleri
     "film": (*_MASS, "piece", *_LENGTH),
     "piece": ("piece", "sheet"),
     "bulk": (*_MASS, "piece", *_LENGTH, *_AREA, *_VOLUME),

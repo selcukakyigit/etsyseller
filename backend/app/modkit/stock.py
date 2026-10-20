@@ -169,6 +169,23 @@ def _current(db: Session, item: PriceItem, list_price: float | None) -> tuple[fl
     return on_hand, avg
 
 
+def _entry_net(access: EntityAccess, given: float, total: float | None, unit_price: float | None, vat_included: bool) -> float | None:
+    """Girişin KDV hariç toplam tutarı (tutar yazılmadıysa None). `given`: giriş biriminde miktar."""
+    amount = total if total is not None else (unit_price * given if unit_price is not None else None)
+    if amount is None:
+        return None
+    if amount < 0:
+        raise HTTPException(422, tr("Geçersiz tutar", "Invalid amount"))
+    return amount / (1 + (access.entity.vat_rate or 0) / 100) if vat_included else amount
+
+
+def entry_net_unit_price(access: EntityAccess, item: PriceItem, qty: float, unit: str, total: float | None, unit_price: float | None, vat_included: bool) -> float | None:
+    """Girişteki KDV hariç birim fiyat, KALEMİN biriminde (fiyat listesi fiyatları KDV hariçtir); tutar yazılmadıysa None. Fiyat listesini alış fiyatına
+    güncellemek için kullanılır."""
+    net = _entry_net(access, _qty(qty), total, unit_price, vat_included)
+    return net / to_item_unit(item, _qty(qty), unit) if net is not None else None
+
+
 def add_in(db: Session, access: EntityAccess, item: PriceItem, qty: float, unit: str, total: float | None, unit_price: float | None, vat_included: bool,
            moved_on: dt.date | None, note: str, kind: str = "purchase") -> StockMovement:
     """Stok girişi (alım ya da açılış). Tutar toplam (`total`) ya da giriş birimi başına (`unit_price`) yazılır; ikisi de yoksa kayıt ortalama maliyetle
@@ -176,14 +193,9 @@ def add_in(db: Session, access: EntityAccess, item: PriceItem, qty: float, unit:
     _writable(access, item)
     given = _qty(qty)
     q = to_item_unit(item, given, unit)
-    amount = total if total is not None else (unit_price * given if unit_price is not None else None)
-    unit_cost = None
-    if amount is not None:
-        if amount < 0:
-            raise HTTPException(422, tr("Geçersiz tutar", "Invalid amount"))
-        e = access.entity
-        net = amount / (1 + (e.vat_rate or 0) / 100) if vat_included else amount
-        unit_cost = pricing.cost_basis(net, e.vat_rate, e.vat_in_cost) / q
+    net = _entry_net(access, given, total, unit_price, vat_included)
+    e = access.entity
+    unit_cost = pricing.cost_basis(net, e.vat_rate, e.vat_in_cost) / q if net is not None else None
     row = StockMovement(entity_id=access.entity.id, item_id=item.id, kind=kind, qty=round(q, 6), unit_cost=round(unit_cost, 6) if unit_cost is not None else None,
                         moved_on=moved_on or dt.date.today(), note=(note or "").strip()[:200], created_by=access.user.id)
     db.add(row)

@@ -306,7 +306,7 @@ export function entityApi<TEntity extends Entity = Entity, TSummary = unknown>(b
       remove: (id: number, itemId: number) => apiRequest<{ ok: true }>(`${one(id)}/prices/${itemId}`, { method: "DELETE" }),
       stockHistory: (id: number, itemId: number) => apiRequest<{ items: StockMovement[] }>(`${one(id)}/prices/${itemId}/stock`),
       /** Alım / giriş: miktar `unit` biriminde (kalemin birimi, aynı boyuttaki bir birim ya da "pack"); tutar toplam ya da birim başına. */
-      stockIn: (id: number, itemId: number, body: { qty: number; unit: string; total?: number | null; unit_price?: number | null; vat_included?: boolean; date?: string | null; note?: string }) =>
+      stockIn: (id: number, itemId: number, body: { qty: number; unit: string; total?: number | null; unit_price?: number | null; vat_included?: boolean; update_price?: boolean; date?: string | null; note?: string }) =>
         apiRequest<PriceItem>(`${one(id)}/prices/${itemId}/stock/in`, { method: "POST", ...json(body) }),
       /** Sayım düzeltmesi: gerçekte eldeki miktar. */
       stockCount: (id: number, itemId: number, body: { counted: number; unit: string; date?: string | null; note?: string }) =>

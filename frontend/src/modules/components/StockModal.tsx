@@ -42,6 +42,7 @@ export default function StockModal({
   const [priceMode, setPriceMode] = useState<"total" | "unit">("total");
   const [price, setPrice] = useState("");
   const [vat, setVat] = useState(false);
+  const [updatePrice, setUpdatePrice] = useState(true);
   const [date, setDate] = useState(today());
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -64,7 +65,7 @@ export default function StockModal({
     setBusy(true);
     try {
       if (tab === "in") {
-        await api.prices.stockIn(entityId, item.id, { qty: n, unit, ...(p !== null ? (priceMode === "total" ? { total: p } : { unit_price: p }) : {}), vat_included: vat, date, note });
+        await api.prices.stockIn(entityId, item.id, { qty: n, unit, ...(p !== null ? (priceMode === "total" ? { total: p } : { unit_price: p }) : {}), vat_included: vat, update_price: updatePrice && p !== null, date, note });
         toast.success(t("Stok girişi eklendi", "Stock entry added"));
       } else {
         await api.prices.stockCount(entityId, item.id, { counted: n, unit, date, note });
@@ -164,6 +165,18 @@ export default function StockModal({
                   {t("Tutar KDV dahil", "Amount includes VAT")}
                 </label>
               </div>
+            )}
+            {tab === "in" && p !== null && (
+              <label className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300">
+                <input type="checkbox" checked={updatePrice} onChange={(e) => setUpdatePrice(e.target.checked)} className="h-4 w-4 accent-[#D97757]" />
+                {t("Fiyat listesindeki fiyatı da bu alışa göre güncelle", "Also update the price-list price to this purchase")}
+                <HelpTip>
+                  {t(
+                    "Açıksa kalemin güncel fiyatı bu alışın KDV hariç birim fiyatı olur; eski fiyat Geçmiş'te kalır. Alış kayıtları sonradan fiyat düzenlemesinden etkilenmez.",
+                    "When on, the item's current price becomes this purchase's unit price excluding VAT; the old price stays in History. Purchase records are not affected by later price edits.",
+                  )}
+                </HelpTip>
+              </label>
             )}
             {perEntryUnit !== null && (
               <p className={muted}>

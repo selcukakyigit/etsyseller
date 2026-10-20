@@ -114,6 +114,7 @@ class StockInIn(BaseModel):
     total: float | None = Field(None, ge=0)  # toplam ödenen; verilirse birim fiyat bundan bölünür
     unit_price: float | None = Field(None, ge=0)  # giriş birimi başına; `total` yoksa kullanılır
     vat_included: bool = False
+    update_price: bool = False  # tutar yazıldıysa fiyat listesindeki kalem fiyatı da bu alış fiyatına (KDV hariç, kalemin birimi başına) güncellenir
     date: dt.date | None = None
     note: str = Field("", max_length=200)
 
@@ -284,7 +285,10 @@ def build_entity_router(module: str, prefix: str, tag: str, item_in_use: Callabl
     def stock_in(item_id: int, payload: StockInIn, a: acc.EntityAccess = Depends(entity_access), db: Session = Depends(get_db)):
         ratelimit.hit("stock.write", f"user:{a.user.id}", 600, 3600)
         item = pricebook.get_item(db, a, item_id)
+        net_unit = stock.entry_net_unit_price(a, item, payload.qty, payload.unit, payload.total, payload.unit_price, payload.vat_included) if payload.update_price else None
         stock.add_in(db, a, item, payload.qty, payload.unit, payload.total, payload.unit_price, payload.vat_included, payload.date, payload.note)
+        if net_unit is not None:
+            pricebook.set_price(db, a, item, net_unit)  # fiyat aynıysa yeni sürüm eklenmez; eskisi Geçmiş'te kalır
         return _item_out(db, a, item)
 
     @router.post("/{entity_id}/prices/{item_id}/stock/count")
