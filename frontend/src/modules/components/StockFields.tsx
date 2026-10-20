@@ -1,12 +1,13 @@
 "use client";
 
-import { useT } from "@/lib/i18n-client";
-import { PriceItem, StockPatch } from "../core/api";
-import { isSheetMaterial, MATERIAL_TYPES } from "../core/materials";
+import HelpTip from "@/components/ui/HelpTip";
 import DecimalInput from "@/components/ui/NumberInputs";
-import { input, label, muted } from "../core/ui";
+import { useT } from "@/lib/i18n-client";
+import { MaterialCatalog, PriceItem, StockPatch } from "../core/api";
+import { materialGroup, useMaterialCatalog } from "../core/materials";
+import { input, label } from "../core/ui";
 
-/** Form durumu: sayılar metin olarak tutulur (boş = girilmemiş). */
+/** Form durumu: sayılar metin olarak tutulur (boş = girilmemiş). `material` tür anahtarıdır (türü seçen alan formun kendisinde, bkz. MaterialTypeSelect). */
 export type StockForm = { material: string; thickness_mm: string; plate_width: string; plate_height: string; plate_kg: string; roll_width: string; film_um: string; roll_length: string };
 
 export const emptyStock: StockForm = { material: "", thickness_mm: "", plate_width: "", plate_height: "", plate_kg: "", roll_width: "", film_um: "", roll_length: "" };
@@ -28,8 +29,8 @@ export const stockOf = (item: PriceItem): StockForm => ({
   roll_length: text(item.roll_length),
 });
 
-const NUMBERS = ["thickness_mm", "plate_width", "plate_height", "plate_kg", "roll_width", "film_um", "roll_length"] as const;
-const PLATE_NUMBERS = ["thickness_mm", "plate_width", "plate_height", "plate_kg"] as const;
+type NumberKey = Exclude<keyof StockForm, "material">;
+const NUMBERS: NumberKey[] = ["thickness_mm", "plate_width", "plate_height", "plate_kg", "roll_width", "film_um", "roll_length"];
 const num = (s: string) => (s.trim() === "" ? null : Number(s.replace(",", ".")));
 
 /** Formdan sunucuya gidecek alanlar; `from` verilirse yalnızca değişenler. Geçersiz sayı varsa null döner. */
@@ -45,89 +46,98 @@ export function stockPayload(form: StockForm, from?: StockForm): StockPatch | nu
   return out;
 }
 
-const FILM_TYPES = ["stretch", "bubble", "bag"];
-const ROLL_TYPES = ["tape", "stretch", "bubble", "paper", "other"];
-
-/** Hangi alanlar gösterilir: BİRİME göre (maliyet hesabı `materials.stock_cost`, fiyattan türeyen plaka fiyatı `stock_prices` ile aynı mantık).
- * Plaka (tabaka) fiyatında kalınlık, plaka boyutu ve ağırlığı gerekir; kütle (kg/g/ton) fiyatında levha malzemede kalınlık, plaka boyutu ve ağırlığı;
- * alan (m²/cm²) fiyatında kalınlık (ürünle eşleşmek için) ve plaka boyutu; hacim (m³/litre/ml) fiyatında kalınlık (hacim = alan × kalınlık) ve plaka
- * boyutu; adet, uzunluk birimlerinde (kutu, çıta, streç metresi, toz boya) yalnızca tür sorulur. Plaka boyutu ve ağırlığı isteğe bağlıdır
- * ("hesaplanan plaka fiyatı" ve plakadaki alan payı için). Türü seçilmemiş kalemde daha önce girilmiş değer varsa görünür kalır. */
-export function stockFields(unit: string, form: StockForm): { thickness: boolean; plate: boolean; plateKg: boolean; film: boolean; roll: boolean } {
-  const sheetLike = isSheetMaterial(form.material) || (form.material === "" && PLATE_NUMBERS.some((k) => form[k] !== ""));
-  const film = ["kg", "g", "t"].includes(unit) && FILM_TYPES.includes(form.material); // streç/naylon: en × kalınlık → kg/m
-  const roll = unit === "piece" && ROLL_TYPES.includes(form.material); // bant rulosu gibi: rulo boyu → adet/m
-  const rolls = { film, roll };
-  if (unit === "sheet") return { thickness: true, plate: true, plateKg: true, ...rolls };
-  if (["kg", "g", "t"].includes(unit)) return { thickness: sheetLike, plate: sheetLike, plateKg: sheetLike, ...rolls };
-  if (["m2", "cm2"].includes(unit)) return { thickness: sheetLike, plate: sheetLike, plateKg: false, ...rolls };
-  if (["ml", "l", "m3"].includes(unit)) return { thickness: true, plate: true, plateKg: false, ...rolls };
-  return { thickness: false, plate: false, plateKg: false, ...rolls };
+/** Bu tür ve birimle sorulan alanlar: kural backend'de (`materials.fields_for`), katalogla gelir. Tür bilinmiyorsa (türü seçilmemiş eski kalem)
+ * daha önce girilmiş değerler görünür kalır. */
+export function visibleFields(catalog: MaterialCatalog | null, form: StockForm, unit: string): string[] {
+  const group = materialGroup(form.material);
+  return group && catalog ? (catalog.groups[group].fields[unit] ?? []) : NUMBERS.filter((k) => form[k] !== "");
 }
 
-/** Birim ya da tür değişince artık gösterilmeyen alanların değerlerini temizler (gizli değer sunucuya gitmesin). */
-export function pruneStock(form: StockForm, unit: string): StockForm {
-  const f = stockFields(unit, form);
-  return {
-    ...form,
-    thickness_mm: f.thickness ? form.thickness_mm : "",
-    ...(f.plate ? {} : { plate_width: "", plate_height: "" }),
-    ...(f.plateKg ? {} : { plate_kg: "" }),
-    ...(f.film ? {} : { roll_width: "", film_um: "" }),
-    ...(f.roll ? {} : { roll_length: "" }),
+/** Tür grubunda seçilebilen birimler; tür seçilmemişse sınırlama yok (undefined). */
+export function allowedUnits(catalog: MaterialCatalog | null, material: string): string[] | undefined {
+  const group = materialGroup(material);
+  return group && catalog ? catalog.groups[group].units : undefined;
+}
+
+/** Artık sorulmayan alanların değerlerini temizler (gizli değer sunucuya gitmesin); tür bilinmiyorsa dokunmaz. */
+export function pruneStock(catalog: MaterialCatalog | null, form: StockForm, unit: string): StockForm {
+  if (!materialGroup(form.material) || !catalog) return form;
+  const keep = visibleFields(catalog, form, unit);
+  const out = { ...form };
+  for (const k of NUMBERS) if (!keep.includes(k)) out[k] = "";
+  return out;
+}
+
+/** Tür değişince: birim yeni grupta anlamsızsa grubun ilk birimine geçer, alanlar buna göre temizlenir. */
+export function applyType(catalog: MaterialCatalog | null, form: StockForm, unit: string, material: string): { form: StockForm; unit: string } {
+  const allowed = allowedUnits(catalog, material);
+  const nextUnit = allowed && !allowed.includes(unit) ? allowed[0] : unit;
+  return { form: pruneStock(catalog, { ...form, material }, nextUnit), unit: nextUnit };
+}
+
+/** Kalem formundaki "bilgi eksik" kontrolü için: maliyet ve ürün eşleşmesi için gerekenler (backend `materials.missing` ile aynı kural, kayıt sırasında
+ * sunucu da doğrular). Boş döner = tamam. */
+export function missingFields(catalog: MaterialCatalog | null, form: StockForm, unit: string): string[] {
+  if (!form.material) return ["material"];
+  if (materialGroup(form.material) !== "sheet" || !catalog) return [];
+  const out: string[] = [];
+  if (!form.thickness_mm.trim()) out.push("thickness_mm");
+  if (unit === "sheet" && !(form.plate_width.trim() && form.plate_height.trim())) out.push("plate");
+  return out;
+}
+
+export function useMissingLabels(): (keys: string[]) => string {
+  const { t } = useT();
+  const names: Record<string, string> = {
+    material: t("malzeme türü", "material type"),
+    thickness_mm: t("kalınlık", "thickness"),
+    plate: t("plaka eni ve boyu", "plate width and length"),
   };
+  return (keys) => keys.map((k) => names[k] ?? k).join(", ");
 }
 
-/** Malzeme kalemi alanları: tür her zaman; kalınlık ve plaka bilgisi birime göre (bkz. `stockFields`). Fiyat kg ya da plaka (tabaka) olarak
- * girilir, diğeri plaka ağırlığından türetilir; ürünün malzeme maliyeti plakadaki alan payından hesaplanır. */
+/** Malzeme kalemi alanları: yalnızca türün grubunun ve birimin gerektirdikleri (bkz. `visibleFields`). Fiyat kg ya da plaka (tabaka) olarak girilir,
+ * diğeri plaka ağırlığından türetilir; ürünün malzeme maliyeti plakadaki alan payından hesaplanır. */
 export default function StockFields({ value, unit, onChange }: { value: StockForm; unit: string; onChange: (v: StockForm) => void }) {
   const { t } = useT();
-  const set = (patch: Partial<StockForm>) => onChange(pruneStock({ ...value, ...patch }, unit));
-  const num = (key: Exclude<keyof StockForm, "material">, text: string, placeholder: string) => (
-    <label className="block">
-      <span className={label}>{text}</span>
-      <DecimalInput value={value[key] ?? ""} onValue={(text) => set({ [key]: text })} placeholder={placeholder} className={`${input} w-full`} />
-    </label>
-  );
-  const show = stockFields(unit, value);
+  const catalog = useMaterialCatalog();
+  const show = visibleFields(catalog, value, unit);
+  if (show.length === 0) return null;
+  const field = (key: NumberKey, text: string, placeholder: string) =>
+    show.includes(key) && (
+      <label key={key} className="block">
+        <span className={label}>{text}</span>
+        <DecimalInput value={value[key]} onValue={(v) => onChange({ ...value, [key]: v })} placeholder={placeholder} className={`${input} w-full`} />
+      </label>
+    );
+  const isPlate = show.includes("plate_width");
+  const isFilm = show.includes("roll_width") || show.includes("roll_length");
   return (
     <div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <label className="block">
-          <span className={label}>{t("Malzeme türü", "Material type")}</span>
-          <select value={value.material} onChange={(e) => set({ material: e.target.value })} className={`${input} w-full`}>
-            <option value="">—</option>
-            {MATERIAL_TYPES.map(([key, tr, en]) => (
-              <option key={key} value={key}>
-                {t(tr, en)}
-              </option>
-            ))}
-          </select>
-        </label>
-        {show.thickness && num("thickness_mm", t("Kalınlık (mm)", "Thickness (mm)"), "2")}
-        {show.plate && num("plate_width", t("Plaka eni (mm)", "Plate width (mm)"), "1500")}
-        {show.plate && num("plate_height", t("Plaka boyu (mm)", "Plate length (mm)"), "3000")}
-        {show.plateKg && num("plate_kg", t("Plaka ağırlığı (kg)", "Plate weight (kg)"), t("boşsa hesaplanır", "auto if empty"))}
-        {show.film && num("roll_width", t("Rulo eni (mm)", "Roll width (mm)"), "500")}
-        {show.film && (value.material === "bubble" ? num("film_um", t("Kalınlık (mm)", "Thickness (mm)"), "4") : num("film_um", t("Kalınlık (mikron)", "Thickness (micron)"), "23"))}
-        {show.roll && num("roll_length", t("Rulo boyu (m)", "Roll length (m)"), "100")}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {field("thickness_mm", t("Kalınlık (mm)", "Thickness (mm)"), "2")}
+        {field("plate_width", t("Plaka eni (mm)", "Plate width (mm)"), "1500")}
+        {field("plate_height", t("Plaka boyu (mm)", "Plate length (mm)"), "3000")}
+        {field("plate_kg", t("Plaka ağırlığı (kg)", "Plate weight (kg)"), t("boşsa hesaplanır", "auto if empty"))}
+        {field("roll_width", t("Rulo eni (mm)", "Roll width (mm)"), "500")}
+        {field("film_um", value.material === "bubble" ? t("Kalınlık (mm)", "Thickness (mm)") : t("Kalınlık (mikron)", "Thickness (micron)"), value.material === "bubble" ? "4" : "23")}
+        {field("roll_length", t("Rulo boyu (m)", "Roll length (m)"), "100")}
       </div>
-      {(show.film || show.roll) && (
-        <p className={`${muted} mt-1.5`}>
-          {t(
-            "İsteğe bağlı. Girilirse paket formüllerinde bu kalemin miktarı metre olarak yazılır; fiyat kg ya da rulo fiyatından hesaplanır.",
-            "Optional. When filled in, package formulas give this item's quantity in metres; the price is worked out from the kg or roll price.",
-          )}
-        </p>
-      )}
-      {show.plate && (
-        <p className={`${muted} mt-1.5`}>
-          {t(
-            "İsteğe bağlı. Plaka boyutu varsa ürünün malzemesi plakadaki alan payından, yoksa ağırlığından ya da hacminden hesaplanır.",
-            "Optional. With a plate size the product’s material comes from its area share of the plate, otherwise from its weight or volume.",
-          )}
-        </p>
-      )}
+      <div className="mt-1.5 flex items-center gap-1.5">
+        <HelpTip>
+          {isFilm
+            ? t(
+                "İsteğe bağlı. Girilirse paket formüllerinde bu kalemin miktarı metre olarak yazılır; fiyat kg ya da rulo fiyatından hesaplanır.",
+                "Optional. When filled in, package formulas give this item's quantity in metres; the price is worked out from the kg or roll price.",
+              )
+            : isPlate
+              ? t(
+                  "Plaka boyutu varsa ürünün malzemesi plakadaki alan payından, yoksa ağırlığından ya da hacminden hesaplanır. Tabaka fiyatında kalınlık ve plaka boyutu gerekir.",
+                  "With a plate size the product’s material comes from its area share of the plate, otherwise from its weight or volume. A per-sheet price needs thickness and plate size.",
+                )
+              : t("Bu alanlar isteğe bağlıdır.", "These fields are optional.")}
+        </HelpTip>
+      </div>
     </div>
   );
 }

@@ -21,7 +21,7 @@ from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.modkit import access as acc
 from app.drawings import cad
-from app.modkit import activity, currencies, documents, entities, parties, pricebook, products, ratelimit, sharing
+from app.modkit import activity, currencies, documents, entities, material_types, parties, pricebook, products, ratelimit, sharing, stock
 from app.modkit.models import FieldMapping, PriceItem
 
 
@@ -77,6 +77,10 @@ class PriceItemIn(BaseModel):
     roll_width: float | None = Field(None, gt=0, le=pricebook.MAX_STOCK)
     film_um: float | None = Field(None, gt=0, le=pricebook.MAX_STOCK)
     roll_length: float | None = Field(None, gt=0, le=pricebook.MAX_STOCK)
+    track_stock: bool | None = None  # yalnızca malzeme kalemi, yalnızca üye
+    min_stock: float | None = Field(None, ge=0, le=stock.MAX_QTY)
+    pack_size: float | None = Field(None, gt=0, le=stock.MAX_QTY)
+    opening_stock: float | None = Field(None, gt=0, le=stock.MAX_QTY)  # stok takibi açıksa açılış miktarı (kalemin biriminde)
 
 
 class PriceItemPatch(BaseModel):
@@ -92,7 +96,33 @@ class PriceItemPatch(BaseModel):
     roll_width: float | None = Field(None, gt=0, le=pricebook.MAX_STOCK)
     film_um: float | None = Field(None, gt=0, le=pricebook.MAX_STOCK)
     roll_length: float | None = Field(None, gt=0, le=pricebook.MAX_STOCK)
-    # (malzeme alanlarında da null gönderilirse alan boşaltılır)
+    track_stock: bool | None = None
+    min_stock: float | None = Field(None, ge=0, le=stock.MAX_QTY)
+    pack_size: float | None = Field(None, gt=0, le=stock.MAX_QTY)
+    # (malzeme ve stok alanlarında da null gönderilirse alan boşaltılır)
+
+
+class MaterialTypeIn(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+    group: str = Field(max_length=8)
+    density: float | None = Field(None, gt=0, le=material_types.DENSITY_RANGE[1])  # g/cm³, yalnızca levha grubunda
+
+
+class StockInIn(BaseModel):
+    qty: float = Field(gt=0, le=stock.MAX_QTY)
+    unit: str = Field(max_length=10)  # kalemin birimi, aynı boyuttaki bir birim, "pack" ya da (plaka kaleminde) kg/sheet
+    total: float | None = Field(None, ge=0)  # toplam ödenen; verilirse birim fiyat bundan bölünür
+    unit_price: float | None = Field(None, ge=0)  # giriş birimi başına; `total` yoksa kullanılır
+    vat_included: bool = False
+    date: dt.date | None = None
+    note: str = Field("", max_length=200)
+
+
+class StockCountIn(BaseModel):
+    counted: float = Field(ge=0, le=stock.MAX_QTY)  # gerçekte eldeki miktar
+    unit: str = Field(max_length=10)
+    date: dt.date | None = None
+    note: str = Field("", max_length=200)
 
 
 class PriceIn(BaseModel):
@@ -201,16 +231,18 @@ def build_entity_router(module: str, prefix: str, tag: str, item_in_use: Callabl
     def add_price_item(payload: PriceItemIn, a: acc.EntityAccess = Depends(entity_access), db: Session = Depends(get_db)):
         ratelimit.hit("prices.write", f"user:{a.user.id}", 300, 3600)
         item = pricebook.create_item(db, a, payload.kind, payload.name, payload.unit, payload.spec, payload.price, payload.auto_qty,
-                                    payload.model_dump(include=set(pricebook.STOCK_FIELDS), exclude_unset=True))
+                                    payload.model_dump(include=set(pricebook.STOCK_FIELDS), exclude_unset=True),
+                                    payload.model_dump(include=set(stock.TRACKING_FIELDS), exclude_unset=True), payload.opening_stock)
         _notify_guest_change(db, a, "price_item_added", item.name)
-        return pricebook.serialize(item, pricebook.latest_prices(db, [item.id]).get(item.id), 1)
+        return _item_out(db, a, item)
 
     @router.patch("/{entity_id}/prices/{item_id}")
     def patch_price_item(item_id: int, payload: PriceItemPatch, a: acc.EntityAccess = Depends(entity_access), db: Session = Depends(get_db)):
         item = pricebook.get_item(db, a, item_id)
         pricebook.update_item(db, a, item, payload.name, payload.spec, payload.auto_qty if "auto_qty" in payload.model_fields_set else pricebook.UNSET,
                              payload.model_dump(include=set(pricebook.STOCK_FIELDS), exclude_unset=True),
-                             payload.unit, bool(payload.unit and payload.unit != item.unit and item_in_use(db, item.id)))
+                             payload.unit, bool(payload.unit and payload.unit != item.unit and (item_in_use(db, item.id) or stock.has_movements(db, item.id))),
+                             payload.model_dump(include=set(stock.TRACKING_FIELDS), exclude_unset=True))
         return {"ok": True}
 
     @router.post("/{entity_id}/prices/{item_id}/price")
@@ -233,8 +265,50 @@ def build_entity_router(module: str, prefix: str, tag: str, item_in_use: Callabl
     @router.delete("/{entity_id}/prices/{item_id}")
     def delete_price_item(item_id: int, a: acc.EntityAccess = Depends(entity_access), db: Session = Depends(get_db)):
         item = pricebook.get_item(db, a, item_id)
-        pricebook.delete_item(db, a, item, item_in_use(db, item.id))
+        pricebook.delete_item(db, a, item, item_in_use(db, item.id) or stock.has_movements(db, item.id))
         return {"ok": True}
+
+    # ------------------------------------------------------------ stok ----
+
+    def _item_out(db: Session, a: acc.EntityAccess, item: PriceItem) -> dict:
+        version = pricebook.latest_prices(db, [item.id]).get(item.id)
+        snap = stock.snapshot(db, [item], {item.id: version.price} if version else {}) if a.is_member else None
+        return pricebook.serialize(item, version, 1, snap)
+
+    @router.get("/{entity_id}/prices/{item_id}/stock")
+    def stock_history(item_id: int, a: acc.EntityAccess = Depends(entity_access), db: Session = Depends(get_db)):
+        a.require_member()
+        return {"items": stock.history(db, pricebook.get_item(db, a, item_id))}
+
+    @router.post("/{entity_id}/prices/{item_id}/stock/in")
+    def stock_in(item_id: int, payload: StockInIn, a: acc.EntityAccess = Depends(entity_access), db: Session = Depends(get_db)):
+        ratelimit.hit("stock.write", f"user:{a.user.id}", 600, 3600)
+        item = pricebook.get_item(db, a, item_id)
+        stock.add_in(db, a, item, payload.qty, payload.unit, payload.total, payload.unit_price, payload.vat_included, payload.date, payload.note)
+        return _item_out(db, a, item)
+
+    @router.post("/{entity_id}/prices/{item_id}/stock/count")
+    def stock_count(item_id: int, payload: StockCountIn, a: acc.EntityAccess = Depends(entity_access), db: Session = Depends(get_db)):
+        ratelimit.hit("stock.write", f"user:{a.user.id}", 600, 3600)
+        item = pricebook.get_item(db, a, item_id)
+        version = pricebook.latest_prices(db, [item.id]).get(item.id)
+        stock.count_to(db, a, item, payload.counted, payload.unit, payload.date, payload.note, version.price if version else None)
+        return _item_out(db, a, item)
+
+    # ------------------------------------------------------------ malzeme türleri ----
+
+    @router.get("/{entity_id}/material-types")
+    def list_material_types(a: acc.EntityAccess = Depends(entity_access), db: Session = Depends(get_db)):
+        return material_types.catalog(db, a)
+
+    @router.post("/{entity_id}/material-types")
+    def add_material_type(payload: MaterialTypeIn, a: acc.EntityAccess = Depends(entity_access), db: Session = Depends(get_db)):
+        ratelimit.hit(f"{module}.material_types", f"user:{a.user.id}", 60, 3600)
+        return material_types.create(db, a, payload.name, payload.group, payload.density)
+
+    @router.delete("/{entity_id}/material-types/{key}")
+    def delete_material_type(key: str, a: acc.EntityAccess = Depends(entity_access), db: Session = Depends(get_db)):
+        return material_types.delete(db, a, key)
 
     # ------------------------------------------------------------ alan eşlemeleri ----
 

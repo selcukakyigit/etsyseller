@@ -65,7 +65,7 @@ def quantity(item: PriceItem, line: PackageLine, dims: Dims) -> tuple[float | No
         return (raw / (plate[0] * plate[1] / 1e6), None) if plate else (None, "plate")
     if dimension == "mass":
         key, thickness = materials.spec_of(item)
-        density = materials.MATERIALS[key].density if key in materials.MATERIALS else None
+        density = materials.density(key)
         if density and thickness:
             return units.convert(raw * thickness / 1000 * density * 1000, "kg", item.unit), None
     return raw, None

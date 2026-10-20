@@ -65,6 +65,60 @@ export interface PriceItem {
   /** Rulo bilgisiyle metreye çevrilebiliyor: paket formülünde miktar metre yazılır. */
   by_length?: boolean;
   derived?: { kg: number | null; plate: number | null } | null;
+  /** Türün grubu (backend `materials.group_of`) ve maliyet/eşleşme için eksik kalan bilgiler: "material" | "thickness_mm" | "plate". */
+  group?: MaterialGroup | null;
+  missing?: string[];
+  /** Stok (yalnızca çalışma alanı üyesine gelir; yalnızca malzeme kalemlerinde). Miktarlar kalemin biriminde. */
+  track_stock?: boolean;
+  min_stock?: number | null;
+  pack_size?: number | null;
+  entry_units?: string[];
+  on_hand?: number;
+  avg_cost?: number | null;
+  ref?: number;
+  level?: StockLevel;
+}
+
+export type StockLevel = "ok" | "low" | "out";
+
+/** Stok ayarları (kalem formunda): takip, paket miktarı, en az stok (null = boşalt). */
+export interface TrackingPatch {
+  track_stock?: boolean;
+  min_stock?: number | null;
+  pack_size?: number | null;
+}
+
+export interface StockMovement {
+  id: number;
+  kind: "opening" | "purchase" | "use" | "adjust";
+  qty: number;
+  unit_cost: number | null;
+  moved_on: string;
+  ref_type: string;
+  ref_id: number | null;
+  note: string;
+  by: string;
+}
+
+export type MaterialGroup = "sheet" | "film" | "piece" | "bulk";
+
+/** Malzeme türü kataloğundaki bir satır: yerleşik ya da kullanıcının kendi türü (backend `material_types.catalog`). */
+export interface MaterialTypeInfo {
+  key: string;
+  tr: string;
+  en: string;
+  group: MaterialGroup;
+  builtin: boolean;
+  density: number | null;
+  /** Kaç kalemde ve ürün parçasında kullanılıyor (yalnızca kullanıcı türlerinde dolu). */
+  used: number;
+}
+
+/** Grup kuralları: bu grupta seçilebilen birimler ve birime göre sorulan alanlar. */
+export type MaterialRules = Record<MaterialGroup, { units: string[]; fields: Record<string, string[]> }>;
+export interface MaterialCatalog {
+  types: MaterialTypeInfo[];
+  groups: MaterialRules;
 }
 
 /** Malzeme kalemi alanları (null = alanı boşalt). */
@@ -240,9 +294,9 @@ export function entityApi<TEntity extends Entity = Entity, TSummary = unknown>(b
 
     prices: {
       list: (id: number, archived = false) => apiRequest<{ items: PriceItem[] }>(`${one(id)}/prices${archived ? "?archived=true" : ""}`),
-      add: (id: number, item: { kind: PriceKind; name: string; unit: string; spec?: string; price: number; auto_qty?: number | null } & StockPatch) =>
+      add: (id: number, item: { kind: PriceKind; name: string; unit: string; spec?: string; price: number; auto_qty?: number | null; opening_stock?: number } & StockPatch & TrackingPatch) =>
         apiRequest<PriceItem>(`${one(id)}/prices`, { method: "POST", ...json(item) }),
-      update: (id: number, itemId: number, patch: { name?: string; spec?: string; auto_qty?: number | null; unit?: string } & StockPatch) =>
+      update: (id: number, itemId: number, patch: { name?: string; spec?: string; auto_qty?: number | null; unit?: string } & StockPatch & TrackingPatch) =>
         apiRequest<{ ok: true }>(`${one(id)}/prices/${itemId}`, { method: "PATCH", ...json(patch) }),
       setPrice: (id: number, itemId: number, price: number, validFrom?: string) =>
         apiRequest<{ ok: true }>(`${one(id)}/prices/${itemId}/price`, { method: "POST", ...json({ price, valid_from: validFrom || null }) }),
@@ -250,6 +304,20 @@ export function entityApi<TEntity extends Entity = Entity, TSummary = unknown>(b
       archive: (id: number, itemId: number, archived: boolean) =>
         apiRequest<{ ok: true }>(`${one(id)}/prices/${itemId}/archive`, { method: "POST", ...json({ archived }) }),
       remove: (id: number, itemId: number) => apiRequest<{ ok: true }>(`${one(id)}/prices/${itemId}`, { method: "DELETE" }),
+      stockHistory: (id: number, itemId: number) => apiRequest<{ items: StockMovement[] }>(`${one(id)}/prices/${itemId}/stock`),
+      /** Alım / giriş: miktar `unit` biriminde (kalemin birimi, aynı boyuttaki bir birim ya da "pack"); tutar toplam ya da birim başına. */
+      stockIn: (id: number, itemId: number, body: { qty: number; unit: string; total?: number | null; unit_price?: number | null; vat_included?: boolean; date?: string | null; note?: string }) =>
+        apiRequest<PriceItem>(`${one(id)}/prices/${itemId}/stock/in`, { method: "POST", ...json(body) }),
+      /** Sayım düzeltmesi: gerçekte eldeki miktar. */
+      stockCount: (id: number, itemId: number, body: { counted: number; unit: string; date?: string | null; note?: string }) =>
+        apiRequest<PriceItem>(`${one(id)}/prices/${itemId}/stock/count`, { method: "POST", ...json(body) }),
+    },
+
+    materialTypes: {
+      list: (id: number) => apiRequest<MaterialCatalog>(`${one(id)}/material-types`),
+      add: (id: number, body: { name: string; group: MaterialGroup; density?: number | null }) =>
+        apiRequest<MaterialTypeInfo>(`${one(id)}/material-types`, { method: "POST", ...json(body) }),
+      remove: (id: number, key: string) => apiRequest<{ items: number; parts: number }>(`${one(id)}/material-types/${encodeURIComponent(key)}`, { method: "DELETE" }),
     },
 
     mappings: {

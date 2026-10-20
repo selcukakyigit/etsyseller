@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.listings.models import ListingCache
 from app.drawings import cad
-from app.modkit import materials, pricebook
+from app.modkit import material_types, materials, pricebook
 from app.modkit.access import EntityAccess
 from app.modkit.models import ProductMeasure
 from app.shops.models import Shop
@@ -31,7 +31,7 @@ MAX_PARTS = 20  # bir ürünün en fazla parça sayısı
 # Ölçüler TEK parça içindir; ürün toplamı `part_qty` (ürünün bu parçasından kaç tane gerektiği, boşsa 1) ile çarpılarak bulunur.
 # `surface`: net yüzey alanı (DXF'ten), `sides`: boyanan/basılan yüz sayısı (1 ya da 2, boşsa 1), `thickness`: malzeme kalınlığı.
 MEASURES = {"cut_length": "mm", "pierce_count": "piece", "width": "mm", "height": "mm", "surface": "mm2", "sides": "piece", "thickness": "mm", "part_qty": "piece"}
-# Malzeme türü sayı değil metindir (`ProductMeasure.text`, `materials.MATERIALS` anahtarı).
+# Malzeme türü sayı değil metindir (`ProductMeasure.text`, `material_types` kataloğundaki anahtar).
 MATERIAL = "material"
 
 
@@ -285,8 +285,8 @@ def _write(db: Session, access: EntityAccess, shop_id: int, listing_id: int, var
             raise HTTPException(422, "Geçersiz ölçü")
         changes[key] = None if value is None else (_check_value(key, value), "")
     if material is not pricebook.UNSET:
-        if material is not None and not (material in materials.MATERIALS and materials.MATERIALS[material].sheet):
-            raise HTTPException(422, "Geçersiz malzeme türü")  # ürün levha malzemeden yapılır; ambalaj ve sarf türleri ürüne bağlanmaz
+        if material is not None:
+            material_types.check_key(db, access.entity.workspace_id, material, sheet_only=True)  # ürün levha malzemeden yapılır; ambalaj ve sarf türleri ürüne bağlanmaz
         changes[MATERIAL] = None if material is None else (0.0, material)
     for key, change in changes.items():
         row = existing.get(key)

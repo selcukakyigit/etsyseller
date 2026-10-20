@@ -3,7 +3,7 @@ bir kayıt silinince fiyatları, belgeleri, davetleri, erişimleri ve akışı v
 giden bağlar (kim ekledi, kim değiştirdi) kullanıcı silinince boşa düşer (SET NULL) — kayıt geçmişi bozulmaz."""
 import datetime as dt
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, Numeric, SmallInteger, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, SmallInteger, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, declared_attr, mapped_column
 
 from app.core.db import MONEY, PCT, Base
@@ -78,8 +78,50 @@ class PriceItem(EntityOwned, Base):
     roll_width: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=True)
     film_um: Mapped[float | None] = mapped_column(Numeric(10, 3, asdecimal=False), nullable=True)
     roll_length: Mapped[float | None] = mapped_column(Numeric(12, 3, asdecimal=False), nullable=True)
+    # Stok takibi (yalnızca malzeme kalemleri; bkz. stock.py): miktar `stock_movements` defterinin toplamıdır, burada tutulmaz.
+    # `pack_size`: bir paketteki miktar (kalemin biriminde; strafor paketi 20 adet, streç rulosu 2 kg) — alım girerken "30 paket" yazılabilsin diye.
+    track_stock: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    min_stock: Mapped[float | None] = mapped_column(Numeric(18, 6, asdecimal=False), nullable=True)
+    pack_size: Mapped[float | None] = mapped_column(Numeric(18, 6, asdecimal=False), nullable=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
     archived_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+
+
+class StockMovement(EntityOwned, Base):
+    """Stok hareketi: bir malzeme kaleminin miktarını kalemin BİRİMİNDE değiştirir (`qty` işaretli: alım +, kullanım −). Stok = hareketlerin toplamı.
+    `kind`: opening (açılış), purchase (alım), use (iş kullanımı; `ref_type`/`ref_id` o işe bağlar, iş yeniden açılınca silinir), adjust (sayım düzeltmesi).
+    `unit_cost`: kalemin birimi başına maliyet — alımda ödenen (KDV maliyete dahil edilmeye göre), çıkışta o anki ağırlıklı ortalama (anlık kopya)."""
+
+    __tablename__ = "stock_movements"
+    __table_args__ = (Index("ix_stock_movements_item_moved", "item_id", "moved_on", "id"), Index("ix_stock_movements_ref", "ref_type", "ref_id"))
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("price_items.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(10))
+    qty: Mapped[float] = mapped_column(Numeric(18, 6, asdecimal=False))
+    unit_cost: Mapped[float | None] = mapped_column(Numeric(18, 6, asdecimal=False), nullable=True)
+    moved_on: Mapped[dt.date] = mapped_column(Date)
+    ref_type: Mapped[str] = mapped_column(String(12), default="", server_default="")
+    ref_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    note: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    created_by: Mapped[int | None] = _user_fk()
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+
+
+class MaterialType(Base):
+    """Kullanıcının eklediği malzeme türü (yerleşik türler kodda: `materials.MATERIALS`). ÇALIŞMA ALANI seviyesindedir; bütün modüllerde ve ürün
+    malzemesinde seçilebilir. Anahtarı "c<id>"dir. `group`: davranış grubu (`materials.GROUPS`); `density` yalnızca levha grubunda (g/cm³).
+    Değişmez: yalnızca eklenir ya da silinir (silinince kalemleri "Diğer"e taşınır)."""
+
+    __tablename__ = "material_types"
+    __table_args__ = (UniqueConstraint("workspace_id", "name", name="uq_material_types_workspace_name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(60))
+    group: Mapped[str] = mapped_column(String(8))
+    density: Mapped[float | None] = mapped_column(Numeric(8, 3, asdecimal=False), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
 
 

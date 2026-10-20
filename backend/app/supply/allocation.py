@@ -11,15 +11,18 @@ from sqlalchemy.orm import Session
 
 from app.core.i18n import tr
 from app.listings.models import ListingCache
-from app.modkit import activity, materials, parties, pricebook, products, units
+from app.modkit import activity, materials, parties, pricebook, products, stock, units
 from app.modkit.access import EntityAccess
 from app.modkit.models import ModuleEntity
 from app.modkit.numbers import DIMS, slug
 from app.shops.models import Shop
 from app.supply import fx, paint, weights
-from app.supply.models import SupplyAllocation, SupplyJob
+from app.supply.models import SupplyAllocation, SupplyJob, SupplyJobLine
 from app.supply.plan import ESTIMATED, MAX_TARGETS, SPLIT_MODES, plan_of
 from app.supply.service import MODULE, job_basis, job_data, job_when, material_summary, mapped_time_fee, similar_jobs, utcnow
+
+
+STOCK_REF = "supply_job"  # stok hareketinin hangi işe bağlı olduğu (`StockMovement.ref_type`)
 
 
 def confirm(db: Session, access: EntityAccess, job: SupplyJob, allow_duplicate: bool = False) -> None:
@@ -38,6 +41,7 @@ def confirm(db: Session, access: EntityAccess, job: SupplyJob, allow_duplicate: 
         raise HTTPException(422, "İşin tutarı sıfır; satır ekle ya da gerçek tutarı gir.")
     amounts = split(db, access, job, basis, plan)
     _materialize(db, access, job, plan, amounts, basis)
+    _consume_stock(db, access, job)
     summary_ = material_summary(db, access, job)
     job.material_cost = summary_["total"] if summary_ else None
     job.status = "confirmed"
@@ -47,12 +51,24 @@ def confirm(db: Session, access: EntityAccess, job: SupplyJob, allow_duplicate: 
     db.commit()
 
 
+def _consume_stock(db: Session, access: EntityAccess, job: SupplyJob) -> None:
+    """Onaylanan işin fiyat listesi satırlarını stoktan düşer (stok takibi açık kalemler); birimi çevrilemeyen satır düşmez ve işin akışına yazılır."""
+    lines = db.scalars(select(SupplyJobLine).where(SupplyJobLine.job_id == job.id, SupplyJobLine.price_item_id.is_not(None))).all()
+    if not lines:
+        return
+    prices = pricebook.prices_at(db, [ln.price_item_id for ln in lines], job_when(job))
+    done = stock.consume(db, access, [(ln.price_item_id, ln.qty, ln.unit) for ln in lines], STOCK_REF, job.id, job.job_date, {i: v.price for i, v in prices.items()})
+    if done["skipped"]:
+        activity.log(db, access.entity.id, access.user, "stock_skipped", {"number": job.number, "items": ", ".join(done["skipped"])}, internal=True)
+
+
 def reopen(db: Session, access: EntityAccess, job: SupplyJob) -> None:
     access.require_member()
     if job.status != "confirmed":
         return
     _revert_costs(db, access, job)  # uygulanmış ürün maliyetleri de geri alınır (yoksa eski pay Finans'ta takılı kalırdı)
     db.execute(delete(SupplyAllocation).where(SupplyAllocation.job_id == job.id))
+    stock.revert_ref(db, access.entity.id, STOCK_REF, job.id)  # işin stoktan düştüğü miktar geri gelir
     job.material_cost = None
     job.status = "draft"
     job.confirmed_at = None

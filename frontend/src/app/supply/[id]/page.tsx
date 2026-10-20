@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useParams } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { pageContainer } from "@/components/layout/pageContainer";
@@ -13,6 +14,7 @@ import PriceBookTable from "@/modules/components/PriceBookTable";
 import ProductMeasures from "@/modules/components/ProductMeasures";
 import SharingPanel from "@/modules/components/SharingPanel";
 import { isMember } from "@/modules/core/api";
+import { clearMaterialCatalog, refreshMaterialCatalog, useMaterialCatalog } from "@/modules/core/materials";
 import ModuleShell, { ShellTab } from "@/modules/core/ModuleShell";
 import { card, errorText } from "@/modules/core/ui";
 import { useUrlParam } from "@/modules/core/useUrlParam";
@@ -37,6 +39,12 @@ export default function SupplierPage() {
   const [status, setStatus] = useUrlParam("status");
   const { data: entity, error, reload } = useApiData(`supply-entity:${id}`, () => supplyApi.get(id));
   const access = entity?.access;
+  // Malzeme türü kataloğu (yerleşik + kendi türlerin): sayfa açılınca yüklenir, etiketler ve formlar buradan okur; katalog gelince sayfa yeniden çizilir
+  useMaterialCatalog();
+  useEffect(() => {
+    void refreshMaterialCatalog(supplyApi, id).catch(() => undefined);
+    return clearMaterialCatalog;
+  }, [id]);
   const member = isMember(access);
   const guest = access?.role === "guest";
 

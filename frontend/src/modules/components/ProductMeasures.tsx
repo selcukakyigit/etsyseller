@@ -387,7 +387,7 @@ function MeasureRow({
             <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
               <label className="block">
                 <span className={labelCls}>{t("Malzeme türü", "Material type")}</span>
-                <MaterialTypeSelect value={material} onChange={setMaterial} disabled={busy} className="w-full" />
+                <MaterialTypeSelect api={api} entityId={entityId} value={material} onChange={setMaterial} sheetOnly canAdd disabled={busy} className="w-full" />
               </label>
               {FIELDS.map((f) => (
                 <label key={f.key} className="block">

@@ -297,7 +297,7 @@ export default function SheetSplitter({
                       </td>
                       <td className={`${td} ${dim}`}>
                         <div className="flex items-center gap-1.5">
-                          <MaterialTypeSelect value={a.material} onChange={(m) => set({ material: m })} disabled={excluded} className="w-36 py-1.5" />
+                          <MaterialTypeSelect api={api} entityId={entityId} value={a.material} onChange={(m) => set({ material: m })} sheetOnly canAdd disabled={excluded} className="w-36 py-1.5" />
                           <DecimalInput value={a.thickness} onValue={(v) => set({ thickness: v })} disabled={excluded} placeholder="mm" className={`${input} w-16 py-1.5`} aria-label={t("Kalınlık (mm)", "Thickness (mm)")} />
                         </div>
                       </td>

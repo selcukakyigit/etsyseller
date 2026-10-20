@@ -8,7 +8,8 @@ from fastapi import HTTPException
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.modkit import activity, materials, units
+from app.core.i18n import tr
+from app.modkit import activity, material_types, materials, stock, units
 from app.modkit.access import EntityAccess
 from app.modkit.models import PriceItem, PriceVersion
 
@@ -52,18 +53,17 @@ def _clean_auto_qty(access: EntityAccess, kind: str, value: float | None) -> flo
     return round(float(value), 6)
 
 
-def _clean_stock(kind: str, stock: dict) -> dict:
+def _clean_stock(db: Session, access: EntityAccess, kind: str, fields: dict) -> dict:
     """Malzeme alanlarını doğrular; yalnızca verilen alanlar döner (None = alanı boşalt). Malzeme dışı kalemde yok sayılır."""
     if kind != "material":
         return {}
     out = {}
     for key in STOCK_FIELDS:
-        if key not in stock:
+        if key not in fields:
             continue
-        value = stock[key]
+        value = fields[key]
         if key == "material":
-            if value not in (None, "") and value not in materials.MATERIALS:
-                raise HTTPException(422, "Geçersiz malzeme türü")
+            material_types.check_key(db, access.entity.workspace_id, value)
             out[key] = value or None
         elif value is None:
             out[key] = None
@@ -72,6 +72,25 @@ def _clean_stock(kind: str, stock: dict) -> dict:
         else:
             raise HTTPException(422, "Geçersiz değer")
     return out
+
+
+_MISSING_LABELS = {"material": ("malzeme türü", "material type"), "thickness_mm": ("kalınlık", "thickness"), "plate": ("plaka eni ve boyu", "plate width and length")}
+
+
+def _check_material(item: PriceItem, complete: bool) -> None:
+    """Malzeme kaleminin tür grubuna uyumu: birim grupta anlamlı olmalı, grupta anlamsız alanlar boşaltılır (gizli değer kalmasın); `complete`
+    ise maliyet ve ürün eşleşmesi için gerekenler (`materials.missing`) dolu olmalı. Türü bilinmeyen eski kalemde alanlara dokunulmaz."""
+    group = materials.group_of(materials.spec_of(item)[0])
+    if group is not None:
+        if item.unit not in materials.units_for(group):
+            raise HTTPException(422, tr("Bu malzeme türü için bu birim seçilemez.", "This unit cannot be used for this material type."))
+        allowed = materials.fields_for(group, item.unit)
+        for key in STOCK_FIELDS[1:]:
+            if key not in allowed:
+                setattr(item, key, None)
+    if complete and (gaps := materials.missing(item)):
+        tr_names, en_names = zip(*(_MISSING_LABELS[g] for g in gaps))
+        raise HTTPException(422, tr("Eksik bilgi: " + ", ".join(tr_names) + ".", "Missing: " + ", ".join(en_names) + "."))
 
 
 def find_material(db: Session, entity_id: int, kind: str, thickness: float) -> PriceItem | None:
@@ -119,16 +138,21 @@ def list_items(db: Session, access: EntityAccess, include_archived: bool = False
     counts = dict(db.execute(
         select(PriceVersion.item_id, func.count()).where(PriceVersion.item_id.in_([i.id for i in items])).group_by(PriceVersion.item_id)
     ).all()) if items else {}
-    return [serialize(i, cur.get(i.id), counts.get(i.id, 0)) for i in items]
+    snap = stock.snapshot(db, items, {i.id: v.price for i in items if (v := cur.get(i.id))}) if access.is_member else None
+    return [serialize(i, cur.get(i.id), counts.get(i.id, 0), snap) for i in items]
 
 
-def serialize(item: PriceItem, version: PriceVersion | None, versions: int = 0) -> dict:
+def serialize(item: PriceItem, version: PriceVersion | None, versions: int = 0, snap: dict[int, dict] | None = None) -> dict:
+    """`snap`: stok durumları (`stock.snapshot`); yalnızca çalışma alanı üyesine verilir — misafir (tedarikçi) stoğu görmez."""
     return {
         "id": item.id, "kind": item.kind, "name": item.name, "unit": item.unit, "spec": item.spec,
         "position": item.position, "archived": item.archived_at is not None, "auto_qty": item.auto_qty,
         **({"material": item.material, "thickness_mm": item.thickness_mm, "plate_width": item.plate_width, "plate_height": item.plate_height,
             "plate_kg": item.plate_kg, "roll_width": item.roll_width, "film_um": item.film_um, "roll_length": item.roll_length,
+            "group": materials.group_of(materials.spec_of(item)[0]), "missing": materials.missing(item),
             "by_length": materials.per_metre(item) is not None, "derived": materials.stock_prices(item, version.price) if version else None} if item.kind == "material" else {}),
+        **({"track_stock": item.track_stock, "min_stock": item.min_stock, "pack_size": item.pack_size, "entry_units": stock.entry_units(item), **(snap or {}).get(item.id, {})}
+           if snap is not None and item.kind == "material" else {}),
         "price": version.price if version else None,
         "price_from": version.valid_from.isoformat() + "Z" if version else None,
         "price_source": version.source if version else None,
@@ -137,7 +161,9 @@ def serialize(item: PriceItem, version: PriceVersion | None, versions: int = 0) 
 
 
 def create_item(db: Session, access: EntityAccess, kind: str, name: str, unit: str, spec: str, price: float, auto_qty: float | None = None,
-                stock: dict | None = None) -> PriceItem:
+                fields: dict | None = None, tracking: dict | None = None, opening: float | None = None) -> PriceItem:
+    """`fields`: malzeme alanları (tür, kalınlık…); `tracking`: stok ayarları (`stock.clean_tracking`); `opening`: stok takibi açıksa açılış stoğu
+    (kalemin biriminde, fiyat listesindeki fiyatla değerlenir)."""
     access.require("prices.edit")
     name = (name or "").strip()[:120]
     if not name:
@@ -151,18 +177,22 @@ def create_item(db: Session, access: EntityAccess, kind: str, name: str, unit: s
     if n >= MAX_ITEMS:
         raise HTTPException(422, "Kalem sınırına ulaşıldı")
     item = PriceItem(entity_id=access.entity.id, kind=kind, name=name, unit=unit, spec=(spec or "").strip()[:200], position=n,
-                     auto_qty=_clean_auto_qty(access, kind, auto_qty), **_clean_stock(kind, stock or {}))
+                     auto_qty=_clean_auto_qty(access, kind, auto_qty), **_clean_stock(db, access, kind, fields or {}), **stock.clean_tracking(access, kind, tracking or {}))
+    if kind == "material":
+        _check_material(item, complete=True)
     db.add(item)
     db.flush()
     p = clean_price(price)
     db.add(PriceVersion(item_id=item.id, price=p, valid_from=dt.datetime.utcnow(), source="guest" if access.is_guest else "owner", created_by=access.user.id))
     activity.log(db, access.entity.id, access.user, "price_item_added", {"item": name, "kind": kind, "unit": unit, "price": p, "by_guest": access.is_guest})
     db.commit()
+    if opening and item.track_stock:
+        stock.add_in(db, access, item, opening, item.unit, None, p, False, None, "", kind="opening")
     return item
 
 
-def update_item(db: Session, access: EntityAccess, item: PriceItem, name: str | None, spec: str | None, auto_qty=UNSET, stock: dict | None = None,
-                unit: str | None = None, in_use: bool = False) -> None:
+def update_item(db: Session, access: EntityAccess, item: PriceItem, name: str | None, spec: str | None, auto_qty=UNSET, fields: dict | None = None,
+                unit: str | None = None, in_use: bool = False, tracking: dict | None = None) -> None:
     """Ad, açıklama, tüketim kuralı ve malzeme alanları değişir. Birim yalnızca hiçbir işte kullanılmamış kalemde değişir (kullanılmışsa
     eski fiyatlar ve miktarlar anlamsızlaşırdı — yeni kalem açılır); birim değişince tüketim kuralı (eski birimde) kalkar, fiyat
     yeni birimde yeniden girilir."""
@@ -181,8 +211,13 @@ def update_item(db: Session, access: EntityAccess, item: PriceItem, name: str | 
         item.spec = spec.strip()[:200]
     if auto_qty is not UNSET:
         item.auto_qty = _clean_auto_qty(access, item.kind, auto_qty)
-    for key, value in _clean_stock(item.kind, stock or {}).items():
+    changes = _clean_stock(db, access, item.kind, fields or {})
+    for key, value in stock.clean_tracking(access, item.kind, tracking or {}).items():
         setattr(item, key, value)
+    for key, value in changes.items():
+        setattr(item, key, value)
+    if item.kind == "material":
+        _check_material(item, complete=bool(changes) or unit is not None)  # eski kalem yalnızca adı değişirken eksik sayılmaz
     db.commit()
 
 

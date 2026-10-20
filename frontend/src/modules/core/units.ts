@@ -28,6 +28,7 @@ const NAMES: Record<string, [string, string]> = {
   l: ["litre", "liter"],
   m3: ["m³", "m³"],
   job: ["iş", "job"],
+  pack: ["paket", "pack"], // yalnızca stok girişinde (kalemin paket miktarı); birim listelerinde yok
 };
 
 export function unitLabel(code: string, t: T): string {

@@ -7,13 +7,18 @@ import { BlockSpinner } from "@/components/ui/Spinner";
 import { useT } from "@/lib/i18n-client";
 import { toast } from "@/lib/toast";
 import { useApiData } from "@/lib/useApiData";
-import { EntityAccess, EntityApi, PriceItem, PriceKind, PriceVersion, StockPatch, can, isInternal, isMember } from "../core/api";
+import { EntityAccess, EntityApi, PriceItem, PriceKind, PriceVersion, StockPatch, TrackingPatch, can, isInternal, isMember } from "../core/api";
 import { errMsg } from "../core/errors";
 import { btnDanger, btnLink, btnOutline, btnPrimary, card, h2, input, label as labelCls, muted, rowBorder, th, td } from "../core/ui";
 import { currencySymbol, money, perUnit, unitLabel } from "../core/units";
 import DecimalInput from "@/components/ui/NumberInputs";
-import { materialLabel } from "../core/materials";
-import StockFields, { emptyStock, pruneStock, StockForm, stockOf, stockPayload } from "./StockFields";
+import { materialLabel, useMaterialCatalog } from "../core/materials";
+import MaterialTypeSelect from "./MaterialTypeSelect";
+import MaterialTypesModal from "./MaterialTypesModal";
+import StockFields, { allowedUnits, applyType, emptyStock, missingFields, pruneStock, StockForm, stockOf, stockPayload, useMissingLabels } from "./StockFields";
+import StockGauge from "./StockGauge";
+import StockModal from "./StockModal";
+import StockTrackFields, { emptyTrack, TrackForm, trackOf, trackPayload } from "./StockTrackFields";
 import UnitSelect from "./UnitSelect";
 
 const SECTIONS: { kinds: PriceKind[]; tr: string; en: string; addTr: string; addEn: string; hintTr: string; hintEn: string; units?: string[]; addKind: PriceKind }[] = [
@@ -40,6 +45,8 @@ export default function PriceBookTable({ api, entityId, currency, access }: { ap
   const [showArchived, setShowArchived] = useState(false);
   const { data, error, reload } = useApiData(`modkit-prices:${api.base}:${entityId}:${showArchived}`, () => api.prices.list(entityId, showArchived));
   const [history, setHistory] = useState<PriceItem | null>(null);
+  const [typesOpen, setTypesOpen] = useState(false);
+  const [stockFor, setStockFor] = useState<number | null>(null);
   const [confirm, confirmEl] = useConfirm();
   const editable = can(access, "prices.edit");
   const items = data?.items ?? [];
@@ -73,13 +80,22 @@ export default function PriceBookTable({ api, entityId, currency, access }: { ap
           const rows = items.filter((i) => sec.kinds.includes(i.kind));
           return (
             <section key={sec.addKind} className={card}>
-              <h2 className={h2}>{t(sec.tr, sec.en)}</h2>
+              <div className="mb-1 flex items-center justify-between gap-3">
+                <h2 className={h2}>{t(sec.tr, sec.en)}</h2>
+                {sec.addKind === "material" && isMember(access) && (
+                  <button type="button" onClick={() => setTypesOpen(true)} className={btnLink}>
+                    {t("Malzeme türleri", "Material types")}
+                  </button>
+                )}
+              </div>
               <p className={`${muted} mb-3`}>{t(sec.hintTr, sec.hintEn)}</p>
               {editable && (
                 <AddRow
                   kinds={sec.addKind === "fee" ? (hasMinimum ? ["fee"] : ["fee", "minimum"]) : [sec.addKind]}
                   units={sec.units}
                   currency={currency}
+                  api={api}
+                  entityId={entityId}
                   canAuto={isMember(access)}
                   addLabel={t(sec.addTr, sec.addEn)}
                   onAdd={(v) => run(() => api.prices.add(entityId, v), t("Kalem eklendi", "Item added"))}
@@ -101,6 +117,8 @@ export default function PriceBookTable({ api, entityId, currency, access }: { ap
                           key={item.id}
                           item={item}
                           currency={currency}
+                          api={api}
+                          entityId={entityId}
                           editable={editable && !item.archived}
                           member={isMember(access)}
                           units={sec.units}
@@ -113,6 +131,7 @@ export default function PriceBookTable({ api, entityId, currency, access }: { ap
                                 : t("Fiyat güncellendi", "Price updated"),
                             )
                           }
+                          onStock={() => setStockFor(item.id)}
                           onHistory={() => setHistory(item)}
                           onArchive={(v) => run(() => api.prices.archive(entityId, item.id, v))}
                           onDelete={() => void removeItem(item)}
@@ -133,6 +152,10 @@ export default function PriceBookTable({ api, entityId, currency, access }: { ap
           {t("Arşivlenmiş kalemleri de göster", "Show archived items too")}
         </label>
       )}
+      {stockFor !== null && items.some((i) => i.id === stockFor) && (
+        <StockModal api={api} entityId={entityId} item={items.find((i) => i.id === stockFor)!} currency={currency} onChanged={reload} onClose={() => setStockFor(null)} />
+      )}
+      {typesOpen && <MaterialTypesModal api={api} entityId={entityId} onClose={() => setTypesOpen(false)} />}
       {history && <HistoryModal api={api} entityId={entityId} item={history} currency={currency} onClose={() => setHistory(null)} />}
       {confirmEl}
       <p className={muted}>
@@ -148,27 +171,35 @@ export default function PriceBookTable({ api, entityId, currency, access }: { ap
 function PriceRow({
   item,
   currency,
+  api,
+  entityId,
   editable,
   member,
   units,
   onSaveMeta,
   onSavePrice,
+  onStock,
   onHistory,
   onArchive,
   onDelete,
 }: {
   item: PriceItem;
   currency: string;
+  api: EntityApi;
+  entityId: number;
   editable: boolean;
   member: boolean;
   units?: string[];
-  onSaveMeta: (patch: { name?: string; spec?: string; auto_qty?: number | null; unit?: string } & StockPatch) => Promise<void>;
+  onSaveMeta: (patch: { name?: string; spec?: string; auto_qty?: number | null; unit?: string } & StockPatch & TrackingPatch) => Promise<void>;
   onSavePrice: (price: number, validFrom?: string) => Promise<void>;
+  onStock: () => void;
   onHistory: () => void;
   onArchive: (archived: boolean) => Promise<void>;
   onDelete: () => void;
 }) {
   const { t, locale } = useT();
+  const catalog = useMaterialCatalog();
+  const missingLabels = useMissingLabels();
   const [edit, setEdit] = useState(false);
   const [name, setName] = useState(item.name);
   const [spec, setSpec] = useState(item.spec);
@@ -178,6 +209,7 @@ function PriceRow({
   const [from, setFrom] = useState(since);
   const [auto, setAuto] = useState(item.auto_qty !== null ? String(item.auto_qty) : "");
   const [stock, setStock] = useState<StockForm>(() => stockOf(item));
+  const [track, setTrack] = useState<TrackForm>(() => trackOf(item));
   const [busy, setBusy] = useState(false);
   const ruleAllowed = member && (item.kind === "service" || item.kind === "material");
   const kindTag = item.kind === "minimum" ? t("minimum", "minimum") : item.kind === "fee" ? t("iş başına", "per job") : "";
@@ -198,8 +230,19 @@ function PriceRow({
       toast.error(t("Kalınlık ve plaka değerleri sıfırdan büyük sayı olmalı.", "Thickness and plate values must be numbers above zero."));
       return;
     }
+    const trackPatch = item.kind === "material" && member ? trackPayload(track, trackOf(item)) : {};
+    if (trackPatch === null) {
+      toast.error(t("Paket miktarı sıfırdan büyük, en az stok sıfır ya da daha büyük bir sayı olmalı.", "Pack size must be above zero and minimum stock zero or more."));
+      return;
+    }
+    // eski kalem yalnızca adı ya da fiyatı değişirken eksik sayılmaz; tür/alan/birim değişince sayılır (sunucu da aynı kuralla doğrular)
+    const gaps = item.kind === "material" && (Object.keys(stockPatch).length > 0 || unit !== item.unit) ? missingFields(catalog, stock, unit) : [];
+    if (gaps.length > 0) {
+      toast.error(t(`Eksik bilgi: ${missingLabels(gaps)}.`, `Missing: ${missingLabels(gaps)}.`));
+      return;
+    }
     setBusy(true);
-    const patch: { name?: string; spec?: string; auto_qty?: number | null; unit?: string } & StockPatch = { ...stockPatch };
+    const patch: { name?: string; spec?: string; auto_qty?: number | null; unit?: string } & StockPatch & TrackingPatch = { ...stockPatch, ...trackPatch };
     if (name.trim() !== item.name) patch.name = name.trim();
     if (unit !== item.unit) patch.unit = unit;
     if (spec.trim() !== item.spec) patch.spec = spec.trim();
@@ -232,6 +275,23 @@ function PriceRow({
               )}
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {item.kind === "material" && (
+                <label className={field}>
+                  <span className={labelCls}>{t("Malzeme türü", "Material type")}</span>
+                  <MaterialTypeSelect
+                    api={api}
+                    entityId={entityId}
+                    value={stock.material}
+                    onChange={(m) => {
+                      const next = applyType(catalog, stock, unit, m);
+                      setStock(next.form);
+                      setUnit(next.unit);
+                    }}
+                    canAdd={member}
+                    className="w-full"
+                  />
+                </label>
+              )}
               {units && item.kind !== "fee" && item.kind !== "minimum" && (
                 <label className={field}>
                   <span className={labelCls}>{t("Birim", "Unit")}</span>
@@ -239,9 +299,10 @@ function PriceRow({
                     value={unit}
                     onChange={(u) => {
                       setUnit(u);
-                      setStock((st) => pruneStock(st, u));
+                      setStock((st) => pruneStock(catalog, st, u));
                     }}
                     only={units}
+                    allowed={item.kind === "material" ? allowedUnits(catalog, stock.material) : undefined}
                     className="w-full"
                   />
                 </label>
@@ -269,6 +330,7 @@ function PriceRow({
               )}
             </div>
             {item.kind === "material" && <StockFields value={stock} unit={unit} onChange={setStock} />}
+            {item.kind === "material" && member && <StockTrackFields value={track} unit={unit} onChange={setTrack} />}
             <p className={muted}>
               {t(
                 "Fiyat, “Geçerlilik başlangıcı” tarihinden itibaren geçerli olur; geçmiş tarihli işleri etkilemesi için işin tarihinden önceki bir gün seç.",
@@ -298,6 +360,7 @@ function PriceRow({
         </div>
         {item.spec && <div className={muted}>{item.spec}</div>}
         {item.kind === "material" && <StockSummary item={item} currency={currency} />}
+        {item.kind === "material" && <StockGauge item={item} />}
         {item.auto_qty !== null && (
           <div className="text-[11px] text-[#C6613F] dark:text-[#E8A48C]">
             {t("her işe otomatik eklenir", "added to every job")}: {item.auto_qty} {unitLabel(item.unit, t)}
@@ -312,8 +375,13 @@ function PriceRow({
         </div>
       </td>
       <td className={`${td} whitespace-nowrap text-right`}>
+        {member && item.track_stock && (
+          <button type="button" onClick={onStock} className={btnLink}>
+            {t("Stok", "Stock")}
+          </button>
+        )}
         {item.versions > 1 && (
-          <button type="button" onClick={onHistory} className={btnLink}>
+          <button type="button" onClick={onHistory} className={`${btnLink} ml-3`}>
             {t("Geçmiş", "History")}
           </button>
         )}
@@ -340,6 +408,7 @@ function PriceRow({
 /** Malzeme kaleminin tür / kalınlık / plaka özeti ve fiyattan türetilen kg ya da plaka fiyatı. */
 function StockSummary({ item, currency }: { item: PriceItem; currency: string }) {
   const { t, locale } = useT();
+  const missingLabels = useMissingLabels();
   const parts = [
     materialLabel(item.material ?? null, t),
     item.thickness_mm ? `${item.thickness_mm} mm` : "",
@@ -350,12 +419,20 @@ function StockSummary({ item, currency }: { item: PriceItem; currency: string })
     item.roll_length ? `${item.roll_length} m` : "",
   ].filter(Boolean);
   const other = item.unit === "sheet" ? { label: "kg", value: item.derived?.kg } : { label: t("plaka", "plate"), value: item.derived?.plate };
-  if (parts.length === 0 && !other?.value) return null;
+  const gaps = item.missing ?? [];
+  if (parts.length === 0 && !other?.value && gaps.length === 0) return null;
   return (
-    <div className={muted}>
-      {parts.join(" · ")}
-      {other?.value != null && ` ${parts.length ? "·" : ""} ${t("hesaplanan", "derived")} ${other.label}: ${money(other.value, currency, locale)}`}
-    </div>
+    <>
+      <div className={muted}>
+        {parts.join(" · ")}
+        {other?.value != null && ` ${parts.length ? "·" : ""} ${t("hesaplanan", "derived")} ${other.label}: ${money(other.value, currency, locale)}`}
+      </div>
+      {gaps.length > 0 && (
+        <div className="text-[11px] font-medium text-amber-700 dark:text-amber-400">
+          {t("Eksik", "Missing")}: {missingLabels(gaps)}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -364,6 +441,8 @@ function AddRow({
   kinds,
   units,
   currency,
+  api,
+  entityId,
   canAuto,
   addLabel,
   onAdd,
@@ -371,11 +450,15 @@ function AddRow({
   kinds: PriceKind[];
   units?: string[];
   currency: string;
+  api: EntityApi;
+  entityId: number;
   canAuto: boolean;
   addLabel: string;
-  onAdd: (v: { kind: PriceKind; name: string; unit: string; spec?: string; price: number; auto_qty?: number | null } & StockPatch) => Promise<void>;
+  onAdd: (v: { kind: PriceKind; name: string; unit: string; spec?: string; price: number; auto_qty?: number | null; opening_stock?: number } & StockPatch & TrackingPatch) => Promise<void>;
 }) {
   const { t, locale } = useT();
+  const catalog = useMaterialCatalog();
+  const missingLabels = useMissingLabels();
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<PriceKind>(kinds[0]);
   const [name, setName] = useState("");
@@ -383,6 +466,7 @@ function AddRow({
   const [price, setPrice] = useState("");
   const [auto, setAuto] = useState("");
   const [stock, setStock] = useState<StockForm>(emptyStock);
+  const [track, setTrack] = useState<TrackForm>(emptyTrack);
   const [busy, setBusy] = useState(false);
   const fixed = kind === "fee" || kind === "minimum";
 
@@ -392,6 +476,7 @@ function AddRow({
     setPrice("");
     setAuto("");
     setStock(emptyStock);
+    setTrack(emptyTrack);
   }
 
   async function add() {
@@ -410,8 +495,28 @@ function AddRow({
       toast.error(t("Kalınlık ve plaka değerleri sıfırdan büyük sayı olmalı.", "Thickness and plate values must be numbers above zero."));
       return;
     }
+    const gaps = kind === "material" ? missingFields(catalog, stock, unit) : [];
+    if (gaps.length > 0) {
+      toast.error(t(`Eksik bilgi: ${missingLabels(gaps)}.`, `Missing: ${missingLabels(gaps)}.`));
+      return;
+    }
+    const trackPatch = kind === "material" && canAuto && track.track ? trackPayload(track) : {};
+    const opening = track.opening.trim() === "" ? null : Number(track.opening.replace(",", "."));
+    if (trackPatch === null || (opening !== null && !(Number.isFinite(opening) && opening > 0))) {
+      toast.error(t("Paket miktarı ve başlangıç stoğu sıfırdan büyük, en az stok sıfır ya da daha büyük bir sayı olmalı.", "Pack size and opening stock must be above zero and minimum stock zero or more."));
+      return;
+    }
     setBusy(true);
-    await onAdd({ kind, name: name.trim(), unit: fixed ? "job" : unit, price: p, ...(autoQty !== null ? { auto_qty: autoQty } : {}), ...stockPatch });
+    await onAdd({
+      kind,
+      name: name.trim(),
+      unit: fixed ? "job" : unit,
+      price: p,
+      ...(autoQty !== null ? { auto_qty: autoQty } : {}),
+      ...stockPatch,
+      ...trackPatch,
+      ...(trackPatch.track_stock && opening !== null ? { opening_stock: opening } : {}),
+    });
     setBusy(false);
     close();
   }
@@ -447,6 +552,23 @@ function AddRow({
             autoFocus
           />
         </label>
+        {kind === "material" && (
+          <label className="block">
+            <span className={labelCls}>{t("Malzeme türü", "Material type")}</span>
+            <MaterialTypeSelect
+              api={api}
+              entityId={entityId}
+              value={stock.material}
+              onChange={(m) => {
+                const next = applyType(catalog, stock, unit, m);
+                setStock(next.form);
+                setUnit(next.unit);
+              }}
+              canAdd={canAuto}
+              className="w-full"
+            />
+          </label>
+        )}
         {!fixed && units && (
           <label className="block">
             <span className={labelCls}>{t("Birim", "Unit")}</span>
@@ -454,9 +576,10 @@ function AddRow({
               value={unit}
               onChange={(u) => {
                 setUnit(u);
-                setStock((st) => pruneStock(st, u));
+                setStock((st) => pruneStock(catalog, st, u));
               }}
               only={units}
+              allowed={kind === "material" ? allowedUnits(catalog, stock.material) : undefined}
               className="w-full"
             />
           </label>
@@ -481,6 +604,7 @@ function AddRow({
         )}
       </div>
       {kind === "material" && <StockFields value={stock} unit={unit} onChange={setStock} />}
+      {kind === "material" && canAuto && <StockTrackFields value={track} unit={unit} onChange={setTrack} showOpening />}
       <div className="flex justify-end gap-3">
         <button type="button" onClick={close} className={btnLink}>
           {t("Vazgeç", "Cancel")}
