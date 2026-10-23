@@ -20,7 +20,6 @@ from app.listings import dimensions, fields, inventory_edit
 from app.ai import catalog, video_gen
 from app.listings import generation
 from app.core import blobstore
-from app.core.ttl_cache import cached
 from app.core.i18n import tr
 from sqlalchemy.orm import Session
 
@@ -642,15 +641,14 @@ def _auto_category(ctx: Ctx, text: str) -> tuple[int, str, str] | None:
 
 
 def _choose_category(ctx: Ctx, title: str, description: str, tags: list[str], materials: list[str], given_id: int | None) -> tuple[int, str] | None:
-    """Kategoriyi Etsy'nin kategori ağacında gezinerek seçer (bkz. ai/category.py): önce mağazanın kendi kategorilerine girip girmediğine, sonra seviye
-    seviye aşağı. Döner: (kimlik, yol) ya da None (seçilemedi: mevcut seçim kalır)."""
+    """Kategoriyi Etsy'nin kategori ağacında gezinerek seçer (bkz. ai/category.py), seviye seviye aşağı; mağazanın kategorileri yalnızca
+    eşitlikte ipucu. Döner: (kimlik, yol) ya da None (seçilemedi: mevcut seçim kalır)."""
     from app.ai import category as ai_category
 
     names = _taxonomy()
     used = [c["taxonomy_id"] for c in listing_service.get_top_categories(ctx.db, ctx.shop, limit=50) if c["taxonomy_id"] in names]
     chosen = ai_category.navigate(
-        title, description, tags, materials, _taxonomy_roots, set(used), [names[i] for i in used[:8]], [{"id": i, "path": names[i]} for i in used[:8]],
-    )
+        title, description, tags, materials, _taxonomy_roots, set(used))
     return (chosen, names[chosen]) if chosen is not None and chosen in names else None
 
 
