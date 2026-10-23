@@ -7,7 +7,6 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPExcepti
 from pydantic import EmailStr, TypeAdapter, ValidationError
 from sqlalchemy.orm import Session
 
-from app.auth.models import User
 from app.contact.models import ContactAttachment, ContactMessage
 from app.core import storage
 from app.core.net import client_ip

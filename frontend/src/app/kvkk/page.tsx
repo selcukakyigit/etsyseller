@@ -15,7 +15,7 @@ export default async function KvkkPage() {
     >
       {lang === "en" && (
         <P>
-          This notice is the data-protection information required by Turkey's Personal Data Protection Law (KVKK) and is
+          This notice is the data-protection information required by Turkey&apos;s Personal Data Protection Law (KVKK) and is
           provided in Turkish. Everyone else should read the <a className="underline" href="/privacy">Privacy Policy</a>.
         </P>
       )}
@@ -50,7 +50,7 @@ export default async function KvkkPage() {
 
       <H2>3. Verilerin toplanma yöntemi</H2>
       <P>
-        Verileriniz; kayıt ve giriş formları, Etsy API'si (siz yetki verdikten sonra), uygulama içinde girdiğiniz bilgiler
+        Verileriniz; kayıt ve giriş formları, Etsy API&apos;si (siz yetki verdikten sonra), uygulama içinde girdiğiniz bilgiler
         ve hizmetin kullanımı sırasında otomatik olarak oluşan kayıtlar yoluyla elektronik ortamda toplanır.
       </P>
 
@@ -74,7 +74,7 @@ export default async function KvkkPage() {
 
       <H2>5. Yurt dışına aktarım</H2>
       <P>
-        Yukarıdaki hizmet sağlayıcıların bir kısmı Türkiye dışında bulunmaktadır. Aktarımlar KVKK'nın 9. maddesinde
+        Yukarıdaki hizmet sağlayıcıların bir kısmı Türkiye dışında bulunmaktadır. Aktarımlar KVKK&apos;nın 9. maddesinde
         öngörülen güvencelerden biriyle, özellikle Kurum tarafından yayımlanan standart sözleşmelerle ve gerektiğinde
         açık rızanızla yapılır. Yapay zekâ özelliklerini kullanmak istemiyorsanız ayarlardan kapatabilirsiniz; bu durumda
         içeriğiniz AI sağlayıcılarına gönderilmez.
@@ -83,7 +83,7 @@ export default async function KvkkPage() {
       <H2>6. Saklama süresi</H2>
       <UL>
         <li>Hesap ve mağaza verileri: hesabınız açık olduğu sürece.</li>
-        <li>Etsy'den alınan veriler: Etsy API şartlarındaki yenileme ve saklama sınırlarına uygun olarak güncel tutulur; Etsy bağlantısını kestiğinizde ilgili veriler silinir.</li>
+        <li>Etsy&apos;den alınan veriler: Etsy API şartlarındaki yenileme ve saklama sınırlarına uygun olarak güncel tutulur; Etsy bağlantısını kestiğinizde ilgili veriler silinir.</li>
         <li>Hesap silme talebinden sonra kişisel veriler makul bir süre içinde silinir veya anonim hale getirilir; yasal saklama yükümlülüğü olan kayıtlar (ör. fatura) ilgili süre boyunca tutulur.</li>
         <li>İletişim formu mesajları ve ekleri: 12 ay sonra otomatik silinir.</li>
         <li>Asistan sohbetleri: Etsy bağlantısı kesildiğinde silinir; sohbete eklenen dosyalar 90 gün, 12 ay boyunca açılmayan sohbetler 12 ay sonra otomatik silinir.</li>
@@ -101,7 +101,7 @@ export default async function KvkkPage() {
         <li>İşlenme amacını ve amaca uygun kullanılıp kullanılmadığını öğrenme,</li>
         <li>Yurt içinde veya yurt dışında aktarıldığı üçüncü kişileri bilme,</li>
         <li>Eksik veya yanlış işlenmişse düzeltilmesini isteme,</li>
-        <li>KVKK'da öngörülen şartlar çerçevesinde silinmesini veya yok edilmesini isteme ve bunun aktarıldığı üçüncü kişilere bildirilmesini isteme,</li>
+        <li>KVKK&apos;da öngörülen şartlar çerçevesinde silinmesini veya yok edilmesini isteme ve bunun aktarıldığı üçüncü kişilere bildirilmesini isteme,</li>
         <li>İşlenen verilerin münhasıran otomatik sistemlerle analiz edilmesi sonucu aleyhinize bir sonuç çıkmasına itiraz etme,</li>
         <li>Kanuna aykırı işlenmesi nedeniyle zarara uğramanız halinde zararın giderilmesini talep etme.</li>
       </UL>
@@ -110,7 +110,7 @@ export default async function KvkkPage() {
       <P>
         Haklarınızı kullanmak için talebinizi {COMPANY.kvkkEmail} adresine, hesabınızla ilişkili e-posta adresinden
         göndererek veya yukarıdaki adrese yazılı olarak iletebilirsiniz. Başvurular en geç 30 gün içinde ücretsiz
-        sonuçlandırılır. Cevabı yetersiz bulursanız Kişisel Verileri Koruma Kurulu'na şikâyet hakkınız saklıdır.
+        sonuçlandırılır. Cevabı yetersiz bulursanız Kişisel Verileri Koruma Kurulu&apos;na şikâyet hakkınız saklıdır.
       </P>
       <P>
         Hesabınızı ve verilerinizi uygulama içinde Ayarlar &gt; Tehlikeli bölge sayfasından da doğrudan silebilirsiniz.

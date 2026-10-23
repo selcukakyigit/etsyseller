@@ -24,7 +24,7 @@ export default async function CookiesPage() {
       <H2>Çerez nedir?</H2>
       <P>
         Çerezler, bir web sitesini ziyaret ettiğinizde cihazınıza kaydedilen küçük metin dosyalarıdır. Bu sayfa KVKK
-        Kurumu'nun çerez rehberi ve AB e-Gizlilik kuralları gözetilerek hazırlanmıştır.
+        Kurumu&apos;nun çerez rehberi ve AB e-Gizlilik kuralları gözetilerek hazırlanmıştır.
       </P>
 
       <H2>Kullandıklarımız</H2>

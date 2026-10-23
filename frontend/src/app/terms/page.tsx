@@ -38,15 +38,15 @@ export default async function TermsPage() {
 
       <H2>3. Etsy bağlantısı</H2>
       <P>
-        Etsy mağazanızı Etsy'nin izin ekranı üzerinden bağlarsınız ve bağlantıyı istediğiniz zaman kesebilirsiniz. Etsy
-        hesabınızın Etsy'nin kendi koşullarına ve API şartlarına uygun kullanımından siz sorumlusunuz. Etsy'nin API
+        Etsy mağazanızı Etsy&apos;nin izin ekranı üzerinden bağlarsınız ve bağlantıyı istediğiniz zaman kesebilirsiniz. Etsy
+        hesabınızın Etsy&apos;nin kendi koşullarına ve API şartlarına uygun kullanımından siz sorumlusunuz. Etsy&apos;nin API
         erişimini kısıtlaması veya değiştirmesi halinde hizmetin bazı özellikleri etkilenebilir.
       </P>
 
       <H2>4. Yayın ve onay</H2>
       <P>
         Mağazanıza yazılan her değişiklik sizin onayınızla yapılır. AI tarafından üretilen içerikleri yayınlamadan önce
-        kontrol etmek sizin sorumluluğunuzdadır. {BRAND} sonuçların doğruluğunu, satış artışını veya Etsy'deki sıralamayı
+        kontrol etmek sizin sorumluluğunuzdadır. {BRAND} sonuçların doğruluğunu, satış artışını veya Etsy&apos;deki sıralamayı
         garanti etmez.
       </P>
 
@@ -78,7 +78,7 @@ export default async function TermsPage() {
         Verileriniz size aittir. Bize, hizmeti sunmak için gerekli olan sınırlı bir kullanım izni verirsiniz. Verilerin
         işlenmesi{" "}
         <Link className="underline" href="/privacy">Gizlilik Politikası</Link> ve{" "}
-        <Link className="underline" href="/kvkk">KVKK Aydınlatma Metni</Link>'ne tabidir. Hesabınızı istediğiniz zaman
+        <Link className="underline" href="/kvkk">KVKK Aydınlatma Metni</Link>&apos;ne tabidir. Hesabınızı istediğiniz zaman
         silebilirsiniz.
       </P>
 
@@ -110,7 +110,7 @@ export default async function TermsPage() {
 
       <H2>13. Uygulanacak hukuk</H2>
       <P>
-        Bu koşullara Türkiye Cumhuriyeti hukuku uygulanır; uyuşmazlıklarda {COMPANY.name}'nin bulunduğu yerin mahkemeleri
+        Bu koşullara Türkiye Cumhuriyeti hukuku uygulanır; uyuşmazlıklarda {COMPANY.name}&apos;nin bulunduğu yerin mahkemeleri
         ve icra daireleri yetkilidir. Tüketici sıfatıyla sahip olduğunuz zorunlu yetki kuralları saklıdır.
       </P>
 

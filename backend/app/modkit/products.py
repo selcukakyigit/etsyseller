@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.listings.models import ListingCache
 from app.drawings import cad
-from app.modkit import material_types, materials, pricebook
+from app.modkit import material_types, pricebook
 from app.modkit.access import EntityAccess
 from app.modkit.models import ProductMeasure
 from app.shops.models import Shop

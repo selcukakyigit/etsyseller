@@ -577,8 +577,8 @@ export default function ChatPanel({
                     ) : i.content_type && !i.content_type.startsWith("image/") ? (
                       <FileChip key={i.id} name={i.filename ?? "dosya"} size="h-20 w-20" />
                     ) : (
-                      // eslint-disable-next-line @next/next/no-img-element
                       <button key={i.id} type="button" onClick={() => setZoomSrc(img(i.url))} className="cursor-zoom-in" aria-label={t("Büyüt", "Enlarge")}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={img(i.url)} alt="" className="h-20 w-20 rounded-lg object-cover" />
                       </button>
                     ),

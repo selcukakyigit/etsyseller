@@ -44,13 +44,13 @@ export default async function AiDataPage() {
       <H2>Sesle yazma</H2>
       <P>
         Sohbetteki mikrofon düğmesi tarayıcınızın kendi konuşma tanımasını kullanır. Konuşmanız sunucularımıza gönderilmez ve
-        kaydedilmez; metne çevrilmesi tarayıcınızın sağlayıcısı tarafından yapılır (ör. Chrome'da Google). Mikrofon yalnızca
+        kaydedilmez; metne çevrilmesi tarayıcınızın sağlayıcısı tarafından yapılır (ör. Chrome&apos;da Google). Mikrofon yalnızca
         düğmeye bastığınızda ve siz izin verdiğinizde açılır; yazıya çevrilen metni göndermeden önce düzenleyebilirsiniz.
       </P>
 
       <H2>Taahhütlerimiz</H2>
       <UL>
-        <li>Etsy'den aldığımız verileri yapay zekâ modellerini eğitmek için kullanmayız ve sağlayıcılarla eğitim için kullanılmamasını esas alan API koşullarıyla çalışırız.</li>
+        <li>Etsy&apos;den aldığımız verileri yapay zekâ modellerini eğitmek için kullanmayız ve sağlayıcılarla eğitim için kullanılmamasını esas alan API koşullarıyla çalışırız.</li>
         <li>AI çıktıları siz kontrol edip onaylamadan Etsy mağazanıza yazılmaz.</li>
         <li>İstediğiniz zaman Ayarlar bölümünden AI özelliklerini kapatabilirsiniz; kapalıyken içeriğiniz AI sağlayıcılarına gönderilmez.</li>
       </UL>

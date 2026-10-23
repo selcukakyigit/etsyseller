@@ -1,6 +1,6 @@
 import datetime as dt
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.sql import false as sa_false, true as sa_true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 

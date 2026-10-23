@@ -1,4 +1,3 @@
-import json
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -14,7 +13,6 @@ from app.finance import service as fin_service
 from app.shops import reference_cache
 from app.etsy import shipping as etsy_shipping
 from app.etsy.client import EtsyAuthError, EtsyClient
-from app.listings.models import ListingCache
 from app.shops import service
 from app.shops import shipping_admin as admin
 from app.shops.shipping_admin import ProcessingProfileIn, ReturnPolicyIn, ShippingProfileIn, ShopSectionIn

@@ -707,7 +707,6 @@ export default function MediaManager({
 
       {videoView && (
         <Modal z={120} widthClass="max-w-2xl" title="Video" onClose={() => setVideoView(null)}>
-          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
           <video src={videoView.video_url} controls autoPlay className="max-h-[70vh] w-full rounded-lg bg-black" />
         </Modal>
       )}

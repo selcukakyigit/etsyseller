@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.ai import catalog, video_gen
+from app.ai import video_gen
 from app.ai.image_gen import ImageGenError
 from app.auth.models import User
 from app.billing import metering, settings as credit_settings
