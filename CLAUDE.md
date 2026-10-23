@@ -85,3 +85,4 @@ The research pool is shared by all shops. Cost and load must follow the number o
 - **Avoid homogenised advice.** Data is shared, scoring is per listing (photo, materials, variations, own sales). A crowding counter (`suggestion_exposure`, counts only, no shop ids) lowers the score of phrases already suggested to many shops. Competitor frequency alone is never evidence: demand + result count + own sales together.
 - **Findings are stored**, with finding id, listing version, analysis version and status; only a check or a new analysis closes one, never the LLM's say-so. Scores are versioned.
 - Admin lists are paginated; counts are estimated or cached.
+- **Tests:** `cd backend && .venv/Scripts/python -m pytest tests` (about 3 s). They run on a temporary SQLite with a fake provider and never touch the real database or DataForSEO; add a test with every change to `app/research/`.
