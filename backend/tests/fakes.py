@@ -35,7 +35,8 @@ class FakeProvider:
         if seed in self.empty_seeds:
             return ProviderResponse("fake/suggest", [], 0.01, 5)
         if questions:
-            return ProviderResponse("fake/questions", [MetricRecord(f"how to use {seed}", search_volume=260), MetricRecord(f"what is {seed}", search_volume=90)], 0.02, 5)
+            junk = [MetricRecord(f"dolphin {seed}", search_volume=80), MetricRecord(f"islamic {seed}", search_volume=70)]  # "do"/"is" ile başlayan ama soru olmayan
+            return ProviderResponse("fake/questions", [MetricRecord(f"how to use {seed}", search_volume=260), MetricRecord(f"what is {seed}", search_volume=90)] + junk, 0.02, 5)
         # 12 ay: ilk 3 ay 100, son 3 ay 200 (+%100 eğilim)
         monthly = [[2025, m, 100] for m in (11, 12)] + [[2026, 1, 100]] + [[2026, m, 150] for m in range(2, 8)] + [[2026, m, 200] for m in (8, 9, 10)]
         records = [MetricRecord(seed, search_volume=210, intent="commercial", cpc=0.84, competition=1.0, monthly=monthly)]

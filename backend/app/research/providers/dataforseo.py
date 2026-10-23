@@ -10,6 +10,7 @@ import httpx
 
 from app.research.providers.base import Credentials
 from app.research.terms import normalize
+from app.research.questions import QUESTION_REGEX, is_question
 from app.research.records import MetricRecord, ProviderError, ProviderResponse, TrendRecord
 
 BASE = "https://api.dataforseo.com/v3"
@@ -20,7 +21,6 @@ _TRANSIENT_CODES = {40202, 50000, 50301, 50302, 50303}
 
 TREND_WEEKS = 13  # son 13 hafta ile geçen yılın aynı 13 haftası karşılaştırılır (mevsim etkisi böylece ayrılır)
 TREND_HISTORY_DAYS = 16 * 31  # ~16 ay: hem son pencereyi hem bir yıl öncesini kapsar; 9 aydan uzun aralık haftalık veri döner
-QUESTION_REGEX = "^(how|what|why|when|where|which|who|can|does|do|is|are|should|will|are|was) "
 QUESTION_LIMIT = 100
 LOCATIONS = {"US": 2840, "GB": 2826, "CA": 2124, "AU": 2036, "DE": 2276, "FR": 2250, "TR": 2792}
 
@@ -163,7 +163,7 @@ class DataForSeoProvider:
                 items.insert(0, result["seed_keyword_data"])
             for item in items:
                 record = _labs_record(item)
-                if record is not None:
+                if record is not None and (not questions or is_question(record.term)):  # soru listesinde yalnızca gerçek sorular (süzgece güvenmeden doğrulanır)
                     records.append(record)
         return ProviderResponse(endpoint=endpoint, records=records, cost_usd=cost, duration_ms=ms)
 

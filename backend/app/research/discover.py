@@ -16,6 +16,7 @@ from app.core.limits import SlidingWindow
 from app.listings.models import ListingCache
 from app.research import bands, exposure, policy, service
 from app.research.models import SavedKeyword
+from app.research.questions import is_question
 from app.research.terms import normalize, researchable
 from app.shops.models import Shop
 
@@ -119,7 +120,8 @@ def search(db: Session, shop: Shop, seed: str, mode: str = "all", refresh: bool 
         return SearchResult(seed=term, status="invalid")
     questions = mode == "questions"
     found = service.expand(db, term, shop_id=shop.id, limit=QUESTIONS_MAX if questions else MAX_RESULTS, questions=questions, force=refresh)
-    terms = list(found.metrics)[:MAX_RESULTS]
+    # Soru listesinde yalnızca gerçek sorular gösterilir (sağlayıcı süzgecinin eski, yanlış kayıtlarına karşı da korur).
+    terms = [t for t in found.metrics if not questions or is_question(t)][:MAX_RESULTS]
     own = service.peek(db, [term])
     if not terms:
         status = "pending" if found.pending else "refused" if found.refused else "empty"
