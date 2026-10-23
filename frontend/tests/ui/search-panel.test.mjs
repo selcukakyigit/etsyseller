@@ -312,6 +312,13 @@ eq(monthRow, ["Eki", "Kas", "Ara", "Oca", "Şub", "Mar", "Nis", "May", "Haz", "T
 eq([...chart.querySelectorAll("[title] > span:nth-of-type(3)")].map((e) => e.textContent).filter(Boolean), ["2025", "2026"], "yıl ilk çubukta ve Ocak'ta yazılı");
 eq([...chart.querySelectorAll("[title] > span:first-of-type")].map((e) => e.textContent)[0], "10", "her çubuğun üstünde değer");
 eq([...chart.querySelectorAll("[title] > span:first-of-type")].map((e) => e.textContent)[11].length < 8, true, "büyük sayılar kısa yazılır");
+// profil çıkarılamadıysa (çok az aranan kelime) sessizce boş kalmaz, nedeni yazılır
+globalThis.__api = async (path) => (path.includes("/discover/season") ? { season: { monthly: [], peak_months: [], seasonal: false, pending: false } } : api14(path));
+await act(async () => detailRoot.render(h(KeywordDetailModal, { shopId: 1, item: item("metal tree farm sign", 10, { monthly: [10, 10, 20, 10, 10, 10, 0, 10, 0, 10, 10, 10], last_month: "2026-09" }), onClose: () => {} })));
+await act(async () => { await sleep(60); });
+const lastDlg = [...document.querySelectorAll("[role=dialog]")].pop();
+eq(lastDlg.textContent.includes("hesaplanamadı"), true, "boş mevsimsellik için açıklama görünmeli");
+eq(Boolean(lastDlg.querySelector("[data-testid=season-pending]")), false, "iskelet takılı kalmamalı");
 console.log("16 kelime penceresi OK");
 globalThis.__api = prevApi;
 

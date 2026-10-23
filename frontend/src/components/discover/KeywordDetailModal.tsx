@@ -125,11 +125,11 @@ export default function KeywordDetailModal({ shopId, item, onClose, onAnalyze }:
         </div>
 
         <div style={{ minHeight: 120 }}>
-          {season ? (
+          {season && (season.pending || season.monthly.length === 12) ? (
             <SeasonChart season={season} />
-          ) : state?.done ? (
+          ) : state?.done || season ? (
             <p className="mt-4 border-t border-neutral-100 pt-3 text-xs text-neutral-400 dark:border-neutral-800 dark:text-neutral-500">
-              {t("Mevsimsellik bu kelime için hesaplanamadı (çok az aranıyor olabilir).", "Seasonality could not be computed for this word (it may be searched too rarely).")}
+              {t("Mevsimsellik bu kelime için hesaplanamadı: Google Trends güvenilir bir aylık desen çıkaracak kadar arama görmüyor (genellikle ayda birkaç yüz aramanın altındaki kelimeler).", "Seasonality could not be computed for this word: Google Trends does not see enough searches to draw a reliable monthly pattern (usually words below a few hundred searches a month).")}
             </p>
           ) : (
             <SeasonChart season={{ monthly: [], peak_months: [], seasonal: false, pending: true }} />
