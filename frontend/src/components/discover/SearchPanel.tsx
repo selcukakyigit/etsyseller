@@ -32,6 +32,7 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [measuring, setMeasuring] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [etsy, setEtsy] = useState<Record<string, number | null>>({});
   const [polls, setPolls] = useState(0);
 
@@ -44,10 +45,10 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
   const v = useResultsView(items, result?.seed ?? "", etsy);
 
   const load = useCallback(
-    async (q: string, m: SearchMode) => {
+    async (q: string, m: SearchMode, refresh = false) => {
       const k = keyOf(q, m);
       try {
-        const data = await discoverApi.search(shopId, q, m);
+        const data = await discoverApi.search(shopId, q, m, refresh);
         writePageCache(k, data);
         setResults((prev) => ({ ...prev, [k]: data }));
         setError(null);
@@ -80,6 +81,15 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
     v.clearSelection();
     v.setFilters(EMPTY_FILTERS); // her listenin kendi süzgeci: önceki listenin grup/kelime süzgeci diğer listeyi boşaltmasın
     if (!(results[keyOf(query, next)] ?? readPageCache(keyOf(query, next)))) await load(query, next);
+  }
+
+  // Google verisini yeniden çeker (liste yenisiyle değişir); eski liste yenisi gelene kadar görünür, sayfa kendiliğinden yoklar.
+  async function refresh() {
+    if (!query) return;
+    setPolls(0);
+    setRefreshing(true);
+    await load(query, mode, true);
+    setRefreshing(false);
   }
 
   // Sonuç hazırlanıyorsa (ya da yenileniyorsa) aynı aramayı kısa aralıkla yeniden sorar; hazır olunca durur.
@@ -115,7 +125,8 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
 
   // Görünen listenin sıralamadaki ilk ölçülmemiş kelimeleri için Etsy'deki ilan sayısı.
   async function measureEtsy() {
-    const todo = v.view.filter((i) => etsy[i.term] === undefined).slice(0, ETSY_RESULTS_MAX).map((i) => i.term);
+    // Varyantlar Etsy'de aynı aramadır: yalnızca grup temsilcileri ölçülür (ilk 20 grup, kota boşa gitmesin).
+    const todo = v.rows.filter((r) => etsy[r.item.term] === undefined).slice(0, ETSY_RESULTS_MAX).map((r) => r.item.term);
     if (todo.length === 0) {
       toast.success(t("Görünen kelimelerin Etsy ilan sayıları zaten ölçüldü. Süzgeçle ya da sıralayarak başka kelimeleri öne al.", "Etsy listing counts for the shown keywords are already measured. Filter or sort to bring other keywords forward."));
       return;
@@ -218,7 +229,17 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
                 ))}
               </div>
 
-              <FilterBar filters={v.filters} onChange={v.setFilters} groups={v.groups} shown={v.view.length} total={result.items.length} volume={v.volume} />
+              <FilterBar
+                filters={v.filters}
+                onChange={v.setFilters}
+                groups={v.groups}
+                shown={v.view.length}
+                total={result.items.length}
+                volume={v.volume}
+                rowCount={v.rows.length}
+                showVariants={v.showVariants}
+                onShowVariants={v.setShowVariants}
+              />
               <div className="flex flex-wrap items-center gap-2">
                 {mode === "all" && (
                   <Button busy={measuring} onClick={() => void measureEtsy()}>
@@ -226,9 +247,17 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
                   </Button>
                 )}
                 <Button onClick={() => downloadCsv(`discover-${mode}-${result.seed.replace(/\s+/g, "-")}.csv`, toCsv(v.view, etsy))}>{t("CSV indir", "Download CSV")}</Button>
+                <Button
+                  busy={refreshing}
+                  disabled={waiting}
+                  onClick={() => void refresh()}
+                  title={t("Google verisini yeniden çeker ve listeyi yenisiyle değiştirir (saatte bir; günlük yeni araştırma hakkından düşer)", "Fetches the Google data again and replaces the list (once an hour; counts against your daily new searches)")}
+                >
+                  {t("Yeniden araştır", "Research again")}
+                </Button>
               </div>
               <KeywordTable
-                items={v.view}
+                rows={v.rows}
                 selected={v.selected}
                 onToggle={v.toggle}
                 onToggleMany={v.toggleMany}

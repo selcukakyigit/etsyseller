@@ -91,6 +91,34 @@ export function wordGroups(items: DiscoverItem[], seed: string, limit = 14): { w
     .map(([word, count]) => ({ word, count }));
 }
 
+const VARIANT_SKIP = new Set(["for", "the", "a", "an", "of", "and", "to", "in", "on", "with", "at", "by", "from"]);
+const stem = (w: string) => (w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w);
+
+/** Aynı aramanın söz dizimi varyantlarını eşleyen anahtar: kelime sırası, tekrar eden kelime, çoğul ve "for/the/on…" gibi bağlaçlar yok sayılır
+ * ("art metal wall", "metal art for the wall", "metal wall art for walls" -> aynı anahtar). Google bunlara aynı hacmi, Etsy aynı ilan sayısını verir. */
+export function variantKey(term: string): string {
+  const key = [...new Set(words(term).filter((w) => !VARIANT_SKIP.has(w)).map(stem))].sort().join(" ");
+  return key || term.toLowerCase();
+}
+
+export type Row = { item: DiscoverItem; variants: DiscoverItem[] };
+
+/** Listeyi (mevcut sıralamasıyla) varyant gruplarına toplar: her grubun ilk kelimesi temsilcidir, diğerleri `variants` olur. Aynı hacimdeki varyantlar
+ * arasında en kısa olan (en sade yazılış) temsilci seçilir. */
+export function collapseVariants(items: DiscoverItem[]): Row[] {
+  const rows = new Map<string, Row>();
+  for (const item of items) {
+    const key = variantKey(item.term);
+    const row = rows.get(key);
+    if (!row) rows.set(key, { item, variants: [] });
+    else if (item.volume === row.item.volume && item.term.length < row.item.term.length) {
+      row.variants.unshift(row.item);
+      row.item = item;
+    } else row.variants.push(item);
+  }
+  return [...rows.values()];
+}
+
 /** Aylık arama ÷ Etsy ilan sayısı: yüksekse az rekabetle çok arama (fırsat). Ölçülmediyse ya da ilan yoksa null. */
 export function opportunity(volume: number | null, etsyCount: number | null | undefined): number | null {
   return volume && etsyCount ? volume / etsyCount : null;

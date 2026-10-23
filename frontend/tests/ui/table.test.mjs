@@ -1,5 +1,5 @@
 // Keşfet tablosunun saf mantığı: süzme, sıralama, kelime grupları, fırsat oranı, CSV.
-import { applyFilters, sortItems, wordGroups, toCsv, opportunity, EMPTY_FILTERS } from "../../src/components/discover/table.ts";
+import { applyFilters, sortItems, wordGroups, toCsv, opportunity, variantKey, collapseVariants, EMPTY_FILTERS } from "../../src/components/discover/table.ts";
 
 const item = (term, volume, extra = {}) => ({ term, demand: null, volume, cpc: null, competition: null, monthly: [], trend_pct: null, intent: null, crowded: false, mine: false, saved: false, ...extra });
 const items = [item("metal wall art", 12100), item("outdoor metal wall art", 2900, { intent: "commercial" }), item("large metal wall art", 1900, { mine: true }), item("how to hang metal wall art", 210), item("metal art for walls", null), item("large outdoor metal wall art", 1000)];
@@ -22,5 +22,17 @@ eq(terms(sortItems(items, { key: "etsy", dir: "asc" }, { "metal wall art": 50, "
 eq(wordGroups(items, "metal wall art").slice(0, 2), [{ word: "large", count: 2 }, { word: "outdoor", count: 2 }], "kelime grupları (tohum kelimeleri hariç)");
 eq(opportunity(1000, 50), 20, "fırsat"); eq(opportunity(null, 5), null, "fırsat yok"); eq(opportunity(100, 0), null, "ilan yok");
 eq(toCsv([item('say "x", y', 5, { cpc: 0.5, competition: 20, trend_pct: -3, intent: "commercial" })], { 'say "x", y': 7 }).split("\r\n")[1], '"say ""x"", y",5,0.5,20,-3,commercial,7', "CSV kaçışı");
+// varyantlar: kelime sırası, çoğul, bağlaçlar ve tekrar eden kelime aynı aramadır
+eq(variantKey("art metal wall"), variantKey("metal wall art"), "kelime sırası");
+eq(variantKey("metal art for the wall"), variantKey("metal wall art"), "bağlaçlar");
+eq(variantKey("metal wall art for walls"), variantKey("metal wall art"), "çoğul");
+eq(variantKey("metal metal wall art"), variantKey("metal wall art"), "tekrar eden kelime");
+eq(variantKey("outdoor metal wall art") === variantKey("metal wall art"), false, "farklı anlam ayrı kalır");
+eq(variantKey("glass sign") === variantKey("glas sign"), false, "'ss' ile biten kelime çoğul sayılmaz");
+const dup = [item("art metal wall", 18100), item("metal art for the wall", 18100), item("metal wall art", 18100), item("outdoor metal wall art", 2900)];
+const rowsC = collapseVariants(dup);
+eq(rowsC.length, 2, "iki grup"); eq(rowsC[0].item.term, "art metal wall", "aynı hacimde en kısa, sonra ilk"); eq(rowsC[0].variants.length, 2, "iki varyant");
+eq(collapseVariants([item("metal art for the wall", 18100), item("metal wall art", 18100)])[0].item.term, "metal wall art", "aynı hacimde kısa olan temsilci");
+eq(collapseVariants([item("metal wall art", 18100), item("metal art wall", 90)])[0].item.term, "metal wall art", "farklı hacimde ilk (yüksek) kalır");
 if (failed) { console.log(failed + " HATA"); process.exit(1); }
 console.log("table.test OK");

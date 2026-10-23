@@ -52,7 +52,8 @@ export type DiscoverSaved = { collections: SavedCollection[]; collection: string
 const base = (shopId: number) => `/api/shops/${shopId}/discover`;
 
 export const discoverApi = {
-  search: (shopId: number, q: string, mode: SearchMode = "all") => apiRequest<DiscoverSearch>(`${base(shopId)}/search?q=${encodeURIComponent(q)}&mode=${mode}`),
+  search: (shopId: number, q: string, mode: SearchMode = "all", refresh = false) =>
+    apiRequest<DiscoverSearch>(`${base(shopId)}/search?q=${encodeURIComponent(q)}&mode=${mode}${refresh ? "&refresh=true" : ""}`),
   saved: (shopId: number, collection?: string) =>
     apiRequest<DiscoverSaved>(`${base(shopId)}/saved${collection === undefined ? "" : `?collection=${encodeURIComponent(collection)}`}`),
   save: (shopId: number, terms: string[], collection: string) =>

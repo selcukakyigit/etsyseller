@@ -5,7 +5,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.research import budget, credentials, jobs, policy, pool
@@ -190,8 +190,11 @@ def _enqueue_trends(db: Session, stale: list[str], market: str, language: str, s
 
 def expand(
     db: Session, seed: str, *, market: str | None = None, language: str | None = None, shop_id: int | None = None, limit: int = 100, questions: bool = False,
+    force: bool = False,
 ) -> Lookup:
-    """Tohum kelimenin önerileri (havuzdan); `questions`: yalnızca soru kalıpları. Daha önce genişletilmediyse ya da süresi dolduysa iş kuyruğa alınır."""
+    """Tohum kelimenin önerileri (havuzdan); `questions`: yalnızca soru kalıpları. Daha önce genişletilmediyse ya da süresi dolduysa iş kuyruğa alınır.
+    `force`: süresi dolmasını beklemeden yeniden araştır (aynı tohum için saatte en çok bir kez); sonuç listesi yenisiyle DEĞİŞTİRİLİR. Çalışan bir iş varsa
+    (hangi yoldan açılmış olursa olsun) `pending` işaretlenir, böylece ekran bitene kadar yoklar."""
     market, language = _market(market, language)
     term = normalize(seed)
     out = Lookup()
@@ -210,20 +213,32 @@ def expand(
     for r in related:
         if r.id in latest:
             out.metrics[r.term] = _view(r.term, latest[r.id], now)
-    newest = max((m.measured_at for m in latest.values()), default=None)
+    # Listenin yaşı: ilişkilerin son görülme zamanı (ölçüm satırlarının tarihi değil; taze kelimeler için yeni ölçüm satırı eklenmez).
+    observed = db.scalar(select(func.max(KeywordLink.observed_at)).where(KeywordLink.seed_id == seed_row.id, KeywordLink.relation == relation))
     ttl = dt.timedelta(days=float(policy.get("research_ttl_suggest_days")))
     key = f"{'questions' if questions else 'suggest'}:{market}:{language}:{term}"
-    if (newest is None or now - newest > ttl) and not jobs.done_since(db, key, now - ttl):
-        out.refused = _available(db, market)
-        if out.refused is None:
-            try:
-                jobs.enqueue(db, kind="suggest", provider=DEFAULT_PROVIDER, market=market, language=language, key=key,
-                             payload={"seed": term, "limit": limit, "questions": questions}, shop_id=shop_id)
-                out.pending = 1
-            except budget.QueueRefused as exc:
-                out.refused = exc.reason
+    refresh_key = f"{key}:r{int(now.timestamp() // 3600)}"
+    payload = {"seed": term, "limit": limit, "questions": questions}
+    if jobs.active_by_key(db, key) or jobs.active_by_key(db, refresh_key):
+        out.pending = 1  # çalışan iş var: ekran bitene kadar yoklasın
+    elif force and not jobs.done_since(db, refresh_key, now - dt.timedelta(hours=1)):
+        out.pending, out.refused = _enqueue_suggest(db, refresh_key, payload, market, language, shop_id)
+    elif (observed is None or now - observed > ttl) and not jobs.done_since(db, key, now - ttl):
+        out.pending, out.refused = _enqueue_suggest(db, key, payload, market, language, shop_id)
     db.commit()
     return out
+
+
+def _enqueue_suggest(db: Session, key: str, payload: dict, market: str, language: str, shop_id: int | None) -> tuple[int, str | None]:
+    """(bekleyen iş sayısı, reddedilme nedeni)."""
+    refused = _available(db, market)
+    if refused is not None:
+        return 0, refused
+    try:
+        jobs.enqueue(db, kind="suggest", provider=DEFAULT_PROVIDER, market=market, language=language, key=key, payload=payload, shop_id=shop_id)
+        return 1, None
+    except budget.QueueRefused as exc:
+        return 0, exc.reason
 
 
 def request_refresh(db: Session, terms: list[str], *, market: str | None = None, language: str | None = None) -> Lookup:

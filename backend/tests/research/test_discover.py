@@ -161,6 +161,35 @@ def test_suggestions_do_not_append_rows_for_terms_that_already_have_fresh_metric
     assert db.query(KeywordMetric).count() == rows_after_first + 1, "yalnızca tohumun kendi ölçümü yenilenir"
 
 
+def test_refresh_replaces_the_list_and_is_limited_to_once_an_hour(db, provider):
+    _research(db, SHOP_A)
+    assert provider.count("suggest") == 1
+    before = {i.term for i in discover.search(db, SHOP_A, "metal farm sign").items}
+    assert "metal farm sign big" in before
+
+    provider.keep_only = {"metal farm sign mid"}  # yeni listede yalnızca bu öneri var
+    refreshing = discover.search(db, SHOP_A, "metal farm sign", refresh=True)
+    assert refreshing.stale, "yenileme sürerken eski liste gösterilir ve ekran yoklamaya devam eder"
+    again = discover.search(db, SHOP_A, "metal farm sign")  # yoklama (refresh olmadan): çalışan iş hâlâ bildirilir
+    assert again.stale and db.query(ResearchJob).filter(ResearchJob.status.in_(("queued", "running"))).count() == 1
+    worker.run_once(db)
+    after = discover.search(db, SHOP_A, "metal farm sign")
+    assert not after.stale and {i.term for i in after.items} == {"metal farm sign mid"}, "eski öneriler listeden çıkar"
+    assert provider.count("suggest") == 2
+
+    discover.search(db, SHOP_A, "metal farm sign", refresh=True)  # aynı saat içinde ikinci yenileme sağlayıcıya gitmez
+    worker.run_once(db)
+    assert provider.count("suggest") == 2
+
+
+def test_refresh_counts_against_the_daily_new_search_allowance(db, provider):
+    _research(db, SHOP_A)
+    app_settings.set_many(db, {"research_shop_daily_searches": 1})
+    blocked = discover.search(db, SHOP_A, "metal farm sign", refresh=True)
+    assert blocked.refused == "shop_searches" and blocked.status == "ready", "eski liste gösterilmeye devam eder, yenileme reddedilir"
+    assert db.query(ResearchJob).filter(ResearchJob.status == "queued").count() == 0
+
+
 @pytest.fixture
 def client(db, provider):
     from app import main

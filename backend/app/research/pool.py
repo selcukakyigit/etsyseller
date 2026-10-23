@@ -110,6 +110,10 @@ def link_suggestions(db: Session, seed_id: int, ordered: list[KeywordTerm], rela
     """Tohum -> öneri (ya da soru) ilişkileri; varsa sırası güncellenir."""
     now = dt.datetime.utcnow()
     existing = {l.keyword_id: l for l in db.scalars(select(KeywordLink).where(KeywordLink.seed_id == seed_id, KeywordLink.relation == relation))}
+    keep = {kw.id for kw in ordered if kw.id != seed_id}
+    for stale_id, stale_link in existing.items():
+        if stale_id not in keep:
+            db.delete(stale_link)  # yeni listede yok: eski listenin kalıntısı olarak kalmasın
     for rank, kw in enumerate(ordered):
         if kw.id == seed_id:
             continue

@@ -21,7 +21,7 @@ export default function SavedPanel({ shopId, refreshKey, onChanged }: { shopId: 
   const [collection, setCollection] = useState<string | undefined>(undefined);
   const { data, error, reload } = useApiData(`discover:saved:${shopId}:${collection ?? "_first"}:${refreshKey}`, () => discoverApi.saved(shopId, collection));
   const [busy, setBusy] = useState(false);
-  const v = useResultsView(data?.items ?? NO_ITEMS, "", NO_ETSY);
+  const v = useResultsView(data?.items ?? NO_ITEMS, "", NO_ETSY, false);
 
   async function remove(terms: string[]) {
     if (!data || terms.length === 0) return;
@@ -68,14 +68,24 @@ export default function SavedPanel({ shopId, refreshKey, onChanged }: { shopId: 
         })}
       </div>
 
-      <FilterBar filters={v.filters} onChange={v.setFilters} groups={v.groups} shown={v.view.length} total={data.items.length} volume={v.volume} />
+      <FilterBar
+        filters={v.filters}
+        onChange={v.setFilters}
+        groups={v.groups}
+        shown={v.view.length}
+        total={data.items.length}
+        volume={v.volume}
+        rowCount={v.rows.length}
+        showVariants={v.showVariants}
+        onShowVariants={v.setShowVariants}
+      />
       <div className="flex flex-wrap items-center gap-2">
         <Button onClick={() => downloadCsv(`saved-${(data.collection || "general").replace(/\s+/g, "-")}.csv`, toCsv(v.view, NO_ETSY))}>{t("CSV indir", "Download CSV")}</Button>
       </div>
 
       <div className="min-h-[12rem]">
         <KeywordTable
-          items={v.view}
+          rows={v.rows}
           selected={v.selected}
           onToggle={v.toggle}
           onToggleMany={v.toggleMany}

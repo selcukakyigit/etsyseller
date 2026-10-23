@@ -82,5 +82,42 @@ script = [ready(ALL)];
 await search("another seed");
 eq(tab("Tüm kelimeler").getAttribute("aria-selected"), "true", "yeni arama tüm kelimelere döner");
 console.log("7 yeni arama OK");
+
+// 8) varyantlar tek satıra toplanır; "+N" ile açılır; "Varyasyonları ayır" düz liste verir
+const VARIANTS = [item("metal wall art", 18100), item("art metal wall", 18100), item("metal art for the wall", 18100), item("outdoor metal wall art", 2900)];
+script = [ready(VARIANTS)];
+await search("variant seed");
+eq(rows().length, 2, "3 varyant tek satıra toplanmalı (+ 'outdoor…' ayrı)");
+const plus = [...document.querySelectorAll("tbody button[aria-expanded]")][0];
+eq(plus.textContent.trim(), "+2", "+N rozeti");
+await act(async () => plus.dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
+eq(rows().length, 4, "+N açılınca varyantlar görünür");
+await act(async () => plus.dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
+eq(rows().length, 2, "tekrar kapanır");
+const split = [...document.querySelectorAll("label")].find((l) => l.textContent.includes("Varyasyonları ayır")).querySelector("input");
+await act(async () => split.dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
+eq(rows().length, 4, "'Varyasyonları ayır' düz liste");
+console.log("8 varyant grupları OK");
+
+// 9) tablo sabit yükseklikte kendi içinde kayar ve başlığı yapışkandır; satırlar zebra
+const scroller = document.querySelector("tbody").closest("div");
+eq(/overflow-auto/.test(scroller.className) && /max-h-/.test(scroller.className), true, "tablo kendi içinde kaymalı (sayfayı uzatmamalı)");
+eq(/sticky/.test(document.querySelector("thead").className), true, "başlık yapışkan");
+const tones = [...document.querySelectorAll("tbody tr")].map((r) => (r.className.includes("neutral-100/70") ? "gri" : "beyaz"));
+eq(tones.slice(0, 4), ["beyaz", "gri", "beyaz", "gri"], "zebra: iki ton sırayla");
+console.log("9 kaydırma, yapışkan başlık, zebra OK");
+
+// 10) Yeniden araştır: refresh=true gider, eski liste görünürken yoklar, yeni liste eskisini değiştirir
+calls = [];
+script = [{ ...ready(VARIANTS), stale: true }, ready([item("rustic metal sign", 500)])];
+const refreshBtn = [...document.querySelectorAll("button")].find((b) => b.textContent.includes("Yeniden araştır"));
+await act(async () => refreshBtn.dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
+eq(calls[0].includes("refresh=true"), true, "refresh=true gönderilmeli");
+eq(text().includes("güncelleniyor"), true, "eski liste + 'güncelleniyor' görünmeli");
+await act(async () => { await sleep(2300); });
+eq(calls.length, 2, "bir yoklama");
+eq(calls[1].includes("refresh=true"), false, "yoklama yeniden araştırma başlatmaz");
+eq(rows(), ["rustic metal sign"], "yeni liste eskisini değiştirdi");
+console.log("10 yeniden araştır OK");
 console.log("PANEL DAVRANIŞ TESTLERİ GEÇTİ");
 process.exit(0);

@@ -2,15 +2,18 @@
 
 import { useCallback, useMemo, useState } from "react";
 import type { DiscoverItem } from "@/lib/discoverApi";
-import { EMPTY_FILTERS, Filters, Sort, SortKey, applyFilters, sortItems, wordGroups } from "./table";
+import { EMPTY_FILTERS, Filters, Row, Sort, SortKey, applyFilters, collapseVariants, sortItems, wordGroups } from "./table";
 
 /** Bir kelime listesinin görünümü: süzgeçler, sıralama, seçim ve kelime grupları. Araştırma sonucu ve kaydedilenler aynı mantığı kullanır. */
-export function useResultsView(items: DiscoverItem[], seed: string, etsy: Record<string, number | null>) {
+export function useResultsView(items: DiscoverItem[], seed: string, etsy: Record<string, number | null>, collapseByDefault = true) {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [sort, setSort] = useState<Sort>({ key: "volume", dir: "desc" });
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showVariants, setShowVariants] = useState(!collapseByDefault);
 
   const view = useMemo(() => sortItems(applyFilters(items, filters), sort, etsy), [items, filters, sort, etsy]);
+  // Tabloda gösterilen satırlar: varyantlar tek satıra toplanır (isteğe bağlı açılır); CSV ve sayılar `view`'daki TÜM kelimeleri kullanır.
+  const rows = useMemo<Row[]>(() => (showVariants ? view.map((item) => ({ item, variants: [] })) : collapseVariants(view)), [view, showVariants]);
   const groups = useMemo(() => wordGroups(items, seed), [items, seed]);
   const volume = useMemo(() => view.reduce((sum, i) => sum + (i.volume ?? 0), 0), [view]);
 
@@ -35,5 +38,5 @@ export function useResultsView(items: DiscoverItem[], seed: string, etsy: Record
   }, []);
   const clearSelection = useCallback(() => setSelected(new Set()), []);
 
-  return { filters, setFilters, sort, onSort, selected, toggle, toggleMany, clearSelection, view, groups, volume };
+  return { filters, setFilters, sort, onSort, selected, toggle, toggleMany, clearSelection, view, rows, showVariants, setShowVariants, groups, volume };
 }

@@ -22,10 +22,10 @@ class SavedIn(BaseModel):
 
 @router.get("/search")
 def search(
-    background: BackgroundTasks, q: str = Query(min_length=1, max_length=120), mode: str = Query("all", pattern="^(all|questions)$"),
+    background: BackgroundTasks, q: str = Query(min_length=1, max_length=120), mode: str = Query("all", pattern="^(all|questions)$"), refresh: bool = False,
     shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db),
 ):
-    result = discover.search(db, shop, q, mode)
+    result = discover.search(db, shop, q, mode, refresh)
     if result.status == "pending" or result.stale:
         background.add_task(run_queue)  # sağlayıcıya istek yanıttan SONRA arka planda gider (dakikalık iş de aynı kuyruğu işler; kilit çift çalışmayı önler)
     return result.as_dict()

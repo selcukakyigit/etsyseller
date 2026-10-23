@@ -111,14 +111,14 @@ def _item(term: str, metric: "service.MetricView | None", crowd: dict[str, int],
     )
 
 
-def search(db: Session, shop: Shop, seed: str, mode: str = "all") -> SearchResult:
+def search(db: Session, shop: Shop, seed: str, mode: str = "all", refresh: bool = False) -> SearchResult:
     """Tohum kelimenin önerileri (havuzdan); `mode="questions"`: yalnızca soru kalıpları (ayrı bir iş, yalnızca istenince çekilir).
     Havuzda yoksa/eskiyse araştırma işi kuyruğa alınır (`pending`); sonuç geldikçe aynı çağrı dolu döner."""
     term = normalize(seed)
     if not researchable(term):
         return SearchResult(seed=term, status="invalid")
     questions = mode == "questions"
-    found = service.expand(db, term, shop_id=shop.id, limit=QUESTIONS_MAX if questions else MAX_RESULTS, questions=questions)
+    found = service.expand(db, term, shop_id=shop.id, limit=QUESTIONS_MAX if questions else MAX_RESULTS, questions=questions, force=refresh)
     terms = list(found.metrics)[:MAX_RESULTS]
     own = service.peek(db, [term])
     if not terms:

@@ -17,6 +17,9 @@ export default function FilterBar({
   shown,
   total,
   volume,
+  rowCount,
+  showVariants,
+  onShowVariants,
 }: {
   filters: Filters;
   onChange: (f: Filters) => void;
@@ -24,6 +27,10 @@ export default function FilterBar({
   shown: number;
   total: number;
   volume: number;
+  /** Tabloda görünen satır sayısı (varyantlar toplanmışsa `shown`dan azdır) */
+  rowCount: number;
+  showVariants: boolean;
+  onShowVariants: (v: boolean) => void;
 }) {
   const { t, locale } = useT();
   const set = (patch: Partial<Filters>) => onChange({ ...filters, ...patch });
@@ -46,6 +53,10 @@ export default function FilterBar({
         <label className="flex cursor-pointer items-center gap-1.5 text-sm text-neutral-700 dark:text-neutral-300">
           <input type="checkbox" checked={filters.hideMine} onChange={(e) => set({ hideMine: e.target.checked })} className="h-4 w-4 accent-[#D97757]" />
           {t("Sendekileri gizle", "Hide ones I use")}
+        </label>
+        <label className="flex cursor-pointer items-center gap-1.5 text-sm text-neutral-700 dark:text-neutral-300" title={t("Aynı aramanın söz dizimi varyantlarını (kelime sırası, çoğul, 'for/the…') ayrı satırlarda göster", "Show wording variants of the same search (word order, plural, 'for/the…') as separate rows")}>
+          <input type="checkbox" checked={showVariants} onChange={(e) => onShowVariants(e.target.checked)} className="h-4 w-4 accent-[#D97757]" />
+          {t("Varyasyonları ayır", "Split variants")}
         </label>
         {filtersActive(filters) && <Button onClick={() => onChange(EMPTY_FILTERS)}>{t("Süzgeçleri temizle", "Clear filters")}</Button>}
       </div>
@@ -73,7 +84,10 @@ export default function FilterBar({
       )}
 
       <p className="text-xs text-neutral-500 dark:text-neutral-400">
-        {t(`${shown.toLocaleString(locale)} / ${total.toLocaleString(locale)} anahtar kelime · toplam hacim ${volume.toLocaleString(locale)}`, `${shown.toLocaleString(locale)} / ${total.toLocaleString(locale)} keywords · total volume ${volume.toLocaleString(locale)}`)}
+        {t(
+          `${shown.toLocaleString(locale)} / ${total.toLocaleString(locale)} anahtar kelime${rowCount !== shown ? ` (${rowCount.toLocaleString(locale)} grup)` : ""} · toplam hacim ${volume.toLocaleString(locale)}`,
+          `${shown.toLocaleString(locale)} / ${total.toLocaleString(locale)} keywords${rowCount !== shown ? ` (${rowCount.toLocaleString(locale)} groups)` : ""} · total volume ${volume.toLocaleString(locale)}`,
+        )}
       </p>
     </div>
   );

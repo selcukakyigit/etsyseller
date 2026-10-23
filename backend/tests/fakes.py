@@ -12,6 +12,7 @@ class FakeProvider:
         self.fail: Exception | None = None
         self.volume = 100  # volumes() her kelime için bunu döner
         self.empty_seeds: set[str] = set()  # öneri döndürmeyen tohumlar
+        self.keep_only: set[str] | None = None  # verilirse öneri listesi yalnızca bu kelimelere indirilir ("liste değişti")
         self.no_data: set[str] = set()  # hacim kaydı hiç dönmeyen kelimeler
         self.trend_values = {"a": (10.0, 20.0), "b": (10.0, 2.0), "c": (30.0, 30.0)}
 
@@ -41,6 +42,8 @@ class FakeProvider:
         records += [MetricRecord(f"{seed} {w}", search_volume=v, intent=i, cpc=0.5, competition=0.2) for w, v, i in (
             ("big", 5000, "transactional"), ("mid", 300, "informational"), ("tiny", 20, None), ("custom", 80, "weird"),
         )]
+        if self.keep_only is not None:
+            records = [r for r in records if r.term == seed or r.term.rsplit(" ", 1)[-1] in {k.rsplit(" ", 1)[-1] for k in self.keep_only}]
         return ProviderResponse("fake/suggest", records, 0.013, 5)
 
     def trends(self, creds, terms, market, language):
