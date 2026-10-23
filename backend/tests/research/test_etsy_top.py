@@ -26,18 +26,20 @@ def test_summarize_counts_proven_listings_and_ignores_median_favorites():
     out = etsy_top.summarize("metal wall art", {"count": 775_000, "results": results}, now=NOW)
     assert out["total"] == 775_000 and out["sample"] == 10
     assert out["proven"] == 4 and out["strong"] == 2  # 10, 25, 50, 400 / 50, 400
-    assert out["strength"] == "medium" and out["favorites"]["max"] == 400
+    assert "strength" not in out, "API örneğinden rekabet gücü hükmü üretilmez"
+    assert out["favorites"]["max"] == 400
     assert out["price"] == {"p25": 20.0, "median": 20.0, "p75": 20.0}
     assert out["new_share"] == 0.0 and out["age_days_median"] == 200
     assert out["top_tags"][0] == {"tag": "metal wall art", "count": 10}
 
 
-def test_strength_bands_and_new_share():
+def test_new_share_and_empty_sample():
     few = etsy_top.summarize("a b", {"count": 1, "results": [listing(i, 0, age_days=10) for i in range(5)]}, now=NOW)
-    assert few["strength"] == "low" and few["new_share"] == 1.0
+    assert few["new_share"] == 1.0 and few["proven"] == 0
     many = etsy_top.summarize("a b", {"count": 1, "results": [listing(i, 20) for i in range(12)]}, now=NOW)
-    assert many["strength"] == "high"
-    assert etsy_top.summarize("a b", {"count": 0, "results": []}, now=NOW)["strength"] is None
+    assert many["proven"] == 12 and many["new_share"] == 0.0
+    empty = etsy_top.summarize("a b", {"count": 0, "results": []}, now=NOW)
+    assert empty["sample"] == 0 and empty["new_share"] is None
 
 
 def test_price_uses_the_most_common_currency_only():
@@ -90,7 +92,8 @@ def test_assistant_tool_labels_the_data_as_etsy(db, etsy_calls):
     ctx = NS(db=db, shop=NS(id=1, workspace_id=1), user_id=7)
     assert tools.etsy_top_results(ctx, {"term": ""})["error"]
     out = tools.etsy_top_results(ctx, {"term": "metal wall art"})
-    assert out["etsy_toplam_ilan"] == 12345 and out["rekabet_gostergesi"] in ("düşük", "orta", "yüksek")
+    assert out["etsy_toplam_ilan"] == 12345 and "rekabet_gostergesi" not in out, "asistan rekabet hükmü vermez"
+    assert "DEĞİL" in out["not"], "örnek olduğu, sitedeki ilk sayfa olmadığı söylenir"
     assert "ETSY verisi" in out["not"] and out["en_sik_etiketler"][0].startswith("metal wall art (6/20)")
 
 

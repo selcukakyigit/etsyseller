@@ -32,7 +32,7 @@ export default function OverviewCard({ item, selected, onToggle, onAnalyze, seas
         {item.crowded && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800 dark:bg-amber-950 dark:text-amber-300">⚑ {t("Kalabalık", "Crowded")}</span>}
         {onAnalyze && (
           <button type="button" onClick={onAnalyze} className="ml-auto rounded-lg border border-neutral-200 px-2.5 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800">
-            {t("Etsy'de rekabeti incele", "Inspect Etsy competition")}
+            {t("Etsy'deki ilanlara bak", "Look at Etsy listings")}
           </button>
         )}
       </div>

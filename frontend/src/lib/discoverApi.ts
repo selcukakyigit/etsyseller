@@ -62,7 +62,6 @@ export type EtsyAnalysis = {
   /** 10+ favorisi olan ilan sayısı (ilk 20 içinde) */
   proven: number;
   strong: number;
-  strength: "low" | "medium" | "high" | null;
   favorites: { p75: number | null; max: number | null };
   views: { median: number | null };
   age_days_median: number | null;

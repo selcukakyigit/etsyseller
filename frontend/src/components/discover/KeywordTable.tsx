@@ -142,8 +142,8 @@ export default function KeywordTable({
             <button
               type="button"
               onClick={() => onAnalyze(r.term)}
-              aria-label={t(`${r.term}: Etsy'de ilk 20 sonucu incele`, `${r.term}: inspect the first 20 Etsy results`)}
-              title={t("Etsy'de ilk 20 sonucu incele (rekabet, fiyat, etiketler)", "Inspect the first 20 Etsy results (competition, price, tags)")}
+              aria-label={t(`${r.term}: Etsy'deki ilanlara bak`, `${r.term}: look at Etsy listings`)}
+              title={t("Etsy'deki ilanlardan örnek: fiyat ve etiketler (sitedeki sıralama değil)", "A sample of Etsy listings: price and tags (not the site's ranking)")}
               className="ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded align-middle text-neutral-400 hover:bg-neutral-200 hover:text-neutral-800 dark:hover:bg-neutral-700 dark:hover:text-neutral-100"
             >
               <svg viewBox="0 0 20 20" width="13" height="13" fill="currentColor" aria-hidden>

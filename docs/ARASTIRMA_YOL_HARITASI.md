@@ -63,3 +63,19 @@ Katman sırası: (1) Etsy'nin kendi verisi (Open API sonuç sayısı, kullanıc�
 - Gerçek Postgres'e özgü yollar (SKIP LOCKED, kısmi benzersiz dizin, SQL farkları) için elle doğrulama yöntemi: tek işlem içinde sahte sağlayıcıyla çalıştırıp geri almak (bkz. oturum notları, 2026-10-24).
 - **AÇIK RİSK — Etsy API Şartları doğrulanamadı.** Resmî sayfa otomatik erişime 403 veriyor; yalnızca 2020 öncesi arşiv sürümünün alıntıları görüldü (ilan içeriği en fazla 6 saat, diğer içerik 24 saat, "gereğinden uzun saklanmaz", Etsy kullanıcı verisi başka kaynaklarla rıza olmadan birleştirilmez). Havuz, mağaza ilan etiketlerinden ve Etsy aramasındaki rakip etiketlerinden türeyen KELİME metinlerini (mağaza/ilan kimliği olmadan) saklıyor ve sağlayıcıya (DataForSEO) gönderiyor. Kelimeler genel ifadeler, ama bu kullanımın güncel şartlara uygunluğu Bölüm 1'den okunarak ya da developer@etsy.com'a sorularak teyit edilmeli. Kapatma anahtarı: Yönetim > Araştırma > "Araştırma açık".
 
+
+## Etsy API sırası ≠ sitedeki alıcı sırası (2026-10-24, ÖLÇÜLDÜ)
+
+Etsy API'si (`/listings/active`) yalnızca `sort_on=score` verir; "Most relevant" yoktur. `buyer_country=US` ilan kümesini süzer ama sıralamayı değiştirmez.
+Karşılaştırma (ABD VPN, Etsy sitesi, Most relevant) ve sistemin sıra takibi:
+
+- "metal wall decor": sitede 1. sıradaki Family Tree ilanı API'nin ilk 100'ünde yok; API'nin ilk sıraları favorisi 0-4 olan yeni ilanlar.
+- Kendi ilanımız: "personalized metal farm sign" sitede 1. (ama "Ad" etiketli), API'de 55. · "large farm sign" sitede 5., API'de 127. · "custom farm sign" API'de 200+.
+- Sitede yorumu/satışı/reklamı olan ilanlar önde; API'de yeni ve etkileşimi düşük ilanlar önde. Sitedeki ilk sıra reklam olabilir.
+
+Sonuç ve alınan önlemler:
+- Sıra takibi (insights/rank.py) sayıları "API sırası" olarak etiketlenir; ▲▼ renksizdir; teşhis (diagnosis.rank_signal) ondan hüküm (bad/good) ya da görünürlük/çekicilik oyu üretmez; asistan "kesin sıra" demez.
+- Keşfet'teki Etsy pencereleri (etsy_top.py) "ilk 20" değil "20 ilanlık örnek"; rekabet gücü (düşük/orta/yüksek) hükmü kaldırıldı. Güvenilir olan: toplam ilan sayısı (sıralamadan bağımsız).
+- Gerçek sonuç göstergeleri: günlük görüntülenme/favori (ListingStatSnapshot, Değişiklikler sekmesi) ve kullanıcının yapıştırdığı Etsy arama terimleri (Etsy verisi sekmesi).
+- Etsy sitesini proxy ile taramak (scraping) YAPILMAZ: şartlara aykırı ve Etsy API anahtarını (tüm ürünün anahtarı) riske atar. Ekran görüntüsü yükleme/eklenti fikirleri değerlendirildi, şimdilik yapılmadı.
+- Açık soru: Etsy'nin (developer@etsy.com) resmi bir sıralama verisi sunup sunmadığı sorulabilir.

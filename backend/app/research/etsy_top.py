@@ -2,7 +2,11 @@
 gerekmez) ilk 20 sonucundan: toplam ilan sayısı, KANITLANMIŞ ilan sayısı (>= PROVEN_FAVORITES favorisi olan), fiyat bandı, yeni giriş payı ve en sık kullanılan etiketler.
 
 Neden "medyan favori" değil: Etsy'nin ilk 20'si çok sayıda yeni ve henüz favorisi olmayan ilan içerir (gerçek denemede medyan hemen hep 0-1); ayırt eden ölçüt,
-ilk 20'nin kaçının gerçekten tutmuş olduğudur (aramalara göre 1 ile 13 arasında değişti). `strength` ona dayanan bir GÖSTERGEDİR, kesin ölçü değil.
+ilk 20'nin kaçının gerçekten tutmuş olduğudur (aramalara göre 1 ile 13 arasında değişti).
+
+DİKKAT: Etsy API'si yalnızca `sort_on=score` verir; bu sıra sitedeki "Most relevant" sıralamasından çok farklıdır (sitede yorumu, satışı ve reklamı olan ilanlar
+önde; API'de yeni ve etkileşimi düşük ilanlar öne çıkar; gerçek aramalarla karşılaştırıldı, bkz. docs/ARASTIRMA_YOL_HARITASI.md). Bu yüzden buradaki "ilk 20" bir
+ÖRNEKTİR, alıcının gördüğü ilk 20 değildir; ondan bir rekabet GÜCÜ hükmü (düşük/orta/yüksek) üretilmez, yalnızca sayılar ve dağılımlar verilir.
 
 Etsy API şartları gereği ilan içeriği KALICI SAKLANMAZ: yalnızca kısa süreli bellek önbelleği (CACHE_SECONDS) kullanılır, sonuç havuza yazılmaz. Etsy verisidir;
 Google ölçümleriyle karıştırılmaz (arayüzde ayrı gösterilir)."""
@@ -19,7 +23,6 @@ CACHE_SECONDS = 3600  # Etsy kuralı: ilan verisi en fazla 6 saat eski gösteril
 NEW_DAYS = 90  # "yeni giriş": bu kadar günden genç ilan
 PROVEN_FAVORITES = 10  # "kanıtlanmış ilan": en az bu kadar favorisi olan
 STRONG_FAVORITES = 50
-MEDIUM_FROM, HIGH_FROM = 4, 9  # ilk 20'de kanıtlanmış ilan sayısı: <4 düşük, <9 orta, değilse yüksek rekabet (başlangıç eşikleri)
 TOP_TAGS = 15
 
 _limiter = SlidingWindow(limit=20, window=600)  # mağaza başına 10 dakikada en fazla 20 analiz (her biri 1 Etsy isteği; günlük kota ortak)
@@ -72,7 +75,6 @@ def summarize(term: str, data: dict, now: float | None = None, thumbnails: dict[
         "term": term, "total": int(data.get("count") or 0), "sample": n, "currency": currency,
         "price": {"p25": _round(_quantile(prices, 0.25), 2), "median": _round(_quantile(prices, 0.5), 2), "p75": _round(_quantile(prices, 0.75), 2)},
         "proven": proven, "strong": sum(1 for f in favorites if f >= STRONG_FAVORITES),
-        "strength": None if n == 0 else "low" if proven < MEDIUM_FROM else "medium" if proven < HIGH_FROM else "high",
         "favorites": {"p75": _round(_quantile(favorites, 0.75)), "max": max(favorites) if favorites else None},
         "views": {"median": _round(statistics.median(views_all)) if views_all else None},
         "age_days_median": round(statistics.median(ages)) if ages else None,

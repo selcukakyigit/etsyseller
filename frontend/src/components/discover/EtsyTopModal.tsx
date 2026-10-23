@@ -7,12 +7,6 @@ import { BlockSpinner } from "@/components/ui/Spinner";
 import { EtsyAnalysis, discoverApi } from "@/lib/discoverApi";
 import { useT } from "@/lib/i18n-client";
 
-const STRENGTH_STYLE = {
-  low: "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-400",
-  medium: "bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
-  high: "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-400",
-} as const;
-
 function Stat({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
   return (
     <div className="rounded-lg border border-neutral-200 px-3 py-2 dark:border-neutral-800" title={hint}>
@@ -41,7 +35,6 @@ export default function EtsyTopModal({ shopId, term, onClose }: { shopId: number
   const data = state && state.term === term ? state : null;
   const a = data?.analysis ?? null;
   const money = (n: number | null) => (n === null || !a?.currency ? "—" : n.toLocaleString(locale, { style: "currency", currency: a.currency, maximumFractionDigits: 0 }));
-  const strengthLabel = (s: "low" | "medium" | "high") => (s === "low" ? t("Düşük", "Low") : s === "medium" ? t("Orta", "Medium") : t("Yüksek", "High"));
 
   return (
     <Modal title={t(`Etsy'de “${term}”`, `“${term}” on Etsy`)} widthClass="max-w-3xl" onClose={onClose} closeButton>
@@ -59,25 +52,24 @@ export default function EtsyTopModal({ shopId, term, onClose }: { shopId: number
         ) : (
           <>
             <div className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
-              <span>{t("Etsy verisi (Google değil). İlk 20 sonuç, Etsy'nin ilgililik sırasıyla.", "Etsy data (not Google). The first 20 results in Etsy's relevance order.")}</span>
+              <span>{t("Etsy verisi (Google değil). Etsy API'sinden 20 ilanlık örnek; sitedeki ilk sayfa değildir.", "Etsy data (not Google). A 20-listing sample from the Etsy API; not the site's first page.")}</span>
               <HelpTip>
                 {t(
-                  "Kanıtlanmış ilan: 10 ve üzeri favorisi olan ilan sayısı. Etsy'nin ilk sonuçları çok sayıda yeni ve henüz favorisi olmayan ilan içerdiğinden medyan favori işe yaramaz; asıl ayrım, ilk 20'nin kaçının gerçekten tuttuğudur. Rekabet göstergesi bu sayıdan türeyen kaba bir ölçüdür (0-3 düşük, 4-8 orta, 9+ yüksek), kesin ölçü değildir. Yeni giriş payı: son 90 günde açılmış ilan oranı (yüksekse yeni ilanlar da görünür olabiliyor). Veriler saklanmaz, bir saat önbellekte kalır.",
-                  "Proven listings: how many have 10+ favorites. Etsy's first results include many new listings without favorites, so the median favorite count is useless; what matters is how many of the first 20 have actually caught on. The competition indicator is a rough measure derived from it (0-3 low, 4-8 medium, 9+ high), not an exact one. New-entry share: share of listings created in the last 90 days (high means new listings can surface). Data is not stored; it is cached for an hour.",
+                  "Etsy'nin API'si yalnızca kendi skor sırasını verir; bu sıra sitedeki 'Most relevant' sıralamasından çok farklıdır (sitede yorumu, satışı ve reklamı olan ilanlar öndedir, API'de yeni ve favorisi az ilanlar öne çıkar). Bu yüzden buradaki 20 ilan alıcının gördüğü ilk sayfa değil, bir örnektir ve rekabet gücü hükmü verilmez. Güvenilir olan: toplam ilan sayısı. Örnekten fiyat bandı, rakip etiketleri ve yeni giriş payı fikir verir. 10+ favorili ilan: örnekte kaç ilanın 10 ve üzeri favorisi var. Gerçek sayfayı görmek için alttaki 'Etsy'de aç' bağlantısını kullan (konumuna ve hesabına göre değişir, reklam içerir). Veriler saklanmaz, bir saat önbellekte kalır.",
+                  "Etsy's API only offers its own score order, which differs a lot from the site's 'Most relevant' ranking (on the site, listings with reviews, sales and ads lead; in the API, new listings with few favorites surface). So these 20 listings are a sample, not the first page a buyer sees, and no competition-strength verdict is given. What is reliable: the total listing count. The sample gives an idea of the price range, competitors' tags and the new-entry share. 10+ favorites: how many listings in the sample have 10 or more favorites. To see the real page use the 'Open on Etsy' link below (it varies with your location and account and includes ads). Data is not stored; it is cached for an hour.",
                 )}
               </HelpTip>
             </div>
 
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <Stat label={t("Etsy'de ilan", "Etsy listings")}>{a.total.toLocaleString(locale)}</Stat>
-              <Stat label={t("Kanıtlanmış ilan", "Proven listings")} hint={t("10+ favorisi olan, ilk 20 içinde", "10+ favorites, among the first 20")}>
+              <Stat label={t("10+ favorili ilan", "10+ favorites")} hint={t("Örnekteki 20 ilandan kaçının 10 ve üzeri favorisi var", "How many of the 20 sampled listings have 10 or more favorites")}>
                 <span className="flex items-center gap-2">
                   {a.proven}
                   <span className="text-sm font-normal text-neutral-400">/ {a.sample}</span>
-                  {a.strength && <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STRENGTH_STYLE[a.strength]}`}>{strengthLabel(a.strength)}</span>}
                 </span>
               </Stat>
-              <Stat label={t("Fiyat bandı", "Price range")} hint={t("İlk 20'nin alt çeyrek – medyan – üst çeyrek fiyatı", "Lower quartile – median – upper quartile of the first 20")}>
+              <Stat label={t("Fiyat bandı (örnek)", "Price range (sample)")} hint={t("Örnekteki 20 ilanın alt çeyrek – medyan – üst çeyrek fiyatı", "Lower quartile – median – upper quartile of the 20 sampled listings")}>
                 <span className="text-base">
                   {money(a.price.p25)}–{money(a.price.p75)}
                 </span>
@@ -92,7 +84,7 @@ export default function EtsyTopModal({ shopId, term, onClose }: { shopId: number
 
             {a.top_tags.length > 0 && (
               <div>
-                <h3 className="mb-1 text-xs font-semibold text-neutral-500 dark:text-neutral-400">{t("Rakiplerin en sık etiketleri (ilk 20'de kaç ilanda)", "Competitors' most used tags (in how many of the first 20)")}</h3>
+                <h3 className="mb-1 text-xs font-semibold text-neutral-500 dark:text-neutral-400">{t("Örnekteki ilanların en sık etiketleri (20 ilanın kaçında)", "Most used tags in the sample (in how many of the 20 listings)")}</h3>
                 <div className="flex flex-wrap gap-1.5">
                   {a.top_tags.map((tag) => (
                     <span key={tag.tag} className="rounded-full border border-neutral-200 px-2.5 py-0.5 text-xs text-neutral-700 dark:border-neutral-700 dark:text-neutral-300">
@@ -104,7 +96,7 @@ export default function EtsyTopModal({ shopId, term, onClose }: { shopId: number
             )}
 
             <div>
-              <h3 className="mb-1 text-xs font-semibold text-neutral-500 dark:text-neutral-400">{t("İlk 20 ilan", "First 20 listings")}</h3>
+              <h3 className="mb-1 text-xs font-semibold text-neutral-500 dark:text-neutral-400">{t("Örnek ilanlar (Etsy API sırası)", "Sample listings (Etsy API order)")}</h3>
               <ul className="max-h-80 divide-y divide-neutral-100 overflow-auto rounded-lg border border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
                 {a.listings.map((l, i) => (
                   <li key={l.listing_id ?? i} className="flex items-center gap-3 px-3 py-2 text-sm">
@@ -143,7 +135,7 @@ export default function EtsyTopModal({ shopId, term, onClose }: { shopId: number
             </div>
 
             <a href={`https://www.etsy.com/search?q=${encodeURIComponent(term)}`} target="_blank" rel="noopener noreferrer" className="inline-block text-xs text-[#C6613F] hover:underline dark:text-[#D97757]">
-              {t("Etsy'de aç ↗", "Open on Etsy ↗")}
+              {t("Gerçek sayfayı Etsy'de aç ↗", "Open the real page on Etsy ↗")}
             </a>
           </>
         )}

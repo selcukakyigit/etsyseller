@@ -95,24 +95,20 @@ export function RankBadge({ info, maxResults, onClick }: { info?: TrackedRank | 
   if (!info) return null;
   const pos = info.position ? `#${info.position}` : `${maxResults}+`;
   const change = info.change_7d;
-  const label = info.measured ? `${pos} · ${info.keyword}` : t("Sıra ölçümü bekliyor", "Ranking pending");
+  const label = info.measured ? `API ${pos} · ${info.keyword}` : t("Sıra ölçümü bekliyor", "Ranking pending");
   const moveTr = change ? (change > 0 ? `, 7 günde ${change} sıra yükseldi` : `, 7 günde ${-change} sıra düştü`) : "";
   const moveEn = change ? (change > 0 ? `, up ${change} in 7 days` : `, down ${-change} in 7 days`) : "";
   const title = info.measured
     ? t(
-        `Sıra takibinde (${info.keywords} arama). En iyi sırası: "${info.keyword}" aramasında ${pos}${moveTr}.`,
-        `Rank tracking (${info.keywords} searches). Best position: ${pos} for "${info.keyword}"${moveEn}.`,
+        `Sıra takibinde (${info.keywords} arama). Etsy API sırasında "${info.keyword}" aramasında ${pos}${moveTr}. Bu, sitedeki alıcı sırası değildir ve çok farklı olabilir.`,
+        `Rank tracking (${info.keywords} searches). Position in the Etsy API order for "${info.keyword}": ${pos}${moveEn}. This is not the buyer's ranking on the site and can differ a lot.`,
       )
     : t("Sıra takibinde; ilk ölçüm sabah yapılır.", "Rank tracking; the first measurement runs in the morning.");
   const body = (
     <>
       <span aria-hidden>📍</span>
       <span className="max-w-[14rem] truncate">{label}</span>
-      {change ? (
-        <span className={change > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}>
-          {change > 0 ? `↑${change}` : `↓${-change}`}
-        </span>
-      ) : null}
+      {change ? <span>{change > 0 ? `↑${change}` : `↓${-change}`}</span> : null}
     </>
   );
   const cls = "inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300";

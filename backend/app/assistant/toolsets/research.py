@@ -94,9 +94,6 @@ def save_keywords(ctx, a: dict) -> dict:
     return {"eklenen": added, "not": "Zaten kayıtlı olanlar atlanır. Ölçümü olmayan kelimeler birazdan havuza işlenir."}
 
 
-_STRENGTH = {"low": "düşük", "medium": "orta", "high": "yüksek", None: "bilinmiyor"}
-
-
 def etsy_top_results(ctx, a: dict) -> dict:
     term = " ".join(str(a.get("term", "")).split())
     if not term:
@@ -111,10 +108,11 @@ def etsy_top_results(ctx, a: dict) -> dict:
         return {"arama": term, "toplam_ilan": (out or {}).get("total", 0), "not": "Sonuç yok; daha genel bir ifade dene."}
     return {
         "arama": out["term"], "etsy_toplam_ilan": out["total"], "ilk_20_icinde_kanitlanmis_ilan": out["proven"], "cok_guclu_ilan": out["strong"],
-        "rekabet_gostergesi": _STRENGTH[out["strength"]], "en_yuksek_favori": out["favorites"]["max"], "yeni_ilan_payi": out["new_share"],
+        "en_yuksek_favori": out["favorites"]["max"], "yeni_ilan_payi": out["new_share"],
         "fiyat_bandi": {"para_birimi": out["currency"], **out["price"]}, "en_sik_etiketler": [f"{t['tag']} ({t['count']}/20)" for t in out["top_tags"][:10]],
-        "not": ("Bu ETSY verisi (Google değil). kanitlanmis = favorisi 10+ olan ilan sayısı: yüksekse girmek zor, düşükse kolay. rekabet_gostergesi kaba bir göstergedir, kesin ölçü değil. "
-                "En sık etiketler rakiplerin ne yazdığını gösterir; kopyalama, ürüne uyanları ilham olarak kullan."),
+        "not": ("Bu ETSY verisi (Google değil) ama alıcının gördüğü 'ilk 20' DEĞİL: Etsy API'sinin skor sırasından bir ÖRNEKTİR (sitedeki sıralamadan farklıdır; yeni ve favorisi az ilanlar önde çıkar). "
+                "Bu yüzden 'rekabet düşük/yüksek' hükmü verme, sıra söyleme. Toplam ilan sayısı sıralamadan bağımsızdır ve güvenilirdir. Fiyat bandı ve etiketler örnek niteliğindedir; "
+                "etiketlerden ilham al, kopyalama."),
     }
 
 
@@ -122,8 +120,8 @@ TOOLS: list[dict] = [
     {
         "name": "etsy_top_results",
         "description": (
-            "Bir aramanın ETSY'deki ilk 20 sonucunun analizi (gerçek Etsy rekabeti): toplam ilan, kaç ilan kanıtlanmış (10+ favori), fiyat bandı, yeni giriş payı, rakiplerin en sık etiketleri. "
-            "'Bu kelimede rekabet nasıl', 'girmesi kolay mı', 'rakipler hangi etiketleri kullanıyor' için. Etsy verisidir; Google hacmiyle karıştırma. Kredi harcamaz; ölçüm hakkı sınırlıdır."
+            "Bir aramanın ETSY'deki toplam ilan sayısı ve Etsy API'sinden 20 ilanlık ÖRNEK (sitedeki ilk sayfa değildir): fiyat bandı, yeni giriş payı, kaç ilan 10+ favorili, rakiplerin sık etiketleri. "
+            "'Bu kelimede kaç ilan var', 'rakipler hangi etiketleri kullanıyor' için. Rekabet gücü hükmü verme, sıra söyleme. Etsy verisidir; Google hacmiyle karıştırma. Kredi harcamaz; ölçüm hakkı sınırlıdır."
         ),
         "input_schema": {"type": "object", "properties": {"term": {"type": "string", "description": "Aranacak ifade (İngilizce)"}}, "required": ["term"]},
     },

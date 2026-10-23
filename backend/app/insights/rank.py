@@ -2,7 +2,10 @@
 
 Etsy'nin herkese açık arama ucuyla (findAllListingsActive, alaka sıralı; mağaza yetkisi gerekmez) ilk `MAX_RESULTS`
 sonuca bakılır; listing'in sırası, aramadaki toplam listing sayısı ve ilk 20 sonucun fiyat aralığı günlük kaydedilir.
-Sitedeki aramayla birebir aynı değildir (sitede kişiselleştirme ve reklamlar var) ama sıranın yönü güvenilirdir.
+DİKKAT: bu sıra sitedeki "Most relevant" sıralaması DEĞİLDİR. API yalnızca `sort_on=score` verir (buyer_country sıralamayı değiştirmez, yalnız ilan kümesini süzer);
+gerçek aramalarla karşılaştırıldı: sitede (ABD, VPN) 1. ve 5. olan ilan burada 55. ve 127. çıktı, sitedeki 1. sıra reklamdı. Yani sayı da yön de sitedeki sıralamanın
+göstergesi olarak doğrulanmadı. Arayüz ve teşhis bunu "API sırası" olarak etiketler; hüküm (kayboldu/görünüyor) üretmez. Gerçek sonuç: görüntülenme/favori eğilimi
+(ListingStatSnapshot) ve kullanıcının yapıştırdığı Etsy arama terimleri verisi.
 
 Kota: her arama günde `MAX_RESULTS / 100` istek. Mağaza başına en fazla `MAX_LISTINGS` listing ve listing başına
 `MAX_KEYWORDS` arama takip edilir; zamanlanmış ölçüm arka plan bütçesi dolunca durur, ertesi gün devam eder."""

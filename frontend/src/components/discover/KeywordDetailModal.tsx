@@ -142,7 +142,7 @@ export default function KeywordDetailModal({ shopId, item, onClose, onAnalyze }:
             onClick={() => onAnalyze(term)}
             className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
           >
-            {t("Etsy'de rekabeti incele", "Inspect Etsy competition")}
+            {t("Etsy'deki ilanlara bak", "Look at Etsy listings")}
           </button>
         )}
       </div>

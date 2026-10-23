@@ -1340,7 +1340,7 @@ def track_keywords(ctx: Ctx, a: dict) -> dict:
         "takip_edilen_aramalar": [{"arama": k["keyword"], "sira": k["position"], "olculdu": k["measured"], "rakip": k["total_results"], "degisim_30g": k["change_30d"]} for k in data["keywords"]],
         "oneriler": data["suggestions"], "sinirlar": f"listing başına {data['max_keywords']} arama, mağaza başına {data['max_listings']} listing ({data['tracked_listings']} takipte)",
         "hatalar": errors,
-        "not": "Sıra her sabah otomatik ölçülür; sira=None ve olculdu doluysa listing ilk 200 sonuçta yok demektir.",
+        "not": "Sıra her sabah otomatik ölçülür ama Etsy API'sinin skor sırasıdır; sitedeki alıcı sırasıyla uyuşmaz (sitede 1-5. olan ilan burada 55-127. çıktı). sira=None: API'nin ilk 200'ünde yok, alıcı bulamıyor demek değildir. Kesin sıra gibi sunma.",
     }
 
 

@@ -30,7 +30,8 @@ def rank_overview(ctx, a: dict) -> dict:
         "en_cok_yukselen": sorted((r for r in measured if r[window] > 0), key=lambda r: -r[window])[:limit],
         "ilk_sayfalarda_yok": [r for r in rows if r["olculdu"] and r["sira"] is None][:limit],
         "henuz_olculmedi": sum(1 for r in rows if not r["olculdu"]),
-        "not": f"sira=None: ilk {rank.MAX_RESULTS} sonuçta yok. Değişim için en az iki ölçüm gerekir. Düşüşte listing_diagnosis ile sebebe bak.",
+        "not": (f"sira = Etsy API'sinin skor sırası (sitedeki alıcı sırası DEĞİL; ölçümde sitede 1-5. olan ilan burada 55-127. çıktı). sira=None: API'nin ilk {rank.MAX_RESULTS} sonucunda yok, bu 'alıcı bulamıyor' demek değildir. "
+                "Değişim için en az iki ölçüm gerekir. Rakamı kesin sıra gibi sunma; gerçek sonuç için görüntülenme/favori eğilimine ve listing_diagnosis'e bak."),
     }
 
 

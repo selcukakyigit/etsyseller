@@ -212,7 +212,7 @@ eq(elCsv.parentElement.contains(elRef), true, "CSV ve Yeniden araştır sağ gru
 console.log("13 düzen sırası OK");
 
 // 14) ETSY İLK 20 ANALİZİ: satırdaki düğme sabit boyutlu pencereyi açar; Etsy verisi olarak etiketli; Sorular sekmesinde düğme yok
-const ANALYSIS = { term: "large metal wall art", total: 775484, sample: 20, currency: "USD", price: { p25: 41.9, median: 58, p75: 93.5 }, proven: 3, strong: 1, strength: "low",
+const ANALYSIS = { term: "large metal wall art", total: 775484, sample: 20, currency: "USD", price: { p25: 41.9, median: 58, p75: 93.5 }, proven: 3, strong: 1,
   favorites: { p75: 6, max: 408 }, views: { median: 10 }, age_days_median: 39, new_share: 0.75, top_tags: [{ tag: "metal wall art", count: 14 }, { tag: "housewarming gift", count: 5 }],
   listings: [{ listing_id: 1, title: "Tree of Life Wall Art", url: "https://etsy.test/1", image: "https://img.test/1.jpg", price: 34, currency: "USD", favorites: 408, views: 5000, age_days: 400, shop_id: 1, personalizable: false },
              { listing_id: 2, title: "Butterfly Sculpture", url: "https://etsy.test/2", image: null, price: 60, currency: "USD", favorites: 0, views: 3, age_days: 20, shop_id: 2, personalizable: false }] };
@@ -224,14 +224,16 @@ globalThis.__api = async (path, init) => {
   if (path.includes("mode=questions")) return ready(QUESTIONS, "questions");
   return prevApi(path, init);
 };
-const analyzeBtn = () => document.querySelector("tbody button[aria-label$='ilk 20 sonucu incele']");
+const analyzeBtn = () => document.querySelector("tbody button[aria-label$='deki ilanlara bak']");
 await act(async () => analyzeBtn().dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
 await act(async () => { await sleep(40); });
 const dialog = document.querySelector("[role=dialog]");
 eq(Boolean(dialog), true, "analiz penceresi açılmalı");
 eq(calls.some((c) => c.includes("/etsy-top")), true, "analiz uç noktası çağrılmalı");
 eq(dialog.textContent.includes("Etsy verisi (Google değil)"), true, "Etsy verisi olarak etiketli olmalı");
-eq(dialog.textContent.includes("Kanıtlanmış ilan") && dialog.textContent.includes("Düşük"), true, "kanıtlanmış ilan ve rekabet göstergesi");
+eq(dialog.textContent.includes("10+ favorili ilan"), true, "örnekte 10+ favorili ilan sayısı");
+eq(/Düşük|Orta|Yüksek/.test(dialog.textContent), false, "rekabet gücü hükmü (düşük/orta/yüksek) gösterilmemeli");
+eq(dialog.textContent.includes("sitedeki ilk sayfa değildir"), true, "örnek olduğu, sitedeki ilk sayfa olmadığı yazılı");
 eq(dialog.textContent.includes("housewarming gift") && dialog.textContent.includes("Tree of Life Wall Art"), true, "rakip etiketleri ve ilan listesi");
 eq(dialog.querySelectorAll("img[src='https://img.test/1.jpg']").length, 1, "küçük resim görünmeli (resmi olmayan ilanda boş kutu)");
 eq(dialog.querySelectorAll(`a[title="Etsy'de aç"][href="https://etsy.test/2"]`).length, 1, "her satırda Etsy'de aç simgesi");
@@ -271,7 +273,7 @@ const barHeights = [...dlg.querySelectorAll("[data-testid=season] [title] > div"
 eq([...dlg.querySelectorAll("[data-testid=season] [title] > span:first-of-type")].map((e) => e.textContent)[10], "100", "mevsimsellik çubuklarının üstünde değer");
 eq(barHeights.every((h) => h >= 2) && Math.max(...barHeights) === 56, true, "çubuk yükseklikleri piksel olarak verilmeli (yüzde sıfıra düşer)");
 eq(/min-h-\[28rem\]/.test(dlg.innerHTML), true, "sabit minimum yükseklik");
-const toEtsy = [...dlg.querySelectorAll("button")].find((b) => b.textContent.includes("Etsy'de rekabeti incele"));
+const toEtsy = [...dlg.querySelectorAll("button")].find((b) => b.textContent.includes("Etsy'deki ilanlara bak"));
 await act(async () => toEtsy.dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
 await act(async () => { await sleep(40); });
 eq(document.querySelectorAll("[role=dialog]").length, 1, "tek pencere: kelime penceresi kapanıp Etsy analizi açılmalı");

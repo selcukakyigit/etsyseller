@@ -6,6 +6,7 @@ import { api, ListingRanks, RankKeyword, RanksSummary } from "@/lib/api";
 import { useCached } from "@/lib/pageCache";
 import { useT } from "@/lib/i18n-client";
 import { countryName } from "@/lib/countries";
+import HelpTip from "@/components/ui/HelpTip";
 import { BlockSpinner, Spinner } from "@/components/ui/Spinner";
 import { toast } from "@/lib/toast";
 
@@ -28,7 +29,7 @@ function Change({ value }: { value: number | null }) {
   if (value === null) return <span className="text-neutral-400 dark:text-neutral-500">–</span>;
   if (value === 0) return <span className="text-neutral-500 dark:text-neutral-400">{t("aynı", "same")}</span>;
   return (
-    <span className={value > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}>
+    <span className="text-neutral-600 dark:text-neutral-300">
       {value > 0 ? "▲" : "▼"} {Math.abs(value)}
     </span>
   );
@@ -105,12 +106,20 @@ export default function RankTab({ shopId, listingId }: { shopId: number; listing
 
   return (
     <div className="space-y-4">
-      <p className="text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
-        {t(
-          `Listing'in seçilen aramalarda Etsy'de kaçıncı sırada çıktığı her sabah ölçülür (${countryName(data.country, locale)} alıcısı için, oraya gönderilen listing'ler arasında, ilk ${data.max_results} sonuç${data.country_auto ? "; ülke en çok sattığın yere göre otomatik seçildi, Ayarlar > Mağaza'dan değiştirilebilir" : ""}). Sitedeki aramayla birebir aynı değildir ama yükselip düştüğünü güvenilir şekilde gösterir. Listing başına ${data.max_keywords} arama, mağaza başına ${data.max_listings} listing; şu an ${data.tracked_listings}/${data.max_listings} listing takipte.`,
-          `Every morning we measure where the listing appears on Etsy for the chosen searches (for a buyer in ${countryName(data.country, locale)}, among listings shipping there, top ${data.max_results} results${data.country_auto ? "; the country was picked automatically from where you sell most and can be changed in Settings > Shop" : ""}). It is not identical to the search on the site, but it reliably shows whether the listing is rising or falling. ${data.max_keywords} searches per listing, ${data.max_listings} listings per shop; ${data.tracked_listings}/${data.max_listings} listings tracked now.`,
-        )}
-      </p>
+      <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+        <span>
+          {t(
+            "Bu sıra Etsy API'sinin sırasıdır; alıcının sitede gördüğü sıralama değildir ve çok farklı olabilir. Kesin sıra gibi okuma. Gerçek sonuç için Değişiklikler sekmesindeki görüntülenme ve favori eğilimine bak.",
+            "This is the Etsy API's order, not the ranking a buyer sees on the site, and it can differ a lot. Do not read it as an exact position. For the real result, see the views and favorites trend on the Changes tab.",
+          )}
+        </span>
+        <HelpTip>
+          {t(
+            `Her sabah, listing'in seçilen aramalarda Etsy API'sinin sonuçları arasında kaçıncı çıktığı ölçülür (${countryName(data.country, locale)} alıcısına gönderilen listing'ler arasında, ilk ${data.max_results} sonuç${data.country_auto ? "; ülke en çok sattığın yere göre otomatik seçildi, Ayarlar > Mağaza'dan değiştirilebilir" : ""}). Etsy API'si yalnızca kendi skor sırasını verir. Gerçek aramalarla karşılaştırıldı: sitede (ABD) 1. ve 5. sırada olan ilanlar burada 55. ve 127. çıktı; sitedeki ilk sıra ayrıca reklam da olabilir. Yani rakam da değişim yönü de sitedeki sıralamanın göstergesi olarak doğrulanmadı. Sitedeki gerçek sıralama için ABD'den (VPN) arama yapıp bakabilirsin; kişiselleştirme ve reklam nedeniyle o da kişiden kişiye değişir. Listing başına ${data.max_keywords} arama, mağaza başına ${data.max_listings} listing; şu an ${data.tracked_listings}/${data.max_listings} listing takipte.`,
+            `Every morning we measure where the listing appears among the Etsy API's results for the chosen searches (among listings shipping to a buyer in ${countryName(data.country, locale)}, top ${data.max_results} results${data.country_auto ? "; the country was picked automatically from where you sell most and can be changed in Settings > Shop" : ""}). The Etsy API only offers its own score order. Compared with real searches: listings that were 1st and 5th on the site (US) showed up 55th and 127th here, and the first spot on the site can also be an ad. So neither the number nor the direction of change has been validated as an indicator of the site's ranking. To see the real ranking, search from the US (VPN); it also varies by person because of personalization and ads. ${data.max_keywords} searches per listing, ${data.max_listings} listings per shop; ${data.tracked_listings}/${data.max_listings} listings tracked now.`,
+          )}
+        </HelpTip>
+      </div>
 
       {data.keywords.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
@@ -118,12 +127,12 @@ export default function RankTab({ shopId, listingId }: { shopId: number; listing
             <thead>
               <tr className="border-b border-neutral-100 text-left text-xs text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
                 <th className="px-3 py-2 font-medium">{t("Arama", "Search")}</th>
-                <th className="px-3 py-2 font-medium">{t("Sıra", "Position")}</th>
+                <th className="px-3 py-2 font-medium">{t("API sırası", "API position")}</th>
                 <th className="px-3 py-2 font-medium">{t("7 gün", "7 days")}</th>
                 <th className="px-3 py-2 font-medium">{t("30 gün", "30 days")}</th>
                 <th className="px-3 py-2 font-medium">{t("Geçmiş", "History")}</th>
                 <th className="px-3 py-2 font-medium">{t("Rakip", "Competing")}</th>
-                <th className="px-3 py-2 font-medium">{t("Fiyat: sen / ilk 20", "Price: you / top 20")}</th>
+                <th className="px-3 py-2 font-medium">{t("Fiyat: sen / örnek", "Price: you / sample")}</th>
                 <th className="px-3 py-2" />
               </tr>
             </thead>
@@ -308,7 +317,7 @@ function TrackedSlots({ shopId, max, onFreed }: { shopId: number; max: number; o
                 </span>
                 <span className="block truncate text-xs text-neutral-500 dark:text-neutral-400">
                   {r.measured
-                    ? `${r.position ? `#${r.position}` : `${summary.max_results}+`} · ${r.keyword}`
+                    ? `${r.position ? `API #${r.position}` : `API ${summary.max_results}+`} · ${r.keyword}`
                     : t("Sıra ölçümü bekliyor", "Ranking pending")}
                 </span>
               </span>
