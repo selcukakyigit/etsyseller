@@ -7,6 +7,9 @@ import { BlockSpinner } from "@/components/ui/Spinner";
 import { EtsyAnalysis, discoverApi } from "@/lib/discoverApi";
 import { useT } from "@/lib/i18n-client";
 
+/** İlan listesinin sütunları: sıra, resim, başlık, Etsy bağlantısı, fiyat, favori, görüntülenme, yaş. Başlık satırı ve ilan satırları aynı şablonu kullanır. */
+const LIST_COLUMNS = "1.25rem 3.5rem minmax(0,1fr) 1.5rem 3.5rem 4rem 5.5rem 4.5rem";
+
 function Stat({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
   return (
     <div className="rounded-lg border border-neutral-200 px-3 py-2 dark:border-neutral-800" title={hint}>
@@ -97,41 +100,61 @@ export default function EtsyTopModal({ shopId, term, onClose }: { shopId: number
 
             <div>
               <h3 className="mb-1 text-xs font-semibold text-neutral-500 dark:text-neutral-400">{t("Örnek ilanlar (Etsy API sırası)", "Sample listings (Etsy API order)")}</h3>
-              <ul className="max-h-80 divide-y divide-neutral-100 overflow-auto rounded-lg border border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
-                {a.listings.map((l, i) => (
-                  <li key={l.listing_id ?? i} className="flex items-center gap-3 px-3 py-2 text-sm">
-                    <span className="w-5 shrink-0 text-right text-xs tabular-nums text-neutral-400">{i + 1}</span>
-                    <a href={l.url} target="_blank" rel="noopener noreferrer" className="h-11 w-14 shrink-0 overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800" tabIndex={-1} aria-hidden>
-                      {l.image && (
-                        // eslint-disable-next-line @next/next/no-img-element -- Etsy'nin küçük resmi, olduğu gibi gösterilir (indirilmez, saklanmaz)
-                        <img src={l.image} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
-                      )}
-                    </a>
-                    <span className="min-w-0 flex-1 truncate text-neutral-900 dark:text-neutral-100" title={l.title}>
-                      {l.title}
-                    </span>
-                    <a
-                      href={l.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label={t(`${l.title}: Etsy'de aç`, `${l.title}: open on Etsy`)}
-                      title={t("Etsy'de aç", "Open on Etsy")}
-                      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-                    >
-                      <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                        <path d="M11 3h6v6M17 3l-8 8M8 5H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-4" />
-                      </svg>
-                    </a>
-                    <span className="hidden shrink-0 text-xs tabular-nums text-neutral-500 sm:inline">{l.price === null ? "—" : l.price.toLocaleString(locale, { style: "currency", currency: l.currency ?? a.currency ?? "USD", maximumFractionDigits: 0 })}</span>
-                    <span className={`w-14 shrink-0 text-right text-xs tabular-nums ${l.favorites >= 10 ? "font-medium text-green-600 dark:text-green-400" : "text-neutral-400"}`} title={t("Favori", "Favorites")}>
-                      ♥ {l.favorites.toLocaleString(locale)}
-                    </span>
-                    <span className="hidden w-16 shrink-0 text-right text-xs tabular-nums text-neutral-400 sm:inline" title={t("Toplam görüntülenme · ilanın yaşı", "Total views · listing age")}>
-                      {l.views.toLocaleString(locale)} · {l.age_days < 60 ? `${l.age_days}${t("g", "d")}` : `${Math.round(l.age_days / 30)}${t("ay", "mo")}`}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <div className="max-h-80 overflow-auto rounded-lg border border-neutral-200 dark:border-neutral-800">
+                <div className="min-w-[34rem]">
+                  <div
+                    className="sticky top-0 z-10 grid items-center gap-x-3 border-b border-neutral-200 bg-white px-3 py-1.5 text-[11px] font-medium text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400"
+                    style={{ gridTemplateColumns: LIST_COLUMNS }}
+                  >
+                    <span className="text-right">#</span>
+                    <span aria-hidden />
+                    <span>{t("İlan", "Listing")}</span>
+                    <span aria-hidden />
+                    <span className="text-right">{t("Fiyat", "Price")}</span>
+                    <span className="text-right" title={t("İlanın aldığı favori sayısı", "Number of favorites the listing has")}>{t("Favori", "Favorites")}</span>
+                    <span className="text-right" title={t("İlanın toplam görüntülenme sayısı", "Total views of the listing")}>{t("Görüntülenme", "Views")}</span>
+                    <span className="text-right" title={t("İlanın kaç gün/ay önce açıldığı", "How long ago the listing was created")}>{t("İlan yaşı", "Age")}</span>
+                  </div>
+                  <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                    {a.listings.map((l, i) => (
+                      <li key={l.listing_id ?? i} className="grid items-center gap-x-3 px-3 py-2 text-sm" style={{ gridTemplateColumns: LIST_COLUMNS }}>
+                        <span className="text-right text-xs tabular-nums text-neutral-400">{i + 1}</span>
+                        <a href={l.url} target="_blank" rel="noopener noreferrer" className="h-11 w-14 overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800" tabIndex={-1} aria-hidden>
+                          {l.image && (
+                            // eslint-disable-next-line @next/next/no-img-element -- Etsy'nin küçük resmi, olduğu gibi gösterilir (indirilmez, saklanmaz)
+                            <img src={l.image} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+                          )}
+                        </a>
+                        <span className="truncate text-neutral-900 dark:text-neutral-100" title={l.title}>
+                          {l.title}
+                        </span>
+                        <a
+                          href={l.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={t(`${l.title}: Etsy'de aç`, `${l.title}: open on Etsy`)}
+                          title={t("Etsy'de aç", "Open on Etsy")}
+                          className="inline-flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+                        >
+                          <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                            <path d="M11 3h6v6M17 3l-8 8M8 5H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-4" />
+                          </svg>
+                        </a>
+                        <span className="whitespace-nowrap text-right text-xs tabular-nums text-neutral-600 dark:text-neutral-300">
+                          {l.price === null ? "—" : l.price.toLocaleString(locale, { style: "currency", currency: l.currency ?? a.currency ?? "USD", maximumFractionDigits: 0 })}
+                        </span>
+                        <span className={`whitespace-nowrap text-right text-xs tabular-nums ${l.favorites >= 10 ? "font-medium text-green-600 dark:text-green-400" : "text-neutral-500 dark:text-neutral-400"}`}>
+                          {l.favorites.toLocaleString(locale)}
+                        </span>
+                        <span className="whitespace-nowrap text-right text-xs tabular-nums text-neutral-500 dark:text-neutral-400">{l.views.toLocaleString(locale)}</span>
+                        <span className="whitespace-nowrap text-right text-xs tabular-nums text-neutral-500 dark:text-neutral-400">
+                          {l.age_days < 60 ? `${l.age_days} ${t("gün", "days")}` : `${Math.round(l.age_days / 30)} ${t("ay", "mo")}`}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
             </div>
 
             <a href={`https://www.etsy.com/search?q=${encodeURIComponent(term)}`} target="_blank" rel="noopener noreferrer" className="inline-block text-xs text-[#C6613F] hover:underline dark:text-[#D97757]">

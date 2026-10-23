@@ -235,6 +235,9 @@ eq(dialog.textContent.includes("10+ favorili ilan"), true, "örnekte 10+ favoril
 eq(/Düşük|Orta|Yüksek/.test(dialog.textContent), false, "rekabet gücü hükmü (düşük/orta/yüksek) gösterilmemeli");
 eq(dialog.textContent.includes("sitedeki ilk sayfa değildir"), true, "örnek olduğu, sitedeki ilk sayfa olmadığı yazılı");
 eq(dialog.textContent.includes("housewarming gift") && dialog.textContent.includes("Tree of Life Wall Art"), true, "rakip etiketleri ve ilan listesi");
+const heads = [...dialog.querySelectorAll(".sticky span")].map((e) => e.textContent).filter(Boolean);
+eq(heads, ["#", "İlan", "Fiyat", "Favori", "Görüntülenme", "İlan yaşı"], "listede sütun başlıkları olmalı");
+eq(dialog.textContent.includes("12.211") || dialog.textContent.includes("5.000") || dialog.textContent.includes("400"), true, "görüntülenme ve yaş ayrı sütunlarda");
 eq(dialog.querySelectorAll("img[src='https://img.test/1.jpg']").length, 1, "küçük resim görünmeli (resmi olmayan ilanda boş kutu)");
 eq(dialog.querySelectorAll(`a[title="Etsy'de aç"][href="https://etsy.test/2"]`).length, 1, "her satırda Etsy'de aç simgesi");
 eq(/min-h-\[30rem\]/.test(dialog.innerHTML) && /max-h-80[^"]*overflow-auto/.test(dialog.innerHTML), true, "sabit minimum yükseklik ve kendi içinde kayan liste");
