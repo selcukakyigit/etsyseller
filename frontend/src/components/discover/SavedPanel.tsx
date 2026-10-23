@@ -68,6 +68,10 @@ export default function SavedPanel({ shopId, refreshKey, onChanged }: { shopId: 
         })}
       </div>
 
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button onClick={() => downloadCsv(`saved-${(data.collection || "general").replace(/\s+/g, "-")}.csv`, toCsv(v.view, NO_ETSY))}>{t("CSV indir", "Download CSV")}</Button>
+      </div>
+
       <FilterBar
         filters={v.filters}
         onChange={v.setFilters}
@@ -79,10 +83,6 @@ export default function SavedPanel({ shopId, refreshKey, onChanged }: { shopId: 
         showVariants={v.showVariants}
         onShowVariants={v.setShowVariants}
       />
-      <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={() => downloadCsv(`saved-${(data.collection || "general").replace(/\s+/g, "-")}.csv`, toCsv(v.view, NO_ETSY))}>{t("CSV indir", "Download CSV")}</Button>
-      </div>
-
       <div className="min-h-[12rem]">
         <KeywordTable
           rows={v.rows}

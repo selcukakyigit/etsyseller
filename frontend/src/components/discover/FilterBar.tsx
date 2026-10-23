@@ -9,7 +9,7 @@ import { EMPTY_FILTERS, Filters, filtersActive } from "./table";
 const field =
   "rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-sm text-neutral-900 outline-none focus:border-[#D97757] dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100";
 
-/** Süzgeçler: kelime içerir / içermez, hacim aralığı, niyet, yalnızca sorular, sende olanları gizle; ayrıca kelime grupları (en sık geçen kelimeler). */
+/** Liste süzgeçleri; sıra yukarıdan aşağıya: kelime grupları, süzgeçler, özet satırı (liste hemen altında). Süzgeçler: kelime içerir / içermez, hacim aralığı, niyet, yalnızca sorular, sende olanları gizle; ayrıca kelime grupları (en sık geçen kelimeler). */
 export default function FilterBar({
   filters,
   onChange,
@@ -38,6 +38,28 @@ export default function FilterBar({
 
   return (
     <div className="space-y-3">
+      {groups.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5" aria-label={t("Kelime grupları", "Keyword groups")}>
+          <span className="text-xs text-neutral-400 dark:text-neutral-500">{t("Gruplar:", "Groups:")}</span>
+          {groups.map((g) => {
+            const on = filters.words.includes(g.word);
+            return (
+              <button
+                key={g.word}
+                type="button"
+                aria-pressed={on}
+                onClick={() => toggleWord(g.word)}
+                className={`rounded-full border px-2.5 py-0.5 text-xs transition ${
+                  on ? "border-[#D97757] bg-[#D97757]/10 font-medium text-neutral-900 dark:text-neutral-100" : "border-neutral-200 text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                }`}
+              >
+                {g.word} <span className="text-neutral-400">{g.count.toLocaleString(locale)}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-2">
         <input value={filters.include} onChange={(e) => set({ include: e.target.value })} placeholder={t("Şunları içersin…", "Include words…")} aria-label={t("İçerilecek kelimeler", "Words to include")} className={`${field} w-40`} />
         <input value={filters.exclude} onChange={(e) => set({ exclude: e.target.value })} placeholder={t("Şunları içermesin…", "Exclude words…")} aria-label={t("İçerilmeyecek kelimeler", "Words to exclude")} className={`${field} w-40`} />
@@ -60,28 +82,6 @@ export default function FilterBar({
         </label>
         {filtersActive(filters) && <Button onClick={() => onChange(EMPTY_FILTERS)}>{t("Süzgeçleri temizle", "Clear filters")}</Button>}
       </div>
-
-      {groups.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5" aria-label={t("Kelime grupları", "Keyword groups")}>
-          <span className="text-xs text-neutral-400 dark:text-neutral-500">{t("Gruplar:", "Groups:")}</span>
-          {groups.map((g) => {
-            const on = filters.words.includes(g.word);
-            return (
-              <button
-                key={g.word}
-                type="button"
-                aria-pressed={on}
-                onClick={() => toggleWord(g.word)}
-                className={`rounded-full border px-2.5 py-0.5 text-xs transition ${
-                  on ? "border-[#D97757] bg-[#D97757]/10 font-medium text-neutral-900 dark:text-neutral-100" : "border-neutral-200 text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
-                }`}
-              >
-                {g.word} <span className="text-neutral-400">{g.count.toLocaleString(locale)}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
 
       <p className="text-xs text-neutral-500 dark:text-neutral-400">
         {t(

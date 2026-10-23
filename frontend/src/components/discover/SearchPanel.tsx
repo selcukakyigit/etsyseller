@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/admin/ui";
 import { BlockSpinner } from "@/components/ui/Spinner";
 import { DiscoverItem, DiscoverSearch, ETSY_RESULTS_MAX, SavedCollection, SearchMode, discoverApi } from "@/lib/discoverApi";
@@ -24,7 +24,10 @@ const NO_ITEMS: DiscoverItem[] = [];
 const isQuery = (v: string) => v.length > 0 && v.length <= 120;
 
 /** Tohum kelimeyi araştırır. Sonuç havuzda yoksa iş kuyruğa girer; sayfa hazır olana kadar kendiliğinden yoklar.
- * Sonuçlar (tüm kelimeler / sorular) anahtarlarıyla ayrı tutulur; anahtar çağrı anında verilir (olay yöneticisinde değişen sorguya bağlı eski bir `set` kullanılmaz). */
+ *
+ * Düzen: özet kart, kaynak notu, sekmeler (Tüm kelimeler / Sorular), koleksiyon çubuğu, araç çubuğu (solda Etsy ilan sayısı, sağda CSV ve Yeniden araştır),
+ * kelime grupları, süzgeçler, özet satırı, tablo. Sekme değişince sayfa DEĞİŞMEZ: yalnızca tablonun bulunduğu bölge yüklenir (soru listesi arka planda
+ * getirilir); her sekmenin süzgeci, sıralaması ve seçimi kendinde kalır. Sonuçlar anahtarlarıyla ayrı tutulur; anahtar çağrı anında verilir. */
 export default function SearchPanel({ shopId, collections, onSaved }: { shopId: number; collections: SavedCollection[]; onSaved: () => void }) {
   const { t, locale } = useT();
   const refusedText = useRefusedText();
@@ -32,7 +35,6 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
   const [query, setQuery] = useUrlTab<string>("q", "", isQuery);
   const [typed, setTyped] = useState<string | null>(null);
   const input = typed ?? query;
-  const setInput = setTyped;
   const [mode, setMode] = useState<SearchMode>("all");
   const [results, setResults] = useState<Record<string, DiscoverSearch>>({});
   const [error, setError] = useState<string | null>(null);
@@ -44,12 +46,18 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
   const [polls, setPolls] = useState(0);
 
   const keyOf = useCallback((q: string, m: SearchMode) => `discover:${shopId}:${m}:${q}`, [shopId]);
-  const key = query ? keyOf(query, mode) : null;
-  const result = key ? (results[key] ?? readPageCache<DiscoverSearch>(key)) : null;
-  // Kelime grupları, kartlar ve sayılar hep "tüm kelimeler" listesine bakar; soru sekmesinde de aynı tohum kartı görünür.
-  const base = key ? (results[keyOf(query, "all")] ?? readPageCache<DiscoverSearch>(keyOf(query, "all"))) : null;
-  const items = result?.items ?? NO_ITEMS;
-  const v = useResultsView(items, result?.seed ?? "", etsy);
+  const resultFor = (m: SearchMode): DiscoverSearch | null => {
+    if (!query) return null;
+    const k = keyOf(query, m);
+    return results[k] ?? readPageCache<DiscoverSearch>(k);
+  };
+  const allRes = resultFor("all");
+  const qRes = resultFor("questions");
+  const result = mode === "all" ? allRes : qRes; // bölgede gösterilen liste
+  // Her sekmenin kendi süzgeci/sıralaması/seçimi vardır; sekme değişince diğerinin durumu korunur.
+  const vAll = useResultsView(allRes?.items ?? NO_ITEMS, allRes?.seed ?? "", etsy);
+  const vQ = useResultsView(qRes?.items ?? NO_ITEMS, qRes?.seed ?? "", etsy);
+  const v = mode === "all" ? vAll : vQ;
   const col = useCollection(shopId, collections, onSaved);
 
   const load = useCallback(
@@ -73,8 +81,10 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
     if (!q) return;
     setPolls(0);
     setMode("all");
-    v.clearSelection();
-    v.setFilters(EMPTY_FILTERS);
+    for (const view of [vAll, vQ]) {
+      view.clearSelection();
+      view.setFilters(EMPTY_FILTERS);
+    }
     setQuery(q);
     setLoading(true);
     await load(q, "all");
@@ -88,14 +98,12 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
     return () => window.clearTimeout(id);
   }, [query, mode, loading, results, keyOf, load]);
 
-  // Sorular ayrı bir araştırmadır: yalnızca sekmesi açılınca istenir (ve ilk kez ise kuyruğa girer).
+  // Sorular ayrı bir araştırmadır: yalnızca sekmesi açılınca istenir. Sayfa yerinde kalır; yükleme yalnızca tablo bölgesinde görünür.
   async function switchMode(next: SearchMode) {
     if (next === mode || !query) return;
     setMode(next);
     setPolls(0);
-    v.clearSelection();
-    v.setFilters(EMPTY_FILTERS); // her listenin kendi süzgeci: önceki listenin grup/kelime süzgeci diğer listeyi boşaltmasın
-    if (!(results[keyOf(query, next)] ?? readPageCache(keyOf(query, next)))) await load(query, next);
+    if (!resultFor(next)) await load(query, next);
   }
 
   // Google verisini yeniden çeker (liste yenisiyle değişir); eski liste yenisi gelene kadar görünür, sayfa kendiliğinden yoklar.
@@ -147,16 +155,58 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
 
   const showEtsy = useMemo(() => Object.keys(etsy).length > 0, [etsy]);
   const gaveUp = waiting && polls >= MAX_POLLS;
-  const ready = result !== null && result.status === "ready";
-  const seedItem = base?.seed_item ?? result?.seed_item ?? null;
-  const measuredAt = result?.measured_at ?? base?.measured_at ?? null;
+  const pageReady = allRes !== null && allRes.status === "ready"; // sayfa iskeleti: ilk liste hazır olunca bir kez kurulur, sonra sabit kalır
+  const seedItem = allRes?.seed_item ?? null;
+  const measuredAt = allRes?.measured_at ?? null;
+
+  const box = "flex min-h-[16rem] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-neutral-200 px-4 py-8 text-center text-sm dark:border-neutral-800";
+  const message = (text: string, tone: "muted" | "warn" = "muted"): ReactNode =>
+    tone === "warn" ? (
+      <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">{text}</p>
+    ) : (
+      <p className="py-10 text-center text-sm text-neutral-400 dark:text-neutral-500">{text}</p>
+    );
+
+  // Tablo bölgesi: seçili sekmenin listesi; yükleniyorsa yalnızca burası bekler (üstteki her şey yerinde kalır).
+  const listRegion = (): ReactNode => {
+    if (!result || result.status === "pending") {
+      return (
+        <div className={box} aria-live="polite">
+          <BlockSpinner />
+          <p className="text-neutral-600 dark:text-neutral-300">
+            {gaveUp
+              ? t("Hazırlanması beklenenden uzun sürüyor. Birkaç dakika sonra yeniden dene.", "This is taking longer than expected. Try again in a few minutes.")
+              : mode === "questions"
+                ? t("Sorular getiriliyor…", "Fetching questions…")
+                : t("Liste hazırlanıyor…", "Preparing the list…")}
+          </p>
+        </div>
+      );
+    }
+    if (result.status === "refused") return message(refusedText(result.refused), "warn");
+    if (result.status === "empty") return message(mode === "questions" ? t("Bu kelime için soru bulunamadı.", "No questions found for this keyword.") : t("Bu kelime için öneri bulunamadı. Daha genel bir ifade dene.", "No suggestions found. Try a more general phrase."));
+    return (
+      <KeywordTable
+        rows={v.rows}
+        selected={v.selected}
+        onToggle={v.toggle}
+        onToggleMany={v.toggleMany}
+        sort={v.sort}
+        onSort={v.onSort}
+        etsy={etsy}
+        showEtsy={showEtsy && mode === "all"}
+        emptyText={t("Süzgeçlere uyan kelime yok.", "No keywords match the filters.")}
+        collect={{ active: col.active, has: col.has, onAdd: (term) => void col.add([term]), onRemove: (term) => void col.remove(term) }}
+      />
+    );
+  };
 
   return (
     <div className="space-y-4">
       <form onSubmit={(e) => void submit(e)} className="flex gap-2">
         <input
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => setTyped(e.target.value)}
           maxLength={120}
           placeholder={t("Bir ürün ya da kelime yaz (ör. metal wall art)", "Type a product or keyword (e.g. metal wall art)")}
           aria-label={t("Aranacak kelime", "Keyword to research")}
@@ -167,114 +217,110 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
         </Button>
       </form>
 
-      <div className="min-h-[16rem]">
-        {error && !result ? (
-          <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
-        ) : !query ? (
-          <p className="py-10 text-center text-sm text-neutral-400 dark:text-neutral-500">{t("Bir kelime yaz; ilgili aramaları, aylık arama sayısını, trendi, CPC'yi ve alıcı niyetini göster.", "Type a keyword to see related searches, monthly searches, trend, CPC and buyer intent.")}</p>
-        ) : !result ? (
-          <div className="space-y-2 py-8 text-center">
-            <BlockSpinner />
-            <p className="text-sm text-neutral-600 dark:text-neutral-300">{t("Aranıyor…", "Searching…")}</p>
-          </div>
-        ) : result.status === "invalid" ? (
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">{t("Kelime boş ya da çok uzun (en fazla 10 kelime).", "The keyword is empty or too long (max 10 words).")}</p>
-        ) : result.status === "refused" ? (
-          <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">{refusedText(result.refused)}</p>
-        ) : result.status === "empty" ? (
-          <p className="py-10 text-center text-sm text-neutral-400 dark:text-neutral-500">
-            {mode === "questions" ? t("Bu kelime için soru bulunamadı.", "No questions found for this keyword.") : t("Bu kelime için öneri bulunamadı. Daha genel bir ifade dene.", "No suggestions found. Try a more general phrase.")}
-          </p>
-        ) : result.status === "pending" ? (
-          <div className="space-y-2 py-8 text-center">
-            <BlockSpinner />
-            <p className="text-sm text-neutral-600 dark:text-neutral-300">
-              {gaveUp
-                ? t("Hazırlanması beklenenden uzun sürüyor. Birkaç dakika sonra aynı kelimeyi yeniden ara.", "This is taking longer than expected. Search the same keyword again in a few minutes.")
-                : mode === "questions"
-                  ? t("Sorular getiriliyor…", "Fetching questions…")
-                  : t("Bu kelime ilk kez araştırılıyor; Google verisi getiriliyor ve havuza ekleniyor (birkaç saniye)…", "This keyword is being researched for the first time; fetching Google data and adding it to the pool (a few seconds)…")}
-            </p>
-          </div>
-        ) : (
-          ready && (
-            <div className="space-y-4">
-              {result.stale && <p className="text-xs text-neutral-400 dark:text-neutral-500">{t("Sonuçlar güncelleniyor…", "Results are being refreshed…")}</p>}
-              {seedItem && <OverviewCard item={seedItem} selected={v.selected.has(seedItem.term)} onToggle={() => v.toggle(seedItem.term)} />}
-              <p className="text-xs text-neutral-400 dark:text-neutral-500">
-                {t("Hacim, trend, CPC, rekabet ve niyet: Google verisi (DataForSEO), Etsy arama hacmi değildir.", "Volume, trend, CPC, competition and intent: Google data (DataForSEO), not Etsy search volume.")}
-                {measuredAt && ` ${t("Ölçüm:", "Measured:")} ${new Date(measuredAt).toLocaleDateString(locale, { dateStyle: "medium" })}.`}
-                {` ${t("Etsy ilan sayısı: Etsy.", "Etsy listing count: Etsy.")}`}
-              </p>
-
-              <div role="tablist" className="flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
-                {(
-                  [
-                    ["all", t("Tüm kelimeler", "All keywords")],
-                    ["questions", t("Sorular", "Questions")],
-                  ] as const
-                ).map(([m, label]) => (
-                  <button
-                    key={m}
-                    type="button"
-                    role="tab"
-                    aria-selected={mode === m}
-                    onClick={() => void switchMode(m)}
-                    className={`-mb-px border-b-2 px-3 py-1.5 text-sm font-medium transition ${
-                      mode === m ? "border-[#D97757] text-neutral-900 dark:text-neutral-100" : "border-transparent text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200"
-                    }`}
-                  >
-                    {label}
-                    {m === "all" && base && ` (${base.items.length.toLocaleString(locale)})`}
-                    {m === "questions" && mode === "questions" && ` (${result.items.length.toLocaleString(locale)})`}
-                  </button>
-                ))}
-              </div>
-
-              <CollectionBar names={col.names} counts={col.counts} active={col.active} onChoose={col.choose} onCreate={col.create} />
-              <FilterBar
-                filters={v.filters}
-                onChange={v.setFilters}
-                groups={v.groups}
-                shown={v.view.length}
-                total={result.items.length}
-                volume={v.volume}
-                rowCount={v.rows.length}
-                showVariants={v.showVariants}
-                onShowVariants={v.setShowVariants}
-              />
-              <div className="flex flex-wrap items-center gap-2">
-                {mode === "all" && (
-                  <Button busy={measuring} onClick={() => void measureEtsy()}>
-                    {t(`Etsy'de kaç ilan var? (ilk ${ETSY_RESULTS_MAX})`, `How many Etsy listings? (first ${ETSY_RESULTS_MAX})`)}
-                  </Button>
-                )}
-                <Button onClick={() => downloadCsv(`discover-${mode}-${result.seed.replace(/\s+/g, "-")}.csv`, toCsv(v.view, etsy))}>{t("CSV indir", "Download CSV")}</Button>
-                <Button
-                  busy={refreshing}
-                  disabled={waiting}
-                  onClick={() => void refresh()}
-                  title={t("Google verisini yeniden çeker ve listeyi yenisiyle değiştirir (saatte bir; günlük yeni araştırma hakkından düşer)", "Fetches the Google data again and replaces the list (once an hour; counts against your daily new searches)")}
-                >
-                  {t("Yeniden araştır", "Research again")}
-                </Button>
-              </div>
-              <KeywordTable
-                rows={v.rows}
-                selected={v.selected}
-                onToggle={v.toggle}
-                onToggleMany={v.toggleMany}
-                sort={v.sort}
-                onSort={v.onSort}
-                etsy={etsy}
-                showEtsy={showEtsy && mode === "all"}
-                emptyText={t("Süzgeçlere uyan kelime yok.", "No keywords match the filters.")}
-                collect={{ active: col.active, has: col.has, onAdd: (term) => void col.add([term]), onRemove: (term) => void col.remove(term) }}
-              />
+      {!pageReady ? (
+        <div className="min-h-[16rem]">
+          {error && !allRes ? (
+            <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+          ) : !query ? (
+            <p className="py-10 text-center text-sm text-neutral-400 dark:text-neutral-500">{t("Bir kelime yaz; ilgili aramaları, aylık arama sayısını, trendi, CPC'yi ve alıcı niyetini göster.", "Type a keyword to see related searches, monthly searches, trend, CPC and buyer intent.")}</p>
+          ) : !allRes ? (
+            <div className="space-y-2 py-8 text-center">
+              <BlockSpinner />
+              <p className="text-sm text-neutral-600 dark:text-neutral-300">{t("Aranıyor…", "Searching…")}</p>
             </div>
-          )
-        )}
-      </div>
+          ) : allRes.status === "invalid" ? (
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">{t("Kelime boş ya da çok uzun (en fazla 10 kelime).", "The keyword is empty or too long (max 10 words).")}</p>
+          ) : allRes.status === "refused" ? (
+            message(refusedText(allRes.refused), "warn")
+          ) : allRes.status === "empty" ? (
+            message(t("Bu kelime için öneri bulunamadı. Daha genel bir ifade dene.", "No suggestions found. Try a more general phrase."))
+          ) : (
+            <div className="space-y-2 py-8 text-center">
+              <BlockSpinner />
+              <p className="text-sm text-neutral-600 dark:text-neutral-300">
+                {gaveUp
+                  ? t("Hazırlanması beklenenden uzun sürüyor. Birkaç dakika sonra aynı kelimeyi yeniden ara.", "This is taking longer than expected. Search the same keyword again in a few minutes.")
+                  : t("Bu kelime ilk kez araştırılıyor; Google verisi getiriliyor ve havuza ekleniyor (birkaç saniye)…", "This keyword is being researched for the first time; fetching Google data and adding it to the pool (a few seconds)…")}
+              </p>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {result?.stale && <p className="text-xs text-neutral-400 dark:text-neutral-500">{t("Sonuçlar güncelleniyor…", "Results are being refreshed…")}</p>}
+          {seedItem && <OverviewCard item={seedItem} selected={v.selected.has(seedItem.term)} onToggle={() => v.toggle(seedItem.term)} />}
+          <p className="text-xs text-neutral-400 dark:text-neutral-500">
+            {t("Hacim, trend, CPC, rekabet ve niyet: Google verisi (DataForSEO), Etsy arama hacmi değildir.", "Volume, trend, CPC, competition and intent: Google data (DataForSEO), not Etsy search volume.")}
+            {measuredAt && ` ${t("Ölçüm:", "Measured:")} ${new Date(measuredAt).toLocaleDateString(locale, { dateStyle: "medium" })}.`}
+            {` ${t("Etsy ilan sayısı: Etsy.", "Etsy listing count: Etsy.")}`}
+          </p>
+
+          <div role="tablist" className="flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
+            {(
+              [
+                ["all", t("Tüm kelimeler", "All keywords")],
+                ["questions", t("Sorular", "Questions")],
+              ] as const
+            ).map(([m, label]) => (
+              <button
+                key={m}
+                type="button"
+                role="tab"
+                aria-selected={mode === m}
+                onClick={() => void switchMode(m)}
+                className={`-mb-px border-b-2 px-3 py-1.5 text-sm font-medium transition ${
+                  mode === m ? "border-[#D97757] text-neutral-900 dark:text-neutral-100" : "border-transparent text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200"
+                }`}
+              >
+                {label}
+                {m === "all" && allRes && ` (${allRes.items.length.toLocaleString(locale)})`}
+                {m === "questions" && qRes?.status === "ready" && ` (${qRes.items.length.toLocaleString(locale)})`}
+              </button>
+            ))}
+          </div>
+
+          <CollectionBar names={col.names} counts={col.counts} active={col.active} onChoose={col.choose} onCreate={col.create} />
+
+          {/* Araç çubuğu: solda Etsy ilan sayısı, sağda CSV ve Yeniden araştır. Soru sekmesinde Etsy düğmesi kapalıdır (soru kalıbı Etsy'de anlamlı bir arama değil) ama yerinde durur. */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Button
+              busy={measuring}
+              disabled={mode !== "all" || !result || result.status !== "ready"}
+              onClick={() => void measureEtsy()}
+              title={mode !== "all" ? t("Soru kalıpları için Etsy ilan sayısı anlamlı değil", "Etsy listing counts are not meaningful for question patterns") : undefined}
+            >
+              {t(`Etsy'de kaç ilan var? (ilk ${ETSY_RESULTS_MAX})`, `How many Etsy listings? (first ${ETSY_RESULTS_MAX})`)}
+            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button disabled={!result || result.status !== "ready"} onClick={() => downloadCsv(`discover-${mode}-${(result?.seed ?? "list").replace(/\s+/g, "-")}.csv`, toCsv(v.view, etsy))}>
+                {t("CSV indir", "Download CSV")}
+              </Button>
+              <Button
+                busy={refreshing}
+                disabled={waiting}
+                onClick={() => void refresh()}
+                title={t("Google verisini yeniden çeker ve listeyi yenisiyle değiştirir (saatte bir; günlük yeni araştırma hakkından düşer)", "Fetches the Google data again and replaces the list (once an hour; counts against your daily new searches)")}
+              >
+                {t("Yeniden araştır", "Research again")}
+              </Button>
+            </div>
+          </div>
+
+          <FilterBar
+            filters={v.filters}
+            onChange={v.setFilters}
+            groups={v.groups}
+            shown={v.view.length}
+            total={result?.items.length ?? 0}
+            volume={v.volume}
+            rowCount={v.rows.length}
+            showVariants={v.showVariants}
+            onShowVariants={v.setShowVariants}
+          />
+
+          <div className="min-h-[16rem]">{listRegion()}</div>
+        </div>
+      )}
 
       {v.selected.size > 0 && <SaveBar count={v.selected.size} collection={col.active} busy={saving} onAdd={() => void addSelected()} />}
     </div>

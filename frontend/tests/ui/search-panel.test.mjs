@@ -56,31 +56,41 @@ await act(async () => chip("outdoor").dispatchEvent(new w.MouseEvent("click", { 
 eq(rows().sort(), ["large metal wall art", "large outdoor metal wall art", "outdoor metal sign", "outdoor metal wall art"], "iki grup seçilince birleşim (large VEYA outdoor)");
 console.log("3 çoklu grup seçimi (birleşim) OK");
 
-// 4) Sorular sekmesi: ayrı istek, ayrı liste; geri dönünce tekrar istek yok
-calls = []; script = [ready(QUESTIONS, "questions")];
+// 4) Sorular sekmesi: sayfa DEĞİŞMEZ (yalnızca tablo bölgesi yüklenir), kendi süzgeci vardır
+calls = [];
+script = [async () => { await sleep(300); return ready(QUESTIONS, "questions"); }];
 const tab = (label) => [...document.querySelectorAll("[role=tab]")].find((b) => b.textContent.startsWith(label));
 await act(async () => tab("Sorular").dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
 eq(calls.length, 1, "soru isteği");
 eq(calls[0].includes("mode=questions"), true, "mode=questions gönderilmeli");
-await act(async () => { await sleep(50); });
-eq(rows().sort(), ["how to hang metal wall art", "what is metal wall art"], "Sorular sekmesinde yalnızca sorular (süzgeçler sıfırlanmış)");
-console.log("4 Sorular sekmesi OK");
+// yükleme sürerken: sekmeler, özet kart, koleksiyon çubuğu, gruplar ve süzgeçler YERİNDE; yalnızca liste bölgesi bekliyor
+eq(Boolean(document.querySelector("[role=tablist]")), true, "yüklerken sekmeler yerinde");
+eq(text().includes("Aylık arama (Google)"), true, "yüklerken özet kart yerinde");
+eq(text().includes("Koleksiyon:"), true, "yüklerken koleksiyon çubuğu yerinde");
+eq(Boolean(document.querySelector("input[aria-label='İçerilecek kelimeler']")), true, "yüklerken süzgeçler yerinde");
+eq(text().includes("Sorular getiriliyor"), true, "liste bölgesinde yükleme mesajı");
+eq(tab("Sorular").getAttribute("aria-selected"), "true", "sekme seçili");
+await act(async () => { await sleep(400); });
+eq(rows().sort(), ["how to hang metal wall art", "what is metal wall art"], "Sorular sekmesinde yalnızca sorular (kendi süzgeci temiz)");
+console.log("4 Sorular sekmesi: sayfa sabit, yalnızca liste yükleniyor OK");
 
-// 5) tüm kelimelere dönünce yeniden istek yok (önbellekten) ve süzgeçler temiz
+// 5) tüm kelimelere dönünce: yeniden istek yok, o sekmenin süzgeci KORUNUR (large VEYA outdoor); sorulara dönünce de önbellekten
 calls = [];
 await act(async () => tab("Tüm kelimeler").dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
 await act(async () => { await sleep(30); });
 eq(calls.length, 0, "geri dönüşte yeniden istek atılmamalı");
-eq(rows().length, 5, "tüm kelimeler listesi geri geldi");
-// 6) Sorular sekmesine ikinci kez geçiş de istek atmaz
+eq(rows().length, 4, "tüm kelimeler sekmesinde eski süzgeç korunmuş (large VEYA outdoor)");
+eq(chip("large").getAttribute("aria-pressed"), "true", "seçili grup chip'i korunmuş");
 await act(async () => tab("Sorular").dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
 eq(calls.length, 0, "soru listesi önbellekten");
-console.log("5-6 sekmeler arası önbellek OK");
+eq(rows().length, 2, "soru listesi hemen görünür");
+console.log("5-6 sekmeler arası önbellek ve süzgeç durumu OK");
 
 // 7) yeni arama sekmeyi 'tüm kelimeler'e ve süzgeçleri temize döndürür
 script = [ready(ALL)];
 await search("another seed");
 eq(tab("Tüm kelimeler").getAttribute("aria-selected"), "true", "yeni arama tüm kelimelere döner");
+eq(rows().length, 5, "yeni aramada süzgeçler temiz");
 console.log("7 yeni arama OK");
 
 // 8) varyantlar tek satıra toplanır; "+N" ile açılır; "Varyasyonları ayır" düz liste verir
@@ -188,5 +198,17 @@ await act(async () => { await sleep(30); });
 eq(server.size, 2, "seçilen iki kelime eklenmeli");
 eq(doneBtns().length, 2, "ikisi de ✓");
 console.log("12 koleksiyon: oluştur, tek dokunuş, çıkar, toplu OK");
+
+// 13) DÜZEN SIRASI (yukarıdan aşağı): sekmeler, koleksiyon çubuğu, araç çubuğu (solda Etsy, sağda CSV + Yeniden araştır), gruplar, süzgeçler, liste
+const before = (a, b) => Boolean(a.compareDocumentPosition(b) & w.Node.DOCUMENT_POSITION_FOLLOWING);
+const q$ = (sel) => document.querySelector(sel);
+const btn = (label) => [...document.querySelectorAll("button")].find((b) => b.textContent.includes(label));
+const elTabs = q$("[role=tablist]"), elCol = [...document.querySelectorAll("span")].find((s) => s.textContent === "Koleksiyon:");
+const elEtsy = btn("Etsy'de kaç ilan"), elCsv = btn("CSV indir"), elRef = btn("Yeniden araştır");
+const elGroups = q$("[aria-label='Kelime grupları']"), elFilter = q$("input[aria-label='İçerilecek kelimeler']"), elTable = q$("tbody");
+eq([before(elTabs, elCol), before(elCol, elEtsy), before(elEtsy, elCsv), before(elCsv, elRef), before(elRef, elGroups), before(elGroups, elFilter), before(elFilter, elTable)], [true, true, true, true, true, true, true], "blok sırası");
+eq(/justify-between/.test(elEtsy.parentElement.className), true, "araç çubuğu iki uca yaslı (Etsy solda, diğerleri sağda)");
+eq(elCsv.parentElement.contains(elRef), true, "CSV ve Yeniden araştır sağ grupta");
+console.log("13 düzen sırası OK");
 console.log("PANEL DAVRANIŞ TESTLERİ GEÇTİ");
 process.exit(0);
