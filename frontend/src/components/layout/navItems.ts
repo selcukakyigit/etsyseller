@@ -1,5 +1,5 @@
 import { ComponentType } from "react";
-import { BoxIcon, ChartIcon, HomeIcon, PulseIcon, TagIcon } from "@/components/icons";
+import { BoxIcon, ChartIcon, HomeIcon, PulseIcon, SearchIcon, TagIcon } from "@/components/icons";
 
 /** Uygulama içi gezinmenin tek kaynağı: masaüstü kenar çubuğu, mobil çekmece ve alt sekme çubuğu buradan okur.
  * `needsShop`: bağlı Etsy mağazası olmadan anlamsız sayfa; mağaza yokken menüde gösterilmez (bkz. `forShops`). */
@@ -9,6 +9,7 @@ export const MAIN_NAV: NavItem[] = [
   { href: "/dashboard", tr: "Ana sayfa", en: "Home", icon: HomeIcon },
   { href: "/analysis", tr: "Analiz", en: "Analysis", icon: PulseIcon, needsShop: true },
   { href: "/listings", tr: "Listing'ler", en: "Listings", icon: TagIcon, needsShop: true },
+  { href: "/discover", tr: "Keşfet", en: "Discover", icon: SearchIcon, needsShop: true },
   { href: "/orders", tr: "Siparişler", en: "Orders", icon: BoxIcon, needsShop: true },
   { href: "/finance", tr: "Finans", en: "Finance", icon: ChartIcon, needsShop: true },
 ];
@@ -35,4 +36,4 @@ export const SETTINGS_NAV: NavItem = { href: "/settings", tr: "Ayarlar", en: "Se
 export const ADMIN_NAV: NavItem = { href: "/admin", tr: "Yönetim", en: "Admin" };
 
 /** Alt sekme çubuğunda (mobil) doğrudan görünen sayfalar (en fazla 4 + "Menü"); Analiz ve geri kalanı çekmecede. */
-export const BOTTOM_TABS: NavItem[] = MAIN_NAV.filter((i) => i.href !== "/analysis");
+export const BOTTOM_TABS: NavItem[] = MAIN_NAV.filter((i) => i.href !== "/analysis" && i.href !== "/discover");

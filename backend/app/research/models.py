@@ -174,3 +174,18 @@ class PhraseOutcome(Base):
     unclear: Mapped[int] = mapped_column(Integer, default=0)
     low_data: Mapped[int] = mapped_column(Integer, default=0)
     computed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+
+class SavedKeyword(Base):
+    """Kullanıcının Keşfet'te kaydettiği kelime (KİRACI VERİSİ: ortak havuzdan ayrıdır, `workspace_id` ile korunur). Koleksiyon, çalışma alanı içinde serbest bir ad;
+    boş ad "genel" listedir. Ölçümler burada tutulmaz, gösterilirken ortak havuzdan okunur."""
+
+    __tablename__ = "saved_keywords"
+    __table_args__ = (UniqueConstraint("workspace_id", "collection", "term", name="uq_saved_keywords_ws_collection_term"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    term: Mapped[str] = mapped_column(String(120))
+    collection: Mapped[str] = mapped_column(String(60), default="")
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)

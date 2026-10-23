@@ -46,6 +46,7 @@ from app.core import app_settings as _app_settings  # noqa: F401
 from app.account.router import router as account_router
 from app.admin.router import router as admin_router
 from app.research.admin_router import router as research_admin_router
+from app.research.discover_router import router as discover_router
 from app.account.service import AVATAR_DIR
 from app.auth.router import router as auth_router
 from app.assistant.router import router as assistant_router
@@ -193,6 +194,7 @@ app.include_router(support_admin_router)
 app.include_router(webhooks_router)
 app.include_router(admin_router)
 app.include_router(research_admin_router)
+app.include_router(discover_router)
 app.include_router(billing_router)
 app.include_router(billing_webhooks_router)
 app.include_router(banners_router)

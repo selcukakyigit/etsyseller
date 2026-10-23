@@ -30,7 +30,7 @@ def enqueue(
     existing = active_by_key(db, key)
     if existing:
         return existing
-    budget.check_enqueue(db, shop_id)
+    budget.check_enqueue(db, shop_id, kind)
     job = ResearchJob(
         kind=kind, provider=provider, market=market, language=language, idem_key=key[:200], params_json=json.dumps(payload),
         shop_id=shop_id, priority=priority,

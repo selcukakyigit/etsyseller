@@ -14,7 +14,13 @@ Amaç: önerilen ifade gerçekten işe yarıyor mu, havuzda ağırlığı buna g
 - Çıktı: ifade başına yalnızca sayılar (kaç mağazada denendi / kaçında işe yaradı), ortak tablo, mağaza kimliği yok. Puanda "sonuçla kanıtlanmış" ağırlığı; sürekli etkisiz çıkan ifade düşer.
 - Sınır: nedensellik kanıtlanamaz (sezon, fiyat, reklam); sonuç "güven puanı" olarak sunulur, kesin iddia edilmez.
 
-## 2. Discover (kullanıcının araştırma ekranı)
+## 2. Keşfet (Discover) — YAZILDI (2026-10-24, v1)
+- Ekran `/discover` (ana menüde "Keşfet"): tohum kelime → öneriler (Labs Keyword Suggestions, tohumun kendi verisi aynı istekte) + talep bandı (düşük/orta/yüksek) + alıcı niyeti + ⚑ kalabalık + "Sende var" işareti; kaydet / koleksiyon / çıkar. Sonuç havuza kalıcı yazılır; aynı kelime ikinci kullanıcıda sağlayıcıya gitmez.
+- Ham arama sayısı/CPC kullanıcıya dönmez (yalnızca bant). Mağaza başı günlük YENİ araştırma kotası `research_shop_daily_searches` (15; havuzda hazır aramalar sayılmaz); yönetimde ayarlanır.
+- Kaydedilenler kiracı verisidir (`saved_keywords`, çalışma alanına bağlı, göç 0063); ölçümler gösterilirken ortak havuzdan okunur.
+- Asistan: `research_keywords`, `saved_keywords`, `save_keywords` (`assistant/toolsets/research.py`; ekranla AYNI `research/discover.py` işlevleri; kredi harcamaz).
+- v1'de YOK: "listing'e aktar", sıra takibine alma, trend yönü (yıllık değişim) ve ek pazarlar. Kredi karşılığı arama.
+- Eski not (tasarım):
 - Ana menüde "Keşfet": tohum kelime → öneriler (Labs) + hacim bantları + kalabalık uyarısı; sonuç havuza kalıcı yazılır (aynı tohum ikinci kullanıcıda sağlayıcıya gitmez).
 - Kullanıcıya ham sayı değil bant (düşük/orta/yüksek talep) ve türetilmiş bilgi.
 - Kaydet / koleksiyon, listing'e aktar.

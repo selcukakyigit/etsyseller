@@ -133,6 +133,7 @@ const navIcon = (d: string) =>
     );
   };
 
+export const SearchIcon = navIcon("M21 21l-4.3-4.3M17 10.5a6.5 6.5 0 11-13 0 6.5 6.5 0 0113 0z");
 export const RefreshIcon = navIcon("M20 11a8 8 0 10-2.3 5.7M20 4v7h-7");
 export const ImagePlusIcon = navIcon("M12 4H5a1 1 0 00-1 1v14a1 1 0 001 1h14a1 1 0 001-1v-7M4 16l5-5 4 4 2-2M18 3v6M15 6h6");
 export const HomeIcon = navIcon("M3 10.5L12 3l9 7.5V20a1 1 0 01-1 1h-5v-6h-6v6H4a1 1 0 01-1-1v-9.5z");

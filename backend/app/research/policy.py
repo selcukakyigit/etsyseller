@@ -15,7 +15,8 @@ DEFAULTS: dict[str, Any] = {
     "research_ttl_trend_days": 7,  # Google ilgi endeksi (yıllık değişim) ölçümü
     "research_ttl_jitter": 0.15,  # TTL'e ±%15 sapma: aynı gün toplanan binlerce kelime aynı gün dolmasın
     "research_monthly_budget_usd": 30.0,  # sistem geneli aylık tavan; aşılınca eski veriyle devam edilir
-    "research_shop_daily_jobs": 40,  # bir mağazanın günde en fazla kaç yeni iş açabileceği
+    "research_shop_daily_jobs": 40,  # bir mağazanın günde en fazla kaç yeni iş açabileceği (listing havuzu işleri dahil)
+    "research_shop_daily_searches": 15,  # bir mağazanın günde en fazla kaç YENİ kelime araştırması (Keşfet); havuzda hazır olan aramalar sayılmaz
     "research_refresh_per_day": 2000,  # günlük otomatik yenilemede en fazla kelime
     "research_active_days": 90,  # bu kadar gündür istenmeyen kelime otomatik yenilenmez
     "research_crowd_window_days": 28,  # kalabalık sayacı: son kaç günde önerilen mağazalar sayılır

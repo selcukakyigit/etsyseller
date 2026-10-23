@@ -58,6 +58,15 @@ def _view(term: str, m: KeywordMetric, now: dt.datetime) -> MetricView:
     return MetricView(term, m.search_volume, m.cpc, m.competition, m.difficulty, m.intent, m.measured_at, fresh=m.expires_at > now)
 
 
+def peek(db: Session, terms: list[str], *, market: str | None = None, language: str | None = None) -> dict[str, MetricView]:
+    """Yalnızca OKUR: havuzda ölçümü olan kelimelerin en yeni ölçümü (kelime eklemez, kuyruğa almaz, commit etmez)."""
+    market, language = _market(market, language)
+    rows = pool.find_terms(db, terms, language)
+    latest = pool.latest_metrics(db, [r.id for r in rows.values()], market, language)
+    now = dt.datetime.utcnow()
+    return {term: _view(term, latest[row.id], now) for term, row in rows.items() if row.id in latest}
+
+
 def _market(market: str | None, language: str | None) -> tuple[str, str]:
     return market or policy.get("research_default_market"), language or policy.get("research_default_language")
 

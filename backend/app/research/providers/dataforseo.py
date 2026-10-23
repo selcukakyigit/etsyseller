@@ -47,6 +47,21 @@ def trend_windows(series: list[tuple[dt.date, float | None]], weeks: int = TREND
     return _mean(recent), _mean(previous)
 
 
+def _labs_record(item: dict) -> MetricRecord | None:
+    """Labs yanıtındaki bir kelime kaydı (öneri ya da tohum) -> ortak ölçüm kaydı."""
+    term = normalize(item.get("keyword") or "")
+    if not term:
+        return None
+    info = item.get("keyword_info") or {}
+    props = item.get("keyword_properties") or {}
+    competition = info.get("competition")
+    return MetricRecord(
+        term=term, search_volume=info.get("search_volume"), cpc=info.get("cpc"),
+        competition=competition if isinstance(competition, (int, float)) else None,
+        difficulty=props.get("keyword_difficulty"), intent=_intent(item), monthly=_monthly(info.get("monthly_searches")),
+    )
+
+
 class DataForSeoProvider:
     name = "dataforseo"
     max_volume_terms = 1000
@@ -127,26 +142,22 @@ class DataForSeoProvider:
         return ProviderResponse(endpoint=endpoint, trends=records, cost_usd=cost, duration_ms=ms)
 
     def suggestions(self, creds: Credentials, seed: str, market: str, language: str, limit: int) -> ProviderResponse:
+        """Tohum kelimenin önerileri; tohumun kendi metrikleri de (ek istek olmadan) kayıtlara katılır."""
         endpoint = "dataforseo_labs/google/keyword_suggestions/live"
         body = {
             "keyword": seed, "location_code": LOCATIONS[market], "language_code": language, "limit": min(limit, 1000),
-            "include_seed_keyword": False, "ignore_synonyms": False,
+            "include_seed_keyword": True, "ignore_synonyms": False,
         }
         task, cost, ms = self._post(creds, f"/{endpoint}", body)
-        records = []
+        records: list[MetricRecord] = []
         for result in task.get("result") or []:
-            for item in result.get("items") or []:
-                term = normalize(item.get("keyword") or "")
-                if not term:
-                    continue
-                info = item.get("keyword_info") or {}
-                props = item.get("keyword_properties") or {}
-                competition = info.get("competition")
-                records.append(MetricRecord(
-                    term=term, search_volume=info.get("search_volume"), cpc=info.get("cpc"),
-                    competition=competition if isinstance(competition, (int, float)) else None,
-                    difficulty=props.get("keyword_difficulty"), intent=_intent(item), monthly=_monthly(info.get("monthly_searches")),
-                ))
+            items = list(result.get("items") or [])
+            if result.get("seed_keyword_data"):
+                items.insert(0, result["seed_keyword_data"])
+            for item in items:
+                record = _labs_record(item)
+                if record is not None:
+                    records.append(record)
         return ProviderResponse(endpoint=endpoint, records=records, cost_usd=cost, duration_ms=ms)
 
     def account(self, creds: Credentials) -> dict:

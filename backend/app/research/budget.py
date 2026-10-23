@@ -9,7 +9,7 @@ from app.research.models import ProviderCall, ResearchJob
 
 
 class QueueRefused(Exception):
-    """İş kuyruğa alınmadı (kota ya da bütçe). `reason`: budget | shop_daily | disabled | not_configured | market."""
+    """İş kuyruğa alınmadı (kota ya da bütçe). `reason`: budget | shop_daily | shop_searches | disabled | not_configured | market."""
 
     def __init__(self, reason: str):
         super().__init__(reason)
@@ -29,15 +29,20 @@ def over_budget(db: Session) -> bool:
     return month_spend(db) >= float(policy.get("research_monthly_budget_usd"))
 
 
-def shop_jobs_today(db: Session, shop_id: int) -> int:
+def shop_jobs_today(db: Session, shop_id: int, kind: str | None = None) -> int:
     since = dt.datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-    return int(db.scalar(select(func.count(ResearchJob.id)).where(ResearchJob.shop_id == shop_id, ResearchJob.created_at >= since)) or 0)
+    q = select(func.count(ResearchJob.id)).where(ResearchJob.shop_id == shop_id, ResearchJob.created_at >= since)
+    if kind:
+        q = q.where(ResearchJob.kind == kind)
+    return int(db.scalar(q) or 0)
 
 
-def check_enqueue(db: Session, shop_id: int | None) -> None:
+def check_enqueue(db: Session, shop_id: int | None, kind: str | None = None) -> None:
     if not policy.get("research_enabled"):
         raise QueueRefused("disabled")
     if over_budget(db):
         raise QueueRefused("budget")
     if shop_id is not None and shop_jobs_today(db, shop_id) >= int(policy.get("research_shop_daily_jobs")):
         raise QueueRefused("shop_daily")
+    if shop_id is not None and kind == "suggest" and shop_jobs_today(db, shop_id, "suggest") >= int(policy.get("research_shop_daily_searches")):
+        raise QueueRefused("shop_searches")

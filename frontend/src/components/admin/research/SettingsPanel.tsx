@@ -35,6 +35,7 @@ function SettingsForm({ initial, onSaved }: { initial: ResearchSettings; onSaved
     ttlSuggest: String(initial.research_ttl_suggest_days),
     budget: initial.research_monthly_budget_usd.toFixed(2),
     shopDaily: String(initial.research_shop_daily_jobs),
+    shopSearches: String(initial.research_shop_daily_searches),
     refreshPerDay: String(initial.research_refresh_per_day),
     activeDays: String(initial.research_active_days),
   });
@@ -52,6 +53,7 @@ function SettingsForm({ initial, onSaved }: { initial: ResearchSettings; onSaved
         research_ttl_suggest_days: Number(form.ttlSuggest),
         research_monthly_budget_usd: Number(form.budget),
         research_shop_daily_jobs: Number(form.shopDaily),
+        research_shop_daily_searches: Number(form.shopSearches),
         research_refresh_per_day: Number(form.refreshPerDay),
         research_active_days: Number(form.activeDays),
       });
@@ -104,6 +106,9 @@ function SettingsForm({ initial, onSaved }: { initial: ResearchSettings; onSaved
           </Field>
           <Field label={t("Mağaza başı günlük iş", "Jobs per shop per day")}>
             <IntegerInput value={form.shopDaily} onValue={(v) => set("shopDaily", v)} className={inputClass} />
+          </Field>
+          <Field label={t("Mağaza başı günlük yeni kelime araştırması (Keşfet)", "New keyword searches per shop per day (Discover)")}>
+            <IntegerInput value={form.shopSearches} onValue={(v) => set("shopSearches", v)} className={inputClass} />
           </Field>
           <Field label={t("Günlük otomatik yenileme", "Daily auto-refresh")}>
             <IntegerInput value={form.refreshPerDay} onValue={(v) => set("refreshPerDay", v)} unit={t("kelime", "keywords")} className={inputClass} />
