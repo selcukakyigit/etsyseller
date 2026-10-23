@@ -25,7 +25,7 @@ Amaç: önerilen ifade gerçekten işe yarıyor mu, havuzda ağırlığı buna g
 - Yeni: DataForSEO Google Trends (`keywords_data/google_trends/explore/live`, istek başına ~0,011 $, en fazla 5 kelime) havuzun kuyruk/önbellek/bütçe düzeninde (`keyword_trends`, göç 0061, iş türü `trend`, TTL 7 gün, haftalık iş `research_trends` takipteki aramaları yeniler). Teşhis (`diagnosis.demand_signal`) havuzdan YALNIZCA okur.
 - Silindi: `pytrends`, `keywords/trends.py`, `keywords/models.py` (TrendCache), `insights/demand.py`, `jobs/demand_trends.py`, DemandTrend modeli, `/keyword-pool/trends` uç noktası, "Google Trend Ekle" düğmesi.
 - Kullanıcıya görünen değişiklik: kelime havuzunda "G:" artık düğmesiz, otomatik ve ham 0–100 skor yerine talep bandı (düşük/orta/yüksek); ⚑ = kalabalık. Ham Google hacmi/CPC/mağaza sayısı kullanıcıya dönmez (`keywords.service.public_pool`).
-- BEKLEYEN: eski `trend_cache` ve `demand_trends` TABLOLARI hâlâ veritabanında; yeni sürüm yayında doğrulandıktan sonra ayrı bir göçle (0062) silinecek (çalışan eski kod onları okuyabildiği için aynı anda silinmedi).
+- Eski `trend_cache` ve `demand_trends` tabloları, yeni sürüm yayında doğrulandıktan sonra göç 0062 ile silindi (canlı API'de `/trends` yolunun 404 döndüğü ve Vercel derlemesinin başarılı olduğu kontrol edildi).
 
 ## 4. Kalıcı bulgular
 - `audit.Finding` kalıcı olur: bulgu kimliği, listing sürümü, analiz sürümü, durum (açık/uygulandı/çözüldü/geçersiz). Yalnızca kontrol ya da yeni analiz kapatır, LLM kapatmaz.
