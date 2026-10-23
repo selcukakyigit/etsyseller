@@ -23,12 +23,22 @@ class TrendRecord:
 
 
 @dataclass
+class SeasonRecord:
+    """Mevsimsellik profili: takvim ayına göre (Oca..Ara) göreli ilgi, zirve ay = 100. Hacim değil, yıllık şekildir."""
+
+    term: str
+    monthly: list[int] | None = None  # 12 değer; veri yetersizse None
+    years: int = 0
+
+
+@dataclass
 class ProviderResponse:
     endpoint: str
     records: list[MetricRecord] = field(default_factory=list)
     cost_usd: float = 0.0
     duration_ms: int = 0
     trends: list[TrendRecord] = field(default_factory=list)
+    seasons: list[SeasonRecord] = field(default_factory=list)
 
 
 class ProviderError(Exception):

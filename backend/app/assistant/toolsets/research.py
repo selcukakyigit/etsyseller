@@ -59,8 +59,16 @@ def research_keywords(ctx, a: dict) -> dict:
             for item in items:
                 if counts.get(item["kelime"]) is not None:
                     item["etsy_ilan_sayisi"] = counts[item["kelime"]]
+    season = None
+    if r.season and r.season["monthly"]:
+        names = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"]
+        season = {
+            "mevsimsel": r.season["seasonal"], "zirve_aylar": [names[m - 1] for m in r.season["peak_months"]],
+            "aylik_ilgi_0_100": dict(zip(names, r.season["monthly"])),
+            "not": "Google Trends'ten 5 yıllık takvim ayı profili (zirve = 100); satış zirvesinden 1-2 ay ÖNCE listing hazır olmalı. Hacim değil, yıllık şekildir.",
+        }
     return {
-        "arama": r.seed, "durum": "hazir", "tohum": _item(r.seed_item) if r.seed_item else None, "oneriler": items,
+        "arama": r.seed, "durum": "hazir", **({"mevsimsellik": season} if season else {}), "tohum": _item(r.seed_item) if r.seed_item else None, "oneriler": items,
         "toplam_oneri": len(r.items), "toplam_aylik_arama": r.total_volume, **({"etsy_not": etsy_note} if a.get("etsy_competition") and etsy_note else {}),
         "not": ("google_aylik_arama = Google'daki aylık arama (Etsy arama hacmi DEĞİL; söylerken Google olduğunu belirt). reklam_rekabeti Google Ads reklam rekabetidir, Etsy rekabeti değil. "
                 "etsy_ilan_sayisi (varsa) = Etsy'de o aramada kaç aktif ilan var: gerçek Etsy rekabeti; arama ÷ ilan oranı yüksekse fırsattır. "

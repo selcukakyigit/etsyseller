@@ -7,9 +7,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.research import policy
-from app.research.models import KeywordLink, KeywordMetric, KeywordTerm, KeywordTrend
+from app.research.models import KeywordLink, KeywordMetric, KeywordSeason, KeywordTerm, KeywordTrend
 from app.research.terms import normalize
-from app.research.records import MetricRecord, TrendRecord
+from app.research.records import MetricRecord, SeasonRecord, TrendRecord
 
 CHUNK = 500  # IN (...) listelerini bölmek için
 MIN_TREND_INTEREST = 3.0  # geçen yılki ilgi bunun altındaysa (Google'da çok az aranıyorsa) yıllık değişim gürültüdür, hesaplanmaz
@@ -162,3 +162,21 @@ def add_trends(
         ))
     db.add_all(rows)
     return len(rows)
+
+
+def latest_season(db: Session, keyword_id: int, market: str, language: str) -> KeywordSeason | None:
+    return db.scalars(
+        select(KeywordSeason).where(KeywordSeason.keyword_id == keyword_id, KeywordSeason.market == market, KeywordSeason.language == language)
+        .order_by(KeywordSeason.measured_at.desc(), KeywordSeason.id.desc()).limit(1)
+    ).first()
+
+
+def add_season(db: Session, kw: KeywordTerm, rec: SeasonRecord, *, provider: str, market: str, language: str, ttl_days: float) -> KeywordSeason:
+    """Yeni mevsimsellik satırı; profil çıkmadıysa boş satır yazılır (TTL boyunca yeniden sorulmaz)."""
+    now = dt.datetime.utcnow()
+    row = KeywordSeason(
+        keyword_id=kw.id, provider=provider, market=market, language=language, monthly_json=json.dumps(rec.monthly) if rec.monthly else None, years=rec.years,
+        measured_at=now, expires_at=policy.expires_at(now, ttl_days),
+    )
+    db.add(row)
+    return row

@@ -53,6 +53,7 @@ class SearchResult:
     items: list[Item] = field(default_factory=list)
     stale: bool = False  # sonuçlar eski; yenileniyor
     total_volume: int = 0  # listedeki kelimelerin toplam aylık araması
+    season: dict | None = None  # tohum kelimenin mevsimsellik profili: {"monthly": [12], "peak_months": [..], "seasonal": bool, "pending": bool}
     mode: str = "all"  # all | questions
     measured_at: str | None = None  # listedeki ölçümlerin en yenisi (ISO); verinin ne zaman alındığını gösterir
 
@@ -130,9 +131,14 @@ def search(db: Session, shop: Shop, seed: str, mode: str = "all", refresh: bool 
     full = int(policy.get("research_crowd_full_shops"))
     mine, saved = _shop_tags(db, shop), _saved_terms(db, shop.workspace_id)
     items = [_item(t, found.metrics[t], crowd, full, mine, saved) for t in terms if t != term]
+    season = None
+    if not questions:  # mevsimsellik yalnızca tohum için (kelime başına ≈ 0,011 $, 90 gün önbellekte); ölçüm sürerken ekran yoklamaya devam eder
+        s = service.seasonality(db, term, shop_id=shop.id)
+        season = {"monthly": s.monthly, "peak_months": s.peak_months, "seasonal": s.seasonal, "pending": s.pending}
     stale = bool(found.pending) or not all(m.fresh for m in found.metrics.values())
     return SearchResult(
-        seed=term, status="ready", refused=found.refused, seed_item=_item(term, own.get(term), crowd, full, mine, saved), items=items, stale=stale and bool(found.pending),
+        seed=term, status="ready", refused=found.refused, seed_item=_item(term, own.get(term), crowd, full, mine, saved), items=items,
+        stale=(stale and bool(found.pending)) or bool(season and season["pending"]), season=season,
         total_volume=sum(i.volume or 0 for i in items), mode=mode,
         measured_at=iso(max((m.measured_at for m in list(found.metrics.values()) + list(own.values())), default=None)),
     )

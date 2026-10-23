@@ -11,7 +11,7 @@ import httpx
 from app.research.providers.base import Credentials
 from app.research.terms import normalize
 from app.research.questions import QUESTION_REGEX, is_question
-from app.research.records import MetricRecord, ProviderError, ProviderResponse, TrendRecord
+from app.research.records import MetricRecord, ProviderError, ProviderResponse, SeasonRecord, TrendRecord
 
 BASE = "https://api.dataforseo.com/v3"
 TIMEOUT = 60.0
@@ -62,6 +62,27 @@ def _labs_record(item: dict) -> MetricRecord | None:
         competition=competition if isinstance(competition, (int, float)) else None,
         difficulty=props.get("keyword_difficulty"), intent=_intent(item), monthly=_monthly(info.get("monthly_searches")),
     )
+
+
+MIN_SEASON_MONTHS = 24  # profil için en az bu kadar farklı (yıl, ay) verisi
+
+
+def season_profile(points: list[tuple[dt.date, float | None]]) -> tuple[list[int], int] | None:
+    """Haftalık ilgi noktalarından takvim ayı profili: her ayın (tüm yıllar boyunca) ortalaması, zirve ay 100 olacak biçimde ölçeklenir. (profil, yıl sayısı);
+    veri kısa/eksikse ya da ilgi hep sıfırsa None (düşük hacimli kelimeler Google Trends'te 0 görünür)."""
+    clean = [(d, v) for d, v in points if v is not None]
+    if len({(d.year, d.month) for d, _ in clean}) < MIN_SEASON_MONTHS:
+        return None
+    by_month: dict[int, list[float]] = {m: [] for m in range(1, 13)}
+    for d, v in clean:
+        by_month[d.month].append(v)
+    if any(not vals for vals in by_month.values()):
+        return None
+    means = [sum(by_month[m]) / len(by_month[m]) for m in range(1, 13)]
+    peak = max(means)
+    if peak <= 0:
+        return None
+    return [round(v / peak * 100) for v in means], len({d.year for d, _ in clean})
 
 
 class DataForSeoProvider:
@@ -142,6 +163,29 @@ class DataForSeoProvider:
                     recent, previous = trend_windows(series)
                     records.append(TrendRecord(term=term, recent=recent, previous=previous))
         return ProviderResponse(endpoint=endpoint, trends=records, cost_usd=cost, duration_ms=ms)
+
+    def seasonality(self, creds: Credentials, term: str, market: str, language: str) -> ProviderResponse:
+        """Tek kelimeyle 5 yıllık haftalık ilgi (tek kelime: değerler yalnızca kendi zirvesine göre ölçeklenir, başka kelimeler profili bozmaz)."""
+        endpoint = "keywords_data/google_trends/explore/live"
+        body = {"keywords": [term], "location_code": LOCATIONS[market], "language_code": language, "type": "web", "time_range": "past_5_years", "item_types": ["google_trends_graph"]}
+        task, cost, ms = self._post(creds, f"/{endpoint}", body)
+        points: list[tuple[dt.date, float | None]] = []
+        for result in task.get("result") or []:
+            for item in result.get("items") or []:
+                if item.get("type") != "google_trends_graph":
+                    continue
+                for point in item.get("data") or []:
+                    values = point.get("values") or []
+                    if point.get("missing_data") or not values:
+                        continue
+                    try:
+                        # haftanın ortası: hafta iki aya taşarsa ortası, ait olduğu ayı belirler
+                        points.append((dt.date.fromisoformat(point["date_from"]) + dt.timedelta(days=3), values[0]))
+                    except (KeyError, ValueError):
+                        continue
+        profile = season_profile(points)
+        record = SeasonRecord(term=normalize(term), monthly=profile[0] if profile else None, years=profile[1] if profile else 0)
+        return ProviderResponse(endpoint=endpoint, seasons=[record], cost_usd=cost, duration_ms=ms)
 
     def suggestions(self, creds: Credentials, seed: str, market: str, language: str, limit: int, questions: bool = False) -> ProviderResponse:
         """Tohum kelimenin önerileri; tohumun kendi metrikleri de (ek istek olmadan) kayıtlara katılır. Normal listede yalnızca ÇEKİRDEK kelimeler istenir

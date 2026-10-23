@@ -25,6 +25,9 @@ class ResearchProvider(Protocol):
     def trends(self, creds: Credentials, terms: list[str], market: str, language: str) -> ProviderResponse:
         """Kelimelerin Google ilgi endeksi: son 13 hafta ile geçen yılın aynı 13 haftası (`ProviderResponse.trends`)."""
 
+    def seasonality(self, creds: Credentials, term: str, market: str, language: str) -> ProviderResponse:
+        """Tek kelimenin 5 yıllık ilgisinden takvim ayına göre mevsimsellik profili (`ProviderResponse.seasons`)."""
+
     def suggestions(self, creds: Credentials, seed: str, market: str, language: str, limit: int, questions: bool = False) -> ProviderResponse:
         """Tohum kelimeye bağlı uzun kuyruklu adaylar ve metrikleri. `questions`: yalnızca soru kalıplarındaki aramalar (how/what/why…)."""
 

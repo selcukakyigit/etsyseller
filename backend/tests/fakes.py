@@ -1,5 +1,5 @@
 """Testlerde kullanılan sahte araştırma sağlayıcısı: çağrıları kaydeder, hata enjekte edilebilir."""
-from app.research.records import MetricRecord, ProviderResponse, TrendRecord
+from app.research.records import MetricRecord, ProviderResponse, SeasonRecord, TrendRecord
 
 
 class FakeProvider:
@@ -14,6 +14,7 @@ class FakeProvider:
         self.empty_seeds: set[str] = set()  # öneri döndürmeyen tohumlar
         self.keep_only: set[str] | None = None  # verilirse öneri listesi yalnızca bu kelimelere indirilir ("liste değişti")
         self.no_data: set[str] = set()  # hacim kaydı hiç dönmeyen kelimeler
+        self.season_monthly: list[int] | None = [10, 10, 12, 15, 20, 25, 30, 40, 60, 100, 90, 50]  # None: profil çıkarılamadı
         self.trend_values = {"a": (10.0, 20.0), "b": (10.0, 2.0), "c": (30.0, 30.0)}
 
     def supports_market(self, market: str) -> bool:
@@ -52,6 +53,11 @@ class FakeProvider:
         self._maybe_fail()
         records = [TrendRecord(t, *self.trend_values[t]) for t in terms if t in self.trend_values]
         return ProviderResponse("fake/trends", trends=records, cost_usd=0.011, duration_ms=5)
+
+    def seasonality(self, creds, term, market, language):
+        self.calls.append(("season", term))
+        self._maybe_fail()
+        return ProviderResponse("fake/season", seasons=[SeasonRecord(term, self.season_monthly, 5 if self.season_monthly else 0)], cost_usd=0.011, duration_ms=5)
 
     def account(self, creds):
         return {"balance": 1}

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.research import budget, credentials, jobs, policy, pool
 from app.research.models import ProviderCall, ResearchJob
 from app.research.providers import get_provider
-from app.research.records import ProviderError, ProviderResponse
+from app.research.records import ProviderError, ProviderResponse, SeasonRecord
 from app.research.terms import normalize, researchable
 
 log = logging.getLogger(__name__)
@@ -60,6 +60,20 @@ def _run_trend(db: Session, job: ResearchJob) -> None:
     jobs.finish(job, resp.cost_usd)
 
 
+def _run_season(db: Session, job: ResearchJob) -> None:
+    provider = get_provider(job.provider)
+    creds = credentials.get(db, job.provider)
+    term = normalize(jobs.params(job).get("term", ""))
+    if not researchable(term):
+        jobs.finish(job)
+        return
+    resp = provider.seasonality(creds, term, job.market, job.language)
+    row = pool.get_or_create_terms(db, [term], job.language, "season")[term]
+    pool.add_season(db, row, resp.seasons[0] if resp.seasons else SeasonRecord(term=term), provider=job.provider, market=job.market, language=job.language, ttl_days=policy.get("research_ttl_season_days"))
+    _log_call(db, [job.id], job.provider, job.market, job.language, ProviderResponse(resp.endpoint, [], cost_usd=resp.cost_usd, duration_ms=resp.duration_ms))
+    jobs.finish(job, resp.cost_usd)
+
+
 def _run_suggest(db: Session, job: ResearchJob) -> None:
     provider = get_provider(job.provider)
     creds = credentials.get(db, job.provider)
@@ -91,6 +105,8 @@ def _execute(db: Session, batch: list[ResearchJob]) -> None:
             _run_volume(db, batch)
         elif first.kind == "trend":
             _run_trend(db, first)
+        elif first.kind == "season":
+            _run_season(db, first)
         elif first.kind == "suggest":
             _run_suggest(db, first)
         else:

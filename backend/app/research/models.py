@@ -70,6 +70,23 @@ class KeywordTrend(Base):
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
 
 
+class KeywordSeason(Base):
+    """Mevsimsellik profili (Google Trends, 5 yıl): takvim ayına göre göreli ilgi (zirve ay = 100). `monthly_json` boşsa veri yoktu/yetersizdi: TTL boyunca yeniden sorulmaz."""
+
+    __tablename__ = "keyword_seasons"
+    __table_args__ = (Index("ix_keyword_seasons_lookup", "keyword_id", "market", "language", "measured_at"),)
+
+    id: Mapped[int] = mapped_column(_ID, primary_key=True, autoincrement=True)
+    keyword_id: Mapped[int] = mapped_column(_ID, ForeignKey("keyword_terms.id", ondelete="CASCADE"))
+    provider: Mapped[str] = mapped_column(String(20))
+    market: Mapped[str] = mapped_column(String(2))
+    language: Mapped[str] = mapped_column(String(8))
+    monthly_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # [12 sayı]
+    years: Mapped[int] = mapped_column(Integer, default=0)
+    measured_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
+
+
 class KeywordLink(Base):
     """Kelimeler arası ilişki (şimdilik: tohum kelimenin önerileri). Eş anlamlıları körlemesine birleştirmez, ilişkiyi tipiyle tutar."""
 
@@ -96,7 +113,7 @@ class ResearchJob(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    kind: Mapped[str] = mapped_column(String(20))  # volume | suggest | trend
+    kind: Mapped[str] = mapped_column(String(20))  # volume | suggest | trend | season
     provider: Mapped[str] = mapped_column(String(20))
     market: Mapped[str] = mapped_column(String(2))
     language: Mapped[str] = mapped_column(String(8))

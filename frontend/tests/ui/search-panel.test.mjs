@@ -241,5 +241,24 @@ await act(async () => { await sleep(40); });
 eq(Boolean(analyzeBtn()), false, "Sorular sekmesinde Etsy analiz düğmesi olmamalı (soru kalıbı Etsy'de anlamlı arama değil)");
 console.log("14 Etsy ilk 20 analizi OK");
 globalThis.__api = prevApi;
+
+// 15) MEVSİMSELLİK: 12 çubuk, zirve aylar vurgulu ve yazılı; hazırlanırken iskelet; profil yoksa hiçbir şey; dengeli ise "Yıl boyu dengeli"
+const { default: OverviewCard } = await import("../../src/components/discover/OverviewCard.tsx");
+const cardHost = document.body.appendChild(document.createElement("div"));
+const cardRoot = createRoot(cardHost);
+const renderCard = (season) => act(async () => cardRoot.render(h(OverviewCard, { item: item("christmas ornaments", 1000), selected: false, onToggle: () => {}, season })));
+const PROFILE = [11, 5, 3, 4, 4, 5, 6, 8, 13, 28, 100, 92];
+await renderCard({ monthly: PROFILE, peak_months: [11, 12], seasonal: true, pending: false });
+eq(cardHost.querySelectorAll("[data-testid=season] [title]").length, 12, "12 aylık çubuk");
+eq(cardHost.querySelector("[data-testid=season]").textContent.includes("Zirve: Kas, Ara"), true, "zirve aylar yazılı");
+eq(cardHost.querySelectorAll("[data-testid=season] .bg-\\[\\#D97757\\]").length, 2, "yalnız zirve aylar vurgulu");
+await renderCard({ monthly: [], peak_months: [], seasonal: false, pending: true });
+eq(Boolean(cardHost.querySelector("[data-testid=season-pending]")), true, "hazırlanırken iskelet");
+await renderCard({ monthly: [], peak_months: [], seasonal: false, pending: false });
+eq(Boolean(cardHost.querySelector("[data-testid=season]") || cardHost.querySelector("[data-testid=season-pending]")), false, "profil çıkmadıysa bölüm gizli");
+await renderCard({ monthly: Array(12).fill(95), peak_months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], seasonal: false, pending: false });
+eq(cardHost.querySelector("[data-testid=season]").textContent.includes("Yıl boyu dengeli"), true, "dengeli kelime");
+eq(cardHost.querySelectorAll("[data-testid=season] .bg-\\[\\#D97757\\]").length, 0, "dengeli kelimede vurgu yok");
+console.log("15 mevsimsellik OK");
 console.log("PANEL DAVRANIŞ TESTLERİ GEÇTİ");
 process.exit(0);

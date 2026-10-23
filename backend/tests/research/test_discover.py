@@ -21,6 +21,8 @@ SHOP_B = NS(id=2, workspace_id=2)
 def _research(db, shop, seed="metal farm sign"):
     assert discover.search(db, shop, seed).status == "pending"
     worker.run_once(db)
+    discover.search(db, shop, seed)  # liste hazır: tohumun mevsimsellik işi de kuyruğa girer
+    worker.run_once(db)
     return discover.search(db, shop, seed)
 
 

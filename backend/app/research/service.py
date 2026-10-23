@@ -56,6 +56,57 @@ class TrendLookup:
     refused: str | None = None
 
 
+PEAK_FROM = 85  # zirve sayılan ay: profilde en az bu değer (zirve = 100)
+SEASONAL_RATIO = 1.8  # zirve / ortalama bu oranı aşarsa kelime mevsimsel sayılır
+
+
+@dataclass
+class SeasonView:
+    """Mevsimsellik: `monthly` Oca..Ara göreli ilgi (zirve = 100), boşsa profil çıkarılamadı (düşük hacim / kısa geçmiş). `pending`: ölçüm sırada."""
+
+    monthly: list[int] = field(default_factory=list)
+    peak_months: list[int] = field(default_factory=list)  # 1..12
+    seasonal: bool = False
+    pending: bool = False
+    refused: str | None = None
+
+
+def season_view(monthly: list[int] | None) -> SeasonView:
+    if not monthly or len(monthly) != 12:
+        return SeasonView()
+    mean = sum(monthly) / 12
+    return SeasonView(
+        monthly=list(monthly), peak_months=[m + 1 for m, v in enumerate(monthly) if v >= PEAK_FROM], seasonal=bool(mean) and max(monthly) / mean >= SEASONAL_RATIO,
+    )
+
+
+def seasonality(db: Session, term: str, *, market: str | None = None, language: str | None = None, shop_id: int | None = None) -> SeasonView:
+    """Kelimenin mevsimsellik profili (havuzdan). Yoksa/eskiyse tek kelimelik bir iş kuyruğa alınır (`pending`); sağlayıcıya istek atılmaz."""
+    market, language = _market(market, language)
+    key_term = normalize(term)
+    if not researchable(key_term):
+        return SeasonView()
+    row = pool.find_terms(db, [key_term], language).get(key_term)
+    latest = pool.latest_season(db, row.id, market, language) if row else None
+    now = dt.datetime.utcnow()
+    view = season_view(json.loads(latest.monthly_json)) if latest and latest.monthly_json else SeasonView()
+    if latest and latest.expires_at > now:
+        return view
+    key = f"season:{market}:{language}:{key_term}"
+    if jobs.active_by_key(db, key):
+        view.pending = True
+        return view
+    view.refused = _available(db, market)
+    if view.refused is None:
+        try:
+            jobs.enqueue(db, kind="season", provider=DEFAULT_PROVIDER, market=market, language=language, key=key, payload={"term": key_term}, shop_id=shop_id)
+            view.pending = True
+        except budget.QueueRefused as exc:
+            view.refused = exc.reason
+    db.commit()
+    return view
+
+
 def _series(monthly_json: str | None) -> list[int]:
     """[[yıl, ay, hacim], …] -> tarih sırasıyla (eskiden yeniye) hacimler; en fazla son 12 ay."""
     if not monthly_json:
