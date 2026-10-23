@@ -196,10 +196,10 @@ def expand(db: Session, seed: str, *, market: str | None = None, language: str |
             out.metrics[r.term] = _view(r.term, latest[r.id], now)
     newest = max((m.measured_at for m in latest.values()), default=None)
     ttl = dt.timedelta(days=float(policy.get("research_ttl_suggest_days")))
-    if newest is None or now - newest > ttl:
+    key = f"suggest:{market}:{language}:{term}"
+    if (newest is None or now - newest > ttl) and not jobs.done_since(db, key, now - ttl):
         out.refused = _available(db, market)
         if out.refused is None:
-            key = f"suggest:{market}:{language}:{term}"
             try:
                 jobs.enqueue(db, kind="suggest", provider=DEFAULT_PROVIDER, market=market, language=language, key=key,
                              payload={"seed": term, "limit": limit}, shop_id=shop_id)
@@ -232,7 +232,7 @@ def refresh_stale(db: Session) -> int:
     since = now - dt.timedelta(days=int(policy.get("research_active_days")))
     limit = int(policy.get("research_refresh_per_day"))
     candidates = db.scalars(
-        select(KeywordTerm).where(KeywordTerm.language == language, KeywordTerm.last_used_at >= since).order_by(KeywordTerm.last_used_at.desc())
+        select(KeywordTerm).where(KeywordTerm.language == language, KeywordTerm.last_used_at >= since).order_by(KeywordTerm.last_used_at.desc()).limit(limit * 5)
     ).all()
     latest = pool.latest_metrics(db, [c.id for c in candidates], market, language)
     due = [c.term for c in candidates if c.id not in latest or latest[c.id].expires_at <= now][:limit]

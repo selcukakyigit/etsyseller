@@ -23,6 +23,11 @@ def active_by_key(db: Session, key: str) -> ResearchJob | None:
     return db.scalar(select(ResearchJob).where(ResearchJob.idem_key == key, ResearchJob.status.in_(ACTIVE)))
 
 
+def done_since(db: Session, key: str, since: dt.datetime) -> bool:
+    """Bu anahtarlı iş `since`ten beri BAŞARIYLA bitti mi (sonuç boş olsa bile): boş yanıtlı aramayı her seferinde yeniden ödememek için."""
+    return db.scalar(select(ResearchJob.id).where(ResearchJob.idem_key == key, ResearchJob.status == "done", ResearchJob.finished_at >= since).limit(1)) is not None
+
+
 def enqueue(
     db: Session, *, kind: str, provider: str, market: str, language: str, key: str, payload: dict, shop_id: int | None = None, priority: int = 0,
 ) -> ResearchJob:

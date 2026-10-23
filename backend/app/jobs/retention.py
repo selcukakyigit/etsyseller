@@ -15,6 +15,7 @@ from app.contact.router import BUCKET
 from app.core import storage
 from app.core.db import SessionLocal
 from app.notifications.service import purge_old as purge_old_notifications
+from app.research.retention import purge as purge_research
 from app.shops.disconnect import disconnect_shop
 from app.shops.models import OAuthToken, Shop
 from app.support.errors import purge_expired as purge_error_groups
@@ -46,7 +47,7 @@ def purge_expired_records() -> None:
             logger.info("Saklama süresi dolan %s iletişim mesajı silindi", removed)
         if n := purge_old_notifications(db):
             logger.info("90 günden eski %s bildirim silindi", n)
-        for name, purge in (("Asistan", purge_assistant_data), ("Banner", purge_banners), ("Destek", purge_support), ("Hata kaydı", purge_error_groups)):
+        for name, purge in (("Asistan", purge_assistant_data), ("Banner", purge_banners), ("Destek", purge_support), ("Hata kaydı", purge_error_groups), ("Araştırma", purge_research)):
             try:
                 purge(db)
             except Exception:  # sonraki adımı (erişimi kaldırılmış mağazalar) engellemesin

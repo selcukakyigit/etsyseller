@@ -5,6 +5,7 @@ DÖNMEZ, yalnızca bant (düşük/orta/yüksek), niyet ve işaretler döner. Kay
 ortak havuzdan okunur."""
 import datetime as dt
 import json
+import time
 from dataclasses import asdict, dataclass, field
 
 from sqlalchemy import delete, func, select
@@ -50,13 +51,24 @@ def clean_collection(name: str | None) -> str:
     return " ".join((name or "").split())[:MAX_COLLECTION_CHARS]
 
 
+_TAGS_TTL = 300.0  # sn: "Sende var" işareti için etiketler; her aramada tüm listing JSON'u yeniden okunmasın
+_tags_cache: dict[int, tuple[float, set[str]]] = {}
+
+
 def _shop_tags(db: Session, shop: Shop) -> set[str]:
+    now = time.monotonic()
+    hit = _tags_cache.get(shop.id)
+    if hit and now - hit[0] < _TAGS_TTL:
+        return hit[1]
     out: set[str] = set()
-    for (raw,) in db.execute(select(ListingCache.raw_json).where(ListingCache.shop_id == shop.id)):
+    for (raw,) in db.execute(select(ListingCache.raw_json).where(ListingCache.shop_id == shop.id).execution_options(stream_results=True, yield_per=200)):
         try:
             out.update(normalize(str(t)) for t in json.loads(raw).get("tags") or [])
         except (ValueError, AttributeError):
             continue
+    if len(_tags_cache) > 500:  # bellek sınırı: çok mağazada eskiler atılır
+        _tags_cache.clear()
+    _tags_cache[shop.id] = (now, out)
     return out
 
 

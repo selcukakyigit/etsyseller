@@ -1,6 +1,7 @@
 """Araştırma havuzu işleri: kuyruğu yürütme (dakikalık) ve süresi dolan kelimelerin günlük yenilemesi (bkz. app/research/)."""
 import json
 import logging
+import threading
 
 from sqlalchemy import select
 
@@ -11,7 +12,14 @@ from app.research import exposure, outcomes, service, worker
 logger = logging.getLogger(__name__)
 
 
+_queue_lock = threading.Lock()
+
+
 def run_queue() -> None:
+    """Kuyruğu yürütür. Süreç içinde aynı anda tek yürütücü çalışır (dakikalık iş ve kullanıcı isteğinden tetiklenen arka plan görevleri çakışmasın:
+    sağlayıcının hız sınırı aşılmasın); meşgulse sessizce çıkar, çalışan yürütücü işleri zaten alır."""
+    if not _queue_lock.acquire(blocking=False):
+        return
     db = SessionLocal()
     try:
         worker.run_once(db)
@@ -20,6 +28,7 @@ def run_queue() -> None:
         logger.exception("Araştırma kuyruğu çalışırken hata")
     finally:
         db.close()
+        _queue_lock.release()
 
 
 def refresh_stale() -> None:
@@ -53,7 +62,7 @@ def warm_own_tags() -> None:
     db = SessionLocal()
     try:
         tags: set[str] = set()
-        for (raw,) in db.execute(select(ListingCache.raw_json)):
+        for (raw,) in db.execute(select(ListingCache.raw_json).execution_options(stream_results=True, yield_per=200)):
             try:
                 tags.update(str(t) for t in json.loads(raw).get("tags") or [])
             except (ValueError, AttributeError):

@@ -8,6 +8,7 @@ from collections import Counter
 from sqlalchemy.orm import Session
 
 from app.ai import quality, standard
+from app.core.db import SessionLocal
 from app.etsy import search as etsy_search
 from app.keywords import competition, scoring
 from app.listings import performance
@@ -254,10 +255,12 @@ def _attach_research(db: Session, shop: Shop, pool: list[dict]) -> None:
     sonraki istekte gelir, o ana kadar `google_pending` işaretlenir). Araştırma hata verse bile SEO önerisi bozulmaz."""
     tags = [p["tag"] for p in pool]
     try:
-        found = research.volumes(db, tags, shop_id=shop.id)
-        crowd = exposure.counts(db, tags)
+        # Ortak havuz çağıranın işleminden BAĞIMSIZ kendi kısa oturumunda okunur/yazılır: havuz hata verse ya da commit etse bile çağıranın
+        # bekleyen değişiklikleri etkilenmez.
+        with SessionLocal() as rdb:
+            found = research.volumes(rdb, tags, shop_id=shop.id)
+            crowd = exposure.counts(rdb, tags)
     except Exception:  # noqa: BLE001
-        db.rollback()
         logger.warning("Araştırma havuzu okunamadı", exc_info=True)
         return
     for item in pool:
