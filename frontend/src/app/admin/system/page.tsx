@@ -22,6 +22,10 @@ const JOB_NAMES: Record<string, [string, string]> = {
   rank_tracking: ["Sıra takibi", "Rank tracking"],
   demand_trends: ["Talep trendleri", "Demand trends"],
   retention_purge: ["Saklama süresi temizliği", "Retention cleanup"],
+  research_queue: ["Araştırma kuyruğu", "Research queue"],
+  research_refresh: ["Araştırma yenileme", "Research refresh"],
+  research_warm: ["Etiket ısındırma", "Tag warm-up"],
+  research_exposure: ["Kalabalık sayacı", "Crowding counter"],
 };
 
 export default function AdminSystemPage() {

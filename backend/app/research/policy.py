@@ -17,6 +17,8 @@ DEFAULTS: dict[str, Any] = {
     "research_shop_daily_jobs": 40,  # bir mağazanın günde en fazla kaç yeni iş açabileceği
     "research_refresh_per_day": 2000,  # günlük otomatik yenilemede en fazla kelime
     "research_active_days": 90,  # bu kadar gündür istenmeyen kelime otomatik yenilenmez
+    "research_crowd_window_days": 28,  # kalabalık sayacı: son kaç günde önerilen mağazalar sayılır
+    "research_crowd_full_shops": 25,  # bu kadar farklı mağazaya önerilmiş ifade "tamamen kalabalık" sayılır (özgünlük puanı 0)
 }
 EDITABLE = tuple(DEFAULTS)
 

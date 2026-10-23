@@ -124,3 +124,15 @@ class ResearchProviderKey(Base):
     login: Mapped[str] = mapped_column(String(200))
     password: Mapped[str] = mapped_column(EncryptedText)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+
+class SuggestionExposure(Base):
+    """Kalabalık sayacı: bir ifade son N günde KAÇ FARKLI mağazaya önerildi. Yalnızca sayı tutulur, mağaza kimliği yoktur; `exposure.rebuild`
+    her gece listing_versions'tan yeniden hesaplar (aynı mağazanın tekrar tekrar önermesi sayıyı şişirmez). Puanı düşürmek için kullanılır:
+    herkese aynı ifade önerilmesin."""
+
+    __tablename__ = "suggestion_exposure"
+
+    term: Mapped[str] = mapped_column(String(120), primary_key=True)
+    shops: Mapped[int] = mapped_column(Integer, default=0)
+    computed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)

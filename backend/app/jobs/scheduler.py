@@ -17,7 +17,9 @@ from app.jobs.listing_health import evaluate_all_shops
 from app.jobs.listing_refresh import refresh_all_shops
 from app.jobs.order_sync import sync_all_shops
 from app.jobs.rank_tracking import track_all_shops
-from app.jobs.research import refresh_stale as research_refresh, run_queue as research_queue
+from app.jobs.research import (
+    rebuild_exposure as research_exposure, refresh_stale as research_refresh, run_queue as research_queue, warm_own_tags as research_warm,
+)
 from app.jobs.retention import purge_expired_records
 from app.jobs.reviews import sync_all_shops as sync_reviews
 from app.jobs.shop_profile import sync_all_shops as sync_shop_profile
@@ -153,6 +155,18 @@ def start_scheduler() -> None:
         id="research_refresh",
         replace_existing=True,
     )
+    _scheduler.add_job(
+        _measured(research_warm),
+        trigger=CronTrigger(hour=2, minute=45),
+        id="research_warm",
+        replace_existing=True,
+    )
+    _scheduler.add_job(
+        _measured(research_exposure),
+        trigger=CronTrigger(hour=3, minute=40),
+        id="research_exposure",
+        replace_existing=True,
+    )
     _scheduler.start()
 
     # Yeni süreç başlayınca hafif/artımlı işleri bir kez çalıştır ki arayüz ilk günden veri görsün. 3 dakika arayla, tek
@@ -167,6 +181,7 @@ def start_scheduler() -> None:
             (sync_reviews, "reviews_initial_run"),
             (refresh_all_shops, "listing_refresh_initial_run"),
             (sync_finance, "finance_sync_initial_run"),
+            (research_warm, "research_warm_initial_run"),
         ],
         start=1,
     ):
