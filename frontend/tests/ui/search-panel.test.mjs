@@ -42,7 +42,8 @@ console.log("1 ilk basışta sonuç görünüyor OK");
 // 2) ilk arama 'hazırlanıyor' dönerse sayfa kendiliğinden yoklayıp sonucu getirmeli (ikinci basış gerekmez)
 calls = []; script = [pending(), ready(ALL)];
 await search("fresh seed word");
-eq(text().includes("ilk kez araştırılıyor"), true, "hazırlanıyor mesajı");
+eq(text().includes("analiz ediyoruz"), true, "hazırlanıyor mesajı");
+eq(/havuz|DataForSEO|pool/i.test(text()), false, "kullanıcıya iç işleyiş (havuz, sağlayıcı adı) gösterilmemeli");
 await act(async () => { await sleep(2300); });
 eq(rows().length, 5, "poll sonrası sonuç kendiliğinden gelmeli");
 eq(calls.length, 2, "tam olarak bir yoklama");
@@ -233,7 +234,7 @@ eq(calls.some((c) => c.includes("/etsy-top")), true, "analiz uç noktası çağr
 eq(dialog.textContent.includes("Etsy verisi (Google değil)"), true, "Etsy verisi olarak etiketli olmalı");
 eq(dialog.textContent.includes("10+ favorili ilan"), true, "örnekte 10+ favorili ilan sayısı");
 eq(/Düşük|Orta|Yüksek/.test(dialog.textContent), false, "rekabet gücü hükmü (düşük/orta/yüksek) gösterilmemeli");
-eq(dialog.textContent.includes("sitedeki ilk sayfa değildir"), true, "örnek olduğu, sitedeki ilk sayfa olmadığı yazılı");
+eq(dialog.textContent.includes("ilk sayfa değildir"), true, "örnek olduğu, sitedeki ilk sayfa olmadığı yazılı");
 eq(dialog.textContent.includes("housewarming gift") && dialog.textContent.includes("Tree of Life Wall Art"), true, "rakip etiketleri ve ilan listesi");
 const headBtns = () => [...dialog.querySelectorAll(".sticky button")];
 eq(headBtns().map((b) => b.firstChild.textContent), ["#", "Fiyat", "Favori", "Görüntülenme", "İlan yaşı"], "listede sütun başlıkları olmalı");

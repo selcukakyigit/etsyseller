@@ -96,11 +96,11 @@ export default function EtsyTopModal({ shopId, term, onClose }: { shopId: number
         ) : (
           <>
             <div className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
-              <span>{t("Etsy verisi (Google değil). Etsy API'sinden 20 ilanlık örnek; sitedeki ilk sayfa değildir.", "Etsy data (not Google). A 20-listing sample from the Etsy API; not the site's first page.")}</span>
+              <span>{t("Etsy verisi (Google değil). Etsy'nin genel arama sonuçlarından 20 ilanlık örnek; senin gördüğün ilk sayfa değildir.", "Etsy data (not Google). A 20-listing sample from Etsy's general search results; not the first page a shopper sees.")}</span>
               <HelpTip>
                 {t(
-                  "Etsy'nin API'si yalnızca kendi skor sırasını verir; bu sıra sitedeki 'Most relevant' sıralamasından çok farklıdır (sitede yorumu, satışı ve reklamı olan ilanlar öndedir, API'de yeni ve favorisi az ilanlar öne çıkar). Bu yüzden buradaki 20 ilan alıcının gördüğü ilk sayfa değil, bir örnektir ve rekabet gücü hükmü verilmez. Güvenilir olan: toplam ilan sayısı. Örnekten fiyat bandı, rakip etiketleri ve yeni giriş payı fikir verir. 10+ favorili ilan: örnekte kaç ilanın 10 ve üzeri favorisi var. Gerçek sayfayı görmek için alttaki 'Etsy'de aç' bağlantısını kullan (konumuna ve hesabına göre değişir, reklam içerir). Veriler saklanmaz, bir saat önbellekte kalır.",
-                  "Etsy's API only offers its own score order, which differs a lot from the site's 'Most relevant' ranking (on the site, listings with reviews, sales and ads lead; in the API, new listings with few favorites surface). So these 20 listings are a sample, not the first page a buyer sees, and no competition-strength verdict is given. What is reliable: the total listing count. The sample gives an idea of the price range, competitors' tags and the new-entry share. 10+ favorites: how many listings in the sample have 10 or more favorites. To see the real page use the 'Open on Etsy' link below (it varies with your location and account and includes ads). Data is not stored; it is cached for an hour.",
+                  "Etsy genel arama sonuçlarını kendi iç sırasıyla veriyor; bu sıra sitedeki 'Most relevant' sıralamasından çok farklıdır (sitede yorumu, satışı ve reklamı olan ilanlar öndedir, buradaki örnekte yeni ve favorisi az ilanlar öne çıkar). Bu yüzden buradaki 20 ilan alıcının gördüğü ilk sayfa değil, bir örnektir ve rekabet gücü hükmü verilmez. Güvenilir olan: toplam ilan sayısı. Örnekten fiyat bandı, rakip etiketleri ve yeni giriş payı fikir verir. 10+ favorili ilan: örnekte kaç ilanın 10 ve üzeri favorisi var. Gerçek sayfayı görmek için alttaki 'Etsy'de aç' bağlantısını kullan (konumuna ve hesabına göre değişir, reklam içerir). Veriler saklanmaz; bir saat boyunca yeniden kullanılır.",
+                  "Etsy returns general search results in its own internal order, which differs a lot from the site's 'Most relevant' ranking (on the site, listings with reviews, sales and ads lead; in this sample, new listings with few favorites surface). So these 20 listings are a sample, not the first page a buyer sees, and no competition-strength verdict is given. What is reliable: the total listing count. The sample gives an idea of the price range, competitors' tags and the new-entry share. 10+ favorites: how many listings in the sample have 10 or more favorites. To see the real page use the 'Open on Etsy' link below (it varies with your location and account and includes ads). Data is not stored; it is reused for an hour.",
                 )}
               </HelpTip>
             </div>
@@ -140,14 +140,14 @@ export default function EtsyTopModal({ shopId, term, onClose }: { shopId: number
             )}
 
             <div>
-              <h3 className="mb-1 text-xs font-semibold text-neutral-500 dark:text-neutral-400">{t("Örnek ilanlar (Etsy API sırası)", "Sample listings (Etsy API order)")}</h3>
+              <h3 className="mb-1 text-xs font-semibold text-neutral-500 dark:text-neutral-400">{t("Örnek ilanlar (Etsy'nin genel sırası)", "Sample listings (Etsy's general order)")}</h3>
               <div className="max-h-80 overflow-auto rounded-lg border border-neutral-200 dark:border-neutral-800">
                 <div className="min-w-[34rem]">
                   <div
                     className="sticky top-0 z-10 grid items-center gap-x-3 border-b border-neutral-200 bg-white px-3 py-1.5 text-[11px] font-medium text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400"
                     style={{ gridTemplateColumns: LIST_COLUMNS }}
                   >
-                    {sortHead("rank", "#", t("Etsy API'sinin özgün sırasına dön", "Back to the Etsy API's original order"), "right")}
+                    {sortHead("rank", "#", t("Etsy'nin özgün sırasına dön", "Back to Etsy's original order"), "right")}
                     <span aria-hidden />
                     <span>{t("İlan", "Listing")}</span>
                     <span aria-hidden />

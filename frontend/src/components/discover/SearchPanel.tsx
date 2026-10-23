@@ -246,7 +246,7 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
               <p className="text-sm text-neutral-600 dark:text-neutral-300">
                 {gaveUp
                   ? t("Hazırlanması beklenenden uzun sürüyor. Birkaç dakika sonra aynı kelimeyi yeniden ara.", "This is taking longer than expected. Search the same keyword again in a few minutes.")
-                  : t("Bu kelime ilk kez araştırılıyor; Google verisi getiriliyor ve havuza ekleniyor (birkaç saniye)…", "This keyword is being researched for the first time; fetching Google data and adding it to the pool (a few seconds)…")}
+                  : t("Kelimeyi senin için analiz ediyoruz: arama hacmi, trend ve öneriler hazırlanıyor (birkaç saniye)…", "We are analyzing this keyword for you: preparing search volume, trends and suggestions (a few seconds)…")}
               </p>
             </div>
           )}
@@ -256,7 +256,7 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
           {result?.stale && <p className="text-xs text-neutral-400 dark:text-neutral-500">{t("Sonuçlar güncelleniyor…", "Results are being refreshed…")}</p>}
           {seedItem && <OverviewCard item={seedItem} selected={v.selected.has(seedItem.term)} onToggle={() => v.toggle(seedItem.term)} onAnalyze={() => setAnalyzeTerm(seedItem.term)} season={allRes?.season ?? null} />}
           <p className="text-xs text-neutral-400 dark:text-neutral-500">
-            {t("Hacim, trend, CPC, rekabet ve niyet: Google verisi (DataForSEO), Etsy arama hacmi değildir.", "Volume, trend, CPC, competition and intent: Google data (DataForSEO), not Etsy search volume.")}
+            {t("Hacim, trend, CPC, rekabet ve niyet Google aramalarına dayanır; Etsy arama hacmi değildir.", "Volume, trend, CPC, competition and intent are based on Google searches; not Etsy search volume.")}
             {measuredAt && ` ${t("Ölçüm:", "Measured:")} ${new Date(measuredAt).toLocaleDateString(locale, { dateStyle: "medium" })}.`}
             {` ${t("Etsy ilan sayısı: Etsy.", "Etsy listing count: Etsy.")}`}
           </p>
