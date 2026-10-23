@@ -42,6 +42,17 @@ def save(payload: SavedIn, background: BackgroundTasks, shop: Shop = Depends(get
     return {"added": added}
 
 
+class EtsyResultsIn(BaseModel):
+    terms: list[str] = Field(min_length=1, max_length=discover.ETSY_RESULTS_MAX)
+
+
+@router.post("/etsy-results")
+def etsy_results(payload: EtsyResultsIn, shop: Shop = Depends(get_owned_shop)):
+    """Kelimelerin Etsy'deki aktif ilan sayısı (rakip sayısı). `limited`: mağazanın ölçüm hakkı geçici olarak doldu."""
+    counts = discover.etsy_results(shop, payload.terms)
+    return {"counts": counts or {}, "limited": counts is None}
+
+
 @router.post("/saved/remove")
 def unsave(payload: SavedIn, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
     return {"removed": discover.unsave(db, shop, payload.terms, payload.collection)}

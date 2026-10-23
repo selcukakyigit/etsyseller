@@ -1,8 +1,8 @@
 """Keşfet (kullanıcının araştırma ekranı) servisi. Ekran ve sohbet asistanı AYNI işlevleri çağırır (CLAUDE.md).
 
-Kurallar: sağlayıcıya istek burada atılmaz (eksik veri `research.service.expand` ile kuyruğa girer); kullanıcıya ham arama sayısı/CPC/mağaza sayısı
-DÖNMEZ, yalnızca bant (düşük/orta/yüksek), niyet ve işaretler döner. Kaydedilen kelimeler kiracı verisidir (çalışma alanına bağlı); ölçümler gösterilirken
-ortak havuzdan okunur."""
+Kurallar: sağlayıcıya istek burada atılmaz (eksik veri `research.service.expand` ile kuyruğa girer). Kullanıcıya havuzdaki ölçümler SAYI olarak gösterilir
+(aylık arama, CPC, reklam rekabeti, 12 aylık seri): bunlar GOOGLE verisidir, Etsy arama hacmi değildir ve arayüzde öyle etiketlenir. Platform içi sayılar
+(kaç mağazaya önerildi gibi) yalnızca işaret olarak döner. Kaydedilen kelimeler kiracı verisidir (çalışma alanına bağlı)."""
 import datetime as dt
 import json
 import time
@@ -11,13 +11,15 @@ from dataclasses import asdict, dataclass, field
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from app.core.limits import SlidingWindow
 from app.listings.models import ListingCache
 from app.research import bands, exposure, policy, service
 from app.research.models import SavedKeyword
 from app.research.terms import normalize, researchable
 from app.shops.models import Shop
 
-MAX_RESULTS = 60  # bir aramada gösterilen en fazla öneri
+MAX_RESULTS = 300  # bir aramada gösterilen en fazla öneri (sağlayıcıdan da bu kadar istenir)
+ETSY_RESULTS_MAX = 20  # tek seferde Etsy ilan sayısı ölçülecek en fazla kelime (Etsy günlük kotası ortaktır)
 MAX_SAVED = 2000  # çalışma alanı başına kaydedilebilecek en fazla kelime
 MAX_COLLECTION_CHARS = 60
 CROWDED_FROM = 0.5  # kalabalık oranı bunun üstündeyse "kalabalık" işareti (bkz. research/policy.py research_crowd_full_shops)
@@ -27,7 +29,12 @@ _INTENTS = frozenset({"informational", "navigational", "commercial", "transactio
 @dataclass
 class Item:
     term: str
-    demand: str | None  # low | medium | high | None (henüz ölçülmedi)
+    demand: str | None  # low | medium | high | None (henüz ölçülmedi); liste dışı yerlerin (editör) kullandığı kaba bant
+    volume: int | None  # Google aylık arama (Etsy hacmi DEĞİL)
+    cpc: float | None  # USD
+    competition: int | None  # 0–100 Google Ads reklam rekabeti (Etsy organik rekabeti değil)
+    monthly: list[int]  # son 12 ay (eskiden yeniye); trend çizgisi için
+    trend_pct: int | None  # son 3 ay ortalaması / ilk 3 ay ortalaması - 1 (%)
     intent: str | None
     crowded: bool
     mine: bool  # mağazanın listing'lerinde zaten etiket olarak var
@@ -42,6 +49,7 @@ class SearchResult:
     seed_item: Item | None = None
     items: list[Item] = field(default_factory=list)
     stale: bool = False  # sonuçlar eski; yenileniyor
+    total_volume: int = 0  # listedeki kelimelerin toplam aylık araması
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -79,10 +87,22 @@ def _saved_terms(db: Session, workspace_id: int, collection: str | None = None) 
     return {t for (t,) in db.execute(q)}
 
 
+def trend_pct(monthly: list[int]) -> int | None:
+    """Son 3 ayın ortalaması, ilk 3 ayınkine göre % değişim (12 aylık seride mevsim/yön göstergesi); yeterli veri ya da başlangıç yoksa None."""
+    if len(monthly) < 6:
+        return None
+    first, last = sum(monthly[:3]) / 3, sum(monthly[-3:]) / 3
+    return round((last - first) / first * 100) if first > 0 else None
+
+
 def _item(term: str, metric: "service.MetricView | None", crowd: dict[str, int], full: int, mine: set[str], saved: set[str]) -> Item:
     intent = metric.intent if metric and metric.intent in _INTENTS else None
+    monthly = metric.monthly if metric else []
+    competition = metric.competition if metric else None
     return Item(
-        term=term, demand=bands.demand_band(metric.search_volume) if metric else None, intent=intent,
+        term=term, demand=bands.demand_band(metric.search_volume) if metric else None, volume=metric.search_volume if metric else None,
+        cpc=round(metric.cpc, 2) if metric and metric.cpc is not None else None, competition=None if competition is None else round(competition * 100),
+        monthly=monthly, trend_pct=trend_pct(monthly), intent=intent,
         crowded=crowd.get(term, 0) / max(1, full) >= CROWDED_FROM, mine=term in mine, saved=term in saved,
     )
 
@@ -92,7 +112,7 @@ def search(db: Session, shop: Shop, seed: str) -> SearchResult:
     term = normalize(seed)
     if not researchable(term):
         return SearchResult(seed=term, status="invalid")
-    found = service.expand(db, term, shop_id=shop.id)
+    found = service.expand(db, term, shop_id=shop.id, limit=MAX_RESULTS)
     terms = list(found.metrics)[:MAX_RESULTS]
     own = service.peek(db, [term])
     if not terms and not own:
@@ -105,7 +125,24 @@ def search(db: Session, shop: Shop, seed: str) -> SearchResult:
     stale = bool(found.pending) or not all(m.fresh for m in found.metrics.values())
     return SearchResult(
         seed=term, status="ready", refused=found.refused, seed_item=_item(term, own.get(term), crowd, full, mine, saved), items=items, stale=stale and bool(found.pending),
+        total_volume=sum(i.volume or 0 for i in items),
     )
+
+
+_etsy_limiter = SlidingWindow(limit=12, window=600)  # mağaza başına 10 dakikada en fazla 12 ölçüm (her biri en çok ETSY_RESULTS_MAX Etsy isteği)
+
+
+def etsy_results(shop: Shop, terms: list[str]) -> dict[str, int | None] | None:
+    """Kelimelerin Etsy'deki aktif ilan sayısı (rakip sayısı). Etsy günlük kotası ortak olduğundan mağaza başına sınırlıdır; sınır aşıldıysa None döner.
+    Sonuçlar 6 saat önbellekte kalır (aynı kelime tekrar ölçülürse Etsy'ye gidilmez)."""
+    from app.keywords import competition
+
+    wanted = list(dict.fromkeys(t for t in (normalize(x) for x in terms) if researchable(t)))[:ETSY_RESULTS_MAX]
+    if not wanted:
+        return {}
+    if not _etsy_limiter.hit(shop.id):
+        return None
+    return competition.result_counts(wanted)
 
 
 # ---- Kaydedilenler (kiracı verisi)

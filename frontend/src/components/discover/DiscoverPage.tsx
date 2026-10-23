@@ -27,13 +27,13 @@ export default function DiscoverPage() {
 
   return (
     <AppShell user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} current="/discover" requiresShop>
-      <div className={pageContainer("form", "normal", "space-y-5")}>
+      <div className={pageContainer("page", "normal", "space-y-5")}>
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t("Keşfet", "Discover")}</h1>
           <HelpTip>
             {t(
-              "Kelime araştırması: bir kelimenin ilgili aramalarını, Google'daki talep seviyesini (düşük/orta/yüksek) ve alıcı niyetini gösterir. Talep Google verisidir, Etsy arama hacmi değildir; Etsy'ye özgü sayıları Analiz > Etsy verisi'nden alırsın. ⚑ Kalabalık: son günlerde birçok mağazaya önerilmiş, herkes aynı kelimeyle yarışır. Daha önce araştırılmış kelimeler anında gelir ve sayılmaz; yeni kelimelerin günlük bir hakkı vardır.",
-              "Keyword research: shows a keyword's related searches, its demand level on Google (low/medium/high) and buyer intent. Demand is Google data, not Etsy search volume; get Etsy-specific numbers from Analysis > Etsy data. ⚑ Crowded: recently suggested to many shops, so everyone competes for the same word. Keywords researched before appear instantly and are not counted; new keywords have a daily allowance.",
+              "Kelime araştırması: bir kelimenin ilgili aramalarını, Google'daki aylık arama sayısını, 12 aylık trendi, CPC'yi, reklam rekabetini ve alıcı niyetini gösterir. Bu sayılar GOOGLE verisidir, Etsy arama hacmi değildir. 'Etsy'de kaç ilan var?' düğmesi gerçek Etsy rekabetini ölçer; altındaki sayı aylık arama ÷ ilan oranıdır (yüksek = az rekabetle çok arama). ⚑ Kalabalık: son günlerde birçok mağazaya önerilmiş, herkes aynı kelimeyle yarışır. Daha önce araştırılmış kelimeler anında gelir ve sayılmaz; yeni kelimelerin günlük bir hakkı vardır.",
+              "Keyword research: shows a keyword's related searches, monthly Google searches, 12-month trend, CPC, ad competition and buyer intent. These numbers are GOOGLE data, not Etsy search volume. The 'How many Etsy listings?' button measures real Etsy competition; the number below is monthly searches ÷ listings (high = lots of searches, little competition). ⚑ Crowded: recently suggested to many shops, so everyone competes for the same word. Keywords researched before appear instantly and are not counted; new keywords have a daily allowance.",
             )}
           </HelpTip>
         </div>

@@ -16,6 +16,14 @@ _REFUSED = {
 
 def _item(i: discover.Item) -> dict:
     out = {"kelime": i.term, "talep": _DEMAND[i.demand]}
+    if i.volume is not None:
+        out["google_aylik_arama"] = i.volume  # Google verisi; Etsy hacmi DEĞİL
+    if i.cpc is not None:
+        out["cpc_usd"] = i.cpc
+    if i.competition is not None:
+        out["reklam_rekabeti_0_100"] = i.competition
+    if i.trend_pct is not None:
+        out["yillik_egilim_yuzde"] = i.trend_pct
     if i.intent:
         out["niyet"] = _INTENT[i.intent]
     if i.crowded:
@@ -40,9 +48,22 @@ def research_keywords(ctx, a: dict) -> dict:
         return {"arama": r.seed, "durum": "yapilamadi", "not": _REFUSED.get(r.refused, "Araştırma şu an yapılamıyor.")}
     if r.status == "empty":
         return {"arama": r.seed, "durum": "sonuc_yok", "not": "Bu kelime için öneri bulunamadı; daha genel bir ifade dene."}
+    shown = sorted(r.items, key=lambda i: -(i.volume or 0))[:40]
+    items = [_item(i) for i in shown]
+    if a.get("etsy_competition"):  # en çok aranan ilk 15 için Etsy'deki ilan sayısı (Etsy kotası ortak: ölçüm sınırlıdır)
+        counts = discover.etsy_results(ctx.shop, [i.term for i in shown[:15]])
+        if counts is None:
+            etsy_note = "Etsy ilan sayısı ölçüm hakkı geçici doldu; birkaç dakika sonra dene."
+        else:
+            etsy_note = None
+            for item in items:
+                if counts.get(item["kelime"]) is not None:
+                    item["etsy_ilan_sayisi"] = counts[item["kelime"]]
     return {
-        "arama": r.seed, "durum": "hazir", "tohum": _item(r.seed_item) if r.seed_item else None, "oneriler": [_item(i) for i in r.items[:40]],
-        "not": ("talep = Google'daki aylık arama bandı (Etsy hacmi DEĞİL; Etsy talebini yalnızca gösterge olarak yorumla). Ham sayı verme, yalnızca bant söyle. "
+        "arama": r.seed, "durum": "hazir", "tohum": _item(r.seed_item) if r.seed_item else None, "oneriler": items,
+        "toplam_oneri": len(r.items), "toplam_aylik_arama": r.total_volume, **({"etsy_not": etsy_note} if a.get("etsy_competition") and etsy_note else {}),
+        "not": ("google_aylik_arama = Google'daki aylık arama (Etsy arama hacmi DEĞİL; söylerken Google olduğunu belirt). reklam_rekabeti Google Ads reklam rekabetidir, Etsy rekabeti değil. "
+                "etsy_ilan_sayisi (varsa) = Etsy'de o aramada kaç aktif ilan var: gerçek Etsy rekabeti; arama ÷ ilan oranı yüksekse fırsattır. "
                 "kalabalik = son günlerde birçok mağazaya önerildi, ana ifade yapma. listingde_var = mağazada zaten etiket. Kullanıcı isterse save_keywords ile koleksiyona kaydet."),
     }
 
@@ -73,7 +94,14 @@ TOOLS: list[dict] = [
             "mağazada zaten kullanılıp kullanılmadığı. Önce ortak havuza bakar; yoksa araştırma kuyruğa girer (sonuç 1-2 dakikada hazır olur, 'hazirlaniyor' dönerse biraz sonra tekrar çağır). "
             "Kredi harcamaz; günlük yeni araştırma hakkı sınırlıdır. 'Bu kelime nasıl', 'ilgili kelimeler ne', 'ne aranıyor' soruları için. Tohum kelime İngilizce olmalı."
         ),
-        "input_schema": {"type": "object", "properties": {"seed": {"type": "string", "description": "Araştırılacak kelime/ifade (İngilizce, en fazla 10 kelime)"}}, "required": ["seed"]},
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "seed": {"type": "string", "description": "Araştırılacak kelime/ifade (İngilizce, en fazla 10 kelime)"},
+                "etsy_competition": {"type": "boolean", "description": "true ise en çok aranan ilk 15 kelime için Etsy'deki aktif ilan sayısını da ölçer (gerçek Etsy rekabeti; yalnızca kullanıcı rekabeti/fırsatı sorarsa)"},
+            },
+            "required": ["seed"],
+        },
     },
     {
         "name": "saved_keywords",

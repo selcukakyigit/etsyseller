@@ -2,6 +2,7 @@
 Havuzda güncel veri varsa döner; yoksa/eskiyse iş kuyruğa alınır ve çağırana "hazırlanıyor" (`pending`) bilgisi verilir."""
 import datetime as dt
 import hashlib
+import json
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
@@ -23,6 +24,7 @@ class MetricView:
     intent: str | None
     measured_at: dt.datetime
     fresh: bool
+    monthly: list[int] = field(default_factory=list)  # son 12 ayın aylık aramaları (eskiden yeniye); veri yoksa boş
 
 
 @dataclass
@@ -54,8 +56,19 @@ class TrendLookup:
     refused: str | None = None
 
 
+def _series(monthly_json: str | None) -> list[int]:
+    """[[yıl, ay, hacim], …] -> tarih sırasıyla (eskiden yeniye) hacimler; en fazla son 12 ay."""
+    if not monthly_json:
+        return []
+    try:
+        rows = sorted(json.loads(monthly_json), key=lambda r: (r[0], r[1]))
+    except (ValueError, TypeError, IndexError):
+        return []
+    return [int(r[2]) for r in rows if len(r) > 2 and r[2] is not None][-12:]
+
+
 def _view(term: str, m: KeywordMetric, now: dt.datetime) -> MetricView:
-    return MetricView(term, m.search_volume, m.cpc, m.competition, m.difficulty, m.intent, m.measured_at, fresh=m.expires_at > now)
+    return MetricView(term, m.search_volume, m.cpc, m.competition, m.difficulty, m.intent, m.measured_at, fresh=m.expires_at > now, monthly=_series(m.monthly_json))
 
 
 def peek(db: Session, terms: list[str], *, market: str | None = None, language: str | None = None) -> dict[str, MetricView]:

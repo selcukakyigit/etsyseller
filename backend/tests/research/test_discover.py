@@ -37,8 +37,28 @@ def test_first_search_is_pending_then_ready_with_bands_only(db, provider):
     assert by["metal farm sign big"].demand == "high" and by["metal farm sign tiny"].demand == "low"
     assert by["metal farm sign custom"].intent is None, "bilinmeyen niyet gösterilmez"
     assert by["metal farm sign custom"].mine is True and by["metal farm sign big"].mine is False
+
+
+def test_results_carry_google_metrics_but_no_platform_internal_counts(db, provider):
+    _research(db, SHOP_A)
+    db.add(SuggestionExposure(term="metal farm sign big", shops=20))
+    db.commit()
+    result = discover.search(db, SHOP_A, "metal farm sign")
+    seed = result.seed_item
+    assert (seed.volume, seed.cpc, seed.competition) == (210, 0.84, 100)
+    assert len(seed.monthly) == 12 and seed.trend_pct == 100  # son 3 ay (200) / ilk 3 ay (100)
+    by = {i.term: i for i in result.items}
+    assert by["metal farm sign big"].volume == 5000 and by["metal farm sign big"].competition == 20 and by["metal farm sign big"].monthly == []
+    assert result.total_volume == 5000 + 300 + 20 + 80
     payload = json.dumps(result.as_dict())
-    assert "search_volume" not in payload and "cpc" not in payload and "5000" not in payload, "ham sayı sızmamalı"
+    assert "crowd_shops" not in payload and '"shops"' not in payload, "platform içi sayılar gösterilmez, yalnızca kalabalık işareti"
+    assert by["metal farm sign big"].crowded is True
+
+
+def test_trend_pct_edge_cases():
+    assert discover.trend_pct([]) is None and discover.trend_pct([5] * 5) is None
+    assert discover.trend_pct([0, 0, 0, 5, 5, 5]) is None  # başlangıç 0: oran tanımsız
+    assert discover.trend_pct([100, 100, 100, 50, 50, 50]) == -50
 
 
 def test_crowded_flag_comes_from_the_shared_counter(db, provider):
@@ -95,7 +115,10 @@ def test_assistant_tools_use_the_same_functions_and_hide_raw_numbers(db, provide
     worker.run_once(db)
     out = tools.research_keywords(ctx, {"seed": "metal farm sign"})
     assert out["durum"] == "hazir" and out["tohum"]["talep"] == "orta" and any(o.get("talep") == "yüksek" for o in out["oneriler"])
-    assert "5000" not in json.dumps(out) and "search_volume" not in json.dumps(out)
+    assert out["tohum"]["google_aylik_arama"] == 210 and out["tohum"]["cpc_usd"] == 0.84 and out["tohum"]["yillik_egilim_yuzde"] == 100
+    assert out["oneriler"][0]["google_aylik_arama"] == 5000, "en çok aranan önce"
+    assert not any("etsy_ilan_sayisi" in o for o in out["oneriler"]), "Etsy ölçümü yalnızca istenirse"
+    assert "shops" not in json.dumps(out) and "crowd_shops" not in json.dumps(out)
     assert tools.save_keywords(ctx, {"terms": ["metal farm sign big"], "collection": "Araç"})["eklenen"] == 1
     saved = tools.saved_keywords(ctx, {"collection": "Araç"})
     assert saved["toplam"] == 1 and saved["kelimeler"][0]["talep"] == "yüksek"
@@ -120,15 +143,35 @@ def client(db, provider):
     main.app.dependency_overrides.clear()
 
 
+def test_etsy_competition_is_measured_on_request_and_limited(db, provider, monkeypatch):
+    from app.keywords import competition
+
+    calls = []
+    monkeypatch.setattr(competition, "_count", lambda phrase: calls.append(phrase) or len(phrase) * 100)
+    ctx = NS(db=db, shop=SHOP_A, user_id=7)
+    _research(db, SHOP_A)
+    out = tools.research_keywords(ctx, {"seed": "metal farm sign", "etsy_competition": True})
+    first = out["oneriler"][0]
+    assert first["etsy_ilan_sayisi"] == len(first["kelime"]) * 100 and len(calls) == 4  # yalnızca 4 öneri ölçülür (tohum değil)
+    assert discover.etsy_results(SHOP_B, ["a b"] * 3) == {"a b": 300}  # tekrarlar tek kelime
+    assert discover.etsy_results(SHOP_B, [" ", ""]) == {}
+    shop_c = NS(id=3, workspace_id=3)
+    for _ in range(12):
+        assert discover.etsy_results(shop_c, ["alpha"]) is not None
+    assert discover.etsy_results(shop_c, ["alpha"]) is None, "mağaza başına ölçüm sınırı"
+
+
 def test_http_endpoints(client, db):
     assert client.get("/api/shops/1/discover/search", params={"q": "farm sign"}).status_code == 200
     worker.run_once(db)
     body = client.get("/api/shops/1/discover/search", params={"q": "farm sign"}).json()
     assert body["status"] == "ready" and body["seed_item"]["demand"] == "medium"
-    assert "search_volume" not in json.dumps(body)
+    assert body["seed_item"]["volume"] == 210 and len(body["seed_item"]["monthly"]) == 12 and body["total_volume"] == 5400
     assert client.get("/api/shops/1/discover/search", params={"q": ""}).status_code == 422
     assert client.post("/api/shops/1/discover/saved", json={"terms": ["farm sign big"], "collection": "A"}).json() == {"added": 1}
     saved = client.get("/api/shops/1/discover/saved").json()
     assert saved["total"] == 1 and saved["collections"] == [{"name": "A", "count": 1}]
     assert client.post("/api/shops/1/discover/saved", json={"terms": [], "collection": ""}).status_code == 422
     assert client.post("/api/shops/1/discover/saved/remove", json={"terms": ["farm sign big"], "collection": "A"}).json() == {"removed": 1}
+    assert client.post("/api/shops/1/discover/etsy-results", json={"terms": []}).status_code == 422
+    assert client.post("/api/shops/1/discover/etsy-results", json={"terms": ["x"] * 21}).status_code == 422

@@ -46,3 +46,10 @@ def attach_results(pool: list[dict], title: str = "", limit: int = MAX_MEASURED)
             if n is not None:
                 by_tag[p["tag"]]["etsy_results"] = n
     return pool
+
+
+def result_counts(phrases: list[str]) -> dict[str, int | None]:
+    """İfade -> Etsy'deki aktif ilan sayısı (rakip sayısı); ölçülemeyen None. Aynı önbellek ve paralel istek düzeni `attach_results` ile ortaktır."""
+    unique = list(dict.fromkeys(p for p in phrases if p))
+    with ThreadPoolExecutor(max_workers=WORKERS) as ex:
+        return dict(zip(unique, ex.map(_count, unique)))
