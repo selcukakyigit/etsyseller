@@ -10,6 +10,31 @@ import { useT } from "@/lib/i18n-client";
 /** İlan listesinin sütunları: sıra, resim, başlık, Etsy bağlantısı, fiyat, favori, görüntülenme, yaş. Başlık satırı ve ilan satırları aynı şablonu kullanır. */
 const LIST_COLUMNS = "1.25rem 3.5rem minmax(0,1fr) 1.5rem 3.5rem 4rem 5.5rem 4.5rem";
 
+type SortKey = "rank" | "price" | "favorites" | "views" | "age";
+type SortState = { key: SortKey; dir: "asc" | "desc" };
+type Listing = EtsyAnalysis["listings"][number];
+
+const SORT_VALUE: Record<SortKey, (l: Listing, index: number) => number | null> = {
+  rank: (_l, index) => index,
+  price: (l) => l.price,
+  favorites: (l) => l.favorites,
+  views: (l) => l.views,
+  age: (l) => l.age_days,
+};
+
+/** Listeyi sütuna göre sıralar; her satır özgün (API) sırasını taşır. Değeri olmayan (fiyatı yok) satırlar yönden bağımsız sona gider. */
+function sortListings(listings: Listing[], sort: SortState): { l: Listing; rank: number }[] {
+  const rows = listings.map((l, i) => ({ l, rank: i + 1 }));
+  const value = SORT_VALUE[sort.key];
+  const sign = sort.dir === "asc" ? 1 : -1;
+  return rows.sort((x, y) => {
+    const a = value(x.l, x.rank - 1);
+    const b = value(y.l, y.rank - 1);
+    if (a === null || b === null) return a === b ? 0 : a === null ? 1 : -1;
+    return (a - b) * sign || x.rank - y.rank;
+  });
+}
+
 function Stat({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
   return (
     <div className="rounded-lg border border-neutral-200 px-3 py-2 dark:border-neutral-800" title={hint}>
@@ -23,6 +48,9 @@ function Stat({ label, children, hint }: { label: string; children: React.ReactN
 export default function EtsyTopModal({ shopId, term, onClose }: { shopId: number; term: string; onClose: () => void }) {
   const { t, locale } = useT();
   const [state, setState] = useState<{ term: string; analysis: EtsyAnalysis | null; limited: boolean; error: string | null } | null>(null);
+  const [sort, setSort] = useState<SortState>({ key: "rank", dir: "asc" });
+  // Aynı başlığa tekrar tıklamak yönü çevirir; yeni başlıkta ilk tıklama "en çok olan önde" (sıra numarasında en küçük önde).
+  const sortBy = (key: SortKey) => setSort((cur) => (cur.key === key ? { key, dir: cur.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "rank" ? "asc" : "desc" }));
 
   useEffect(() => {
     let cancelled = false;
@@ -38,6 +66,19 @@ export default function EtsyTopModal({ shopId, term, onClose }: { shopId: number
   const data = state && state.term === term ? state : null;
   const a = data?.analysis ?? null;
   const money = (n: number | null) => (n === null || !a?.currency ? "—" : n.toLocaleString(locale, { style: "currency", currency: a.currency, maximumFractionDigits: 0 }));
+
+  const sortHead = (key: SortKey, label: string, hint: string, align: "left" | "right") => (
+    <button
+      type="button"
+      onClick={() => sortBy(key)}
+      title={hint}
+      aria-label={sort.key === key ? `${hint} (${sort.dir === "asc" ? t("artan", "ascending") : t("azalan", "descending")})` : hint}
+      className={`inline-flex items-center gap-0.5 whitespace-nowrap hover:text-neutral-900 dark:hover:text-neutral-100 ${align === "right" ? "justify-end" : ""} ${sort.key === key ? "text-neutral-900 dark:text-neutral-100" : ""}`}
+    >
+      {label}
+      <span aria-hidden className="w-2 text-[9px]">{sort.key === key ? (sort.dir === "asc" ? "▲" : "▼") : ""}</span>
+    </button>
+  );
 
   return (
     <Modal title={t(`Etsy'de “${term}”`, `“${term}” on Etsy`)} widthClass="max-w-3xl" onClose={onClose} closeButton>
@@ -106,19 +147,19 @@ export default function EtsyTopModal({ shopId, term, onClose }: { shopId: number
                     className="sticky top-0 z-10 grid items-center gap-x-3 border-b border-neutral-200 bg-white px-3 py-1.5 text-[11px] font-medium text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400"
                     style={{ gridTemplateColumns: LIST_COLUMNS }}
                   >
-                    <span className="text-right">#</span>
+                    {sortHead("rank", "#", t("Etsy API'sinin özgün sırasına dön", "Back to the Etsy API's original order"), "right")}
                     <span aria-hidden />
                     <span>{t("İlan", "Listing")}</span>
                     <span aria-hidden />
-                    <span className="text-right">{t("Fiyat", "Price")}</span>
-                    <span className="text-right" title={t("İlanın aldığı favori sayısı", "Number of favorites the listing has")}>{t("Favori", "Favorites")}</span>
-                    <span className="text-right" title={t("İlanın toplam görüntülenme sayısı", "Total views of the listing")}>{t("Görüntülenme", "Views")}</span>
-                    <span className="text-right" title={t("İlanın kaç gün/ay önce açıldığı", "How long ago the listing was created")}>{t("İlan yaşı", "Age")}</span>
+                    {sortHead("price", t("Fiyat", "Price"), t("Fiyata göre sırala", "Sort by price"), "right")}
+                    {sortHead("favorites", t("Favori", "Favorites"), t("İlanın aldığı favori sayısına göre sırala", "Sort by the number of favorites"), "right")}
+                    {sortHead("views", t("Görüntülenme", "Views"), t("İlanın toplam görüntülenmesine göre sırala", "Sort by total views"), "right")}
+                    {sortHead("age", t("İlan yaşı", "Age"), t("İlanın açılma zamanına göre sırala (kaç gün/ay önce)", "Sort by when the listing was created"), "right")}
                   </div>
                   <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
-                    {a.listings.map((l, i) => (
-                      <li key={l.listing_id ?? i} className="grid items-center gap-x-3 px-3 py-2 text-sm" style={{ gridTemplateColumns: LIST_COLUMNS }}>
-                        <span className="text-right text-xs tabular-nums text-neutral-400">{i + 1}</span>
+                    {sortListings(a.listings, sort).map(({ l, rank }) => (
+                      <li key={l.listing_id ?? rank} className="grid items-center gap-x-3 px-3 py-2 text-sm" style={{ gridTemplateColumns: LIST_COLUMNS }}>
+                        <span className="text-right text-xs tabular-nums text-neutral-400">{rank}</span>
                         <a href={l.url} target="_blank" rel="noopener noreferrer" className="h-11 w-14 overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800" tabIndex={-1} aria-hidden>
                           {l.image && (
                             // eslint-disable-next-line @next/next/no-img-element -- Etsy'nin küçük resmi, olduğu gibi gösterilir (indirilmez, saklanmaz)
