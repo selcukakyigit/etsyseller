@@ -73,7 +73,8 @@ export default function DangerSettingsPage() {
           onConfirm={async (email) => {
             await api.account.resetData(email);
             clearBrowserData();
-            window.location.href = "/listings";
+            // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- bilinçli tam sayfa yenileme: bellekteki tüm durum (oturum önbelleği) temizlensin
+            window.location.assign("/listings");
           }}
         />
       )}
@@ -95,7 +96,8 @@ export default function DangerSettingsPage() {
             await api.account.deleteAccount(email);
             await api.auth.logout();
             clearBrowserData();
-            window.location.href = "/login";
+            // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- bilinçli tam sayfa yenileme: hesap silindi, bellekteki tüm durum temizlensin
+            window.location.assign("/login");
           }}
         />
       )}

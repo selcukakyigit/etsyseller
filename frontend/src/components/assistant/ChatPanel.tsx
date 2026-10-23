@@ -1,7 +1,7 @@
 "use client";
 
 import { shrinkImage } from "@/lib/shrinkImage";
-import { ChangeEvent, ClipboardEvent, DragEvent, Fragment, KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
+import { ChangeEvent, ClipboardEvent, DragEvent, Fragment, KeyboardEvent, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { api, API_URL, ChatCard, ChatMessageOut, ChatSessionInfo } from "@/lib/api";
 import Card from "./Cards";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
@@ -125,6 +125,8 @@ function ExpiredChip({ name }: { name: string }) {
   );
 }
 
+const subscribeNone = () => () => {};
+
 export default function ChatPanel({
   shopId,
   onSent,
@@ -139,12 +141,25 @@ export default function ChatPanel({
   const [messages, setMessages] = useState<ChatMessageOut[]>([]);
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [sessions, setSessions] = useState<ChatSessionInfo[]>([]);
-  const [input, setInput] = useState("");
-  // Yazılıp gönderilmemiş metin de sayfa değişince kaybolmasın: mağaza bazında tarayıcıda tutulur.
+  // Yazılıp gönderilmemiş metin de sayfa değişince kaybolmasın: mağaza bazında tarayıcıda tutulur. Kutudaki metin,
+  // bu oturumda yazılan (varsa) ya da tarayıcıda kayıtlı taslaktır; taslak efektle durum olarak kopyalanmaz.
   const draftKey = `ulagg_chat_draft:${shopId}`;
+  const [typed, setTyped] = useState<{ key: string; value: string } | null>(null);
+  const storedDraft = useSyncExternalStore(
+    subscribeNone,
+    () => {
+      try {
+        return localStorage.getItem(draftKey) ?? "";
+      } catch {
+        return "";
+      }
+    },
+    () => "",
+  );
+  const input = typed !== null && typed.key === draftKey ? typed.value : storedDraft;
   const changeInput = useCallback(
     (value: string) => {
-      setInput(value);
+      setTyped({ key: draftKey, value });
       try {
         if (value) localStorage.setItem(draftKey, value);
         else localStorage.removeItem(draftKey);
@@ -153,12 +168,6 @@ export default function ChatPanel({
     [draftKey],
   );
   const voice = useSpeechInput(changeInput);
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(draftKey);
-      if (saved) setInput((current) => current || saved);
-    } catch {}
-  }, [draftKey]);
   // Bir adım uzun sürerse dönüşümlü gösterilen sabır cümleleri.
   const patienceLine = useCallback(
     (i: number) => {
@@ -173,7 +182,7 @@ export default function ChatPanel({
     },
     [t]
   );
-  const [awayReply, setAwayReply] = useState(false); // sayfadan çıkılırken sürmekte olan istek: sunucu bitirir, yanıt dönünce gösterilir
+  const [awayDoneId, setAwayDoneId] = useState<number | null>(null); // yoklaması bitirilen (yanıt gelmeyen) son kullanıcı mesajı
   const [pending, setPending] = useState<Pending[]>([]);
   const [uploading, setUploading] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -258,14 +267,16 @@ export default function ChatPanel({
   }, [busy, messages]);
 
   // Yanıt beklerken sayfadan çıkıldıysa: sunucu işi bitirip yanıtı kaydeder; dönünce son mesaj kullanıcınınsa yanıt gelene kadar yokla.
+  // `awayReply`: sayfadan çıkılırken sürmekte olan istek (sunucu bitirir, yanıt dönünce gösterilir); durumdan TÜRETİLİR, efektte ayarlanmaz.
+  const lastMessage = messages[messages.length - 1];
+  const awayId = !busy && sessionId !== null && lastMessage && lastMessage.role === "user" && lastMessage.id >= 0 && awayDoneId !== lastMessage.id ? lastMessage.id : null;
+  const awayReply = awayId !== null;
   useEffect(() => {
-    const last = messages[messages.length - 1];
-    if (busy || sessionId === null || !last || last.role !== "user" || last.id < 0) return;
+    if (awayId === null || sessionId === null) return;
     let tries = 0;
-    setAwayReply(true);
     const finish = () => {
       clearInterval(timer);
-      setAwayReply(false);
+      setAwayDoneId(awayId);
     };
     const timer = setInterval(async () => {
       tries += 1;
@@ -279,11 +290,8 @@ export default function ChatPanel({
       } catch {}
       if (tries >= AWAY_POLL_TRIES) finish();
     }, 4000);
-    return () => {
-      clearInterval(timer);
-      setAwayReply(false);
-    };
-  }, [messages, busy, sessionId, shopId]);
+    return () => clearInterval(timer);
+  }, [awayId, sessionId, shopId]);
 
   // Bekleme sırasında asistanın ne yaptığını yokla (ör. "Benzer listing'leri inceliyor").
   useEffect(() => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useT } from "@/lib/i18n-client";
 
 // Tarayıcının kendi konuşma tanıması (Web Speech API): ücretsiz, sunucuya ses gitmez ama Chrome sesi Google'ın
@@ -18,6 +18,8 @@ type Recognition = {
 };
 type RecognitionCtor = new () => Recognition;
 
+const subscribeNone = () => () => {};
+
 function ctor(): RecognitionCtor | null {
   if (typeof window === "undefined") return null;
   const w = window as unknown as { SpeechRecognition?: RecognitionCtor; webkitSpeechRecognition?: RecognitionCtor };
@@ -27,15 +29,13 @@ function ctor(): RecognitionCtor | null {
 /** Konuşulanı `onText(taban + konuşma)` olarak verir; `taban` dinlemeye başlarken kutuda yazılı olan metindir. */
 export function useSpeechInput(onText: (text: string) => void) {
   const { t, locale } = useT(); // locale: "tr-TR" ya da "en-US" (tanıma diliyle aynı biçim)
-  const [supported, setSupported] = useState(false);
+  // Sunucuda ve hidrasyon çiziminde false, tarayıcıda hemen sonra gerçek değer.
+  const supported = useSyncExternalStore(subscribeNone, () => ctor() !== null, () => false);
   const [listening, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const rec = useRef<Recognition | null>(null);
 
-  useEffect(() => {
-    setSupported(ctor() !== null);
-    return () => rec.current?.stop();
-  }, []);
+  useEffect(() => () => rec.current?.stop(), []);
 
   const stop = useCallback(() => rec.current?.stop(), []);
 

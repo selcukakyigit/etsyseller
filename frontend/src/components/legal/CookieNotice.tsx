@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useLang } from "@/lib/i18n-client";
 
 export const COOKIE_NOTICE_KEY = "ulagg_cookie_notice";
@@ -9,25 +9,29 @@ const KEY = COOKIE_NOTICE_KEY;
 
 // Şu an yalnızca zorunlu/işlevsel çerez kullanılıyor, bu yüzden bilgilendirme yeterli. Analitik/reklam çerezi
 // eklendiğinde bu bileşen aktif "Kabul et / Reddet" seçimine ve kategori ayarlarına çevrilmeli.
+const subscribeNone = () => () => {};
+
+function noticeSeen(): boolean {
+  try {
+    return !!localStorage.getItem(KEY);
+  } catch {
+    return false; // depolama yoksa bildirim her seferinde gösterilir
+  }
+}
+
 export default function CookieNotice() {
-  const [show, setShow] = useState(false);
+  // Sunucuda ve hidrasyon çiziminde "görüldü" sayılır (bildirim çizilmez), tarayıcıda hemen sonra gerçek değere geçer.
+  const seen = useSyncExternalStore(subscribeNone, noticeSeen, () => true);
+  const [dismissed, setDismissed] = useState(false);
   const lang = useLang();
 
-  useEffect(() => {
-    try {
-      setShow(!localStorage.getItem(KEY));
-    } catch {
-      setShow(true);
-    }
-  }, []);
-
-  if (!show) return null;
+  if (seen || dismissed) return null;
 
   function dismiss() {
     try {
       localStorage.setItem(KEY, String(Date.now()));
     } catch {}
-    setShow(false);
+    setDismissed(true);
   }
 
   return (

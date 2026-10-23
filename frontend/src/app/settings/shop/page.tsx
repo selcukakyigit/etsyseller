@@ -235,7 +235,8 @@ export default function ShopSettingsPage() {
           onClose={() => setDisconnecting(null)}
           onConfirm={async (email) => {
             await api.shops.disconnect(disconnecting.id, email);
-            window.location.href = "/settings/shop";
+            // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- bilinçli tam sayfa yenileme: bağlantısı kesilen mağazanın durumu bellekte kalmasın
+            window.location.assign("/settings/shop");
           }}
         />
       )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { api } from "@/lib/api";
 import Avatar from "@/components/Avatar";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
@@ -12,16 +12,14 @@ export default function ProfileSettingsPage() {
   const { user, shops, activeShop, setActiveShopId, error: bootError, refreshUser } = useAuthAndShop();
 
   const { t } = useT();
-  const [name, setName] = useState("");
+  // Düzenlenen ad; hiç düzenlenmediyse kullanıcının kayıtlı adı gösterilir (kullanıcı yüklenince efektle kopyalanmaz).
+  const [nameDraft, setName] = useState<string | null>(null);
+  const name = nameDraft ?? user?.name ?? "";
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (user) setName(user.name ?? "");
-  }, [user]);
 
   async function handleSaveProfile() {
     setSaving(true);

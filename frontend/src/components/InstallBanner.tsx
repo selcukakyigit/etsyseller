@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { ABOVE_BOTTOM_NAV } from "@/components/layout/constants";
 import { COOKIE_NOTICE_KEY } from "@/components/legal/CookieNotice";
 import { useT } from "@/lib/i18n-client";
@@ -22,14 +22,29 @@ function hidden(): boolean {
   }
 }
 
+const subscribeNone = () => () => {};
+
+/** Uygulama zaten yüklü (standalone) ya da kapatılmış/çerez bildirimi bekliyorsa banner hiç çıkmaz. */
+function eligible(): boolean {
+  const standalone = window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone;
+  return !standalone && !hidden();
+}
+
+function isIosSafari(): boolean {
+  const ua = navigator.userAgent;
+  return /iPhone|iPad|iPod/.test(ua) && /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS/.test(ua);
+}
+
 export default function InstallBanner() {
   const { t } = useT();
   const [event, setEvent] = useState<InstallEvent | null>(null);
-  const [ios, setIos] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  // Tarayıcıdan okunan değerler: sunucuda ve hidrasyon çiziminde false, hemen sonra gerçek değer.
+  const canShow = useSyncExternalStore(subscribeNone, eligible, () => false);
+  const ios = useSyncExternalStore(subscribeNone, isIosSafari, () => false) && canShow && !dismissed;
 
   useEffect(() => {
-    const standalone = window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone;
-    if (standalone || hidden()) return;
+    if (!canShow) return;
     const onPrompt = (e: Event) => {
       e.preventDefault();
       setEvent(e as InstallEvent);
@@ -37,22 +52,20 @@ export default function InstallBanner() {
     const onInstalled = () => setEvent(null);
     window.addEventListener("beforeinstallprompt", onPrompt);
     window.addEventListener("appinstalled", onInstalled);
-    const ua = navigator.userAgent;
-    setIos(/iPhone|iPad|iPod/.test(ua) && /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS/.test(ua));
     return () => {
       window.removeEventListener("beforeinstallprompt", onPrompt);
       window.removeEventListener("appinstalled", onInstalled);
     };
-  }, []);
+  }, [canShow]);
 
-  if (!event && !ios) return null;
+  if (dismissed || (!event && !ios)) return null;
 
   function dismiss() {
     try {
       localStorage.setItem(KEY, String(Date.now()));
     } catch {}
     setEvent(null);
-    setIos(false);
+    setDismissed(true);
   }
 
   async function install() {
