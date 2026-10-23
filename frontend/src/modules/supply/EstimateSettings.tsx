@@ -7,6 +7,7 @@ import { errMsg } from "../core/errors";
 import { input, label, muted } from "../core/ui";
 import { currencySymbol, money } from "../core/units";
 import DecimalInput from "@/components/ui/NumberInputs";
+import HelpTip from "@/components/ui/HelpTip";
 import { JobDetail, supplyApi } from "./api";
 
 /** Süreyi "25 dk 4,8 sn" gibi yazar. */
@@ -46,7 +47,14 @@ export default function EstimateSettings({ entityId, job, onJob }: { entityId: n
       )}
       <div className="flex flex-wrap items-end gap-4">
         <label className="block">
-          <span className={label}>{t("Süre bedeli", "Time fee")}</span>
+          <span className={`${label} flex items-center gap-1.5`}>
+            {t("Süre bedeli", "Time fee")}
+            <HelpTip>
+              {job.time_fee == null && job.time_fee_mapped != null
+                ? t(`Süre bedeli boş: fiyat listesine eşlenen süre satırları kullanılıyor (${money(job.time_fee_mapped, job.currency, locale)}).`, `Time fee is empty: the report-time lines mapped to the price list are used (${money(job.time_fee_mapped, job.currency, locale)}).`)
+                : t("Yalnızca lazer süresinin tutarını yaz, fatura toplamını değil (malzeme ayrıca hesaplanır; faturanın toplamı 'Gerçek tutar'a yazılır); boş bırakırsan rapordaki süre kullanılır.", "Enter only the laser time amount, not the invoice total (material is worked out separately; the invoice total goes in 'Actual amount'); leave empty to use the report's time.")}
+            </HelpTip>
+          </span>
           <DecimalInput
             value={fee}
             onValue={setFee}
@@ -62,11 +70,6 @@ export default function EstimateSettings({ entityId, job, onJob }: { entityId: n
           {t("Malzeme kesimciden", "Material from the cutter")}
         </label>
       </div>
-      <p className={`${muted} mt-2`}>
-        {job.time_fee == null && job.time_fee_mapped != null
-          ? t(`Süre bedeli boş: fiyat listesine eşlenen süre satırları kullanılıyor (${money(job.time_fee_mapped, job.currency, locale)}).`, `Time fee is empty: the report-time lines mapped to the price list are used (${money(job.time_fee_mapped, job.currency, locale)}).`)
-          : t("Yalnızca lazer süresinin tutarını yaz, fatura toplamını değil (malzeme ayrıca hesaplanır; faturanın toplamı 'Gerçek tutar'a yazılır); boş bırakırsan rapordaki süre kullanılır.", "Enter only the laser time amount, not the invoice total (material is worked out separately; the invoice total goes in 'Actual amount'); leave empty to use the report's time.")}
-      </p>
     </div>
   );
 }

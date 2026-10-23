@@ -14,7 +14,7 @@ const REFRESH_MS = 30_000;
 // Yol öneki -> okunur sayfa adı (en uzun eşleşen kazanır).
 const PAGES: [string, string, string][] = [
   ["/admin", "Yönetim paneli", "Admin panel"],
-  ["/dashboard", "Ana sayfa", "Home"],
+  ["/dashboard", "Asistan", "Assistant"],
   ["/analysis", "Analiz", "Analysis"],
   ["/listings", "Listing'ler", "Listings"],
   ["/orders", "Siparişler", "Orders"],

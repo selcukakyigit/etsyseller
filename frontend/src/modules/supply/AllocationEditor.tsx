@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/listing-editor/Modal";
+import HelpTip from "@/components/ui/HelpTip";
 import { BlockSpinner } from "@/components/ui/Spinner";
 import { useT } from "@/lib/i18n-client";
 import { toast } from "@/lib/toast";
@@ -122,13 +123,15 @@ export default function AllocationEditor({ entityId, job, onJob }: { entityId: n
 
   return (
     <section className={card}>
-      <h2 className={h2}>{t("Maliyet nereye yazılsın?", "Where should the cost go?")}</h2>
-      <p className={`${muted} mb-3`}>
-        {t(
-          "Bir plakadan birden çok ürün çıkıyorsa hepsini seç. Ürüne düşen pay onaydan sonra ürünün birim maliyeti yapılabilir; genel gider Finans'taki giderlere girer.",
-          "If several products come out of one sheet, pick them all. After confirming, a product's share can be set as its unit cost; overhead goes into Finance expenses.",
-        )}
-      </p>
+      <div className="mb-3 flex items-center gap-2">
+        <h2 className={h2}>{t("Maliyet nereye yazılsın?", "Where should the cost go?")}</h2>
+        <HelpTip>
+          {t(
+            "Bir plakadan birden çok ürün çıkıyorsa hepsini seç. Ürüne düşen pay onaydan sonra ürünün birim maliyeti yapılabilir; genel gider Finans'taki giderlere girer.",
+            "If several products come out of one sheet, pick them all. After confirming, a product's share can be set as its unit cost; overhead goes into Finance expenses.",
+          )}
+        </HelpTip>
+      </div>
       {!shops ? (
         <BlockSpinner />
       ) : shops.length === 0 ? (
@@ -143,9 +146,9 @@ export default function AllocationEditor({ entityId, job, onJob }: { entityId: n
                 </option>
               ))}
             </select>
+            <HelpTip>{t(MODES.find((m) => m.id === mode)?.hintTr ?? "", MODES.find((m) => m.id === mode)?.hintEn ?? "")}</HelpTip>
           </div>
           {mode === "estimated" && <EstimateSettings key={job.updated_at} entityId={entityId} job={job} onJob={onJob} />}
-          <p className={`${muted} mb-3`}>{t(MODES.find((m) => m.id === mode)?.hintTr ?? "", MODES.find((m) => m.id === mode)?.hintEn ?? "")}</p>
           {targets.length > 0 && (
             <TargetsTable
               targets={targets}

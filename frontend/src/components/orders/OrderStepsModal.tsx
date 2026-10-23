@@ -4,6 +4,7 @@ import { useState } from "react";
 import { OrderStep } from "@/lib/api";
 import { Modal, btnGhost, btnPrimary } from "@/components/listing-editor/Modal";
 import HelpTip from "@/components/ui/HelpTip";
+import { TrashIcon } from "@/components/icons";
 import { useT } from "@/lib/i18n-client";
 
 const MAX_STEPS = 12;
@@ -11,6 +12,8 @@ const inputCls =
   "w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-[#D97757] dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
 const iconBtn =
   "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-neutral-600 hover:bg-neutral-100 disabled:opacity-30 dark:text-neutral-300 dark:hover:bg-neutral-800";
+const delBtn =
+  "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40";
 
 type Row = { key: string; id: number | null; name: string };
 
@@ -71,7 +74,7 @@ export default function OrderStepsModal({
     >
       <p className="mb-3 flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-300">
         {t("Adımları iş akışına göre ekle, sil, yeniden adlandır ya da sırala.", "Add, remove, rename or reorder the steps to fit your workflow.")}
-        <HelpTip>
+        <HelpTip align="right">
           {t(
             "Yeni gelen siparişler New'de durur; adımlara siz taşırsınız. Adımlar yalnızca bu uygulamada tutulur, Etsy'ye gönderilmez ve alıcıya bildirim gitmez. Bir adımı silerseniz içindeki siparişler New'e döner. Alıcıya yalnızca \"Siparişi tamamla\" ile bildirim gider.",
             "New orders stay in New; you move them to the steps. Steps are kept only in this app: nothing is sent to Etsy and buyers are not notified. Deleting a step returns its orders to New. Buyers are notified only when you complete an order.",
@@ -101,8 +104,8 @@ export default function OrderStepsModal({
               placeholder={t("Adım adı", "Step name")}
               className={inputCls}
             />
-            <button type="button" onClick={() => setRows((cur) => cur.filter((x) => x.key !== r.key))} aria-label={t(`${r.name || "Adım"} sil`, `Delete ${r.name || "step"}`)} className={iconBtn}>
-              🗑
+            <button type="button" onClick={() => setRows((cur) => cur.filter((x) => x.key !== r.key))} aria-label={t(`${r.name || "Adım"} sil`, `Delete ${r.name || "step"}`)} className={delBtn}>
+              <TrashIcon className="h-[18px] w-[18px]" />
             </button>
           </li>
         ))}

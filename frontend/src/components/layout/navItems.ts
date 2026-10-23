@@ -1,12 +1,12 @@
 import { ComponentType } from "react";
-import { BoxIcon, ChartIcon, HomeIcon, PulseIcon, SearchIcon, TagIcon } from "@/components/icons";
+import { BoxIcon, ChartIcon, ChatIcon, PulseIcon, SearchIcon, TagIcon } from "@/components/icons";
 
 /** Uygulama içi gezinmenin tek kaynağı: masaüstü kenar çubuğu, mobil çekmece ve alt sekme çubuğu buradan okur.
  * `needsShop`: bağlı Etsy mağazası olmadan anlamsız sayfa; mağaza yokken menüde gösterilmez (bkz. `forShops`). */
 export type NavItem = { href: string; tr: string; en: string; icon?: ComponentType<{ className?: string }>; needsShop?: boolean };
 
 export const MAIN_NAV: NavItem[] = [
-  { href: "/dashboard", tr: "Ana sayfa", en: "Home", icon: HomeIcon },
+  { href: "/dashboard", tr: "Asistan", en: "Assistant", icon: ChatIcon },
   { href: "/analysis", tr: "Analiz", en: "Analysis", icon: PulseIcon, needsShop: true },
   { href: "/listings", tr: "Listing'ler", en: "Listings", icon: TagIcon, needsShop: true },
   { href: "/discover", tr: "Keşfet", en: "Discover", icon: SearchIcon, needsShop: true },
