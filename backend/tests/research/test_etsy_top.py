@@ -57,6 +57,7 @@ def etsy_calls(monkeypatch):
         return {"count": 12345, "results": [listing(i, i * 5, age_days=300) for i in range(6)]}
 
     monkeypatch.setattr("app.taxonomy.service.search_active_listings", fake)
+    monkeypatch.setattr("app.taxonomy.service.listing_thumbnails", lambda ids: {i: f"https://img.test/{i}.jpg" for i in ids if i != 3})
     return calls
 
 
@@ -68,6 +69,21 @@ def test_fetch_caches_and_limits_per_shop(etsy_calls):
     for i in range(20):
         assert etsy_top.fetch(3, f"phrase number {i}") is not None
     assert etsy_top.fetch(3, "one more phrase") is None, "mağaza başına ölçüm sınırı"
+
+
+def test_listings_carry_thumbnails_and_survive_missing_ones(etsy_calls, monkeypatch):
+    out = etsy_top.fetch(1, "metal wall art")
+    images = {l["listing_id"]: l["image"] for l in out["listings"]}
+    assert images[1] == "https://img.test/1.jpg" and images[3] is None, "resmi olmayan ilan resimsiz kalır"
+
+    etsy_top._cache.clear()
+
+    def boom(ids):
+        raise RuntimeError("etsy down")
+
+    monkeypatch.setattr("app.taxonomy.service.listing_thumbnails", boom)
+    again = etsy_top.fetch(1, "metal wall art")
+    assert len(again["listings"]) == 6 and all(l["image"] is None for l in again["listings"]), "resim hatası analizi bozmaz"
 
 
 def test_assistant_tool_labels_the_data_as_etsy(db, etsy_calls):

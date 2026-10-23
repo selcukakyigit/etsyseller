@@ -30,6 +30,7 @@ export default function KeywordTable({
   onRemove,
   collect,
   onAnalyze,
+  onOpen,
 }: {
   rows: Row[];
   selected: Set<string>;
@@ -44,6 +45,8 @@ export default function KeywordTable({
   /** Satır başına yeşil + (aktif koleksiyona tek dokunuşla ekle) / ✓ (koleksiyonda; dokununca çıkar). `active` null ise düğme kapalıdır. */
   /** Verilirse her satırda "Etsy'de ilk 20" analizi düğmesi gösterilir. */
   onAnalyze?: (term: string) => void;
+  /** Verilirse kelimeye tıklamak kelime ayrıntı penceresini açar. */
+  onOpen?: (item: DiscoverItem) => void;
   collect?: { active: string | null; has: (term: string) => boolean; onAdd: (term: string) => void; onRemove: (term: string) => void };
 }) {
   const { t, locale } = useT();
@@ -111,7 +114,18 @@ export default function KeywordTable({
           </td>
         )}
         <td className={`max-w-[22rem] py-1.5 pr-2 ${isVariant ? "pl-7" : "pl-2"}`}>
-          <span className={isVariant ? "" : "font-medium text-neutral-900 dark:text-neutral-100"}>{r.term}</span>
+          {onOpen ? (
+            <button
+              type="button"
+              onClick={() => onOpen(r)}
+              title={t("Ayrıntıyı aç: aylık grafik ve mevsimsellik", "Open details: monthly chart and seasonality")}
+              className={`text-left hover:underline ${isVariant ? "" : "font-medium text-neutral-900 dark:text-neutral-100"}`}
+            >
+              {r.term}
+            </button>
+          ) : (
+            <span className={isVariant ? "" : "font-medium text-neutral-900 dark:text-neutral-100"}>{r.term}</span>
+          )}
           {variantCount > 0 && (
             <button
               type="button"

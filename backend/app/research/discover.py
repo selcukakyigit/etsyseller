@@ -113,6 +113,15 @@ def _item(term: str, metric: "service.MetricView | None", crowd: dict[str, int],
     )
 
 
+def season_of(db: Session, shop: Shop, term: str) -> dict | None:
+    """Bir kelimenin mevsimsellik profili (havuzdan; yoksa iş kuyruğa alınır ve `pending` döner). Geçersiz kelimede None."""
+    term = normalize(term)
+    if not researchable(term):
+        return None
+    s = service.seasonality(db, term, shop_id=shop.id)
+    return {"monthly": s.monthly, "peak_months": s.peak_months, "seasonal": s.seasonal, "pending": s.pending}
+
+
 def search(db: Session, shop: Shop, seed: str, mode: str = "all", refresh: bool = False) -> SearchResult:
     """Tohum kelimenin önerileri (havuzdan); `mode="questions"`: yalnızca soru kalıpları (ayrı bir iş, yalnızca istenince çekilir).
     Havuzda yoksa/eskiyse araştırma işi kuyruğa alınır (`pending`); sonuç geldikçe aynı çağrı dolu döner."""
@@ -133,8 +142,7 @@ def search(db: Session, shop: Shop, seed: str, mode: str = "all", refresh: bool 
     items = [_item(t, found.metrics[t], crowd, full, mine, saved) for t in terms if t != term]
     season = None
     if not questions:  # mevsimsellik yalnızca tohum için (kelime başına ≈ 0,011 $, 90 gün önbellekte); ölçüm sürerken ekran yoklamaya devam eder
-        s = service.seasonality(db, term, shop_id=shop.id)
-        season = {"monthly": s.monthly, "peak_months": s.peak_months, "seasonal": s.seasonal, "pending": s.pending}
+        season = season_of(db, shop, term)
     stale = bool(found.pending) or not all(m.fresh for m in found.metrics.values())
     return SearchResult(
         seed=term, status="ready", refused=found.refused, seed_item=_item(term, own.get(term), crowd, full, mine, saved), items=items,

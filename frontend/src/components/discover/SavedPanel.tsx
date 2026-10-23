@@ -8,6 +8,7 @@ import { useT } from "@/lib/i18n-client";
 import { toast } from "@/lib/toast";
 import { useApiData } from "@/lib/useApiData";
 import FilterBar from "./FilterBar";
+import KeywordDetailModal from "./KeywordDetailModal";
 import KeywordTable from "./KeywordTable";
 import { downloadCsv, toCsv } from "./table";
 import { useResultsView } from "./useResultsView";
@@ -21,6 +22,7 @@ export default function SavedPanel({ shopId, refreshKey, onChanged }: { shopId: 
   const [collection, setCollection] = useState<string | undefined>(undefined);
   const { data, error, reload } = useApiData(`discover:saved:${shopId}:${collection ?? "_first"}:${refreshKey}`, () => discoverApi.saved(shopId, collection));
   const [busy, setBusy] = useState(false);
+  const [detail, setDetail] = useState<DiscoverItem | null>(null);
   const v = useResultsView(data?.items ?? NO_ITEMS, "", NO_ETSY, false);
 
   async function remove(terms: string[]) {
@@ -95,6 +97,7 @@ export default function SavedPanel({ shopId, refreshKey, onChanged }: { shopId: 
           showEtsy={false}
           emptyText={data.items.length === 0 ? t("Bu koleksiyon boş.", "This collection is empty.") : t("Süzgeçlere uyan kelime yok.", "No keywords match the filters.")}
           onRemove={(term) => void remove([term])}
+          onOpen={setDetail}
         />
       </div>
 
@@ -106,6 +109,7 @@ export default function SavedPanel({ shopId, refreshKey, onChanged }: { shopId: 
           </Button>
         </div>
       )}
+      {detail && <KeywordDetailModal shopId={shopId} item={detail} onClose={() => setDetail(null)} />}
     </div>
   );
 }

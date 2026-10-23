@@ -84,3 +84,34 @@ def test_assistant_tool_includes_the_season(db, provider):
     season = out["mevsimsellik"]
     assert season["mevsimsel"] is True and season["zirve_aylar"] == ["Eki", "Kas"] and season["aylik_ilgi_0_100"]["Eki"] == 100
     assert "listing" in season["not"]
+
+
+def test_season_endpoint_for_any_keyword(db, provider):
+    from fastapi.testclient import TestClient
+
+    from app import main
+    from app.core.db import SessionLocal, get_db
+    from app.core.deps import get_current_user
+    from app.shops.deps import get_owned_shop
+
+    def _db():
+        s = SessionLocal()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    main.app.dependency_overrides[get_db] = _db
+    main.app.dependency_overrides[get_current_user] = lambda: NS(id=5, email="a@b.c", is_admin=False)
+    main.app.dependency_overrides[get_owned_shop] = lambda: SHOP
+    try:
+        client = TestClient(main.app)
+        first = client.get("/api/shops/1/discover/season", params={"q": "christmas ornaments"}).json()["season"]
+        assert first["pending"] and first["monthly"] == []
+        worker.run_once(db)
+        done = client.get("/api/shops/1/discover/season", params={"q": "Christmas  Ornaments"}).json()["season"]
+        assert not done["pending"] and done["peak_months"] == [10, 11] and len(done["monthly"]) == 12
+        assert client.get("/api/shops/1/discover/season", params={"q": "x" * 200}).status_code == 422
+        assert client.get("/api/shops/1/discover/season", params={"q": "  "}).json()["season"] is None
+    finally:
+        main.app.dependency_overrides.clear()

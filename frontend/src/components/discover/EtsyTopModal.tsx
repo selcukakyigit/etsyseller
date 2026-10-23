@@ -109,8 +109,26 @@ export default function EtsyTopModal({ shopId, term, onClose }: { shopId: number
                 {a.listings.map((l, i) => (
                   <li key={l.listing_id ?? i} className="flex items-center gap-3 px-3 py-2 text-sm">
                     <span className="w-5 shrink-0 text-right text-xs tabular-nums text-neutral-400">{i + 1}</span>
-                    <a href={l.url} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 truncate text-neutral-900 hover:underline dark:text-neutral-100" title={l.title}>
+                    <a href={l.url} target="_blank" rel="noopener noreferrer" className="h-11 w-14 shrink-0 overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800" tabIndex={-1} aria-hidden>
+                      {l.image && (
+                        // eslint-disable-next-line @next/next/no-img-element -- Etsy'nin küçük resmi, olduğu gibi gösterilir (indirilmez, saklanmaz)
+                        <img src={l.image} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+                      )}
+                    </a>
+                    <span className="min-w-0 flex-1 truncate text-neutral-900 dark:text-neutral-100" title={l.title}>
                       {l.title}
+                    </span>
+                    <a
+                      href={l.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={t(`${l.title}: Etsy'de aç`, `${l.title}: open on Etsy`)}
+                      title={t("Etsy'de aç", "Open on Etsy")}
+                      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+                    >
+                      <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="M11 3h6v6M17 3l-8 8M8 5H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-4" />
+                      </svg>
                     </a>
                     <span className="hidden shrink-0 text-xs tabular-nums text-neutral-500 sm:inline">{l.price === null ? "—" : l.price.toLocaleString(locale, { style: "currency", currency: l.currency ?? a.currency ?? "USD", maximumFractionDigits: 0 })}</span>
                     <span className={`w-14 shrink-0 text-right text-xs tabular-nums ${l.favorites >= 10 ? "font-medium text-green-600 dark:text-green-400" : "text-neutral-400"}`} title={t("Favori", "Favorites")}>

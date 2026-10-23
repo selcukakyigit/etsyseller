@@ -22,7 +22,7 @@ const root = createRoot(el);
 await act(async () => root.render(h(SearchPanel, { shopId: 1, collections: [], onSaved: () => {} })));
 
 const text = () => document.body.textContent;
-const rows = () => [...document.querySelectorAll("tbody tr")].map((r) => r.querySelector("td[class*='max-w-'] > span")?.textContent);
+const rows = () => [...document.querySelectorAll("tbody tr")].map((r) => r.querySelector("td[class*='max-w-'] > :is(span, button[title^='Ayrıntıyı'])")?.textContent);
 const eq = (a, b, m) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${m}\n  gelen: ${JSON.stringify(a)}\n  beklenen: ${JSON.stringify(b)}`); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function search(q) {
@@ -214,8 +214,8 @@ console.log("13 düzen sırası OK");
 // 14) ETSY İLK 20 ANALİZİ: satırdaki düğme sabit boyutlu pencereyi açar; Etsy verisi olarak etiketli; Sorular sekmesinde düğme yok
 const ANALYSIS = { term: "large metal wall art", total: 775484, sample: 20, currency: "USD", price: { p25: 41.9, median: 58, p75: 93.5 }, proven: 3, strong: 1, strength: "low",
   favorites: { p75: 6, max: 408 }, views: { median: 10 }, age_days_median: 39, new_share: 0.75, top_tags: [{ tag: "metal wall art", count: 14 }, { tag: "housewarming gift", count: 5 }],
-  listings: [{ listing_id: 1, title: "Tree of Life Wall Art", url: "https://etsy.test/1", price: 34, currency: "USD", favorites: 408, views: 5000, age_days: 400, shop_id: 1, personalizable: false },
-             { listing_id: 2, title: "Butterfly Sculpture", url: "https://etsy.test/2", price: 60, currency: "USD", favorites: 0, views: 3, age_days: 20, shop_id: 2, personalizable: false }] };
+  listings: [{ listing_id: 1, title: "Tree of Life Wall Art", url: "https://etsy.test/1", image: "https://img.test/1.jpg", price: 34, currency: "USD", favorites: 408, views: 5000, age_days: 400, shop_id: 1, personalizable: false },
+             { listing_id: 2, title: "Butterfly Sculpture", url: "https://etsy.test/2", image: null, price: 60, currency: "USD", favorites: 0, views: 3, age_days: 20, shop_id: 2, personalizable: false }] };
 calls = [];
 const prevApi = globalThis.__api;
 globalThis.__api = async (path, init) => {
@@ -233,6 +233,8 @@ eq(calls.some((c) => c.includes("/etsy-top")), true, "analiz uç noktası çağr
 eq(dialog.textContent.includes("Etsy verisi (Google değil)"), true, "Etsy verisi olarak etiketli olmalı");
 eq(dialog.textContent.includes("Kanıtlanmış ilan") && dialog.textContent.includes("Düşük"), true, "kanıtlanmış ilan ve rekabet göstergesi");
 eq(dialog.textContent.includes("housewarming gift") && dialog.textContent.includes("Tree of Life Wall Art"), true, "rakip etiketleri ve ilan listesi");
+eq(dialog.querySelectorAll("img[src='https://img.test/1.jpg']").length, 1, "küçük resim görünmeli (resmi olmayan ilanda boş kutu)");
+eq(dialog.querySelectorAll(`a[title="Etsy'de aç"][href="https://etsy.test/2"]`).length, 1, "her satırda Etsy'de aç simgesi");
 eq(/min-h-\[30rem\]/.test(dialog.innerHTML) && /max-h-80[^"]*overflow-auto/.test(dialog.innerHTML), true, "sabit minimum yükseklik ve kendi içinde kayan liste");
 await act(async () => document.querySelector("[role=dialog] button[aria-label='Kapat']").dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
 eq(Boolean(document.querySelector("[role=dialog]")), false, "pencere kapanmalı");
@@ -240,6 +242,50 @@ await act(async () => tab("Sorular").dispatchEvent(new w.MouseEvent("click", { b
 await act(async () => { await sleep(40); });
 eq(Boolean(analyzeBtn()), false, "Sorular sekmesinde Etsy analiz düğmesi olmamalı (soru kalıbı Etsy'de anlamlı arama değil)");
 console.log("14 Etsy ilk 20 analizi OK");
+
+// 16) KELİME PENCERESİ: kelimeye tıklayınca ayrıntı penceresi; mevsimsellik hazırlanırken iskelet, sonra çubuklar; Etsy rekabetine geçiş
+const tabAll = [...document.querySelectorAll("[role=tab]")].find((b) => b.textContent.includes("Tüm kelimeler"));
+await act(async () => tabAll.dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
+await act(async () => { await sleep(40); });
+let seasonCalls = 0;
+const api14 = globalThis.__api;
+globalThis.__api = async (path, init) => {
+  if (path.includes("/discover/season")) { seasonCalls++; return { season: seasonCalls < 2 ? { monthly: [], peak_months: [], seasonal: false, pending: true } : { monthly: [11, 5, 3, 4, 4, 5, 6, 8, 13, 28, 100, 92], peak_months: [11, 12], seasonal: true, pending: false } }; }
+  return api14(path, init);
+};
+const openBtn = document.querySelector("tbody button[title^='Ayrıntıyı aç']");
+eq(Boolean(openBtn), true, "kelime tıklanabilir olmalı");
+const termName = openBtn.textContent;
+await act(async () => openBtn.dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
+await act(async () => { await sleep(40); });
+let dlg = document.querySelector("[role=dialog]");
+eq(Boolean(dlg) && dlg.textContent.includes(termName), true, "kelime penceresi açılmalı");
+eq(seasonCalls, 1, "mevsimsellik istenmeli");
+eq(Boolean(dlg.querySelector("[data-testid=season-pending]")), true, "hazırlanırken iskelet");
+eq(dlg.querySelector("[data-testid=monthly-chart]").textContent.includes("Aylık seri yok"), true, "aylık seri yoksa açıklama");
+await act(async () => { await sleep(2700); });
+eq(seasonCalls, 2, "hazır olana dek yoklar");
+dlg = document.querySelector("[role=dialog]");
+eq(dlg.querySelectorAll("[data-testid=season] [title]").length, 12, "mevsimsellik çubukları");
+const barHeights = [...dlg.querySelectorAll("[data-testid=season] [title] > div")].map((d) => parseInt(d.style.height));
+eq(barHeights.every((h) => h >= 2) && Math.max(...barHeights) === 56, true, "çubuk yükseklikleri piksel olarak verilmeli (yüzde sıfıra düşer)");
+eq(/min-h-\[28rem\]/.test(dlg.innerHTML), true, "sabit minimum yükseklik");
+const toEtsy = [...dlg.querySelectorAll("button")].find((b) => b.textContent.includes("Etsy'de rekabeti incele"));
+await act(async () => toEtsy.dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
+await act(async () => { await sleep(40); });
+eq(document.querySelectorAll("[role=dialog]").length, 1, "tek pencere: kelime penceresi kapanıp Etsy analizi açılmalı");
+eq(document.querySelector("[role=dialog]").textContent.includes("Etsy verisi (Google değil)"), true, "Etsy analizi açıldı");
+const { default: KeywordDetailModal } = await import("../../src/components/discover/KeywordDetailModal.tsx");
+const withSeries = item("metal wall art", 18100, { monthly: [10, 12, 14, 20, 30, 40, 50, 60, 55, 70, 90, 100], trend_pct: 40 });
+const detailRoot = createRoot(document.body.appendChild(document.createElement("div")));
+await act(async () => detailRoot.render(h(KeywordDetailModal, { shopId: 1, item: withSeries, onClose: () => {} })));
+await act(async () => { await sleep(40); });
+const chart = document.querySelector("[data-testid=monthly-chart]");
+eq(chart.querySelectorAll("[title]").length, 12, "12 aylık arama çubuğu");
+const heights = [...chart.querySelectorAll("[title] > div")].map((d) => parseInt(d.style.height));
+eq(heights[11], 80, "en yüksek ay tam yükseklikte (px)");
+eq(chart.textContent.includes("12 ay önce") && chart.textContent.includes("Son ay"), true, "eksen etiketleri");
+console.log("16 kelime penceresi OK");
 globalThis.__api = prevApi;
 
 // 15) MEVSİMSELLİK: 12 çubuk, zirve aylar vurgulu ve yazılı; hazırlanırken iskelet; profil yoksa hiçbir şey; dengeli ise "Yıl boyu dengeli"
@@ -250,6 +296,7 @@ const renderCard = (season) => act(async () => cardRoot.render(h(OverviewCard, {
 const PROFILE = [11, 5, 3, 4, 4, 5, 6, 8, 13, 28, 100, 92];
 await renderCard({ monthly: PROFILE, peak_months: [11, 12], seasonal: true, pending: false });
 eq(cardHost.querySelectorAll("[data-testid=season] [title]").length, 12, "12 aylık çubuk");
+eq(parseInt(cardHost.querySelectorAll("[data-testid=season] [title] > div")[10].style.height), 56, "zirve çubuğu tam yükseklikte (px)");
 eq(cardHost.querySelector("[data-testid=season]").textContent.includes("Zirve: Kas, Ara"), true, "zirve aylar yazılı");
 eq(cardHost.querySelectorAll("[data-testid=season] .bg-\\[\\#D97757\\]").length, 2, "yalnız zirve aylar vurgulu");
 await renderCard({ monthly: [], peak_months: [], seasonal: false, pending: true });

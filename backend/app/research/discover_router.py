@@ -31,6 +31,15 @@ def search(
     return result.as_dict()
 
 
+@router.get("/season")
+def season(background: BackgroundTasks, q: str = Query(min_length=1, max_length=120), shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    """Tek bir kelimenin mevsimsellik profili (kelime penceresi için). Havuzda yoksa iş kuyruğa alınır; `pending` iken ekran yoklar."""
+    out = discover.season_of(db, shop, q)
+    if out and out["pending"]:
+        background.add_task(run_queue)
+    return {"season": out}
+
+
 @router.get("/saved")
 def saved(collection: str | None = None, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
     view = discover.saved(db, shop, collection)

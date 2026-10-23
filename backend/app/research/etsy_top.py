@@ -40,9 +40,10 @@ def _round(v: float | None, digits: int = 1) -> float | None:
     return None if v is None else round(v, digits)
 
 
-def summarize(term: str, data: dict, now: float | None = None) -> dict:
-    """Etsy arama yanıtından (`{"count", "results"}`) analiz özeti. Saf işlev: ağ yok."""
+def summarize(term: str, data: dict, now: float | None = None, thumbnails: dict[int, str] | None = None) -> dict:
+    """Etsy arama yanıtından (`{"count", "results"}`) analiz özeti. Saf işlev: ağ yok. `thumbnails`: ilan kimliği -> küçük resim adresi."""
     now = now or time.time()
+    thumbnails = thumbnails or {}
     results = list(data.get("results") or [])[:SAMPLE]
     currency = Counter((r.get("price") or {}).get("currency_code") for r in results if r.get("price")).most_common(1)
     currency = currency[0][0] if currency else None
@@ -62,7 +63,7 @@ def summarize(term: str, data: dict, now: float | None = None) -> dict:
         for tag in r.get("tags") or []:
             tags[normalize(str(tag))] += 1
         listings.append({
-            "listing_id": r.get("listing_id"), "title": r.get("title") or "", "url": r.get("url") or "", "price": _round(amount, 2), "currency": price.get("currency_code"),
+            "listing_id": r.get("listing_id"), "title": r.get("title") or "", "url": r.get("url") or "", "image": thumbnails.get(r.get("listing_id")), "price": _round(amount, 2), "currency": price.get("currency_code"),
             "favorites": favs, "views": views, "age_days": round(age_days), "shop_id": r.get("shop_id"), "personalizable": bool(r.get("is_personalizable")),
         })
     n = len(results)
@@ -95,7 +96,12 @@ def fetch(shop_id: int, term: str) -> dict | None:
         return None
     from app.taxonomy import service as taxonomy_service
 
-    out = summarize(key, taxonomy_service.search_active_listings(key, limit=SAMPLE))
+    data = taxonomy_service.search_active_listings(key, limit=SAMPLE)
+    try:
+        thumbnails = taxonomy_service.listing_thumbnails([r.get("listing_id") for r in (data.get("results") or [])[:SAMPLE]])
+    except Exception:  # resimler süs: alınamazsa analiz resimsiz gösterilir
+        thumbnails = {}
+    out = summarize(key, data, thumbnails=thumbnails)
     with _lock:
         if len(_cache) > 300:  # bellek sınırı
             _cache.clear()

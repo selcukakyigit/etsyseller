@@ -36,6 +36,21 @@ def search_active_listings(keywords: str, limit: int = 50) -> dict:
     return _get(f"/listings/active?{query}")
 
 
+def listing_thumbnails(listing_ids: list[int]) -> dict[int, str]:
+    """İlanların küçük resim adresleri (ilk görsel, 170x135). Etsy'nin arama uç noktası görsel döndürmediği için toplu uç noktadan tek istekle alınır.
+    Resimler yalnızca adres olarak geçer; indirilmez ya da saklanmaz."""
+    ids = [int(i) for i in listing_ids if i][:100]
+    if not ids:
+        return {}
+    data = _get(f"/listings/batch?listing_ids={','.join(str(i) for i in ids)}&includes=Images")
+    out: dict[int, str] = {}
+    for r in data.get("results") or []:
+        first = (r.get("images") or [None])[0]
+        if first and first.get("url_170x135"):
+            out[int(r["listing_id"])] = first["url_170x135"]
+    return out
+
+
 def cached_properties(taxonomy_id: int) -> list[dict]:
     """Bir kategorinin özellik tanımları (bellek → veritabanı → Etsy; düzenleyici, asistan ve toplu işlemler aynı veriyi kullanır, bkz. store.py)."""
     from app.taxonomy import store

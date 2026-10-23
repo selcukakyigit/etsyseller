@@ -66,7 +66,7 @@ export type EtsyAnalysis = {
   age_days_median: number | null;
   new_share: number | null;
   top_tags: { tag: string; count: number }[];
-  listings: { listing_id: number | null; title: string; url: string; price: number | null; currency: string | null; favorites: number; views: number; age_days: number; shop_id: number | null; personalizable: boolean }[];
+  listings: { listing_id: number | null; title: string; url: string; image: string | null; price: number | null; currency: string | null; favorites: number; views: number; age_days: number; shop_id: number | null; personalizable: boolean }[];
 };
 
 export type SavedCollection = { name: string; count: number };
@@ -84,6 +84,8 @@ export const discoverApi = {
     apiRequest<{ added: number }>(`${base(shopId)}/saved`, { method: "POST", body: JSON.stringify({ terms, collection }) }),
   unsave: (shopId: number, terms: string[], collection: string) =>
     apiRequest<{ removed: number }>(`${base(shopId)}/saved/remove`, { method: "POST", body: JSON.stringify({ terms, collection }) }),
+  /** Tek kelimenin mevsimsellik profili; `pending` iken yoklanır. Geçersiz kelimede season null. */
+  season: (shopId: number, q: string) => apiRequest<{ season: Season | null }>(`${base(shopId)}/season?q=${encodeURIComponent(q)}`),
   /** Bir aramanın Etsy'deki ilk 20 sonucunun analizi; `limited`: ölçüm hakkı geçici doldu. */
   etsyTop: (shopId: number, term: string) => apiRequest<{ analysis: EtsyAnalysis | null; limited: boolean }>(`${base(shopId)}/etsy-top`, { method: "POST", body: JSON.stringify({ term }) }),
   /** Kelimelerin Etsy'deki aktif ilan sayısı (rakip sayısı); en fazla 20 kelime. `limited`: ölçüm hakkı geçici doldu. */

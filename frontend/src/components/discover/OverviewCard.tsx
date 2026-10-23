@@ -2,6 +2,7 @@
 
 import type { DiscoverItem, Season } from "@/lib/discoverApi";
 import { useT } from "@/lib/i18n-client";
+import SeasonChart from "./SeasonChart";
 import Sparkline from "./Sparkline";
 import { useIntentLabel } from "./shared";
 
@@ -10,47 +11,6 @@ function Stat({ label, hint, children }: { label: string; hint?: string; childre
     <div title={hint}>
       <p className="text-xs text-neutral-500 dark:text-neutral-400">{label}</p>
       <div className="mt-0.5 text-2xl font-semibold tabular-nums text-neutral-900 dark:text-neutral-100">{children}</div>
-    </div>
-  );
-}
-
-const MONTHS_TR = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
-const MONTHS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-/** Takvim ayına göre 12 çubuk (Google Trends, 5 yıl ortalaması): hangi ay zirve. Profil hazırlanırken iskelet, çıkarılamadıysa hiçbir şey gösterilmez. */
-function SeasonStrip({ season }: { season: Season }) {
-  const { t, locale } = useT();
-  const names = locale.startsWith("tr") ? MONTHS_TR : MONTHS_EN;
-  if (season.pending && season.monthly.length === 0) {
-    return <div data-testid="season-pending" className="mt-4 h-16 animate-pulse rounded-lg bg-neutral-100 dark:bg-neutral-800" aria-hidden />;
-  }
-  if (season.monthly.length !== 12) return null;
-  const peaks = season.peak_months.map((m) => names[m - 1]);
-  return (
-    <div data-testid="season" className="mt-4 border-t border-neutral-100 pt-3 dark:border-neutral-800">
-      <p className="text-xs text-neutral-500 dark:text-neutral-400">
-        {t("Mevsimsellik (Google Trends, 5 yıl)", "Seasonality (Google Trends, 5 years)")}
-        {": "}
-        <span className="font-medium text-neutral-800 dark:text-neutral-200">
-          {season.seasonal ? t(`Zirve: ${peaks.join(", ")}`, `Peak: ${peaks.join(", ")}`) : t("Yıl boyu dengeli", "Steady all year")}
-        </span>
-      </p>
-      <div className="mt-2 flex h-14 items-end gap-1" role="img" aria-label={t("Aylara göre göreli ilgi", "Relative interest by month")}>
-        {season.monthly.map((value, i) => {
-          const peak = season.seasonal && season.peak_months.includes(i + 1);
-          return (
-            <div key={i} className="flex flex-1 flex-col items-center gap-1" title={`${names[i]}: ${value}`}>
-              <div className="flex w-full flex-1 items-end">
-                <div
-                  className={`w-full rounded-sm ${peak ? "bg-[#D97757]" : "bg-neutral-300 dark:bg-neutral-600"}`}
-                  style={{ height: `${Math.max(value, 3)}%` }}
-                />
-              </div>
-              <span className="text-[10px] leading-none text-neutral-400">{names[i]}</span>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
@@ -107,7 +67,7 @@ export default function OverviewCard({ item, selected, onToggle, onAnalyze, seas
           </span>
         </Stat>
       </div>
-      {season && <SeasonStrip season={season} />}
+      {season && <SeasonChart season={season} />}
     </div>
   );
 }

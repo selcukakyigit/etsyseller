@@ -10,6 +10,7 @@ import { toast } from "@/lib/toast";
 import { useUrlTab } from "@/lib/useUrlTab";
 import CollectionBar from "./CollectionBar";
 import EtsyTopModal from "./EtsyTopModal";
+import KeywordDetailModal from "./KeywordDetailModal";
 import FilterBar from "./FilterBar";
 import KeywordTable from "./KeywordTable";
 import OverviewCard from "./OverviewCard";
@@ -46,6 +47,7 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
   const [etsy, setEtsy] = useState<Record<string, number | null>>({});
   const [polls, setPolls] = useState(0);
   const [analyzeTerm, setAnalyzeTerm] = useState<string | null>(null);
+  const [detail, setDetail] = useState<DiscoverItem | null>(null);
 
   const keyOf = useCallback((q: string, m: SearchMode) => `discover:${shopId}:${m}:${q}`, [shopId]);
   const resultFor = (m: SearchMode): DiscoverSearch | null => {
@@ -200,6 +202,7 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
         emptyText={t("Süzgeçlere uyan kelime yok.", "No keywords match the filters.")}
         collect={{ active: col.active, has: col.has, onAdd: (term) => void col.add([term]), onRemove: (term) => void col.remove(term) }}
         onAnalyze={mode === "all" ? setAnalyzeTerm : undefined}
+        onOpen={setDetail}
       />
     );
   };
@@ -325,6 +328,14 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
         </div>
       )}
 
+      {detail && (
+        <KeywordDetailModal
+          shopId={shopId}
+          item={detail}
+          onClose={() => setDetail(null)}
+          onAnalyze={mode === "all" ? (term) => { setDetail(null); setAnalyzeTerm(term); } : undefined}
+        />
+      )}
       {analyzeTerm && <EtsyTopModal shopId={shopId} term={analyzeTerm} onClose={() => setAnalyzeTerm(null)} />}
       {v.selected.size > 0 && <SaveBar count={v.selected.size} collection={col.active} busy={saving} onAdd={() => void addSelected()} />}
     </div>
