@@ -3,13 +3,14 @@
 Live yöntem seçildi çünkü Labs yalnızca Live çalışır ve istekler küçük/toplu yapılır; Live sonuçlar sağlayıcıda SAKLANMAZ, bu yüzden
 her yanıt havuza yazılır (bkz. worker.py). Google Ads hacmi istek başına ücretlendirilir (1 ya da 1000 kelime aynı), bu yüzden kelimeler
 mümkün olduğunca tek istekte toplanır; Google Ads Live uç noktasında dakikada 12 istek sınırı vardır."""
+import datetime as dt
 import time
 
 import httpx
 
 from app.research.providers.base import Credentials
 from app.research.terms import normalize
-from app.research.records import MetricRecord, ProviderError, ProviderResponse
+from app.research.records import MetricRecord, ProviderError, ProviderResponse, TrendRecord
 
 BASE = "https://api.dataforseo.com/v3"
 TIMEOUT = 60.0
@@ -17,6 +18,8 @@ OK = 20000
 # Geçici sayılan görev durum kodları (hız sınırı, sunucu tarafı hata); geri kalan 4xxxx kodları kalıcı hatadır (kimlik, parametre, bakiye).
 _TRANSIENT_CODES = {40202, 50000, 50301, 50302, 50303}
 
+TREND_WEEKS = 13  # son 13 hafta ile geçen yılın aynı 13 haftası karşılaştırılır (mevsim etkisi böylece ayrılır)
+TREND_HISTORY_DAYS = 16 * 31  # ~16 ay: hem son pencereyi hem bir yıl öncesini kapsar; 9 aydan uzun aralık haftalık veri döner
 LOCATIONS = {"US": 2840, "GB": 2826, "CA": 2124, "AU": 2036, "DE": 2276, "FR": 2250, "TR": 2792}
 
 
@@ -29,9 +32,25 @@ def _intent(item: dict) -> str | None:
     return ((item.get("search_intent_info") or {}).get("main_intent")) or None
 
 
+def _mean(values: list[float]) -> float | None:
+    return sum(values) / len(values) if values else None
+
+
+def trend_windows(series: list[tuple[dt.date, float | None]], weeks: int = TREND_WEEKS) -> tuple[float | None, float | None]:
+    """(son pencere ortalaması, geçen yılın aynı penceresinin ortalaması). Veri eksik (None) olan haftalar atlanır."""
+    points = sorted((d, v) for d, v in series if v is not None)
+    if not points:
+        return None, None
+    last = points[-1][0]
+    recent = [v for d, v in points if d > last - dt.timedelta(weeks=weeks)]
+    previous = [v for d, v in points if last - dt.timedelta(weeks=weeks + 52) < d <= last - dt.timedelta(weeks=52)]
+    return _mean(recent), _mean(previous)
+
+
 class DataForSeoProvider:
     name = "dataforseo"
     max_volume_terms = 1000
+    max_trend_terms = 5  # Google Trends tek istekte en fazla 5 terim karşılaştırır
 
     def supports_market(self, market: str) -> bool:
         return market in LOCATIONS
@@ -78,6 +97,34 @@ class DataForSeoProvider:
                 competition=None if competition is None else competition / 100, monthly=_monthly(item.get("monthly_searches")),
             ))
         return ProviderResponse(endpoint=endpoint, records=records, cost_usd=cost, duration_ms=ms)
+
+    def trends(self, creds: Credentials, terms: list[str], market: str, language: str) -> ProviderResponse:
+        endpoint = "keywords_data/google_trends/explore/live"
+        today = dt.date.today()
+        body = {
+            "keywords": terms[: self.max_trend_terms], "location_code": LOCATIONS[market], "language_code": language, "type": "web",
+            "date_from": (today - dt.timedelta(days=TREND_HISTORY_DAYS)).isoformat(), "date_to": today.isoformat(), "item_types": ["google_trends_graph"],
+        }
+        task, cost, ms = self._post(creds, f"/{endpoint}", body)
+        records: list[TrendRecord] = []
+        for result in task.get("result") or []:
+            for item in result.get("items") or []:
+                if item.get("type") != "google_trends_graph":
+                    continue
+                names = [normalize(k) for k in item.get("keywords") or []]
+                for i, term in enumerate(names):
+                    series = []
+                    for point in item.get("data") or []:
+                        values = point.get("values") or []
+                        if point.get("missing_data") or i >= len(values):
+                            continue
+                        try:
+                            series.append((dt.date.fromisoformat(point["date_to"]), values[i]))
+                        except (KeyError, ValueError):
+                            continue
+                    recent, previous = trend_windows(series)
+                    records.append(TrendRecord(term=term, recent=recent, previous=previous))
+        return ProviderResponse(endpoint=endpoint, trends=records, cost_usd=cost, duration_ms=ms)
 
     def suggestions(self, creds: Credentials, seed: str, market: str, language: str, limit: int) -> ProviderResponse:
         endpoint = "dataforseo_labs/google/keyword_suggestions/live"

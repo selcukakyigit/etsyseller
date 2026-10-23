@@ -46,6 +46,20 @@ def _run_volume(db: Session, batch: list[ResearchJob]) -> None:
         jobs.finish(job, share)
 
 
+def _run_trend(db: Session, job: ResearchJob) -> None:
+    provider = get_provider(job.provider)
+    creds = credentials.get(db, job.provider)
+    terms = [t for t in jobs.params(job).get("terms", []) if researchable(normalize(t))][: provider.max_trend_terms]
+    if not terms:
+        jobs.finish(job)
+        return
+    resp = provider.trends(creds, terms, job.market, job.language)
+    rows = pool.get_or_create_terms(db, terms, job.language, "trend")
+    pool.add_trends(db, rows, resp.trends, provider=job.provider, market=job.market, language=job.language, ttl_days=policy.get("research_ttl_trend_days"))
+    _log_call(db, [job.id], job.provider, job.market, job.language, ProviderResponse(resp.endpoint, [], cost_usd=resp.cost_usd, duration_ms=resp.duration_ms))
+    jobs.finish(job, resp.cost_usd)
+
+
 def _run_suggest(db: Session, job: ResearchJob) -> None:
     provider = get_provider(job.provider)
     creds = credentials.get(db, job.provider)
@@ -69,6 +83,8 @@ def _execute(db: Session, batch: list[ResearchJob]) -> None:
     try:
         if first.kind == "volume":
             _run_volume(db, batch)
+        elif first.kind == "trend":
+            _run_trend(db, first)
         elif first.kind == "suggest":
             _run_suggest(db, first)
         else:

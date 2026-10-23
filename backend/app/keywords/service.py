@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.ai import quality, standard
 from app.etsy import search as etsy_search
-from app.keywords import competition, scoring, trends
+from app.keywords import competition, scoring
 from app.listings import performance
-from app.research import exposure, policy, service as research
+from app.research import bands, exposure, policy, service as research
 from app.research.terms import normalize
 from app.shops.models import Shop
 
@@ -272,15 +272,24 @@ def _attach_research(db: Session, shop: Shop, pool: list[dict]) -> None:
             item["crowd"] = min(1.0, crowd[key] / max(1, int(policy.get("research_crowd_full_shops"))))
 
 
+def public_pool(pool: list[dict]) -> list[dict]:
+    """Kullanıcıya giden havuz: ham Google hacmi/CPC ve mağaza sayıları çıkarılır, yerine talep bandı (low|medium|high) ve `crowded` konur (ham sayılar yalnızca yönetimde)."""
+    out = []
+    for item in pool:
+        clean = {k: v for k, v in item.items() if k not in ("google_volume", "google_cpc", "crowd_shops", "crowd", "google_pending")}
+        band = bands.demand_band(item.get("google_volume"))
+        if band:
+            clean["google_demand"] = band
+        if (item.get("crowd") or 0) >= 0.5:
+            clean["crowded"] = True
+        out.append(clean)
+    return out
+
+
 def scored_pool(db: Session, shop: Shop, listing: dict) -> list[dict]:
     """Yazım hattı için havuz: aday ifadeler + otomatik ölçülen rekabet (toplam sonuç sayısı) + puan, rol ve güven etiketi; puana göre sıralı.
     SEO önerisi, toplu yeniden yazım ve sohbet asistanı AYNI sıralı havuzu kullanır. Arayüzdeki ham havuz `build_keyword_pool`'dur."""
     pool = build_keyword_pool(db, shop, listing)
-    # Yalnızca önbellekteki Google ilgisi (canlı Trends isteği atılmaz; bkz. trends.get_cached_scores).
-    cached_trends = trends.get_cached_scores(db, [item["tag"] for item in pool])
-    for item in pool:
-        if item["tag"] in cached_trends:
-            item["google_score"] = cached_trends[item["tag"]]
     _attach_research(db, shop, pool)
     competition.attach_results(pool, listing.get("title") or "")
     return scoring.rank(pool, listing.get("title") or "")

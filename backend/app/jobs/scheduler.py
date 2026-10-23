@@ -11,14 +11,13 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from app.core.memory import rss_mb
 from app.jobs.daily_stats import capture_daily_stats
-from app.jobs.demand_trends import refresh_demand
 from app.jobs.finance_sync import sync_all_shops as sync_finance
 from app.jobs.listing_health import evaluate_all_shops
 from app.jobs.listing_refresh import refresh_all_shops
 from app.jobs.order_sync import sync_all_shops
 from app.jobs.rank_tracking import track_all_shops
 from app.jobs.research import (
-    rebuild_signals as research_signals, refresh_stale as research_refresh, run_queue as research_queue, warm_own_tags as research_warm,
+    rebuild_signals as research_signals, refresh_stale as research_refresh, refresh_trends as research_trends, run_queue as research_queue, warm_own_tags as research_warm,
 )
 from app.jobs.retention import purge_expired_records
 from app.jobs.reviews import sync_all_shops as sync_reviews
@@ -138,9 +137,9 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
     _scheduler.add_job(
-        _measured(refresh_demand),
+        _measured(research_trends),
         trigger=CronTrigger(day_of_week="mon", hour=6, minute=30),
-        id="demand_trends",
+        id="research_trends",
         replace_existing=True,
     )
     _scheduler.add_job(

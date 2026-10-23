@@ -2,7 +2,7 @@
 
 Dış kaynak gerekmez. Listing'in kendi geçmişi azsa mağaza geneline bakılır. Zirve ayları, son üç yılın aylık
 toplamında ortalamanın belirgin üstünde kalan aylardır; zirveye kalan hafta ve "zirvedesin" bilgisi buradan çıkar.
-Google'daki talep kıyası ayrı bir sinyaldir (bkz. demand.py)."""
+Google'daki talep kıyası ayrı bir sinyaldir (bkz. research/service.py `trends`, diagnosis.demand_signal)."""
 import datetime as dt
 
 from app.core.i18n import tr

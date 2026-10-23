@@ -35,6 +35,25 @@ class Lookup:
     refused: str | None = None
 
 
+@dataclass
+class TrendView:
+    term: str
+    recent: float | None
+    previous: float | None
+    yoy_pct: int | None  # geçen yıla göre %; geçen yılki ilgi çok düşükse None
+    measured_at: dt.datetime
+    fresh: bool
+
+
+@dataclass
+class TrendLookup:
+    """`trends`: havuzda ölçümü olan kelimeler (eskimiş olabilir). `pending`/`refused`: bkz. `Lookup`."""
+
+    trends: dict[str, TrendView] = field(default_factory=dict)
+    pending: int = 0
+    refused: str | None = None
+
+
 def _view(term: str, m: KeywordMetric, now: dt.datetime) -> MetricView:
     return MetricView(term, m.search_volume, m.cpc, m.competition, m.difficulty, m.intent, m.measured_at, fresh=m.expires_at > now)
 
@@ -89,6 +108,58 @@ def _enqueue_volumes(db: Session, stale: list[str], market: str, language: str, 
         key = f"volume:{market}:{language}:" + hashlib.sha1("|".join(part).encode()).hexdigest()
         try:
             jobs.enqueue(db, kind="volume", provider=provider.name, market=market, language=language, key=key, payload={"terms": part}, shop_id=shop_id)
+            pending += len(part)
+        except budget.QueueRefused as exc:
+            return exc.reason, pending
+    return None, pending
+
+
+def trends(
+    db: Session, terms: list[str], *, market: str | None = None, language: str | None = None, shop_id: int | None = None, enqueue: bool = True,
+) -> TrendLookup:
+    """Kelimelerin Google ilgi endeksi ve geçen yıla göre değişimi (talebin yönü). Eksik ya da süresi dolmuş olanlar kuyruğa alınır.
+    `enqueue=False`: yalnızca havuzdan OKUR (kelime eklemez, kuyruğa almaz, commit etmez); başka bir işlemin ortasında çağrılırken kullanılır."""
+    market, language = _market(market, language)
+    wanted = list(dict.fromkeys(t for t in (normalize(x) for x in terms) if researchable(t)))
+    out = TrendLookup()
+    if not wanted:
+        return out
+    rows = pool.get_or_create_terms(db, wanted, language, "trend") if enqueue else pool.find_terms(db, wanted, language)
+    latest = pool.latest_trends(db, [r.id for r in rows.values()], market, language)
+    now = dt.datetime.utcnow()
+    stale: list[str] = []
+    for term, row in rows.items():
+        t = latest.get(row.id)
+        if t is not None:
+            out.trends[term] = TrendView(term, t.recent, t.previous, t.yoy_pct, t.measured_at, fresh=t.expires_at > now)
+        if t is None or t.expires_at <= now:
+            stale.append(term)
+    if stale and enqueue:
+        out.refused = _available(db, market)
+        if out.refused is None:
+            out.refused, out.pending = _enqueue_trends(db, stale, market, language, shop_id)
+    if enqueue:
+        db.commit()
+    return out
+
+
+def refresh_tracked_trends(db: Session, limit: int = 200) -> int:
+    """Haftalık: sıra takibindeki (etkin) aramaların trendini yeniler; süresi dolmamış olanlar kuyruğa alınmaz. Kuyruğa alınan kelime sayısını döner."""
+    from app.insights.models import TrackedKeyword
+
+    tracked = sorted({k for (k,) in db.execute(select(TrackedKeyword.keyword).where(TrackedKeyword.active.is_(True)))})[:limit]
+    return trends(db, tracked).pending if tracked else 0
+
+
+def _enqueue_trends(db: Session, stale: list[str], market: str, language: str, shop_id: int | None) -> tuple[str | None, int]:
+    provider = get_provider()
+    size = provider.max_trend_terms
+    pending = 0
+    for i in range(0, len(stale), size):
+        part = sorted(stale[i : i + size])
+        key = f"trend:{market}:{language}:" + hashlib.sha1("|".join(part).encode()).hexdigest()
+        try:
+            jobs.enqueue(db, kind="trend", provider=provider.name, market=market, language=language, key=key, payload={"terms": part}, shop_id=shop_id)
             pending += len(part)
         except budget.QueueRefused as exc:
             return exc.reason, pending

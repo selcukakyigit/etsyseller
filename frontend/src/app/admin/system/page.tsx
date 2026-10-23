@@ -20,7 +20,7 @@ const JOB_NAMES: Record<string, [string, string]> = {
   daily_stats: ["Günlük istatistik", "Daily stats"],
   listing_health: ["Listing sağlığı", "Listing health"],
   rank_tracking: ["Sıra takibi", "Rank tracking"],
-  demand_trends: ["Talep trendleri", "Demand trends"],
+  research_trends: ["Talep trendleri (Google ilgisi)", "Demand trends (Google interest)"],
   retention_purge: ["Saklama süresi temizliği", "Retention cleanup"],
   research_queue: ["Araştırma kuyruğu", "Research queue"],
   research_refresh: ["Araştırma yenileme", "Research refresh"],

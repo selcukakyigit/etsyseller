@@ -15,11 +15,15 @@ class Credentials:
 class ResearchProvider(Protocol):
     name: str
     max_volume_terms: int  # tek istekte sorulabilecek en fazla kelime
+    max_trend_terms: int  # tek trend isteğinde karşılaştırılabilecek en fazla kelime
 
     def supports_market(self, market: str) -> bool: ...
 
     def volumes(self, creds: Credentials, terms: list[str], market: str, language: str) -> ProviderResponse:
         """Verilen kelimelerin aylık arama hacmi / CPC / rekabeti (Google verisi). Veri dönmeyen kelime de kayıt olarak döner."""
+
+    def trends(self, creds: Credentials, terms: list[str], market: str, language: str) -> ProviderResponse:
+        """Kelimelerin Google ilgi endeksi: son 13 hafta ile geçen yılın aynı 13 haftası (`ProviderResponse.trends`)."""
 
     def suggestions(self, creds: Credentials, seed: str, market: str, language: str, limit: int) -> ProviderResponse:
         """Tohum kelimeye bağlı uzun kuyruklu adaylar ve metrikleri."""

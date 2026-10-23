@@ -461,7 +461,10 @@ export type KeywordPoolItem = {
   source: "own" | "competitor" | "etsy" | "research";
   score: number;
   sample_size: number;
-  google_score?: number;
+  /** Google'da talep bandı (ham sayı yalnızca yönetimde); ölçüm hazırlanana kadar yok */
+  google_demand?: "low" | "medium" | "high";
+  /** Son günlerde birçok mağazaya önerilmiş ifade */
+  crowded?: boolean;
   /** Yalnızca kendi etiketlerinde: bu etiketi taşıyan benzer listing'lerinin son 180 günlük toplam satışı */
   units?: number;
   from_listings?: string[];
@@ -1901,8 +1904,6 @@ export const api = {
       request<ListingEdit>(`/api/shops/${shopId}/listings/${listingId}/edit`),
     keywordPool: (shopId: number, listingId: number) =>
       request<{ keywords: KeywordPoolItem[] }>(`/api/shops/${shopId}/listings/${listingId}/keyword-pool`),
-    keywordTrends: (shopId: number, listingId: number) =>
-      request<{ keywords: KeywordPoolItem[] }>(`/api/shops/${shopId}/listings/${listingId}/keyword-pool/trends`),
     // Toplu değişiklikleri seçili listing'lerin yerel sürümüne işler (Etsy'ye gitmez).
     bulkStage: (shopId: number, listingIds: number[], changes: BulkChanges) =>
       request<BulkResult[]>(`/api/shops/${shopId}/listings/bulk-stage`, {

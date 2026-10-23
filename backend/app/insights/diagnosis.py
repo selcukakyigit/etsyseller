@@ -424,17 +424,25 @@ def etsy_data_signal(c: Ctx) -> tuple[list[Evidence], list[Vote]]:
 
 def demand_signal(c: Ctx) -> tuple[list[Evidence], list[Vote]]:
     """Google'daki talep geçen yıla göre: talep de düştüyse sebep talep, aynı kaldıysa sorun listing'de."""
-    from app.insights import demand
     from app.insights.models import TrackedKeyword
+    from app.research import service as research
 
     keywords = [k for (k,) in c.db.execute(select(TrackedKeyword.keyword).where(
         TrackedKeyword.shop_id == c.shop.id, TrackedKeyword.listing_id == c.listing_id, TrackedKeyword.active.is_(True)
     ))]
-    rows = [r for r in demand.for_keywords(c.db, keywords).values() if r.yoy_pct is not None]
+    if not keywords:
+        return [], []
+    # Ortak araştırma havuzundan YALNIZCA okunur (haftalık iş takipteki aramaları doldurur; bu çağrı hiçbir şey yazmaz). Havuz okunamazsa teşhis diğer sinyallerle sürer.
+    try:
+        found = research.trends(c.db, keywords, enqueue=False)
+    except Exception:  # noqa: BLE001
+        c.db.rollback()
+        return [], []
+    rows = [r for r in found.trends.values() if r.yoy_pct is not None]
     if not rows:
         return [], []
-    parts = ", ".join(f"\"{r.keyword}\" %{r.yoy_pct:+d}" for r in rows)
-    parts_en = ", ".join(f"\"{r.keyword}\" {r.yoy_pct:+d}%" for r in rows)
+    parts = ", ".join(f"\"{r.term}\" %{r.yoy_pct:+d}" for r in rows)
+    parts_en = ", ".join(f"\"{r.term}\" {r.yoy_pct:+d}%" for r in rows)
     avg = sum(r.yoy_pct for r in rows) / len(rows)
     if avg <= -25:
         ev = Evidence("demand", "bad", tr(

@@ -23,7 +23,7 @@ from app.auth import models as _auth_models  # noqa: E402,F401
 from app.shops import models as _shop_models  # noqa: E402,F401
 from app.listings import models as _listing_models  # noqa: E402,F401
 from app.orders import models as _order_models  # noqa: E402,F401
-from app.keywords import models as _keyword_models  # noqa: E402,F401
+from app.research import models as _research_models  # noqa: E402,F401
 from app.finance import models as _finance_models  # noqa: E402,F401
 from app.assistant import models as _assistant_models  # noqa: E402,F401
 from app.contact import models as _contact_models  # noqa: E402,F401

@@ -66,3 +66,17 @@ def warm_own_tags() -> None:
         logger.exception("Etiket ısındırma başarısız")
     finally:
         db.close()
+
+
+def refresh_trends() -> None:
+    """Haftalık: sıra takibindeki aramaların Google ilgisini (geçen yıla göre değişim) yenilemek için kuyruğa alır (bkz. research/service.py)."""
+    db = SessionLocal()
+    try:
+        n = service.refresh_tracked_trends(db)
+        if n:
+            logger.info("Araştırma: %s arama için trend ölçümü kuyruğa alındı", n)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        logger.exception("Trend yenilemesi başarısız")
+    finally:
+        db.close()

@@ -30,7 +30,6 @@ from app.listings import models as _listing_models  # noqa: F401
 from app.orders import models as _order_models  # noqa: F401
 from app.finance import models as _finance_models  # noqa: F401
 from app.assistant import models as _assistant_models  # noqa: F401
-from app.keywords import models as _keyword_models  # noqa: F401
 from app.contact import models as _contact_models  # noqa: F401
 from app.support import models as _support_models  # noqa: F401
 from app.insights import models as _insights_models  # noqa: F401

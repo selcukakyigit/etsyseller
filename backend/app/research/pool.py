@@ -7,11 +7,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.research import policy
-from app.research.models import KeywordLink, KeywordMetric, KeywordTerm
+from app.research.models import KeywordLink, KeywordMetric, KeywordTerm, KeywordTrend
 from app.research.terms import normalize
-from app.research.records import MetricRecord
+from app.research.records import MetricRecord, TrendRecord
 
 CHUNK = 500  # IN (...) listelerini bölmek için
+MIN_TREND_INTEREST = 3.0  # geçen yılki ilgi bunun altındaysa (Google'da çok az aranıyorsa) yıllık değişim gürültüdür, hesaplanmaz
 
 
 def _chunks(items: list, size: int = CHUNK):
@@ -48,6 +49,16 @@ def get_or_create_terms(db: Session, displays: list[str], language: str, source:
                 except IntegrityError:
                     pass
         load(missing)
+    return found
+
+
+def find_terms(db: Session, displays: list[str], language: str) -> dict[str, KeywordTerm]:
+    """Yalnızca OKUR (kelime eklemez): normalize edilmiş kelime -> var olan satır."""
+    wanted = list({normalize(t) for t in displays if normalize(t)})
+    found: dict[str, KeywordTerm] = {}
+    for part in _chunks(wanted):
+        for row in db.scalars(select(KeywordTerm).where(KeywordTerm.language == language, KeywordTerm.term.in_(part))):
+            found[row.term] = row
     return found
 
 
@@ -107,3 +118,43 @@ def link_suggestions(db: Session, seed_id: int, ordered: list[KeywordTerm]) -> N
             link.rank, link.observed_at = rank, now
         else:
             db.add(KeywordLink(seed_id=seed_id, keyword_id=kw.id, relation="suggestion", rank=rank, observed_at=now))
+
+
+def latest_trends(db: Session, ids: list[int], market: str, language: str) -> dict[int, KeywordTrend]:
+    """Her kelimenin bu pazar/dildeki EN YENİ trend ölçümü."""
+    out: dict[int, KeywordTrend] = {}
+    for part in _chunks(ids):
+        newest = (
+            select(KeywordTrend.keyword_id, func.max(KeywordTrend.measured_at).label("m"))
+            .where(KeywordTrend.keyword_id.in_(part), KeywordTrend.market == market, KeywordTrend.language == language)
+            .group_by(KeywordTrend.keyword_id)
+            .subquery()
+        )
+        rows = db.scalars(
+            select(KeywordTrend).join(newest, (KeywordTrend.keyword_id == newest.c.keyword_id) & (KeywordTrend.measured_at == newest.c.m))
+            .where(KeywordTrend.market == market, KeywordTrend.language == language)
+        )
+        for row in rows:
+            if row.keyword_id not in out or row.id > out[row.keyword_id].id:
+                out[row.keyword_id] = row
+    return out
+
+
+def add_trends(
+    db: Session, terms: dict[str, KeywordTerm], records: list[TrendRecord], *, provider: str, market: str, language: str, ttl_days: float,
+) -> int:
+    """Her kelime için YENİ trend satırı ekler; sağlayıcının döndürmediği kelime için boş ölçüm de yazılır (TTL boyunca yeniden sorulmaz)."""
+    now = dt.datetime.utcnow()
+    by_term = {r.term: r for r in records}
+    rows = []
+    for term, kw in terms.items():
+        rec = by_term.get(term) or TrendRecord(term=term)
+        yoy = None
+        if rec.recent is not None and rec.previous is not None and rec.previous >= MIN_TREND_INTEREST:
+            yoy = round((rec.recent - rec.previous) / rec.previous * 100)
+        rows.append(KeywordTrend(
+            keyword_id=kw.id, provider=provider, market=market, language=language, recent=rec.recent, previous=rec.previous, yoy_pct=yoy,
+            measured_at=now, expires_at=policy.expires_at(now, ttl_days),
+        ))
+    db.add_all(rows)
+    return len(rows)

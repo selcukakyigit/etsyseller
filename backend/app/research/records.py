@@ -14,11 +14,21 @@ class MetricRecord:
 
 
 @dataclass
+class TrendRecord:
+    """Google ilgi endeksi (göreli, 0–100): son 13 haftanın ortalaması ve geçen yılın aynı 13 haftasının ortalaması. Hacim DEĞİL, yön ve büyüklük içindir."""
+
+    term: str
+    recent: float | None = None
+    previous: float | None = None
+
+
+@dataclass
 class ProviderResponse:
     endpoint: str
     records: list[MetricRecord] = field(default_factory=list)
     cost_usd: float = 0.0
     duration_ms: int = 0
+    trends: list[TrendRecord] = field(default_factory=list)
 
 
 class ProviderError(Exception):

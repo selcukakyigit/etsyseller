@@ -81,7 +81,19 @@ function ScoredKeywordPills({ items, onTrack }: { items: KeywordPoolItem[]; onTr
                     : `${item.score}/${item.sample_size}`}
             </span>
             {item.in_listing && <span className="text-emerald-500" title={t("Bu listing'de zaten var", "Already in this listing")}>✓</span>}
-            {item.google_score !== undefined && <span className="text-blue-500 dark:text-blue-400">G:{item.google_score}</span>}
+            {item.google_demand && (
+              <span
+                className="text-blue-500 dark:text-blue-400"
+                title={t("Google'da talep (Etsy arama hacmi değil)", "Google demand (not Etsy search volume)")}
+              >
+                G:{item.google_demand === "high" ? t("yüksek", "high") : item.google_demand === "medium" ? t("orta", "medium") : t("düşük", "low")}
+              </span>
+            )}
+            {item.crowded && (
+              <span className="text-amber-600 dark:text-amber-400" title={t("Son günlerde birçok mağazaya önerildi", "Recently suggested to many shops")}>
+                ⚑
+              </span>
+            )}
             {item.etsy_searches ? (
               <span
                 className="text-violet-600 dark:text-violet-400"
@@ -160,7 +172,6 @@ export default function ListingRow({
   const [error, setError] = useState<string | null>(null);
   const [keywordPool, setKeywordPool] = useState<KeywordPoolItem[] | null>(null);
   const [keywordPoolLoading, setKeywordPoolLoading] = useState(false);
-  const [trendsLoading, setTrendsLoading] = useState(false);
 
   async function handleToggleKeywordPool() {
     if (keywordPool) {
@@ -185,26 +196,6 @@ export default function ListingRow({
       toast.success(t(`"${keyword}" sıra takibine eklendi; Analiz > Sıralama'da görünür.`, `"${keyword}" added to rank tracking; see Analysis > Rankings.`));
     } catch (e) {
       toast.error(e instanceof Error && e.message ? e.message : t("Takibe alınamadı", "Could not start tracking"));
-    }
-  }
-
-  async function handleLoadTrends() {
-    setTrendsLoading(true);
-    setError(null);
-    try {
-      const result = await api.listings.keywordTrends(shopId, listing.listing_id);
-      const googleScoreByTag = new Map(result.keywords.map((item) => [item.tag, item.google_score]));
-      setKeywordPool((prev) =>
-        prev
-          ? prev.map((item) =>
-              googleScoreByTag.has(item.tag) ? { ...item, google_score: googleScoreByTag.get(item.tag) } : item
-            )
-          : prev
-      );
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("Bilinmeyen hata", "Unknown error"));
-    } finally {
-      setTrendsLoading(false);
     }
   }
 
@@ -327,17 +318,10 @@ export default function ListingRow({
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <p className="text-xs font-medium text-neutral-400 dark:text-neutral-500">
               {t(
-                "SENİN: bu listing'e benzeyen kendi listing'lerinden gelen etiket; sayı, o etiketi taşıyan listing'lerin son 180 gündeki toplam satışı (✓ = bu listing'de zaten var). Rakip etiketlerde 11/50 = ilk 50 rakip listing'in 11'i kullanıyor (yüksek = kalabalık). ETSY: Etsy verisine göre listing'i gerçekten getiren arama. E: Etsy'de aylık arama (Analiz > Etsy verisi'nden). G: Google Trends ilgisi (0-100, Etsy içi arama hacmi değil). ⌖ ile aramayı sıra takibine alırsın. \"AI Önerisi Üret\" bu havuzdan uygun olanları seçer.",
-                "YOURS: a tag from your own listings similar to this one; the number is the total sales of listings with that tag in the last 180 days (✓ = already in this listing). For competitor tags, 11/50 = 11 of the top 50 competitor listings use it (high = crowded). ETSY: a search that actually brought visits, according to Etsy data. E: monthly searches on Etsy (from Analysis > Etsy data). G: Google Trends interest (0-100, not Etsy search volume). ⌖ adds the search to rank tracking. \"Generate AI suggestion\" picks suitable tags from this pool.",
+                "SENİN: bu listing'e benzeyen kendi listing'lerinden gelen etiket; sayı, o etiketi taşıyan listing'lerin son 180 gündeki toplam satışı (✓ = bu listing'de zaten var). Rakip etiketlerde 11/50 = ilk 50 rakip listing'in 11'i kullanıyor (yüksek = kalabalık). ETSY: Etsy verisine göre listing'i gerçekten getiren arama. E: Etsy'de aylık arama (Analiz > Etsy verisi'nden). G: Google'da talep bandı (düşük/orta/yüksek; Etsy içi arama hacmi değil, ölçüm hazırlandıkça görünür). ⚑: son günlerde birçok mağazaya önerilmiş (kalabalık). ⌖ ile aramayı sıra takibine alırsın. \"AI Önerisi Üret\" bu havuzdan uygun olanları seçer.",
+                "YOURS: a tag from your own listings similar to this one; the number is the total sales of listings with that tag in the last 180 days (✓ = already in this listing). For competitor tags, 11/50 = 11 of the top 50 competitor listings use it (high = crowded). ETSY: a search that actually brought visits, according to Etsy data. E: monthly searches on Etsy (from Analysis > Etsy data). G: Google demand band (low/medium/high; not Etsy search volume, appears once measured). ⚑: recently suggested to many shops (crowded). ⌖ adds the search to rank tracking. \"Generate AI suggestion\" picks suitable tags from this pool.",
               )}
             </p>
-            <button
-              onClick={handleLoadTrends}
-              disabled={trendsLoading}
-              className={`${pill} flex-shrink-0 disabled:opacity-50`}
-            >
-              {trendsLoading ? t("Google Trend yükleniyor…", "Loading Google Trends…") : t("Google Trend Ekle", "Add Google Trends")}
-            </button>
           </div>
           {keywordPool.length > 0 ? (
             <ScoredKeywordPills items={keywordPool} onTrack={listing.listing_id > 0 ? (k) => void handleTrack(k) : undefined} />
