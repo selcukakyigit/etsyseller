@@ -22,7 +22,7 @@ const root = createRoot(el);
 await act(async () => root.render(h(SearchPanel, { shopId: 1, collections: [], onSaved: () => {} })));
 
 const text = () => document.body.textContent;
-const rows = () => [...document.querySelectorAll("tbody tr")].map((r) => r.querySelector("td:nth-child(2) span")?.textContent);
+const rows = () => [...document.querySelectorAll("tbody tr")].map((r) => r.querySelector("td[class*='max-w-'] > span")?.textContent);
 const eq = (a, b, m) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${m}\n  gelen: ${JSON.stringify(a)}\n  beklenen: ${JSON.stringify(b)}`); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function search(q) {
@@ -119,5 +119,74 @@ eq(calls.length, 2, "bir yoklama");
 eq(calls[1].includes("refresh=true"), false, "yoklama yeniden araştırma başlatmaz");
 eq(rows(), ["rustic metal sign"], "yeni liste eskisini değiştirdi");
 console.log("10 yeniden araştır OK");
+
+// 11) SAYFA YENİLEME: arama URL'de (?q=) kalır, yenilenince sonuç kendiliğinden yeniden gelir ve kutuda yazılı durur
+await act(async () => root.unmount());
+const { clearPageCache } = await import("../../src/lib/pageCache.ts");
+clearPageCache(); // gerçek yenilemede bellek önbelleği de boşalır
+w.history.replaceState(null, "", "/discover?q=metal+wall+art");
+calls = []; script = [ready(ALL)];
+const root2 = createRoot(document.body.appendChild(document.createElement("div")));
+await act(async () => root2.render(h(SearchPanel, { shopId: 1, collections: [], onSaved: () => {} })));
+await act(async () => { await sleep(80); });
+eq(calls.length, 1, "yenilemede arama otomatik yüklenmeli");
+eq(calls[0].includes("q=metal%20wall%20art"), true, "URL'deki kelime aranmalı");
+eq(rows().length >= 5, true, "sonuç ekranda");
+eq(document.querySelector("input[aria-label='Aranacak kelime']").value, "metal wall art", "arama kutusu dolu kalmalı");
+console.log("11 yenilemede arama kalıyor OK");
+
+// 12) KOLEKSİYON: yokken önce oluştur; oluşturulunca satırdaki yeşil + ile tek dokunuşta ekle, ✓ ile çıkar; toplu seçim aktif koleksiyona ekler
+const server = new Set();
+globalThis.__api = async (path, init) => {
+  calls.push(path + (init?.body ? " " + init.body : ""));
+  if (path.includes("/discover/search")) return ready(ALL);
+  if (path.includes("/discover/saved/remove")) { for (const t of JSON.parse(init.body).terms) server.delete(t); return { removed: 1 }; }
+  if (path.includes("/discover/saved") && init?.method === "POST") { for (const t of JSON.parse(init.body).terms) server.add(t); return { added: 1 }; }
+  if (path.includes("/discover/saved")) return { collections: server.size ? [{ name: "Farm", count: server.size }] : [], collection: "Farm", total: server.size, items: [...server].map((term) => item(term, 1)) };
+  throw new Error("beklenmeyen istek " + path);
+};
+localStorage.clear();
+await act(async () => root2.unmount());
+w.history.replaceState(null, "", "/discover");
+clearPageCache();
+const root3 = createRoot(document.body.appendChild(document.createElement("div")));
+await act(async () => root3.render(h(SearchPanel, { shopId: 1, collections: [], onSaved: () => {} })));
+await search("metal wall art");
+const plusBtns = () => [...document.querySelectorAll("tbody button[aria-label$='koleksiyona ekle']")];
+const doneBtns = () => [...document.querySelectorAll("tbody button[aria-label$='koleksiyondan çıkar']")];
+eq(plusBtns().length > 0 && plusBtns().every((b) => b.disabled), true, "koleksiyon yokken + kapalı olmalı");
+eq(text().includes("önce bir koleksiyon oluştur"), true, "oluşturma uyarısı görünmeli");
+// oluştur
+const nameInput = document.querySelector("input[aria-label='Koleksiyon adı']");
+const setter = Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype, "value").set;
+await act(async () => { setter.call(nameInput, "Farm"); nameInput.dispatchEvent(new w.Event("input", { bubbles: true })); });
+await act(async () => { nameInput.closest("form").dispatchEvent(new w.Event("submit", { bubbles: true, cancelable: true })); });
+await act(async () => { await sleep(30); });
+eq(plusBtns().every((b) => !b.disabled), true, "koleksiyon oluşturulunca + açılmalı");
+eq(server.size, 0, "oluşturmak tek başına kayıt yaratmaz (ilk kelime eklenince kalıcı olur)");
+// tek dokunuşla ekle
+calls = [];
+const first = plusBtns()[0];
+await act(async () => first.dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
+await act(async () => { await sleep(30); });
+eq(server.size, 1, "tek dokunuş kelimeyi kaydetmeli");
+eq(calls.some((c) => c.includes('"collection":"Farm"')), true, "aktif koleksiyona kaydedilmeli");
+eq(doneBtns().length, 1, "eklenen satır ✓ olmalı");
+// ✓ ile çıkar
+await act(async () => doneBtns()[0].dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
+await act(async () => { await sleep(30); });
+eq(server.size, 0, "✓'ye dokununca koleksiyondan çıkmalı");
+eq(doneBtns().length, 0, "satır tekrar + olmalı");
+// toplu: iki satır seç, çubuktaki düğmeyle ekle
+const boxes = [...document.querySelectorAll("tbody input[type=checkbox]")];
+await act(async () => boxes[0].dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
+await act(async () => boxes[1].dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
+const bulk = [...document.querySelectorAll("button")].find((b) => b.textContent.includes("koleksiyonuna ekle"));
+eq(Boolean(bulk) && !bulk.disabled, true, "toplu ekleme düğmesi aktif koleksiyonu göstermeli");
+await act(async () => bulk.dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
+await act(async () => { await sleep(30); });
+eq(server.size, 2, "seçilen iki kelime eklenmeli");
+eq(doneBtns().length, 2, "ikisi de ✓");
+console.log("12 koleksiyon: oluştur, tek dokunuş, çıkar, toplu OK");
 console.log("PANEL DAVRANIŞ TESTLERİ GEÇTİ");
 process.exit(0);

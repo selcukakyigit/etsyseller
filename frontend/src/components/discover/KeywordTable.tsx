@@ -28,6 +28,7 @@ export default function KeywordTable({
   showEtsy,
   emptyText,
   onRemove,
+  collect,
 }: {
   rows: Row[];
   selected: Set<string>;
@@ -39,6 +40,8 @@ export default function KeywordTable({
   showEtsy: boolean;
   emptyText: string;
   onRemove?: (term: string) => void;
+  /** Satır başına yeşil + (aktif koleksiyona tek dokunuşla ekle) / ✓ (koleksiyonda; dokununca çıkar). `active` null ise düğme kapalıdır. */
+  collect?: { active: string | null; has: (term: string) => boolean; onAdd: (term: string) => void; onRemove: (term: string) => void };
 }) {
   const { t, locale } = useT();
   const intentLabel = useIntentLabel();
@@ -78,6 +81,32 @@ export default function KeywordTable({
         <td className="px-3 py-1.5">
           <input type="checkbox" checked={selected.has(r.term)} onChange={() => onToggle(r.term)} aria-label={r.term} className="h-4 w-4 accent-[#D97757]" />
         </td>
+        {collect && (
+          <td className="px-1 py-1.5">
+            {collect.has(r.term) ? (
+              <button
+                type="button"
+                onClick={() => collect.onRemove(r.term)}
+                aria-label={t(`${r.term}: koleksiyondan çıkar`, `${r.term}: remove from collection`)}
+                title={t("Koleksiyonda. Çıkarmak için dokun.", "In the collection. Tap to remove.")}
+                className="flex h-6 w-6 items-center justify-center rounded-full bg-green-100 text-xs font-bold text-green-700 hover:bg-green-200 dark:bg-green-950 dark:text-green-400 dark:hover:bg-green-900"
+              >
+                ✓
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => collect.onAdd(r.term)}
+                disabled={collect.active === null}
+                aria-label={t(`${r.term}: koleksiyona ekle`, `${r.term}: add to collection`)}
+                title={collect.active === null ? t("Önce bir koleksiyon oluştur", "Create a collection first") : t("Koleksiyona ekle", "Add to collection")}
+                className="flex h-6 w-6 items-center justify-center rounded-full bg-green-600 text-base font-bold leading-none text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-35 dark:bg-green-500 dark:hover:bg-green-400"
+              >
+                +
+              </button>
+            )}
+          </td>
+        )}
         <td className={`max-w-[22rem] py-1.5 pr-2 ${isVariant ? "pl-7" : "pl-2"}`}>
           <span className={isVariant ? "" : "font-medium text-neutral-900 dark:text-neutral-100"}>{r.term}</span>
           {variantCount > 0 && (
@@ -95,7 +124,6 @@ export default function KeywordTable({
           <span className="ml-2 inline-flex flex-wrap gap-1 align-middle">
             {r.mine && <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400" title={t("Listing'lerinde zaten etiket olarak var", "Already a tag on your listings")}>✓ {t("Sende var", "You use it")}</span>}
             {r.crowded && <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-800 dark:bg-amber-950 dark:text-amber-300" title={t("Son günlerde birçok mağazaya önerildi; herkes aynı kelimeyle yarışır.", "Recently suggested to many shops; everyone competes for the same word.")}>⚑ {t("Kalabalık", "Crowded")}</span>}
-            {r.saved && !onRemove && <span className="text-[10px] text-[#D97757]" title={t("Kayıtlı", "Saved")}>★</span>}
           </span>
         </td>
         <td className="px-2 py-1.5">{intent && <span className="whitespace-nowrap rounded-full bg-neutral-200/70 px-2 py-0.5 text-[11px] text-neutral-600 dark:bg-neutral-700/60 dark:text-neutral-300">{intent}</span>}</td>
@@ -131,6 +159,7 @@ export default function KeywordTable({
             <th scope="col" className="w-9 px-3 py-2">
               <input type="checkbox" checked={allChecked} onChange={(e) => onToggleMany(visible.map((r) => r.item.term), e.target.checked)} aria-label={t("Görünenlerin hepsini seç", "Select all shown")} className="h-4 w-4 accent-[#D97757]" />
             </th>
+            {collect && <th scope="col" className="w-8 px-1 py-2" aria-label={t("Koleksiyona ekle", "Add to collection")} />}
             {head("term", t("Anahtar kelime", "Keyword"), undefined, "left")}
             <th scope="col" className={`${th} text-left`}>{t("Niyet", "Intent")}</th>
             {head("volume", t("Hacim", "Volume"), t("Google'da aylık arama (Etsy arama hacmi değil)", "Monthly Google searches (not Etsy search volume)"))}

@@ -7,25 +7,32 @@ import { DiscoverItem, DiscoverSearch, ETSY_RESULTS_MAX, SavedCollection, Search
 import { useT } from "@/lib/i18n-client";
 import { readPageCache, writePageCache } from "@/lib/pageCache";
 import { toast } from "@/lib/toast";
+import { useUrlTab } from "@/lib/useUrlTab";
+import CollectionBar from "./CollectionBar";
 import FilterBar from "./FilterBar";
 import KeywordTable from "./KeywordTable";
 import OverviewCard from "./OverviewCard";
 import SaveBar from "./SaveBar";
 import { useRefusedText } from "./shared";
 import { EMPTY_FILTERS, downloadCsv, toCsv } from "./table";
+import { useCollection } from "./useCollection";
 import { useResultsView } from "./useResultsView";
 
 const POLL_MS = 2000;
 const MAX_POLLS = 60; // ~2 dakika: ilk araştırma genellikle birkaç saniye ile 1–2 dakika arasında gelir
 const NO_ITEMS: DiscoverItem[] = [];
+const isQuery = (v: string) => v.length > 0 && v.length <= 120;
 
 /** Tohum kelimeyi araştırır. Sonuç havuzda yoksa iş kuyruğa girer; sayfa hazır olana kadar kendiliğinden yoklar.
  * Sonuçlar (tüm kelimeler / sorular) anahtarlarıyla ayrı tutulur; anahtar çağrı anında verilir (olay yöneticisinde değişen sorguya bağlı eski bir `set` kullanılmaz). */
 export default function SearchPanel({ shopId, collections, onSaved }: { shopId: number; collections: SavedCollection[]; onSaved: () => void }) {
   const { t, locale } = useT();
   const refusedText = useRefusedText();
-  const [input, setInput] = useState("");
-  const [query, setQuery] = useState("");
+  // Aranan kelime URL'de (?q=) tutulur: sayfa yenilense ya da bağlantı paylaşılsa arama kaybolmaz (sonuç havuzdan anında gelir).
+  const [query, setQuery] = useUrlTab<string>("q", "", isQuery);
+  const [typed, setTyped] = useState<string | null>(null);
+  const input = typed ?? query;
+  const setInput = setTyped;
   const [mode, setMode] = useState<SearchMode>("all");
   const [results, setResults] = useState<Record<string, DiscoverSearch>>({});
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +50,7 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
   const base = key ? (results[keyOf(query, "all")] ?? readPageCache<DiscoverSearch>(keyOf(query, "all"))) : null;
   const items = result?.items ?? NO_ITEMS;
   const v = useResultsView(items, result?.seed ?? "", etsy);
+  const col = useCollection(shopId, collections, onSaved);
 
   const load = useCallback(
     async (q: string, m: SearchMode, refresh = false) => {
@@ -72,6 +80,13 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
     await load(q, "all");
     setLoading(false);
   }
+
+  // Sayfa URL'de bir arama ile açıldıysa (yenileme/paylaşılan bağlantı) sonuç kendiliğinden yüklenir.
+  useEffect(() => {
+    if (!query || mode !== "all" || loading || results[keyOf(query, "all")] || readPageCache(keyOf(query, "all"))) return;
+    const id = window.setTimeout(() => void load(query, "all"), 0); // zamanlayıcıda: efekt gövdesinde eşzamanlı durum ayarlanmaz
+    return () => window.clearTimeout(id);
+  }, [query, mode, loading, results, keyOf, load]);
 
   // Sorular ayrı bir araştırmadır: yalnızca sekmesi açılınca istenir (ve ilk kez ise kuyruğa girer).
   async function switchMode(next: SearchMode) {
@@ -103,24 +118,11 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
     return () => window.clearTimeout(id);
   }, [query, mode, waiting, polls, load]);
 
-  async function save(collection: string) {
-    if (!result || !key) return;
+  async function addSelected() {
     setSaving(true);
-    try {
-      const terms = [...v.selected];
-      const r = await discoverApi.save(shopId, terms, collection);
-      toast.success(r.added > 0 ? t(`${r.added} kelime kaydedildi.`, `${r.added} keywords saved.`) : t("Bu kelimeler zaten kayıtlı.", "These keywords are already saved."));
-      const mark = <T extends { term: string; saved: boolean }>(i: T): T => (terms.includes(i.term) ? { ...i, saved: true } : i);
-      const next = { ...result, seed_item: result.seed_item ? mark(result.seed_item) : null, items: result.items.map(mark) };
-      writePageCache(key, next);
-      setResults((prev) => ({ ...prev, [key]: next }));
-      v.clearSelection();
-      onSaved();
-    } catch (e) {
-      if (e instanceof Error && e.message) toast.error(e.message);
-    } finally {
-      setSaving(false);
-    }
+    await col.add([...v.selected]);
+    v.clearSelection();
+    setSaving(false);
   }
 
   // Görünen listenin sıralamadaki ilk ölçülmemiş kelimeleri için Etsy'deki ilan sayısı.
@@ -229,6 +231,7 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
                 ))}
               </div>
 
+              <CollectionBar names={col.names} counts={col.counts} active={col.active} onChoose={col.choose} onCreate={col.create} />
               <FilterBar
                 filters={v.filters}
                 onChange={v.setFilters}
@@ -266,13 +269,14 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
                 etsy={etsy}
                 showEtsy={showEtsy && mode === "all"}
                 emptyText={t("Süzgeçlere uyan kelime yok.", "No keywords match the filters.")}
+                collect={{ active: col.active, has: col.has, onAdd: (term) => void col.add([term]), onRemove: (term) => void col.remove(term) }}
               />
             </div>
           )
         )}
       </div>
 
-      {v.selected.size > 0 && <SaveBar count={v.selected.size} collections={collections} busy={saving} onSave={(c) => void save(c)} />}
+      {v.selected.size > 0 && <SaveBar count={v.selected.size} collection={col.active} busy={saving} onAdd={() => void addSelected()} />}
     </div>
   );
 }
