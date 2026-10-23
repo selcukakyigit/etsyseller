@@ -25,7 +25,7 @@ const JOB_NAMES: Record<string, [string, string]> = {
   research_queue: ["Araştırma kuyruğu", "Research queue"],
   research_refresh: ["Araştırma yenileme", "Research refresh"],
   research_warm: ["Etiket ısındırma", "Tag warm-up"],
-  research_exposure: ["Kalabalık sayacı", "Crowding counter"],
+  research_signals: ["Araştırma sinyalleri (kalabalık, sonuç kanıtı)", "Research signals (crowding, outcomes)"],
 };
 
 export default function AdminSystemPage() {

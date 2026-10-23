@@ -136,3 +136,22 @@ class SuggestionExposure(Base):
     term: Mapped[str] = mapped_column(String(120), primary_key=True)
     shops: Mapped[int] = mapped_column(Integer, default=0)
     computed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+
+class PhraseOutcome(Base):
+    """Bir etiketin sonuçla kanıtı: kaç FARKLI mağaza yapay zekâ önerisiyle ekledi (`applied`) ve kaçının değişikliği ölçüldü / ne çıktı. Kaynak,
+    `insights/impact.py`nin kontrol gruplu önce/sonra ölçümüdür (ListingChange.result_json); burada yalnızca (ifade, sayı) vardır, mağaza kimliği yok.
+    Aynı değişiklikte eklenen diğer etiket ve alanlarla BİRLİKTE ölçülür: tek ifadenin etkisi değil, "bu ifadeyle yapılan değişiklik işe yaradı mı"
+    sinyalidir; nedensellik iddia edilmez. Gece `outcomes.rebuild` yeniden kurar."""
+
+    __tablename__ = "phrase_outcomes"
+
+    term: Mapped[str] = mapped_column(String(120), primary_key=True)
+    applied: Mapped[int] = mapped_column(Integer, default=0)
+    measured: Mapped[int] = mapped_column(Integer, default=0)
+    better: Mapped[int] = mapped_column(Integer, default=0)
+    worse: Mapped[int] = mapped_column(Integer, default=0)
+    same: Mapped[int] = mapped_column(Integer, default=0)
+    unclear: Mapped[int] = mapped_column(Integer, default=0)
+    low_data: Mapped[int] = mapped_column(Integer, default=0)
+    computed_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)

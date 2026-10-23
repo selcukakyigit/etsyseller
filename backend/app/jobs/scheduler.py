@@ -18,7 +18,7 @@ from app.jobs.listing_refresh import refresh_all_shops
 from app.jobs.order_sync import sync_all_shops
 from app.jobs.rank_tracking import track_all_shops
 from app.jobs.research import (
-    rebuild_exposure as research_exposure, refresh_stale as research_refresh, run_queue as research_queue, warm_own_tags as research_warm,
+    rebuild_signals as research_signals, refresh_stale as research_refresh, run_queue as research_queue, warm_own_tags as research_warm,
 )
 from app.jobs.retention import purge_expired_records
 from app.jobs.reviews import sync_all_shops as sync_reviews
@@ -162,9 +162,9 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
     _scheduler.add_job(
-        _measured(research_exposure),
+        _measured(research_signals),
         trigger=CronTrigger(hour=3, minute=40),
-        id="research_exposure",
+        id="research_signals",
         replace_existing=True,
     )
     _scheduler.start()

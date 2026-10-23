@@ -162,6 +162,33 @@ function KeywordDetailModal({ id, onClose }: { id: number; onClose: () => void }
             </div>
 
             <div>
+              <h3 className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+                {t("Öneri sinyalleri", "Suggestion signals")}
+                <HelpTip>
+                  {t(
+                    "Yalnızca sayılar; mağaza kimliği tutulmaz. 'Önerildi': son günlerde kaç farklı mağazaya önerildi (kalabalık). 'Uygulandı': kaç mağaza yapay zekâ önerisiyle ekledi. Sonuçlar, kontrol gruplu önce/sonra ölçümünün kesinleşmiş hâlidir; aynı değişiklikteki diğer etiketlerle birlikte ölçülür, tek ifadenin etkisi değildir ve nedensellik kanıtlamaz.",
+                    "Counts only; no shop ids are kept. 'Suggested': how many different shops it was suggested to recently (crowding). 'Applied': how many shops added it from an AI suggestion. Results are the final control-group before/after measurements; they cover the whole change with its other tags, are not the effect of one phrase, and do not prove causation.",
+                  )}
+                </HelpTip>
+              </h3>
+              <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                {(
+                  [
+                    [t("Önerildi", "Suggested"), data.signals.suggested_shops],
+                    [t("Uygulandı", "Applied"), data.signals.applied],
+                    [t("Ölçüldü", "Measured"), data.signals.measured],
+                    [t("İyi / kötü", "Better / worse"), `${data.signals.better} / ${data.signals.worse}`],
+                  ] as const
+                ).map(([label, value]) => (
+                  <div key={label} className="rounded-lg border border-neutral-200 px-3 py-2 dark:border-neutral-800">
+                    <p className="text-neutral-500 dark:text-neutral-400">{label}</p>
+                    <p className="mt-0.5 text-base font-semibold tabular-nums text-neutral-900 dark:text-neutral-100">{value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
               <h3 className="mb-1 text-xs font-semibold text-neutral-500 dark:text-neutral-400">{t("Ölçüm geçmişi", "Measurement history")}</h3>
               <ul className="max-h-48 divide-y divide-neutral-100 overflow-auto rounded-lg border border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
                 {data.history.length === 0 && <li className="p-3 text-sm text-neutral-400">{t("Ölçüm yok.", "No measurements.")}</li>}

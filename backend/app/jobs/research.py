@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.core.db import SessionLocal
 from app.listings.models import ListingCache
-from app.research import exposure, service, worker
+from app.research import exposure, outcomes, service, worker
 
 logger = logging.getLogger(__name__)
 
@@ -35,15 +35,15 @@ def refresh_stale() -> None:
         db.close()
 
 
-def rebuild_exposure() -> None:
-    """Gece: kalabalık sayacını son günlerin önerilerinden yeniden kurar (bkz. research/exposure.py)."""
+def rebuild_signals() -> None:
+    """Gece: kalabalık sayacı ve sonuç kanıtı tablolarını yeniden kurar (bkz. research/exposure.py, research/outcomes.py)."""
     db = SessionLocal()
     try:
-        n = exposure.rebuild(db)
-        logger.info("Araştırma: kalabalık sayacı %s ifade için güncellendi", n)
+        logger.info("Araştırma: kalabalık sayacı %s ifade", exposure.rebuild(db))
+        logger.info("Araştırma: sonuç kanıtı %s ifade", outcomes.rebuild(db))
     except Exception:  # noqa: BLE001
         db.rollback()
-        logger.exception("Kalabalık sayacı güncellenemedi")
+        logger.exception("Araştırma sinyalleri güncellenemedi")
     finally:
         db.close()
 

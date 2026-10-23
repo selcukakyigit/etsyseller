@@ -50,8 +50,20 @@ export type ResearchMetric = {
   expires_at: string;
 };
 
+export type ResearchSignals = {
+  suggested_shops: number;
+  applied: number;
+  measured: number;
+  better: number;
+  worse: number;
+  same: number;
+  unclear: number;
+  low_data: number;
+};
+
 export type ResearchKeywordDetail = {
   keyword: ResearchKeyword;
+  signals: ResearchSignals;
   history: ResearchMetric[];
   related: { term: string; search_volume: number | null; relation: string }[];
   seeds: string[];

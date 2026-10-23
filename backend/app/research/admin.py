@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core import app_settings
 from app.core.dates import iso
-from app.research import budget, credentials, policy, pool
+from app.research import budget, credentials, exposure, outcomes, policy, pool
 from app.research.models import KeywordLink, KeywordMetric, KeywordTerm, ProviderCall, ResearchJob
 from app.research.providers import DEFAULT_PROVIDER
 
@@ -72,8 +72,22 @@ class RelatedOut(BaseModel):
     relation: str
 
 
+class SignalsOut(BaseModel):
+    """Ortak sinyaller (yalnızca sayı): kaç mağazaya önerildi, kaçında uygulandı, ölçülen sonuçlar."""
+
+    suggested_shops: int
+    applied: int
+    measured: int
+    better: int
+    worse: int
+    same: int
+    unclear: int
+    low_data: int
+
+
 class KeywordDetailOut(BaseModel):
     keyword: KeywordRowOut
+    signals: SignalsOut
     history: list[MetricOut]
     related: list[RelatedOut]
     seeds: list[str]
@@ -183,8 +197,13 @@ def keyword_detail(db: Session, keyword_id: int, market: str) -> KeywordDetailOu
     ).all()
     latest = pool.latest_metrics(db, [r.id for r, _ in related_rows], market, kw.language)
     seeds = db.scalars(select(KeywordTerm.term).join(KeywordLink, KeywordLink.seed_id == KeywordTerm.id).where(KeywordLink.keyword_id == kw.id).limit(20)).all()
+    oc = outcomes.for_term(db, kw.term)
+    signals = SignalsOut(
+        suggested_shops=exposure.counts(db, [kw.term]).get(kw.term, 0), applied=oc.applied if oc else 0, measured=oc.measured if oc else 0,
+        better=oc.better if oc else 0, worse=oc.worse if oc else 0, same=oc.same if oc else 0, unclear=oc.unclear if oc else 0, low_data=oc.low_data if oc else 0,
+    )
     return KeywordDetailOut(
-        keyword=_row(kw, current, now),
+        keyword=_row(kw, current, now), signals=signals,
         history=[MetricOut(
             source=m.source, market=m.market, search_volume=m.search_volume, cpc=m.cpc, competition=m.competition, difficulty=m.difficulty, intent=m.intent,
             monthly=json.loads(m.monthly_json) if m.monthly_json else None, measured_at=iso(m.measured_at), expires_at=iso(m.expires_at),
