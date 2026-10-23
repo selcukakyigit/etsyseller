@@ -29,6 +29,7 @@ export default function KeywordTable({
   emptyText,
   onRemove,
   collect,
+  onAnalyze,
 }: {
   rows: Row[];
   selected: Set<string>;
@@ -41,6 +42,8 @@ export default function KeywordTable({
   emptyText: string;
   onRemove?: (term: string) => void;
   /** Satır başına yeşil + (aktif koleksiyona tek dokunuşla ekle) / ✓ (koleksiyonda; dokununca çıkar). `active` null ise düğme kapalıdır. */
+  /** Verilirse her satırda "Etsy'de ilk 20" analizi düğmesi gösterilir. */
+  onAnalyze?: (term: string) => void;
   collect?: { active: string | null; has: (term: string) => boolean; onAdd: (term: string) => void; onRemove: (term: string) => void };
 }) {
   const { t, locale } = useT();
@@ -119,6 +122,19 @@ export default function KeywordTable({
             >
               {open.has(r.term) ? "−" : "+"}
               {variantCount}
+            </button>
+          )}
+          {onAnalyze && (
+            <button
+              type="button"
+              onClick={() => onAnalyze(r.term)}
+              aria-label={t(`${r.term}: Etsy'de ilk 20 sonucu incele`, `${r.term}: inspect the first 20 Etsy results`)}
+              title={t("Etsy'de ilk 20 sonucu incele (rekabet, fiyat, etiketler)", "Inspect the first 20 Etsy results (competition, price, tags)")}
+              className="ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded align-middle text-neutral-400 hover:bg-neutral-200 hover:text-neutral-800 dark:hover:bg-neutral-700 dark:hover:text-neutral-100"
+            >
+              <svg viewBox="0 0 20 20" width="13" height="13" fill="currentColor" aria-hidden>
+                <path d="M3 17V9h3v8H3zm5.5 0V3h3v14h-3zM14 17v-5h3v5h-3z" />
+              </svg>
             </button>
           )}
           <span className="ml-2 inline-flex flex-wrap gap-1 align-middle">

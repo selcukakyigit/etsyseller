@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { Lang, LANG_COOKIE, langFromAcceptLanguage, parseLang } from "@/lib/i18n";
 
 const EVENT = "ulagg-lang";
@@ -35,7 +35,10 @@ export type T = (tr: string, en: string) => string;
 /** Satır içi çeviri: `t("Siparişler", "Orders")`. Metnin iki dili yan yana durur, ayrı sözlük dosyası yok. */
 export function useT(): { t: T; lang: Lang; locale: string } {
   const lang = useLang();
-  return { t: (tr, en) => (lang === "tr" ? tr : en), lang, locale: lang === "tr" ? "tr-TR" : "en-US" };
+  // `t` ve dönen nesne dile bağlı olarak KARARLIDIR: efekt/useCallback bağımlılıklarına güvenle yazılır (eskiden her render'da yeni bir `t` döndüğü için
+  // `[…, t]` bağımlılıklı efektler her render'da yeniden çalışıyordu).
+  const t = useCallback<T>((tr, en) => (lang === "tr" ? tr : en), [lang]);
+  return useMemo(() => ({ t, lang, locale: lang === "tr" ? "tr-TR" : "en-US" }), [t, lang]);
 }
 
 export { tNow } from "@/lib/i18n";

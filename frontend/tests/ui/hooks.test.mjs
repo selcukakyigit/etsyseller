@@ -50,4 +50,17 @@ job = { phase: "running", startedAt: Date.now() };
 await act(async () => r.render(h(Probe, { hook: () => useRegenProgress(job), id: "p" })));
 if (out.p > 5) throw new Error("yeni iş eski değerle başlamamalı: " + out.p);
 console.log("useRegenProgress OK");
+
+// --- useT: `t` render'lar arasında KARARLI olmalı (efekt bağımlılıklarında kullanılır; kararsızsa sonsuz istek döngüsü çıkar). Gerçek modül (sahte değil) denenir.
+const { useT: realUseT } = await import("../../src/lib/i18n-client.ts");
+const seen = [];
+function TProbe() { const x = realUseT(); seen.push(x); return null; }
+const tRoot = createRoot(document.body.appendChild(document.createElement("div")));
+await act(async () => tRoot.render(h(TProbe)));
+await act(async () => tRoot.render(h(TProbe)));
+await act(async () => tRoot.render(h(TProbe)));
+eq(seen.length >= 3, true, "birden çok render");
+eq(seen.every((x) => x.t === seen[0].t), true, "t render'lar arasında aynı fonksiyon olmalı");
+eq(seen.every((x) => x === seen[0]), true, "dönen nesne de kararlı olmalı");
+console.log("useT kararlı OK");
 process.exit(0);

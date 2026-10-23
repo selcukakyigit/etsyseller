@@ -45,6 +45,25 @@ export type DiscoverSearch = {
 
 export type SearchMode = "all" | "questions";
 
+/** Etsy'deki ilk 20 sonucun analizi (Etsy verisi; backend research/etsy_top.py). */
+export type EtsyAnalysis = {
+  term: string;
+  total: number;
+  sample: number;
+  currency: string | null;
+  price: { p25: number | null; median: number | null; p75: number | null };
+  /** 10+ favorisi olan ilan sayısı (ilk 20 içinde) */
+  proven: number;
+  strong: number;
+  strength: "low" | "medium" | "high" | null;
+  favorites: { p75: number | null; max: number | null };
+  views: { median: number | null };
+  age_days_median: number | null;
+  new_share: number | null;
+  top_tags: { tag: string; count: number }[];
+  listings: { listing_id: number | null; title: string; url: string; price: number | null; currency: string | null; favorites: number; views: number; age_days: number; shop_id: number | null; personalizable: boolean }[];
+};
+
 export type SavedCollection = { name: string; count: number };
 
 export type DiscoverSaved = { collections: SavedCollection[]; collection: string; total: number; items: DiscoverItem[] };
@@ -60,6 +79,8 @@ export const discoverApi = {
     apiRequest<{ added: number }>(`${base(shopId)}/saved`, { method: "POST", body: JSON.stringify({ terms, collection }) }),
   unsave: (shopId: number, terms: string[], collection: string) =>
     apiRequest<{ removed: number }>(`${base(shopId)}/saved/remove`, { method: "POST", body: JSON.stringify({ terms, collection }) }),
+  /** Bir aramanın Etsy'deki ilk 20 sonucunun analizi; `limited`: ölçüm hakkı geçici doldu. */
+  etsyTop: (shopId: number, term: string) => apiRequest<{ analysis: EtsyAnalysis | null; limited: boolean }>(`${base(shopId)}/etsy-top`, { method: "POST", body: JSON.stringify({ term }) }),
   /** Kelimelerin Etsy'deki aktif ilan sayısı (rakip sayısı); en fazla 20 kelime. `limited`: ölçüm hakkı geçici doldu. */
   etsyResults: (shopId: number, terms: string[]) =>
     apiRequest<{ counts: Record<string, number | null>; limited: boolean }>(`${base(shopId)}/etsy-results`, { method: "POST", body: JSON.stringify({ terms }) }),

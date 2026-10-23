@@ -8,7 +8,7 @@ from app.auth.models import User
 from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.jobs.research import run_queue
-from app.research import discover
+from app.research import discover, etsy_top
 from app.shops.deps import get_owned_shop
 from app.shops.models import Shop
 
@@ -54,6 +54,17 @@ def etsy_results(payload: EtsyResultsIn, shop: Shop = Depends(get_owned_shop)):
     """Kelimelerin Etsy'deki aktif ilan sayısı (rakip sayısı). `limited`: mağazanın ölçüm hakkı geçici olarak doldu."""
     counts = discover.etsy_results(shop, payload.terms)
     return {"counts": counts or {}, "limited": counts is None}
+
+
+class EtsyTopIn(BaseModel):
+    term: str = Field(min_length=1, max_length=120)
+
+
+@router.post("/etsy-top")
+def etsy_top_results(payload: EtsyTopIn, shop: Shop = Depends(get_owned_shop)):
+    """Bir aramanın Etsy'deki ilk 20 sonucunun analizi (rekabet kalitesi). Etsy verisidir, saklanmaz. `limited`: mağazanın ölçüm hakkı geçici doldu."""
+    out = etsy_top.fetch(shop.id, payload.term)
+    return {"analysis": out or None, "limited": out is None}
 
 
 @router.post("/saved/remove")

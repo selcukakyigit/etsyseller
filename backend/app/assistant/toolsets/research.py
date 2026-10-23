@@ -1,6 +1,6 @@
 """Keşfet (kelime araştırması) araçları: ekranla AYNI işlevleri çağırır (research/discover.py), ikinci bir uygulama yoktur. Sağlayıcıya istek atılmaz:
 havuzda olmayan ya da eskimiş aramalar kuyruğa girer, sonuç genellikle bir iki dakikada hazır olur. Kullanıcıya ham arama sayısı gösterilmez, yalnızca bant."""
-from app.research import discover
+from app.research import discover, etsy_top
 
 _DEMAND = {"low": "düşük", "medium": "orta", "high": "yüksek", None: "henüz ölçülmedi"}
 _INTENT = {"informational": "bilgi arıyor", "commercial": "karşılaştırıyor", "transactional": "satın almaya yakın", "navigational": "belirli bir yer arıyor", None: None}
@@ -86,7 +86,39 @@ def save_keywords(ctx, a: dict) -> dict:
     return {"eklenen": added, "not": "Zaten kayıtlı olanlar atlanır. Ölçümü olmayan kelimeler birazdan havuza işlenir."}
 
 
+_STRENGTH = {"low": "düşük", "medium": "orta", "high": "yüksek", None: "bilinmiyor"}
+
+
+def etsy_top_results(ctx, a: dict) -> dict:
+    term = " ".join(str(a.get("term", "")).split())
+    if not term:
+        return {"error": "Aranacak ifade gerekli (İngilizce, ör. 'metal wall art')."}
+    try:
+        out = etsy_top.fetch(ctx.shop.id, term)
+    except Exception as exc:  # noqa: BLE001 - Etsy erişilemezse kullanıcıya düz hata
+        return {"error": f"Etsy aramasına ulaşılamadı: {str(exc)[:160]}"}
+    if out is None:
+        return {"durum": "sinir", "not": "Etsy ölçüm hakkı geçici doldu; birkaç dakika sonra dene."}
+    if not out or not out["sample"]:
+        return {"arama": term, "toplam_ilan": (out or {}).get("total", 0), "not": "Sonuç yok; daha genel bir ifade dene."}
+    return {
+        "arama": out["term"], "etsy_toplam_ilan": out["total"], "ilk_20_icinde_kanitlanmis_ilan": out["proven"], "cok_guclu_ilan": out["strong"],
+        "rekabet_gostergesi": _STRENGTH[out["strength"]], "en_yuksek_favori": out["favorites"]["max"], "yeni_ilan_payi": out["new_share"],
+        "fiyat_bandi": {"para_birimi": out["currency"], **out["price"]}, "en_sik_etiketler": [f"{t['tag']} ({t['count']}/20)" for t in out["top_tags"][:10]],
+        "not": ("Bu ETSY verisi (Google değil). kanitlanmis = favorisi 10+ olan ilan sayısı: yüksekse girmek zor, düşükse kolay. rekabet_gostergesi kaba bir göstergedir, kesin ölçü değil. "
+                "En sık etiketler rakiplerin ne yazdığını gösterir; kopyalama, ürüne uyanları ilham olarak kullan."),
+    }
+
+
 TOOLS: list[dict] = [
+    {
+        "name": "etsy_top_results",
+        "description": (
+            "Bir aramanın ETSY'deki ilk 20 sonucunun analizi (gerçek Etsy rekabeti): toplam ilan, kaç ilan kanıtlanmış (10+ favori), fiyat bandı, yeni giriş payı, rakiplerin en sık etiketleri. "
+            "'Bu kelimede rekabet nasıl', 'girmesi kolay mı', 'rakipler hangi etiketleri kullanıyor' için. Etsy verisidir; Google hacmiyle karıştırma. Kredi harcamaz; ölçüm hakkı sınırlıdır."
+        ),
+        "input_schema": {"type": "object", "properties": {"term": {"type": "string", "description": "Aranacak ifade (İngilizce)"}}, "required": ["term"]},
+    },
     {
         "name": "research_keywords",
         "description": (
@@ -123,6 +155,6 @@ TOOLS: list[dict] = [
         },
     },
 ]
-EXECUTORS = {"research_keywords": research_keywords, "saved_keywords": saved_keywords, "save_keywords": save_keywords}
-LABELS = {"research_keywords": "Kelimeleri araştırıyor", "saved_keywords": "Kayıtlı kelimelere bakıyor", "save_keywords": "Kelimeleri kaydediyor"}
-LABELS_EN = {"research_keywords": "Researching keywords", "saved_keywords": "Looking at saved keywords", "save_keywords": "Saving keywords"}
+EXECUTORS = {"research_keywords": research_keywords, "saved_keywords": saved_keywords, "save_keywords": save_keywords, "etsy_top_results": etsy_top_results}
+LABELS = {"etsy_top_results": "Etsy'deki rakiplere bakıyor", "research_keywords": "Kelimeleri araştırıyor", "saved_keywords": "Kayıtlı kelimelere bakıyor", "save_keywords": "Kelimeleri kaydediyor"}
+LABELS_EN = {"etsy_top_results": "Looking at Etsy competitors", "research_keywords": "Researching keywords", "saved_keywords": "Looking at saved keywords", "save_keywords": "Saving keywords"}

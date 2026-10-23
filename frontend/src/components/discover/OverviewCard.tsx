@@ -15,7 +15,7 @@ function Stat({ label, hint, children }: { label: string; hint?: string; childre
 }
 
 /** Aranan kelimenin özeti (Semrush'taki "Anahtar Kelime Genel Bakışı" gibi): aylık arama, CPC, rekabet, 12 aylık trend, niyet. Google verisidir. */
-export default function OverviewCard({ item, selected, onToggle }: { item: DiscoverItem; selected: boolean; onToggle: () => void }) {
+export default function OverviewCard({ item, selected, onToggle, onAnalyze }: { item: DiscoverItem; selected: boolean; onToggle: () => void; onAnalyze?: () => void }) {
   const { t, locale } = useT();
   const intentLabel = useIntentLabel();
   const intent = intentLabel(item.intent);
@@ -29,6 +29,11 @@ export default function OverviewCard({ item, selected, onToggle }: { item: Disco
         {intent && <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">{intent}</span>}
         {item.mine && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">✓ {t("Sende var", "You use it")}</span>}
         {item.crowded && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800 dark:bg-amber-950 dark:text-amber-300">⚑ {t("Kalabalık", "Crowded")}</span>}
+        {onAnalyze && (
+          <button type="button" onClick={onAnalyze} className="ml-auto rounded-lg border border-neutral-200 px-2.5 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800">
+            {t("Etsy'de rekabeti incele", "Inspect Etsy competition")}
+          </button>
+        )}
       </div>
       <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
         <Stat label={t("Aylık arama (Google)", "Monthly searches (Google)")} hint={t("Google verisi; Etsy arama hacmi değildir", "Google data; not Etsy search volume")}>

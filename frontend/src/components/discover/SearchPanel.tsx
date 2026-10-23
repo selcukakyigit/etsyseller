@@ -9,6 +9,7 @@ import { readPageCache, writePageCache } from "@/lib/pageCache";
 import { toast } from "@/lib/toast";
 import { useUrlTab } from "@/lib/useUrlTab";
 import CollectionBar from "./CollectionBar";
+import EtsyTopModal from "./EtsyTopModal";
 import FilterBar from "./FilterBar";
 import KeywordTable from "./KeywordTable";
 import OverviewCard from "./OverviewCard";
@@ -44,6 +45,7 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
   const [refreshing, setRefreshing] = useState(false);
   const [etsy, setEtsy] = useState<Record<string, number | null>>({});
   const [polls, setPolls] = useState(0);
+  const [analyzeTerm, setAnalyzeTerm] = useState<string | null>(null);
 
   const keyOf = useCallback((q: string, m: SearchMode) => `discover:${shopId}:${m}:${q}`, [shopId]);
   const resultFor = (m: SearchMode): DiscoverSearch | null => {
@@ -197,6 +199,7 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
         showEtsy={showEtsy && mode === "all"}
         emptyText={t("Süzgeçlere uyan kelime yok.", "No keywords match the filters.")}
         collect={{ active: col.active, has: col.has, onAdd: (term) => void col.add([term]), onRemove: (term) => void col.remove(term) }}
+        onAnalyze={mode === "all" ? setAnalyzeTerm : undefined}
       />
     );
   };
@@ -248,7 +251,7 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
       ) : (
         <div className="space-y-4">
           {result?.stale && <p className="text-xs text-neutral-400 dark:text-neutral-500">{t("Sonuçlar güncelleniyor…", "Results are being refreshed…")}</p>}
-          {seedItem && <OverviewCard item={seedItem} selected={v.selected.has(seedItem.term)} onToggle={() => v.toggle(seedItem.term)} />}
+          {seedItem && <OverviewCard item={seedItem} selected={v.selected.has(seedItem.term)} onToggle={() => v.toggle(seedItem.term)} onAnalyze={() => setAnalyzeTerm(seedItem.term)} />}
           <p className="text-xs text-neutral-400 dark:text-neutral-500">
             {t("Hacim, trend, CPC, rekabet ve niyet: Google verisi (DataForSEO), Etsy arama hacmi değildir.", "Volume, trend, CPC, competition and intent: Google data (DataForSEO), not Etsy search volume.")}
             {measuredAt && ` ${t("Ölçüm:", "Measured:")} ${new Date(measuredAt).toLocaleDateString(locale, { dateStyle: "medium" })}.`}
@@ -322,6 +325,7 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
         </div>
       )}
 
+      {analyzeTerm && <EtsyTopModal shopId={shopId} term={analyzeTerm} onClose={() => setAnalyzeTerm(null)} />}
       {v.selected.size > 0 && <SaveBar count={v.selected.size} collection={col.active} busy={saving} onAdd={() => void addSelected()} />}
     </div>
   );
