@@ -12,6 +12,7 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "tests/ui/**", // Node betikleri (arayüz test düzeneği), uygulama kodu değil
   ]),
 ]);
 

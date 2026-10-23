@@ -25,8 +25,8 @@ class ResearchProvider(Protocol):
     def trends(self, creds: Credentials, terms: list[str], market: str, language: str) -> ProviderResponse:
         """Kelimelerin Google ilgi endeksi: son 13 hafta ile geçen yılın aynı 13 haftası (`ProviderResponse.trends`)."""
 
-    def suggestions(self, creds: Credentials, seed: str, market: str, language: str, limit: int) -> ProviderResponse:
-        """Tohum kelimeye bağlı uzun kuyruklu adaylar ve metrikleri."""
+    def suggestions(self, creds: Credentials, seed: str, market: str, language: str, limit: int, questions: bool = False) -> ProviderResponse:
+        """Tohum kelimeye bağlı uzun kuyruklu adaylar ve metrikleri. `questions`: yalnızca soru kalıplarındaki aramalar (how/what/why…)."""
 
     def account(self, creds: Credentials) -> dict:
         """Hesap bilgisi (bakiye gibi) — bağlantıyı doğrulamak için; ücretsiz bir çağrıdır."""

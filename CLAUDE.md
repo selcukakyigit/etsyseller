@@ -86,3 +86,4 @@ The research pool is shared by all shops. Cost and load must follow the number o
 - **Findings are stored**, with finding id, listing version, analysis version and status; only a check or a new analysis closes one, never the LLM's say-so. Scores are versioned.
 - Admin lists are paginated; counts are estimated or cached.
 - **Tests:** `cd backend && .venv/Scripts/python -m pytest tests` (about 3 s). They run on a temporary SQLite with a fake provider and never touch the real database or DataForSEO; add a test with every change to `app/research/`.
+- **UI tests:** `cd frontend && npm run test:ui` renders real components with React + jsdom (no browser; `tests/ui/`, with a small loader that stubs the API/router). Add a scenario when you change Discover or the hooks in `src/lib/use*.ts`; a screen that fetches on submit must have a test that shows the result after the FIRST click.

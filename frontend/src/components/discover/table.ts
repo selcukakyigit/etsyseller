@@ -11,19 +11,15 @@ export type Filters = {
   minVolume: string;
   maxVolume: string;
   intent: Intent | "";
-  questionsOnly: boolean;
   hideMine: boolean;
-  words: string[]; // kelime grubu süzgeçleri (hepsi bulunmalı)
+  words: string[]; // kelime grubu süzgeçleri: seçilenlerden HERHANGİ BİRİNİ içeren kelimeler (birden çok grup seçilince birleşim)
 };
 
-export const EMPTY_FILTERS: Filters = { include: "", exclude: "", minVolume: "", maxVolume: "", intent: "", questionsOnly: false, hideMine: false, words: [] };
+export const EMPTY_FILTERS: Filters = { include: "", exclude: "", minVolume: "", maxVolume: "", intent: "", hideMine: false, words: [] };
 
-const QUESTION_WORDS = new Set(["how", "what", "why", "when", "where", "which", "who", "whom", "whose", "can", "could", "does", "do", "did", "is", "are", "was", "will", "should", "would"]);
 const STOP_WORDS = new Set(["a", "an", "the", "of", "for", "and", "or", "to", "in", "on", "with", "at", "by", "from", "is", "it", "my", "your", "near", "me", "vs", "how", "what", "do", "i"]);
 
 const words = (term: string) => term.toLowerCase().split(/\s+/).filter(Boolean);
-
-export const isQuestion = (term: string) => QUESTION_WORDS.has(words(term)[0] ?? "");
 
 export function filtersActive(f: Filters): boolean {
   return JSON.stringify(f) !== JSON.stringify(EMPTY_FILTERS);
@@ -38,11 +34,10 @@ export function applyFilters(items: DiscoverItem[], f: Filters): DiscoverItem[] 
     const w = words(i.term);
     if (inc.length && !inc.every((x) => w.some((t) => t.includes(x)))) return false;
     if (exc.length && exc.some((x) => w.some((t) => t.includes(x)))) return false;
-    if (f.words.length && !f.words.every((x) => w.includes(x))) return false;
+    if (f.words.length && !f.words.some((x) => w.includes(x))) return false;
     if (min !== null && (i.volume ?? 0) < min) return false;
     if (max !== null && (i.volume ?? 0) > max) return false;
     if (f.intent && i.intent !== f.intent) return false;
-    if (f.questionsOnly && !isQuestion(i.term)) return false;
     if (f.hideMine && i.mine) return false;
     return true;
   });

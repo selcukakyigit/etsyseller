@@ -125,6 +125,42 @@ def test_assistant_tools_use_the_same_functions_and_hide_raw_numbers(db, provide
     assert tools.save_keywords(ctx, {"terms": ["metal farm sign big"], "collection": "Araç", "remove": True})["silinen"] == 1
 
 
+def test_questions_are_a_separate_lazy_job_with_their_own_list(db, provider):
+    _research(db, SHOP_A)  # normal liste
+    assert provider.count("questions") == 0, "sorular yalnızca istenince çekilir"
+    first = discover.search(db, SHOP_A, "metal farm sign", "questions")
+    assert first.status == "pending"
+    worker.run_once(db)
+    questions = discover.search(db, SHOP_A, "metal farm sign", "questions")
+    assert questions.status == "ready" and questions.mode == "questions"
+    assert sorted(i.term for i in questions.items) == ["how to use metal farm sign", "what is metal farm sign"]
+    assert provider.count("questions") == 1
+    normal = discover.search(db, SHOP_A, "metal farm sign")
+    assert not any(i.term.startswith(("how to", "what is")) for i in normal.items), "sorular normal listeye karışmaz"
+    jobs_before = db.query(ResearchJob).count()
+    discover.search(db, SHOP_A, "metal farm sign", "questions")
+    assert db.query(ResearchJob).count() == jobs_before, "soru listesi de havuzdan gelir, tekrar ödenmez"
+
+
+def test_result_says_when_the_data_was_measured(db, provider):
+    result = _research(db, SHOP_A)
+    assert result.measured_at and result.measured_at.endswith("Z")
+
+
+def test_suggestions_do_not_append_rows_for_terms_that_already_have_fresh_metrics(db, provider):
+    from app.research.models import KeywordMetric
+
+    _research(db, SHOP_A, "metal farm sign")
+    rows_after_first = db.query(KeywordMetric).count()
+    provider.volume = 999
+    # farklı tohum, aynı öneri kelimeleri üretmez; ama aynı tohum zorla yenilenirse taze kelimeler için yeni satır eklenmemeli
+    job = db.query(ResearchJob).filter(ResearchJob.kind == "suggest").one()
+    job.status, job.finished_at = "queued", None
+    db.commit()
+    worker.run_once(db)
+    assert db.query(KeywordMetric).count() == rows_after_first + 1, "yalnızca tohumun kendi ölçümü yenilenir"
+
+
 @pytest.fixture
 def client(db, provider):
     from app import main
@@ -168,6 +204,8 @@ def test_http_endpoints(client, db):
     assert body["status"] == "ready" and body["seed_item"]["demand"] == "medium"
     assert body["seed_item"]["volume"] == 210 and len(body["seed_item"]["monthly"]) == 12 and body["total_volume"] == 5400
     assert client.get("/api/shops/1/discover/search", params={"q": ""}).status_code == 422
+    assert client.get("/api/shops/1/discover/search", params={"q": "farm sign", "mode": "bogus"}).status_code == 422
+    assert client.get("/api/shops/1/discover/search", params={"q": "farm sign", "mode": "questions"}).json()["mode"] == "questions"
     assert client.post("/api/shops/1/discover/saved", json={"terms": ["farm sign big"], "collection": "A"}).json() == {"added": 1}
     saved = client.get("/api/shops/1/discover/saved").json()
     assert saved["total"] == 1 and saved["collections"] == [{"name": "A", "count": 1}]

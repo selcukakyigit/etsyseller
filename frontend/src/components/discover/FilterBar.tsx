@@ -44,10 +44,6 @@ export default function FilterBar({
           <option value="navigational">{t("Belirli yer", "Specific site")}</option>
         </select>
         <label className="flex cursor-pointer items-center gap-1.5 text-sm text-neutral-700 dark:text-neutral-300">
-          <input type="checkbox" checked={filters.questionsOnly} onChange={(e) => set({ questionsOnly: e.target.checked })} className="h-4 w-4 accent-[#D97757]" />
-          {t("Sorular", "Questions")}
-        </label>
-        <label className="flex cursor-pointer items-center gap-1.5 text-sm text-neutral-700 dark:text-neutral-300">
           <input type="checkbox" checked={filters.hideMine} onChange={(e) => set({ hideMine: e.target.checked })} className="h-4 w-4 accent-[#D97757]" />
           {t("Sendekileri gizle", "Hide ones I use")}
         </label>

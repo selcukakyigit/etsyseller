@@ -38,7 +38,12 @@ export type DiscoverSearch = {
   items: DiscoverItem[];
   stale: boolean;
   total_volume: number;
+  mode: "all" | "questions";
+  /** Listedeki ölçümlerin en yenisi (ISO); verinin ne zaman alındığı */
+  measured_at: string | null;
 };
+
+export type SearchMode = "all" | "questions";
 
 export type SavedCollection = { name: string; count: number };
 
@@ -47,7 +52,7 @@ export type DiscoverSaved = { collections: SavedCollection[]; collection: string
 const base = (shopId: number) => `/api/shops/${shopId}/discover`;
 
 export const discoverApi = {
-  search: (shopId: number, q: string) => apiRequest<DiscoverSearch>(`${base(shopId)}/search?q=${encodeURIComponent(q)}`),
+  search: (shopId: number, q: string, mode: SearchMode = "all") => apiRequest<DiscoverSearch>(`${base(shopId)}/search?q=${encodeURIComponent(q)}&mode=${mode}`),
   saved: (shopId: number, collection?: string) =>
     apiRequest<DiscoverSaved>(`${base(shopId)}/saved${collection === undefined ? "" : `?collection=${encodeURIComponent(collection)}`}`),
   save: (shopId: number, terms: string[], collection: string) =>

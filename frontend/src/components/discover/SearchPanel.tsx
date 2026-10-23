@@ -3,29 +3,31 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/admin/ui";
 import { BlockSpinner } from "@/components/ui/Spinner";
-import { DiscoverItem, DiscoverSearch, ETSY_RESULTS_MAX, SavedCollection, discoverApi } from "@/lib/discoverApi";
+import { DiscoverItem, DiscoverSearch, ETSY_RESULTS_MAX, SavedCollection, SearchMode, discoverApi } from "@/lib/discoverApi";
 import { useT } from "@/lib/i18n-client";
-import { useCached } from "@/lib/pageCache";
+import { readPageCache, writePageCache } from "@/lib/pageCache";
 import { toast } from "@/lib/toast";
 import FilterBar from "./FilterBar";
 import KeywordTable from "./KeywordTable";
 import OverviewCard from "./OverviewCard";
 import SaveBar from "./SaveBar";
 import { useRefusedText } from "./shared";
-import { downloadCsv, toCsv } from "./table";
+import { EMPTY_FILTERS, downloadCsv, toCsv } from "./table";
 import { useResultsView } from "./useResultsView";
 
-const POLL_MS = 4000;
-const MAX_POLLS = 30; // ~2 dakika: ilk araştırma genellikle 1–2 dakikada gelir
+const POLL_MS = 2000;
+const MAX_POLLS = 60; // ~2 dakika: ilk araştırma genellikle birkaç saniye ile 1–2 dakika arasında gelir
 const NO_ITEMS: DiscoverItem[] = [];
 
-/** Tohum kelimeyi araştırır. Sonuç havuzda yoksa iş kuyruğa girer; sayfa hazır olana kadar kendiliğinden yoklar. Sayılar GOOGLE verisidir (Etsy hacmi değil). */
+/** Tohum kelimeyi araştırır. Sonuç havuzda yoksa iş kuyruğa girer; sayfa hazır olana kadar kendiliğinden yoklar.
+ * Sonuçlar (tüm kelimeler / sorular) anahtarlarıyla ayrı tutulur; anahtar çağrı anında verilir (olay yöneticisinde değişen sorguya bağlı eski bir `set` kullanılmaz). */
 export default function SearchPanel({ shopId, collections, onSaved }: { shopId: number; collections: SavedCollection[]; onSaved: () => void }) {
-  const { t } = useT();
+  const { t, locale } = useT();
   const refusedText = useRefusedText();
   const [input, setInput] = useState("");
   const [query, setQuery] = useState("");
-  const [result, setResult] = useCached<DiscoverSearch>(query ? `discover:${shopId}:${query}` : null);
+  const [mode, setMode] = useState<SearchMode>("all");
+  const [results, setResults] = useState<Record<string, DiscoverSearch>>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -33,19 +35,27 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
   const [etsy, setEtsy] = useState<Record<string, number | null>>({});
   const [polls, setPolls] = useState(0);
 
+  const keyOf = useCallback((q: string, m: SearchMode) => `discover:${shopId}:${m}:${q}`, [shopId]);
+  const key = query ? keyOf(query, mode) : null;
+  const result = key ? (results[key] ?? readPageCache<DiscoverSearch>(key)) : null;
+  // Kelime grupları, kartlar ve sayılar hep "tüm kelimeler" listesine bakar; soru sekmesinde de aynı tohum kartı görünür.
+  const base = key ? (results[keyOf(query, "all")] ?? readPageCache<DiscoverSearch>(keyOf(query, "all"))) : null;
   const items = result?.items ?? NO_ITEMS;
   const v = useResultsView(items, result?.seed ?? "", etsy);
 
   const load = useCallback(
-    async (q: string) => {
+    async (q: string, m: SearchMode) => {
+      const k = keyOf(q, m);
       try {
-        setResult(await discoverApi.search(shopId, q));
+        const data = await discoverApi.search(shopId, q, m);
+        writePageCache(k, data);
+        setResults((prev) => ({ ...prev, [k]: data }));
         setError(null);
       } catch (e) {
         setError(e instanceof Error && e.message ? e.message : t("Arama yapılamadı", "Search failed"));
       }
     },
-    [shopId, setResult, t],
+    [shopId, keyOf, t],
   );
 
   async function submit(e: FormEvent) {
@@ -53,34 +63,47 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
     const q = input.trim();
     if (!q) return;
     setPolls(0);
+    setMode("all");
     v.clearSelection();
-    v.setFilters({ include: "", exclude: "", minVolume: "", maxVolume: "", intent: "", questionsOnly: false, hideMine: false, words: [] });
+    v.setFilters(EMPTY_FILTERS);
     setQuery(q);
     setLoading(true);
-    await load(q);
+    await load(q, "all");
     setLoading(false);
   }
 
-  // Sonuç hazırlanıyorsa (ya da yenileniyorsa) aynı aramayı belli aralıkla yeniden sorar; hazır olunca durur.
+  // Sorular ayrı bir araştırmadır: yalnızca sekmesi açılınca istenir (ve ilk kez ise kuyruğa girer).
+  async function switchMode(next: SearchMode) {
+    if (next === mode || !query) return;
+    setMode(next);
+    setPolls(0);
+    v.clearSelection();
+    v.setFilters(EMPTY_FILTERS); // her listenin kendi süzgeci: önceki listenin grup/kelime süzgeci diğer listeyi boşaltmasın
+    if (!(results[keyOf(query, next)] ?? readPageCache(keyOf(query, next)))) await load(query, next);
+  }
+
+  // Sonuç hazırlanıyorsa (ya da yenileniyorsa) aynı aramayı kısa aralıkla yeniden sorar; hazır olunca durur.
   const waiting = result !== null && (result.status === "pending" || result.stale);
   useEffect(() => {
     if (!query || !waiting || polls >= MAX_POLLS) return;
     const id = window.setTimeout(() => {
       setPolls((n) => n + 1);
-      void load(query);
+      void load(query, mode);
     }, POLL_MS);
     return () => window.clearTimeout(id);
-  }, [query, waiting, polls, load]);
+  }, [query, mode, waiting, polls, load]);
 
   async function save(collection: string) {
-    if (!result) return;
+    if (!result || !key) return;
     setSaving(true);
     try {
       const terms = [...v.selected];
       const r = await discoverApi.save(shopId, terms, collection);
       toast.success(r.added > 0 ? t(`${r.added} kelime kaydedildi.`, `${r.added} keywords saved.`) : t("Bu kelimeler zaten kayıtlı.", "These keywords are already saved."));
       const mark = <T extends { term: string; saved: boolean }>(i: T): T => (terms.includes(i.term) ? { ...i, saved: true } : i);
-      setResult({ ...result, seed_item: result.seed_item ? mark(result.seed_item) : null, items: result.items.map(mark) });
+      const next = { ...result, seed_item: result.seed_item ? mark(result.seed_item) : null, items: result.items.map(mark) };
+      writePageCache(key, next);
+      setResults((prev) => ({ ...prev, [key]: next }));
       v.clearSelection();
       onSaved();
     } catch (e) {
@@ -90,7 +113,7 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
     }
   }
 
-  // Görünen listenin ilk (sıralamadaki) ölçülmemiş kelimeleri için Etsy'deki ilan sayısı.
+  // Görünen listenin sıralamadaki ilk ölçülmemiş kelimeleri için Etsy'deki ilan sayısı.
   async function measureEtsy() {
     const todo = v.view.filter((i) => etsy[i.term] === undefined).slice(0, ETSY_RESULTS_MAX).map((i) => i.term);
     if (todo.length === 0) {
@@ -112,6 +135,8 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
   const showEtsy = useMemo(() => Object.keys(etsy).length > 0, [etsy]);
   const gaveUp = waiting && polls >= MAX_POLLS;
   const ready = result !== null && result.status === "ready";
+  const seedItem = base?.seed_item ?? result?.seed_item ?? null;
+  const measuredAt = result?.measured_at ?? base?.measured_at ?? null;
 
   return (
     <div className="space-y-4">
@@ -135,33 +160,72 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
         ) : !query ? (
           <p className="py-10 text-center text-sm text-neutral-400 dark:text-neutral-500">{t("Bir kelime yaz; ilgili aramaları, aylık arama sayısını, trendi, CPC'yi ve alıcı niyetini göster.", "Type a keyword to see related searches, monthly searches, trend, CPC and buyer intent.")}</p>
         ) : !result ? (
-          <BlockSpinner />
+          <div className="space-y-2 py-8 text-center">
+            <BlockSpinner />
+            <p className="text-sm text-neutral-600 dark:text-neutral-300">{t("Aranıyor…", "Searching…")}</p>
+          </div>
         ) : result.status === "invalid" ? (
           <p className="text-sm text-neutral-500 dark:text-neutral-400">{t("Kelime boş ya da çok uzun (en fazla 10 kelime).", "The keyword is empty or too long (max 10 words).")}</p>
         ) : result.status === "refused" ? (
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">{refusedText(result.refused)}</p>
         ) : result.status === "empty" ? (
-          <p className="py-10 text-center text-sm text-neutral-400 dark:text-neutral-500">{t("Bu kelime için öneri bulunamadı. Daha genel bir ifade dene.", "No suggestions found. Try a more general phrase.")}</p>
+          <p className="py-10 text-center text-sm text-neutral-400 dark:text-neutral-500">
+            {mode === "questions" ? t("Bu kelime için soru bulunamadı.", "No questions found for this keyword.") : t("Bu kelime için öneri bulunamadı. Daha genel bir ifade dene.", "No suggestions found. Try a more general phrase.")}
+          </p>
         ) : result.status === "pending" ? (
           <div className="space-y-2 py-8 text-center">
             <BlockSpinner />
             <p className="text-sm text-neutral-600 dark:text-neutral-300">
               {gaveUp
                 ? t("Hazırlanması beklenenden uzun sürüyor. Birkaç dakika sonra aynı kelimeyi yeniden ara.", "This is taking longer than expected. Search the same keyword again in a few minutes.")
-                : t("Bu kelime ilk kez araştırılıyor, genellikle 1–2 dakika sürer…", "This keyword is being researched for the first time; it usually takes 1–2 minutes…")}
+                : mode === "questions"
+                  ? t("Sorular getiriliyor…", "Fetching questions…")
+                  : t("Bu kelime ilk kez araştırılıyor; Google verisi getiriliyor ve havuza ekleniyor (birkaç saniye)…", "This keyword is being researched for the first time; fetching Google data and adding it to the pool (a few seconds)…")}
             </p>
           </div>
         ) : (
           ready && (
             <div className="space-y-4">
               {result.stale && <p className="text-xs text-neutral-400 dark:text-neutral-500">{t("Sonuçlar güncelleniyor…", "Results are being refreshed…")}</p>}
-              {result.seed_item && <OverviewCard item={result.seed_item} selected={v.selected.has(result.seed_item.term)} onToggle={() => v.toggle(result.seed_item!.term)} />}
+              {seedItem && <OverviewCard item={seedItem} selected={v.selected.has(seedItem.term)} onToggle={() => v.toggle(seedItem.term)} />}
+              <p className="text-xs text-neutral-400 dark:text-neutral-500">
+                {t("Hacim, trend, CPC, rekabet ve niyet: Google verisi (DataForSEO), Etsy arama hacmi değildir.", "Volume, trend, CPC, competition and intent: Google data (DataForSEO), not Etsy search volume.")}
+                {measuredAt && ` ${t("Ölçüm:", "Measured:")} ${new Date(measuredAt).toLocaleDateString(locale, { dateStyle: "medium" })}.`}
+                {` ${t("Etsy ilan sayısı: Etsy.", "Etsy listing count: Etsy.")}`}
+              </p>
+
+              <div role="tablist" className="flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
+                {(
+                  [
+                    ["all", t("Tüm kelimeler", "All keywords")],
+                    ["questions", t("Sorular", "Questions")],
+                  ] as const
+                ).map(([m, label]) => (
+                  <button
+                    key={m}
+                    type="button"
+                    role="tab"
+                    aria-selected={mode === m}
+                    onClick={() => void switchMode(m)}
+                    className={`-mb-px border-b-2 px-3 py-1.5 text-sm font-medium transition ${
+                      mode === m ? "border-[#D97757] text-neutral-900 dark:text-neutral-100" : "border-transparent text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200"
+                    }`}
+                  >
+                    {label}
+                    {m === "all" && base && ` (${base.items.length.toLocaleString(locale)})`}
+                    {m === "questions" && mode === "questions" && ` (${result.items.length.toLocaleString(locale)})`}
+                  </button>
+                ))}
+              </div>
+
               <FilterBar filters={v.filters} onChange={v.setFilters} groups={v.groups} shown={v.view.length} total={result.items.length} volume={v.volume} />
               <div className="flex flex-wrap items-center gap-2">
-                <Button busy={measuring} onClick={() => void measureEtsy()}>
-                  {t(`Etsy'de kaç ilan var? (ilk ${ETSY_RESULTS_MAX})`, `How many Etsy listings? (first ${ETSY_RESULTS_MAX})`)}
-                </Button>
-                <Button onClick={() => downloadCsv(`discover-${result.seed.replace(/\s+/g, "-")}.csv`, toCsv(v.view, etsy))}>{t("CSV indir", "Download CSV")}</Button>
+                {mode === "all" && (
+                  <Button busy={measuring} onClick={() => void measureEtsy()}>
+                    {t(`Etsy'de kaç ilan var? (ilk ${ETSY_RESULTS_MAX})`, `How many Etsy listings? (first ${ETSY_RESULTS_MAX})`)}
+                  </Button>
+                )}
+                <Button onClick={() => downloadCsv(`discover-${mode}-${result.seed.replace(/\s+/g, "-")}.csv`, toCsv(v.view, etsy))}>{t("CSV indir", "Download CSV")}</Button>
               </div>
               <KeywordTable
                 items={v.view}
@@ -171,7 +235,7 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
                 sort={v.sort}
                 onSort={v.onSort}
                 etsy={etsy}
-                showEtsy={showEtsy}
+                showEtsy={showEtsy && mode === "all"}
                 emptyText={t("Süzgeçlere uyan kelime yok.", "No keywords match the filters.")}
               />
             </div>

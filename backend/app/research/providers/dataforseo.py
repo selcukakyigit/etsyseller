@@ -20,6 +20,8 @@ _TRANSIENT_CODES = {40202, 50000, 50301, 50302, 50303}
 
 TREND_WEEKS = 13  # son 13 hafta ile geçen yılın aynı 13 haftası karşılaştırılır (mevsim etkisi böylece ayrılır)
 TREND_HISTORY_DAYS = 16 * 31  # ~16 ay: hem son pencereyi hem bir yıl öncesini kapsar; 9 aydan uzun aralık haftalık veri döner
+QUESTION_REGEX = "^(how|what|why|when|where|which|who|can|does|do|is|are|should|will|are|was) "
+QUESTION_LIMIT = 100
 LOCATIONS = {"US": 2840, "GB": 2826, "CA": 2124, "AU": 2036, "DE": 2276, "FR": 2250, "TR": 2792}
 
 
@@ -141,13 +143,18 @@ class DataForSeoProvider:
                     records.append(TrendRecord(term=term, recent=recent, previous=previous))
         return ProviderResponse(endpoint=endpoint, trends=records, cost_usd=cost, duration_ms=ms)
 
-    def suggestions(self, creds: Credentials, seed: str, market: str, language: str, limit: int) -> ProviderResponse:
-        """Tohum kelimenin önerileri; tohumun kendi metrikleri de (ek istek olmadan) kayıtlara katılır."""
+    def suggestions(self, creds: Credentials, seed: str, market: str, language: str, limit: int, questions: bool = False) -> ProviderResponse:
+        """Tohum kelimenin önerileri; tohumun kendi metrikleri de (ek istek olmadan) kayıtlara katılır. Normal listede yalnızca ÇEKİRDEK kelimeler istenir
+        (`ignore_synonyms`): Google Ads yakın varyantlara aynı hacmi verir, çekirdek liste aynı sayıyı tekrar tekrar göstermez. Soru listesi (`questions`)
+        sağlayıcıda soru kalıbı süzgecidir (hacimli varyantlar da kalır, çünkü soruların asıl değeri ifadelerinin kendisidir)."""
         endpoint = "dataforseo_labs/google/keyword_suggestions/live"
         body = {
             "keyword": seed, "location_code": LOCATIONS[market], "language_code": language, "limit": min(limit, 1000),
-            "include_seed_keyword": True, "ignore_synonyms": False,
+            "include_seed_keyword": True, "ignore_synonyms": not questions,
         }
+        if questions:
+            body["limit"] = min(limit, QUESTION_LIMIT)
+            body["filters"] = ["keyword", "regex", QUESTION_REGEX]
         task, cost, ms = self._post(creds, f"/{endpoint}", body)
         records: list[MetricRecord] = []
         for result in task.get("result") or []:

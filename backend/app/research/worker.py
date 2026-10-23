@@ -65,15 +65,21 @@ def _run_suggest(db: Session, job: ResearchJob) -> None:
     creds = credentials.get(db, job.provider)
     p = jobs.params(job)
     seed = normalize(p["seed"])
-    resp = provider.suggestions(creds, seed, job.market, job.language, int(p.get("limit", 100)))
+    questions = bool(p.get("questions"))
+    resp = provider.suggestions(creds, seed, job.market, job.language, int(p.get("limit", 100)), questions=questions)
     related = [r for r in resp.records if researchable(r.term)]
-    rows = pool.get_or_create_terms(db, [seed] + [r.term for r in related], job.language, "suggestion")
+    rows = pool.get_or_create_terms(db, [seed] + [r.term for r in related], job.language, "question" if questions else "suggestion")
+    # Havuzda zaten TAZE ölçümü olan kelimeler için yeni satır eklenmez (farklı tohumların önerileri çok örtüşür; geçmiş tablosu gereksiz şişmesin).
+    fresh = pool.latest_metrics(db, [r.id for r in rows.values()], job.market, job.language)
+    now = dt.datetime.utcnow()
+    fresh_terms = {t for t, row in rows.items() if row.id in fresh and fresh[row.id].expires_at > now}
+    todo = {t: rows[t] for t in {r.term for r in related} if t in rows and (t == seed or t not in fresh_terms)}
     pool.add_metrics(
-        db, {t: rows[t] for t in {r.term for r in related} if t in rows}, related, provider=job.provider, source="labs_suggestions", market=job.market,
+        db, todo, related, provider=job.provider, source="labs_suggestions", market=job.market,
         language=job.language, ttl_days=policy.get("research_ttl_volume_days"),
     )
     if seed in rows:
-        pool.link_suggestions(db, rows[seed].id, [rows[r.term] for r in related if r.term in rows])
+        pool.link_suggestions(db, rows[seed].id, [rows[r.term] for r in related if r.term in rows and r.term != seed], relation="question" if questions else "suggestion")
     _log_call(db, [job.id], job.provider, job.market, job.language, resp)
     jobs.finish(job, resp.cost_usd)
 

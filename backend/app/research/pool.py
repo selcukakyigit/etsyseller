@@ -106,10 +106,10 @@ def add_metrics(
     return len(rows)
 
 
-def link_suggestions(db: Session, seed_id: int, ordered: list[KeywordTerm]) -> None:
-    """Tohum -> öneri ilişkileri; varsa sırası güncellenir."""
+def link_suggestions(db: Session, seed_id: int, ordered: list[KeywordTerm], relation: str = "suggestion") -> None:
+    """Tohum -> öneri (ya da soru) ilişkileri; varsa sırası güncellenir."""
     now = dt.datetime.utcnow()
-    existing = {l.keyword_id: l for l in db.scalars(select(KeywordLink).where(KeywordLink.seed_id == seed_id, KeywordLink.relation == "suggestion"))}
+    existing = {l.keyword_id: l for l in db.scalars(select(KeywordLink).where(KeywordLink.seed_id == seed_id, KeywordLink.relation == relation))}
     for rank, kw in enumerate(ordered):
         if kw.id == seed_id:
             continue
@@ -117,7 +117,7 @@ def link_suggestions(db: Session, seed_id: int, ordered: list[KeywordTerm]) -> N
         if link:
             link.rank, link.observed_at = rank, now
         else:
-            db.add(KeywordLink(seed_id=seed_id, keyword_id=kw.id, relation="suggestion", rank=rank, observed_at=now))
+            db.add(KeywordLink(seed_id=seed_id, keyword_id=kw.id, relation=relation, rank=rank, observed_at=now))
 
 
 def latest_trends(db: Session, ids: list[int], market: str, language: str) -> dict[int, KeywordTrend]:

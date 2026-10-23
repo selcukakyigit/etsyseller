@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass, field
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from app.core.dates import iso
 from app.core.limits import SlidingWindow
 from app.listings.models import ListingCache
 from app.research import bands, exposure, policy, service
@@ -19,6 +20,7 @@ from app.research.terms import normalize, researchable
 from app.shops.models import Shop
 
 MAX_RESULTS = 300  # bir aramada gösterilen en fazla öneri (sağlayıcıdan da bu kadar istenir)
+QUESTIONS_MAX = 100  # soru listesi
 ETSY_RESULTS_MAX = 20  # tek seferde Etsy ilan sayısı ölçülecek en fazla kelime (Etsy günlük kotası ortaktır)
 MAX_SAVED = 2000  # çalışma alanı başına kaydedilebilecek en fazla kelime
 MAX_COLLECTION_CHARS = 60
@@ -50,6 +52,8 @@ class SearchResult:
     items: list[Item] = field(default_factory=list)
     stale: bool = False  # sonuçlar eski; yenileniyor
     total_volume: int = 0  # listedeki kelimelerin toplam aylık araması
+    mode: str = "all"  # all | questions
+    measured_at: str | None = None  # listedeki ölçümlerin en yenisi (ISO); verinin ne zaman alındığını gösterir
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -107,17 +111,19 @@ def _item(term: str, metric: "service.MetricView | None", crowd: dict[str, int],
     )
 
 
-def search(db: Session, shop: Shop, seed: str) -> SearchResult:
-    """Tohum kelimenin önerileri (havuzdan). Havuzda yoksa/eskiyse araştırma işi kuyruğa alınır (`pending`); sonuç geldikçe aynı çağrı dolu döner."""
+def search(db: Session, shop: Shop, seed: str, mode: str = "all") -> SearchResult:
+    """Tohum kelimenin önerileri (havuzdan); `mode="questions"`: yalnızca soru kalıpları (ayrı bir iş, yalnızca istenince çekilir).
+    Havuzda yoksa/eskiyse araştırma işi kuyruğa alınır (`pending`); sonuç geldikçe aynı çağrı dolu döner."""
     term = normalize(seed)
     if not researchable(term):
         return SearchResult(seed=term, status="invalid")
-    found = service.expand(db, term, shop_id=shop.id, limit=MAX_RESULTS)
+    questions = mode == "questions"
+    found = service.expand(db, term, shop_id=shop.id, limit=QUESTIONS_MAX if questions else MAX_RESULTS, questions=questions)
     terms = list(found.metrics)[:MAX_RESULTS]
     own = service.peek(db, [term])
-    if not terms and not own:
+    if not terms:
         status = "pending" if found.pending else "refused" if found.refused else "empty"
-        return SearchResult(seed=term, status=status, refused=found.refused)
+        return SearchResult(seed=term, status=status, refused=found.refused, mode=mode)
     crowd = exposure.counts(db, terms + [term])
     full = int(policy.get("research_crowd_full_shops"))
     mine, saved = _shop_tags(db, shop), _saved_terms(db, shop.workspace_id)
@@ -125,7 +131,8 @@ def search(db: Session, shop: Shop, seed: str) -> SearchResult:
     stale = bool(found.pending) or not all(m.fresh for m in found.metrics.values())
     return SearchResult(
         seed=term, status="ready", refused=found.refused, seed_item=_item(term, own.get(term), crowd, full, mine, saved), items=items, stale=stale and bool(found.pending),
-        total_volume=sum(i.volume or 0 for i in items),
+        total_volume=sum(i.volume or 0 for i in items), mode=mode,
+        measured_at=iso(max((m.measured_at for m in list(found.metrics.values()) + list(own.values())), default=None)),
     )
 
 

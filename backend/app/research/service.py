@@ -188,11 +188,14 @@ def _enqueue_trends(db: Session, stale: list[str], market: str, language: str, s
     return None, pending
 
 
-def expand(db: Session, seed: str, *, market: str | None = None, language: str | None = None, shop_id: int | None = None, limit: int = 100) -> Lookup:
-    """Tohum kelimenin önerileri (havuzdan). Daha önce genişletilmediyse ya da süresi dolduysa iş kuyruğa alınır."""
+def expand(
+    db: Session, seed: str, *, market: str | None = None, language: str | None = None, shop_id: int | None = None, limit: int = 100, questions: bool = False,
+) -> Lookup:
+    """Tohum kelimenin önerileri (havuzdan); `questions`: yalnızca soru kalıpları. Daha önce genişletilmediyse ya da süresi dolduysa iş kuyruğa alınır."""
     market, language = _market(market, language)
     term = normalize(seed)
     out = Lookup()
+    relation = "question" if questions else "suggestion"
     if not researchable(term):
         return out
     rows = pool.get_or_create_terms(db, [term], language, "suggestion")
@@ -201,7 +204,7 @@ def expand(db: Session, seed: str, *, market: str | None = None, language: str |
     now = dt.datetime.utcnow()
     related = db.scalars(
         select(KeywordTerm).join(KeywordLink, KeywordLink.keyword_id == KeywordTerm.id)
-        .where(KeywordLink.seed_id == seed_row.id, KeywordLink.relation == "suggestion").order_by(KeywordLink.rank)
+        .where(KeywordLink.seed_id == seed_row.id, KeywordLink.relation == relation).order_by(KeywordLink.rank)
     ).all()
     latest = pool.latest_metrics(db, [r.id for r in related], market, language)
     for r in related:
@@ -209,13 +212,13 @@ def expand(db: Session, seed: str, *, market: str | None = None, language: str |
             out.metrics[r.term] = _view(r.term, latest[r.id], now)
     newest = max((m.measured_at for m in latest.values()), default=None)
     ttl = dt.timedelta(days=float(policy.get("research_ttl_suggest_days")))
-    key = f"suggest:{market}:{language}:{term}"
+    key = f"{'questions' if questions else 'suggest'}:{market}:{language}:{term}"
     if (newest is None or now - newest > ttl) and not jobs.done_since(db, key, now - ttl):
         out.refused = _available(db, market)
         if out.refused is None:
             try:
                 jobs.enqueue(db, kind="suggest", provider=DEFAULT_PROVIDER, market=market, language=language, key=key,
-                             payload={"seed": term, "limit": limit}, shop_id=shop_id)
+                             payload={"seed": term, "limit": limit, "questions": questions}, shop_id=shop_id)
                 out.pending = 1
             except budget.QueueRefused as exc:
                 out.refused = exc.reason

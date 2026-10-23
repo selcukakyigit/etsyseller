@@ -39,7 +39,7 @@ def research_keywords(ctx, a: dict) -> dict:
     seed = " ".join(str(a.get("seed", "")).split())
     if not seed:
         return {"error": "Araştırılacak kelime gerekli (İngilizce, ör. 'metal farm sign')."}
-    r = discover.search(ctx.db, ctx.shop, seed)
+    r = discover.search(ctx.db, ctx.shop, seed, "questions" if a.get("questions") else "all")
     if r.status == "invalid":
         return {"error": "Kelime çok uzun ya da boş (en fazla 10 kelime / 80 karakter)."}
     if r.status == "pending":
@@ -98,6 +98,7 @@ TOOLS: list[dict] = [
             "type": "object",
             "properties": {
                 "seed": {"type": "string", "description": "Araştırılacak kelime/ifade (İngilizce, en fazla 10 kelime)"},
+                "questions": {"type": "boolean", "description": "true ise yalnızca soru kalıpları (how/what/why…): müşteri soruları, SSS ve açıklama fikirleri için"},
                 "etsy_competition": {"type": "boolean", "description": "true ise en çok aranan ilk 15 kelime için Etsy'deki aktif ilan sayısını da ölçer (gerçek Etsy rekabeti; yalnızca kullanıcı rekabeti/fırsatı sorarsa)"},
             },
             "required": ["seed"],

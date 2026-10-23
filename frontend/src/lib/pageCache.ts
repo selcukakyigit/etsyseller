@@ -9,6 +9,16 @@ export function clearPageCache() {
   cache.clear();
 }
 
+/** Anahtarı çağrı anında verilen okuma/yazma. `useCached`'in `set`i render'daki anahtara bağlıdır; anahtar aynı olay yöneticisinde değişiyorsa
+ * (ör. arama gönderilince sorgu değişir) sonucu yeni anahtara yazmak için bunlar kullanılır. */
+export function readPageCache<T>(key: string): T | null {
+  return (cache.get(key) as T | undefined) ?? null;
+}
+
+export function writePageCache<T>(key: string, value: T): void {
+  cache.set(key, value);
+}
+
 /** `useState` gibi çalışır ama değer anahtara bağlıdır: anahtar değişince o anahtarın önbellekteki değeri
  * (yoksa null) döner; set edilen değer hem duruma hem önbelleğe yazılır. Anahtar null ise hiçbir şey tutulmaz.
  * `keepPrevious`: yeni anahtarın verisi yoksa bir öncekini döndürür (ör. sekme/filtre değişirken liste boşalmasın);
