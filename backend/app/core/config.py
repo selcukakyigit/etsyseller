@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     google_image_size: str = "2K"  # "1K" | "2K" | "4K" — yükseldikçe fiyat da artar
     replicate_api_token: str = ""  # video modelleri (Replicate); panelden de girilebilir
 
+    # Araştırma verisi (DataForSEO): yalnızca yedek; asıl kaynak Yönetim > Araştırma (veritabanında şifreli). Boşsa araştırma kapalıdır.
+    dataforseo_login: str = ""
+    dataforseo_password: str = ""
+
     frontend_url: str = "http://localhost:3000"
     # API'nin tarayıcıdan görünen adresi (yerel taslak görsellerinin mutlak URL'leri için).
     api_public_url: str = "http://localhost:8000"

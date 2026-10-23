@@ -1,0 +1,34 @@
+"""Araştırma politikası: yenileme süreleri (TTL), bütçe ve sınırlar. Değerler Yönetim > Araştırma'dan değişir (app_settings); burada yalnızca
+varsayılanlar ve okuma vardır. TTL değerleri başlangıç varsayımıdır: gerçek değişim hızı ve maliyete göre ayarlanır."""
+import datetime as dt
+import random
+from typing import Any
+
+from app.core import app_settings
+
+DEFAULTS: dict[str, Any] = {
+    "research_enabled": True,
+    "research_default_market": "US",
+    "research_default_language": "en",
+    "research_ttl_volume_days": 21,  # hacim/CPC ölçümü
+    "research_ttl_suggest_days": 60,  # tohum kelime önerileri (adaylar uzun yaşar; metrikleri ayrı yenilenir)
+    "research_ttl_jitter": 0.15,  # TTL'e ±%15 sapma: aynı gün toplanan binlerce kelime aynı gün dolmasın
+    "research_monthly_budget_usd": 30.0,  # sistem geneli aylık tavan; aşılınca eski veriyle devam edilir
+    "research_shop_daily_jobs": 40,  # bir mağazanın günde en fazla kaç yeni iş açabileceği
+    "research_refresh_per_day": 2000,  # günlük otomatik yenilemede en fazla kelime
+    "research_active_days": 90,  # bu kadar gündür istenmeyen kelime otomatik yenilenmez
+}
+EDITABLE = tuple(DEFAULTS)
+
+
+def get(name: str) -> Any:
+    return app_settings.get(name, DEFAULTS[name])
+
+
+def snapshot() -> dict[str, Any]:
+    return {k: get(k) for k in EDITABLE}
+
+
+def expires_at(now: dt.datetime, days: float) -> dt.datetime:
+    jitter = float(get("research_ttl_jitter"))
+    return now + dt.timedelta(days=days * (1 + random.uniform(-jitter, jitter)))

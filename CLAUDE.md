@@ -70,3 +70,18 @@ A modal must not grow or jump while the user works in it. Check this on every ne
   currency symbol via `unit`), `NumberInput` (for `number` state). Do not write a bare `<input inputMode="decimal">`.
 - Country names always come from `countryName()` in `@/lib/countries`. `Intl.DisplayNames.of()` throws `RangeError` on codes like "??" (unknown
   country), which crashes the page even with `fallback: "code"`.
+
+## Research data (keyword/SERP/AI pool) — rules for scale
+
+The research pool is shared by all shops. Cost and load must follow the number of *distinct keywords*, not the number of shops.
+
+- **One keyword, one fetch.** Same query from many shops = one provider call (cache + single-flight). Cache key: provider + endpoint + normalized query + country + language + device + params hash. Add ±15% jitter to TTLs so refreshes do not all expire together.
+- **No provider call inside a request.** Screens read the pool only. Missing/stale data becomes a queued job; the screen shows "preparing". Job functions must not depend on the web process (a separate worker comes later).
+- **Jobs live in the DB** (`research_jobs`: idempotency key, status, retries, cost, lock via `FOR UPDATE SKIP LOCKED`). Retry only transient errors, exponential backoff, max 3, then dead-letter. Every provider call logs endpoint, duration, cost, cache hit.
+- **Budgets:** system monthly cap, per-shop daily cap, per-job-type cap. At the cap, keep serving old data labelled "stale"; never fail the screen.
+- **Never overwrite measurements.** Keyword is stored once; metrics are dated rows per source/country/language. Never equate Google volume with Etsy volume or AI demand. The metrics table is indexed `(keyword_id, market, language, measured_at)`; partition it by date and roll up old rows once it grows large.
+- **Global pool vs tenant data.** Global research tables have no `workspace_id`; only the system role writes, user roles only read (RLS). Tenant data (sales, drafts, performance) never enters the pool. Guests never reach research features. The provider key exists only in the worker/system environment.
+- **Raw provider responses never reach users.** Users get recommendations and bands (low/medium/high); raw numeric tables are admin-only.
+- **Avoid homogenised advice.** Data is shared, scoring is per listing (photo, materials, variations, own sales). A crowding counter (`suggestion_exposure`, counts only, no shop ids) lowers the score of phrases already suggested to many shops. Competitor frequency alone is never evidence: demand + result count + own sales together.
+- **Findings are stored**, with finding id, listing version, analysis version and status; only a check or a new analysis closes one, never the LLM's say-so. Scores are versioned.
+- Admin lists are paginated; counts are estimated or cached.

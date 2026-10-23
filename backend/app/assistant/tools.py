@@ -1690,7 +1690,7 @@ def keyword_pool(ctx: Ctx, a: dict) -> dict:
     return {
         "adaylar": scoring.brief(pool, listing.get("title") or "", limit=max(5, min(int(a.get("limit") or 30), 40))),
         "not": ("Roller ve veri durumu (ölçülü / kısmi / tahmin) ile puana göre sıralı. Önce ürüne UYUP UYMADIĞINA bak, sonra rollere göre dengeli seç; "
-                "tahmin etiketli ifadelerde talep bilinmiyor. Etiket en fazla 20 karakter; hepsini kopyalama."),
+                "tahmin etiketli ifadelerde talep bilinmiyor. \"Google'da aylık N arama\" Etsy hacmi değildir, yardımcı göstergedir. Etiket en fazla 20 karakter; hepsini kopyalama."),
     }
 
 

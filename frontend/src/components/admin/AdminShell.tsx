@@ -33,6 +33,17 @@ const TABS = [
       { href: "/admin/models/catalog", tr: "Model kataloğu", en: "Model catalog" },
     ],
   },
+  {
+    href: "/admin/research",
+    tr: "Araştırma",
+    en: "Research",
+    icon: "M21 21l-4.3-4.3M17 10.5a6.5 6.5 0 11-13 0 6.5 6.5 0 0113 0z",
+    children: [
+      { href: "/admin/research/overview", tr: "Genel bakış", en: "Overview" },
+      { href: "/admin/research/keywords", tr: "Keyword Explorer", en: "Keyword Explorer" },
+      { href: "/admin/research/operations", tr: "Veri işlemleri", en: "Data operations" },
+    ],
+  },
   { href: "/admin/credits", tr: "Krediler", en: "Credits", icon: "M12 3a9 9 0 100 18 9 9 0 000-18zm0 4v10m-3-7.5c0-1 1.3-1.5 3-1.5s3 .7 3 2-1.3 1.7-3 2-3 .8-3 2 1.3 2 3 2 3-.5 3-1.5" },
   { href: "/admin/billing", tr: "Satış", en: "Sales", icon: "M3 7h18v10H3V7zm0 4h18M7 15h3" },
   { href: "/admin/tickets", tr: "Talepler", en: "Tickets", icon: "M4 6h16v4a2 2 0 000 4v4H4v-4a2 2 0 000-4V6zm10 0v12" },

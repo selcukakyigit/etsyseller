@@ -1,0 +1,109 @@
+"""Havuz deposu: kelime ve ölçüm okuma/yazma. Tek yer; worker, servis ve yönetim ekranı buradan geçer."""
+import datetime as dt
+import json
+
+from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.research import policy
+from app.research.models import KeywordLink, KeywordMetric, KeywordTerm
+from app.research.terms import normalize
+from app.research.records import MetricRecord
+
+CHUNK = 500  # IN (...) listelerini bölmek için
+
+
+def _chunks(items: list, size: int = CHUNK):
+    for i in range(0, len(items), size):
+        yield items[i : i + size]
+
+
+def get_or_create_terms(db: Session, displays: list[str], language: str, source: str) -> dict[str, KeywordTerm]:
+    """normalize edilmiş kelime -> satır. Olmayanlar eklenir; eşzamanlı ekleme (benzersiz çakışma) yeniden okunarak çözülür."""
+    wanted: dict[str, str] = {}
+    for text in displays:
+        term = normalize(text)
+        if term and term not in wanted:
+            wanted[term] = text.strip()[:120]
+    found: dict[str, KeywordTerm] = {}
+
+    def load(terms: list[str]) -> None:
+        for part in _chunks(terms):
+            for row in db.scalars(select(KeywordTerm).where(KeywordTerm.language == language, KeywordTerm.term.in_(part))):
+                found[row.term] = row
+
+    load(list(wanted))
+    missing = [t for t in wanted if t not in found]
+    if missing:
+        try:
+            with db.begin_nested():
+                db.add_all(KeywordTerm(term=t, display=wanted[t], language=language, first_source=source) for t in missing)
+        except IntegrityError:
+            load(missing)  # başka bir süreç aynı anda eklemiş; tek tek yeniden dene
+            for t in [t for t in missing if t not in found]:
+                try:
+                    with db.begin_nested():
+                        db.add(KeywordTerm(term=t, display=wanted[t], language=language, first_source=source))
+                except IntegrityError:
+                    pass
+        load(missing)
+    return found
+
+
+def touch(db: Session, ids: list[int]) -> None:
+    now = dt.datetime.utcnow()
+    for part in _chunks(ids):
+        db.execute(update(KeywordTerm).where(KeywordTerm.id.in_(part)).values(last_used_at=now))
+
+
+def latest_metrics(db: Session, ids: list[int], market: str, language: str) -> dict[int, KeywordMetric]:
+    """Her kelimenin bu pazar/dildeki EN YENİ ölçümü (kaynağa bakılmaksızın)."""
+    out: dict[int, KeywordMetric] = {}
+    for part in _chunks(ids):
+        newest = (
+            select(KeywordMetric.keyword_id, func.max(KeywordMetric.measured_at).label("m"))
+            .where(KeywordMetric.keyword_id.in_(part), KeywordMetric.market == market, KeywordMetric.language == language)
+            .group_by(KeywordMetric.keyword_id)
+            .subquery()
+        )
+        rows = db.scalars(
+            select(KeywordMetric).join(newest, (KeywordMetric.keyword_id == newest.c.keyword_id) & (KeywordMetric.measured_at == newest.c.m))
+            .where(KeywordMetric.market == market, KeywordMetric.language == language)
+        )
+        for row in rows:
+            if row.keyword_id not in out or row.id > out[row.keyword_id].id:
+                out[row.keyword_id] = row
+    return out
+
+
+def add_metrics(
+    db: Session, terms: dict[str, KeywordTerm], records: list[MetricRecord], *, provider: str, source: str, market: str, language: str, ttl_days: float,
+) -> int:
+    """Her kayıt için YENİ ölçüm satırı ekler (eskisini ezmez). Sağlayıcının hiç döndürmediği kelimeler için boş ölçüm de yazılır: TTL boyunca yeniden sorulmaz."""
+    now = dt.datetime.utcnow()
+    by_term = {r.term: r for r in records}
+    rows = []
+    for term, kw in terms.items():
+        rec = by_term.get(term) or MetricRecord(term=term)
+        rows.append(KeywordMetric(
+            keyword_id=kw.id, provider=provider, source=source, market=market, language=language, search_volume=rec.search_volume, cpc=rec.cpc,
+            competition=rec.competition, difficulty=rec.difficulty, intent=rec.intent,
+            monthly_json=json.dumps(rec.monthly) if rec.monthly else None, measured_at=now, expires_at=policy.expires_at(now, ttl_days),
+        ))
+    db.add_all(rows)
+    return len(rows)
+
+
+def link_suggestions(db: Session, seed_id: int, ordered: list[KeywordTerm]) -> None:
+    """Tohum -> öneri ilişkileri; varsa sırası güncellenir."""
+    now = dt.datetime.utcnow()
+    existing = {l.keyword_id: l for l in db.scalars(select(KeywordLink).where(KeywordLink.seed_id == seed_id, KeywordLink.relation == "suggestion"))}
+    for rank, kw in enumerate(ordered):
+        if kw.id == seed_id:
+            continue
+        link = existing.get(kw.id)
+        if link:
+            link.rank, link.observed_at = rank, now
+        else:
+            db.add(KeywordLink(seed_id=seed_id, keyword_id=kw.id, relation="suggestion", rank=rank, observed_at=now))

@@ -11,6 +11,8 @@ from app.ai import quality, standard
 from app.etsy import search as etsy_search
 from app.keywords import competition, scoring, trends
 from app.listings import performance
+from app.research import service as research
+from app.research.terms import normalize
 from app.shops.models import Shop
 
 logger = logging.getLogger(__name__)
@@ -247,6 +249,21 @@ def _add_etsy_data(db: Session, shop: Shop, listing: dict, pool: list[dict], see
             p["etsy_results"] = i["listings_count"]
 
 
+def _attach_google_volume(db: Session, shop: Shop, pool: list[dict]) -> None:
+    """Ortak araştırma havuzundan Google aylık arama/CPC (yalnızca okur, sağlayıcıya istek atmaz; eksik kelimeler kuyruğa girer ve sonraki
+    istekte gelir). Araştırma hata verse bile SEO önerisi bozulmaz."""
+    try:
+        found = research.volumes(db, [p["tag"] for p in pool], shop_id=shop.id)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        logger.warning("Araştırma havuzu okunamadı", exc_info=True)
+        return
+    for item in pool:
+        m = found.metrics.get(normalize(item["tag"]))
+        if m is not None and m.search_volume is not None:
+            item["google_volume"], item["google_cpc"] = m.search_volume, m.cpc
+
+
 def scored_pool(db: Session, shop: Shop, listing: dict) -> list[dict]:
     """Yazım hattı için havuz: aday ifadeler + otomatik ölçülen rekabet (toplam sonuç sayısı) + puan, rol ve güven etiketi; puana göre sıralı.
     SEO önerisi, toplu yeniden yazım ve sohbet asistanı AYNI sıralı havuzu kullanır. Arayüzdeki ham havuz `build_keyword_pool`'dur."""
@@ -256,5 +273,6 @@ def scored_pool(db: Session, shop: Shop, listing: dict) -> list[dict]:
     for item in pool:
         if item["tag"] in cached_trends:
             item["google_score"] = cached_trends[item["tag"]]
+    _attach_google_volume(db, shop, pool)
     competition.attach_results(pool, listing.get("title") or "")
     return scoring.rank(pool, listing.get("title") or "")

@@ -12,7 +12,7 @@ import math
 from app.ai import standard
 from app.core.i18n import tr
 
-WEIGHTS = {"proven": 0.30, "opportunity": 0.30, "competition": 0.15, "usage": 0.05, "conversion": 0.15, "trend": 0.05, "specificity": 0.10, "google": 0.05}
+WEIGHTS = {"proven": 0.30, "opportunity": 0.30, "competition": 0.15, "usage": 0.05, "conversion": 0.15, "trend": 0.05, "specificity": 0.10, "google": 0.05, "google_demand": 0.10}
 CONVERSION = {"very_low": 0.0, "low": 0.25, "medium": 0.5, "high": 0.75, "very_high": 1.0}
 SHRINK = {"measured": 1.0, "partial": 0.8, "estimate": 0.5}  # güven → puana ne kadar güvenilir
 SATURATED_RESULTS = 500_000  # bu kadar sonuç + kanıt yok = doymuş geniş arama
@@ -70,9 +70,11 @@ def score(item: dict) -> tuple[float, str]:
     parts["specificity"] = {1: 0.2, 2: 0.5, 3: 0.9, 4: 1.0}.get(n, 0.8)
     if item.get("google_score") is not None:
         parts["google"] = item["google_score"] / 100
+    if item.get("google_volume"):  # Google aylık arama (araştırma havuzu): Etsy hacmi DEĞİL, talebin yardımcı göstergesi
+        parts["google_demand"] = _scale(item["google_volume"], 10, 100_000)
     total = sum(WEIGHTS[k] for k in parts)
     value = sum(WEIGHTS[k] * v for k, v in parts.items()) / total
-    confidence = "measured" if "opportunity" in parts else "partial" if parts.keys() & {"competition", "proven", "conversion"} else "estimate"
+    confidence = "measured" if "opportunity" in parts else "partial" if parts.keys() & {"competition", "proven", "conversion", "google_demand"} else "estimate"
     # Az sinyalli kelime yalnızca kelime yapısından yüksek çıkmasın: güvene göre nötr puana (0.5) çekilir.
     trust = SHRINK[confidence]
     return round(value * trust + 0.5 * (1 - trust), 3), confidence
@@ -118,6 +120,8 @@ def _data_note(p: dict) -> str:
         bits.append(tr(f"aylık {p['etsy_searches']} arama", f"{p['etsy_searches']} searches/month"))
         if p.get("etsy_trend_pct") is not None:
             bits[-1] += f" ({p['etsy_trend_pct']:+d}%)"
+    if p.get("google_volume"):  # Etsy hacmi değil: modelin karıştırmaması için kaynağı açıkça yazılır
+        bits.append(tr(f"Google'da aylık {p['google_volume']} arama (Etsy hacmi değil)", f"{p['google_volume']} Google searches/month (not Etsy volume)"))
     if p.get("etsy_results"):
         bits.append(tr(f"{p['etsy_results']} sonuç", f"{p['etsy_results']} results"))
     if p.get("etsy_conversion"):

@@ -17,6 +17,7 @@ from app.jobs.listing_health import evaluate_all_shops
 from app.jobs.listing_refresh import refresh_all_shops
 from app.jobs.order_sync import sync_all_shops
 from app.jobs.rank_tracking import track_all_shops
+from app.jobs.research import refresh_stale as research_refresh, run_queue as research_queue
 from app.jobs.retention import purge_expired_records
 from app.jobs.reviews import sync_all_shops as sync_reviews
 from app.jobs.shop_profile import sync_all_shops as sync_shop_profile
@@ -138,6 +139,18 @@ def start_scheduler() -> None:
         _measured(refresh_demand),
         trigger=CronTrigger(day_of_week="mon", hour=6, minute=30),
         id="demand_trends",
+        replace_existing=True,
+    )
+    _scheduler.add_job(
+        _measured(research_queue),
+        trigger=IntervalTrigger(minutes=1),
+        id="research_queue",
+        replace_existing=True,
+    )
+    _scheduler.add_job(
+        _measured(research_refresh),
+        trigger=CronTrigger(hour=2, minute=30),
+        id="research_refresh",
         replace_existing=True,
     )
     _scheduler.start()
