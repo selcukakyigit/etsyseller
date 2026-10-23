@@ -167,35 +167,57 @@ export default function SidebarNav({ user, hasShop, shops, activeShop, onSwitchS
 
 const SUPPLY_SHOWN = 8;
 
-/** Dış Tedarik: kenar çubuğunda sabit bölüm. Altında kullanıcının tedarikçileri (ve onunla paylaşılan kayıtlar) ve
- * "+ Yeni"; adlarını kullanıcı belirler. Liste modül sayfasıyla aynı depodan gelir (eklenince/silinince güncellenir). */
+/** Dış Tedarik: kenar çubuğunda açılır-kapanır bölüm. Başlık modül sayfasına gider, sağdaki ok altındaki listeyi (kullanıcının tedarikçileri, onunla
+ * paylaşılan kayıtlar ve "+ daha") açıp kapatır; seçim hatırlanır. Hiç seçim yapılmadıysa ("auto") modülün bir sayfasındayken açık gelir. Liste modül
+ * sayfasıyla aynı depodan gelir (eklenince/silinince güncellenir). */
 function SupplySection({ current, onNavigate, enabled }: { current: string; onNavigate?: () => void; enabled: boolean }) {
   const { t } = useT();
   const { list } = supplyStore.useState(enabled);
+  const [menu, setMenu] = useStoredState<"auto" | "open" | "closed">("sidebar.supplyMenu", "auto", ["auto", "open", "closed"]);
+  const inSupply = current === SUPPLY_NAV.href || current.startsWith(`${SUPPLY_NAV.href}/`);
+  const open = menu === "open" || (menu === "auto" && inSupply);
   const items = [
     ...(list?.own ?? []).filter((e) => !e.archived).map((e) => ({ id: e.id, name: e.name, image: e.image, shared: false })),
     ...(list?.shared ?? []).map((e) => ({ id: e.id, name: e.name, image: e.image, shared: true })),
   ];
   const shown = items.slice(0, SUPPLY_SHOWN);
+  const label = t(SUPPLY_NAV.tr, SUPPLY_NAV.en);
   return (
     <div className="space-y-1">
-      <Link href={SUPPLY_NAV.href} onClick={onNavigate} className={linkClass(current === SUPPLY_NAV.href)}>
-        {t(SUPPLY_NAV.tr, SUPPLY_NAV.en)}
-      </Link>
-      {shown.map((e) => {
-        const href = `${SUPPLY_NAV.href}/${e.id}`;
-        return (
-          <Link key={e.id} href={href} onClick={onNavigate} title={e.name} className={`${linkClass(current === href, true)} flex items-center gap-2 truncate`}>
-            <EntityAvatar name={e.name} src={e.image ? supplyApi.imageUrl(e.id, e.image) : null} size={18} />
-            <span className="truncate">{e.name}</span>
-            {e.shared && <span className="ml-1 text-[10px] font-normal text-[#C6613F] dark:text-[#E8A48C]">· {t("paylaşılan", "shared")}</span>}
-          </Link>
-        );
-      })}
-      {items.length > SUPPLY_SHOWN && (
-        <Link href={SUPPLY_NAV.href} onClick={onNavigate} className={`${linkClass(false, true)} text-xs`}>
-          {t(`+${items.length - SUPPLY_SHOWN} daha`, `+${items.length - SUPPLY_SHOWN} more`)}
+      <div className="flex items-center gap-1">
+        <Link href={SUPPLY_NAV.href} onClick={onNavigate} className={`${linkClass(current === SUPPLY_NAV.href)} min-w-0 flex-1`}>
+          {label}
         </Link>
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-label={open ? t(`${label} listesini kapat`, `Collapse ${label}`) : t(`${label} listesini aç`, `Expand ${label}`)}
+          onClick={() => setMenu(open ? "closed" : "open")}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#D97757] transition hover:bg-neutral-100 dark:hover:bg-neutral-800"
+        >
+          <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden className={`h-5 w-5 transition-transform ${open ? "rotate-180" : ""}`}>
+            <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+          </svg>
+        </button>
+      </div>
+      {open && (
+        <>
+          {shown.map((e) => {
+            const href = `${SUPPLY_NAV.href}/${e.id}`;
+            return (
+              <Link key={e.id} href={href} onClick={onNavigate} title={e.name} className={`${linkClass(current === href, true)} flex items-center gap-2 truncate`}>
+                <EntityAvatar name={e.name} src={e.image ? supplyApi.imageUrl(e.id, e.image) : null} size={18} />
+                <span className="truncate">{e.name}</span>
+                {e.shared && <span className="ml-1 text-[10px] font-normal text-[#C6613F] dark:text-[#E8A48C]">· {t("paylaşılan", "shared")}</span>}
+              </Link>
+            );
+          })}
+          {items.length > SUPPLY_SHOWN && (
+            <Link href={SUPPLY_NAV.href} onClick={onNavigate} className={`${linkClass(false, true)} text-xs`}>
+              {t(`+${items.length - SUPPLY_SHOWN} daha`, `+${items.length - SUPPLY_SHOWN} more`)}
+            </Link>
+          )}
+        </>
       )}
     </div>
   );
