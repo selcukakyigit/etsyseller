@@ -17,6 +17,8 @@ export type DiscoverItem = {
   competition: number | null;
   /** Son 12 ay (eskiden yeniye); veri yoksa boş */
   monthly: number[];
+  /** Serinin son ayı "YYYY-AA"; ay adları buradan geriye sayılır */
+  last_month: string | null;
   /** Son 3 ay ortalaması ilk 3 aya göre % değişim */
   trend_pct: number | null;
   intent: Intent | null;

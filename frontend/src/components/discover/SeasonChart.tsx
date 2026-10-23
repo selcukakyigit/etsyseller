@@ -6,11 +6,13 @@ import { useT } from "@/lib/i18n-client";
 const MONTHS_TR = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
 const MONTHS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+export const monthNames = (locale: string) => (locale.startsWith("tr") ? MONTHS_TR : MONTHS_EN);
+
 /** Takvim ayına göre 12 çubuk (Google Trends, 5 yıl ortalaması): hangi ay zirve. Profil hazırlanırken iskelet; çıkarılamadıysa hiçbir şey çizilmez.
  * Çubuk yüksekliği piksel olarak verilir (yüzde, üst kapta kesin yükseklik yoksa sıfıra düşer). */
 export default function SeasonChart({ season, height = 56 }: { season: Season; height?: number }) {
   const { t, locale } = useT();
-  const names = locale.startsWith("tr") ? MONTHS_TR : MONTHS_EN;
+  const names = monthNames(locale);
   if (season.pending && season.monthly.length === 0) {
     return <div data-testid="season-pending" className="mt-4 animate-pulse rounded-lg bg-neutral-100 dark:bg-neutral-800" style={{ height: height + 28 }} aria-hidden />;
   }
@@ -30,6 +32,7 @@ export default function SeasonChart({ season, height = 56 }: { season: Season; h
           const peak = season.seasonal && season.peak_months.includes(i + 1);
           return (
             <div key={i} className="flex flex-1 flex-col items-center justify-end gap-1" title={`${names[i]}: ${value}`}>
+              <span className={`text-[10px] leading-none tabular-nums ${peak ? "font-semibold text-neutral-700 dark:text-neutral-200" : "text-neutral-400"}`}>{value}</span>
               <div className={`w-full rounded-sm ${peak ? "bg-[#D97757]" : "bg-neutral-300 dark:bg-neutral-600"}`} style={{ height: Math.max(2, Math.round((value / 100) * height)) }} />
               <span className={`text-[10px] leading-none ${peak ? "font-semibold text-neutral-700 dark:text-neutral-200" : "text-neutral-400"}`}>{names[i]}</span>
             </div>

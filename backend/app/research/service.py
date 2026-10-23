@@ -25,6 +25,7 @@ class MetricView:
     measured_at: dt.datetime
     fresh: bool
     monthly: list[int] = field(default_factory=list)  # son 12 ayın aylık aramaları (eskiden yeniye); veri yoksa boş
+    last_month: str | None = None  # serinin son ayı "YYYY-AA" (önceki ayları buradan geriye sayılır: Google aylık serisi ardışıktır)
 
 
 @dataclass
@@ -118,8 +119,20 @@ def _series(monthly_json: str | None) -> list[int]:
     return [int(r[2]) for r in rows if len(r) > 2 and r[2] is not None][-12:]
 
 
+def _last_month(monthly_json: str | None) -> str | None:
+    """Aylık serinin son ayı ("YYYY-AA"); seri yoksa None."""
+    if not monthly_json:
+        return None
+    try:
+        rows = [r for r in json.loads(monthly_json) if len(r) > 2 and r[2] is not None]
+        year, month = max((int(r[0]), int(r[1])) for r in rows)
+    except (ValueError, TypeError, IndexError):
+        return None
+    return f"{year:04d}-{month:02d}"
+
+
 def _view(term: str, m: KeywordMetric, now: dt.datetime) -> MetricView:
-    return MetricView(term, m.search_volume, m.cpc, m.competition, m.difficulty, m.intent, m.measured_at, fresh=m.expires_at > now, monthly=_series(m.monthly_json))
+    return MetricView(term, m.search_volume, m.cpc, m.competition, m.difficulty, m.intent, m.measured_at, fresh=m.expires_at > now, monthly=_series(m.monthly_json), last_month=_last_month(m.monthly_json))
 
 
 def peek(db: Session, terms: list[str], *, market: str | None = None, language: str | None = None) -> dict[str, MetricView]:

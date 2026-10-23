@@ -37,6 +37,7 @@ class Item:
     cpc: float | None  # USD
     competition: int | None  # 0–100 Google Ads reklam rekabeti (Etsy organik rekabeti değil)
     monthly: list[int]  # son 12 ay (eskiden yeniye); trend çizgisi için
+    last_month: str | None  # serinin son ayı "YYYY-AA" (ay adları buradan geriye sayılır)
     trend_pct: int | None  # son 3 ay ortalaması / ilk 3 ay ortalaması - 1 (%)
     intent: str | None
     crowded: bool
@@ -108,7 +109,7 @@ def _item(term: str, metric: "service.MetricView | None", crowd: dict[str, int],
     return Item(
         term=term, demand=bands.demand_band(metric.search_volume) if metric else None, volume=metric.search_volume if metric else None,
         cpc=round(metric.cpc, 2) if metric and metric.cpc is not None else None, competition=None if competition is None else round(competition * 100),
-        monthly=monthly, trend_pct=trend_pct(monthly), intent=intent,
+        monthly=monthly, last_month=metric.last_month if metric and monthly else None, trend_pct=trend_pct(monthly), intent=intent,
         crowded=crowd.get(term, 0) / max(1, full) >= CROWDED_FROM, mine=term in mine, saved=term in saved,
     )
 

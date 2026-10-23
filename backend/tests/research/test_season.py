@@ -115,3 +115,11 @@ def test_season_endpoint_for_any_keyword(db, provider):
         assert client.get("/api/shops/1/discover/season", params={"q": "  "}).json()["season"] is None
     finally:
         main.app.dependency_overrides.clear()
+
+
+def test_items_carry_the_last_month_of_their_series(db, provider):
+    discover.search(db, SHOP, "metal farm sign")
+    worker.run_once(db)
+    res = discover.search(db, SHOP, "metal farm sign")
+    assert res.seed_item.monthly and res.seed_item.last_month == "2026-10", "ay adları bu son aydan geriye sayılır"
+    assert all(i.last_month == "2026-10" for i in res.items if i.monthly)

@@ -5,12 +5,24 @@ import { Modal } from "@/components/listing-editor/Modal";
 import HelpTip from "@/components/ui/HelpTip";
 import { DiscoverItem, Season, discoverApi } from "@/lib/discoverApi";
 import { useT } from "@/lib/i18n-client";
-import SeasonChart from "./SeasonChart";
+import SeasonChart, { monthNames } from "./SeasonChart";
 import { useIntentLabel } from "./shared";
 
 const POLL_MS = 2500;
 const POLL_MAX = 24; // en çok ~1 dakika bekler; sonra "hazırlanıyor" yerine boş bırakılır
 const BAR_HEIGHT = 80;
+
+/** Serinin ay etiketleri: son ay "YYYY-AA", öncekiler geriye doğru ardışık sayılır. Ocak'ta (ve ilk çubukta) yıl da yazılır. */
+function monthLabels(lastMonth: string | null, count: number, names: string[]): { name: string; year: string | null }[] {
+  const m = lastMonth ? /^(\d{4})-(\d{2})$/.exec(lastMonth) : null;
+  if (!m) return Array.from({ length: count }, () => ({ name: "", year: null }));
+  const end = Number(m[1]) * 12 + Number(m[2]) - 1;
+  return Array.from({ length: count }, (_, i) => {
+    const idx = end - (count - 1 - i);
+    const month = idx % 12;
+    return { name: names[month], year: month === 0 || i === 0 ? String(Math.floor(idx / 12)) : null };
+  });
+}
 
 function Stat({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -55,6 +67,8 @@ export default function KeywordDetailModal({ shopId, item, onClose, onAnalyze }:
   const num = (n: number | null) => (n === null ? "—" : n.toLocaleString(locale));
   const max = Math.max(1, ...item.monthly);
   const peakAt = item.monthly.indexOf(Math.max(...item.monthly));
+  const labels = monthLabels(item.last_month, item.monthly.length, monthNames(locale));
+  const compact = (v: number) => (v >= 100000 ? v.toLocaleString(locale, { notation: "compact", maximumFractionDigits: 1 }) : v.toLocaleString(locale));
 
   return (
     <Modal title={term} widthClass="max-w-2xl" onClose={onClose} closeButton>
@@ -98,15 +112,13 @@ export default function KeywordDetailModal({ shopId, item, onClose, onAnalyze }:
             <>
               <div className="flex items-end gap-1.5" role="img" aria-label={t("Son 12 ay aylık arama", "Monthly searches, last 12 months")}>
                 {item.monthly.map((v, i) => (
-                  <div key={i} className="flex flex-1 flex-col items-center justify-end gap-1" title={v.toLocaleString(locale)}>
-                    <span className="text-[10px] leading-none tabular-nums text-neutral-400">{i === peakAt ? v.toLocaleString(locale) : ""}</span>
+                  <div key={i} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1" title={`${labels[i].name} ${labels[i].year ?? ""}: ${v.toLocaleString(locale)}`.trim()}>
+                    <span className={`text-[10px] leading-none tabular-nums ${i === peakAt ? "font-semibold text-neutral-700 dark:text-neutral-200" : "text-neutral-400"}`}>{compact(v)}</span>
                     <div className={`w-full rounded-sm ${i === peakAt ? "bg-[#D97757]" : "bg-neutral-300 dark:bg-neutral-600"}`} style={{ height: Math.max(2, Math.round((v / max) * BAR_HEIGHT)) }} />
+                    <span className="text-[10px] leading-none text-neutral-400">{labels[i].name}</span>
+                    <span className="h-2.5 text-[9px] leading-none text-neutral-300 dark:text-neutral-600">{labels[i].year ?? ""}</span>
                   </div>
                 ))}
-              </div>
-              <div className="mt-1 flex justify-between text-[10px] text-neutral-400">
-                <span>{t(`${item.monthly.length} ay önce`, `${item.monthly.length} months ago`)}</span>
-                <span>{t("Son ay", "Latest month")}</span>
               </div>
             </>
           )}
