@@ -77,5 +77,6 @@ Sonuç ve alınan önlemler:
 - Sıra takibi (insights/rank.py) sayıları "API sırası" olarak etiketlenir; ▲▼ renksizdir; teşhis (diagnosis.rank_signal) ondan hüküm (bad/good) ya da görünürlük/çekicilik oyu üretmez; asistan "kesin sıra" demez.
 - Keşfet'teki Etsy pencereleri (etsy_top.py) "ilk 20" değil "20 ilanlık örnek"; rekabet gücü (düşük/orta/yüksek) hükmü kaldırıldı. Güvenilir olan: toplam ilan sayısı (sıralamadan bağımsız).
 - Gerçek sonuç göstergeleri: günlük görüntülenme/favori (ListingStatSnapshot, Değişiklikler sekmesi) ve kullanıcının yapıştırdığı Etsy arama terimleri (Etsy verisi sekmesi).
+- Mevsimsellik (Google Trends, ≈0,011 $) ölçülmüş aylık araması `research_season_min_volume` (100) altındaki kelime için istenmez: Trends o kadar az aramada desen vermez, ücret boşa giderdi. Hacmi hiç ölçülmemiş kelimede karar verilemez, istenir.
 - Etsy sitesini proxy ile taramak (scraping) YAPILMAZ: şartlara aykırı ve Etsy API anahtarını (tüm ürünün anahtarı) riske atar. Ekran görüntüsü yükleme/eklenti fikirleri değerlendirildi, şimdilik yapılmadı.
 - Açık soru: Etsy'nin (developer@etsy.com) resmi bir sıralama verisi sunup sunmadığı sorulabilir.

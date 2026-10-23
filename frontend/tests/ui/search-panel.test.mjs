@@ -313,11 +313,11 @@ eq([...chart.querySelectorAll("[title] > span:nth-of-type(3)")].map((e) => e.tex
 eq([...chart.querySelectorAll("[title] > span:first-of-type")].map((e) => e.textContent)[0], "10", "her çubuğun üstünde değer");
 eq([...chart.querySelectorAll("[title] > span:first-of-type")].map((e) => e.textContent)[11].length < 8, true, "büyük sayılar kısa yazılır");
 // profil çıkarılamadıysa (çok az aranan kelime) sessizce boş kalmaz, nedeni yazılır
-globalThis.__api = async (path) => (path.includes("/discover/season") ? { season: { monthly: [], peak_months: [], seasonal: false, pending: false } } : api14(path));
+globalThis.__api = async (path) => (path.includes("/discover/season") ? { season: { monthly: [], peak_months: [], seasonal: false, pending: false, too_rare: true, min_volume: 100 } } : api14(path));
 await act(async () => detailRoot.render(h(KeywordDetailModal, { shopId: 1, item: item("metal tree farm sign", 10, { monthly: [10, 10, 20, 10, 10, 10, 0, 10, 0, 10, 10, 10], last_month: "2026-09" }), onClose: () => {} })));
 await act(async () => { await sleep(60); });
 const lastDlg = [...document.querySelectorAll("[role=dialog]")].pop();
-eq(lastDlg.textContent.includes("hesaplanamadı"), true, "boş mevsimsellik için açıklama görünmeli");
+eq(lastDlg.textContent.includes("100'in altında") && lastDlg.textContent.includes("hesaplanmadı"), true, "az aranan kelimede nedeni (eşik) yazılı olmalı");
 eq(Boolean(lastDlg.querySelector("[data-testid=season-pending]")), false, "iskelet takılı kalmamalı");
 console.log("16 kelime penceresi OK");
 globalThis.__api = prevApi;
@@ -340,6 +340,8 @@ eq(Boolean(cardHost.querySelector("[data-testid=season]") || cardHost.querySelec
 await renderCard({ monthly: Array(12).fill(95), peak_months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], seasonal: false, pending: false });
 eq(cardHost.querySelector("[data-testid=season]").textContent.includes("Yıl boyu dengeli"), true, "dengeli kelime");
 eq(cardHost.querySelectorAll("[data-testid=season] .bg-\\[\\#D97757\\]").length, 0, "dengeli kelimede vurgu yok");
+await renderCard({ monthly: [], peak_months: [], seasonal: false, pending: false, too_rare: true, min_volume: 100 });
+eq(cardHost.querySelector("[data-testid=season-rare]").textContent.includes("100'in altında"), true, "kartta da az aranan kelime için açıklama");
 console.log("15 mevsimsellik OK");
 console.log("PANEL DAVRANIŞ TESTLERİ GEÇTİ");
 process.exit(0);

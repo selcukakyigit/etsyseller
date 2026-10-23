@@ -16,6 +16,16 @@ export default function SeasonChart({ season, height = 56 }: { season: Season; h
   if (season.pending && season.monthly.length === 0) {
     return <div data-testid="season-pending" className="mt-4 animate-pulse rounded-lg bg-neutral-100 dark:bg-neutral-800" style={{ height: height + 28 }} aria-hidden />;
   }
+  if (season.too_rare) {
+    return (
+      <p data-testid="season-rare" className="mt-4 border-t border-neutral-100 pt-3 text-xs text-neutral-400 dark:border-neutral-800 dark:text-neutral-500">
+        {t(
+          `Mevsimsellik: aylık arama ${season.min_volume.toLocaleString(locale)}'in altında olduğu için hesaplanmadı.`,
+          `Seasonality: not computed because monthly searches are below ${season.min_volume.toLocaleString(locale)}.`,
+        )}
+      </p>
+    );
+  }
   if (season.monthly.length !== 12) return null;
   const peaks = season.peak_months.map((m) => names[m - 1]);
   return (

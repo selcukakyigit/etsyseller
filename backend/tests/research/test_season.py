@@ -123,3 +123,32 @@ def test_items_carry_the_last_month_of_their_series(db, provider):
     res = discover.search(db, SHOP, "metal farm sign")
     assert res.seed_item.monthly and res.seed_item.last_month == "2026-10", "ay adları bu son aydan geriye sayılır"
     assert all(i.last_month == "2026-10" for i in res.items if i.monthly)
+
+
+def test_rarely_searched_keyword_skips_the_paid_season_call(db, provider, monkeypatch):
+    from app.research import policy
+
+    original = policy.get
+    monkeypatch.setattr(policy, "get", lambda name: 500 if name == "research_season_min_volume" else original(name))  # fake sağlayıcının tohum hacmi 210
+    assert discover.search(db, SHOP, "metal farm sign").status == "pending"
+    worker.run_once(db)
+    res = discover.search(db, SHOP, "metal farm sign")
+    assert res.season["too_rare"] and res.season["min_volume"] == 500 and not res.season["pending"] and res.season["monthly"] == []
+    assert not res.stale, "ek ölçüm beklenmediği için ekran yoklamayı bırakır"
+    assert db.query(ResearchJob).filter(ResearchJob.kind == "season").count() == 0, "iş açılmaz"
+    worker.run_once(db)
+    assert provider.count("season") == 0, "sağlayıcıya (ücretli) çağrı gitmez"
+
+    tool = tools.research_keywords(NS(db=db, shop=SHOP, user_id=7), {"seed": "metal farm sign"})
+    assert "mevsimsellik" in tool and "hesaplanmadı" in tool["mevsimsellik"]["not"] and "mevsimsel" not in tool["mevsimsellik"]
+
+
+def test_volume_at_or_above_the_minimum_still_gets_a_season(db, provider, monkeypatch):
+    from app.research import policy
+
+    original = policy.get
+    monkeypatch.setattr(policy, "get", lambda name: 210 if name == "research_season_min_volume" else original(name))  # tam eşik: elenmez
+    discover.search(db, SHOP, "metal farm sign")
+    worker.run_once(db)
+    res = discover.search(db, SHOP, "metal farm sign")
+    assert not res.season["too_rare"] and res.season["pending"]

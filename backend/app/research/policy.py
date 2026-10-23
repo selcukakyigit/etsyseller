@@ -13,6 +13,7 @@ DEFAULTS: dict[str, Any] = {
     "research_ttl_volume_days": 21,  # hacim/CPC ölçümü
     "research_ttl_suggest_days": 60,  # tohum kelime önerileri (adaylar uzun yaşar; metrikleri ayrı yenilenir)
     "research_ttl_season_days": 90,  # mevsimsellik profili (yıllık şekil çok yavaş değişir)
+    "research_season_min_volume": 100,  # ölçülmüş aylık araması bunun altındaki kelime için mevsimsellik çekilmez (Google Trends çok az aramada desen vermez; boşuna ücret)
     "research_ttl_trend_days": 7,  # Google ilgi endeksi (yıllık değişim) ölçümü
     "research_ttl_jitter": 0.15,  # TTL'e ±%15 sapma: aynı gün toplanan binlerce kelime aynı gün dolmasın
     "research_monthly_budget_usd": 30.0,  # sistem geneli aylık tavan; aşılınca eski veriyle devam edilir

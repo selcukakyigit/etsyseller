@@ -67,6 +67,8 @@ def research_keywords(ctx, a: dict) -> dict:
             "aylik_ilgi_0_100": dict(zip(names, r.season["monthly"])),
             "not": "Google Trends'ten 5 yıllık takvim ayı profili (zirve = 100); satış zirvesinden 1-2 ay ÖNCE listing hazır olmalı. Hacim değil, yıllık şekildir.",
         }
+    elif r.season and r.season.get("too_rare"):
+        season = {"not": f"Aylık arama {r.season['min_volume']}'in altında olduğu için mevsimsellik hesaplanmadı (Google Trends bu kadar az aramada güvenilir desen vermez); mevsimsellik hakkında tahmin yürütme."}
     return {
         "arama": r.seed, "durum": "hazir", **({"mevsimsellik": season} if season else {}), "tohum": _item(r.seed_item) if r.seed_item else None, "oneriler": items,
         "toplam_oneri": len(r.items), "toplam_aylik_arama": r.total_volume, **({"etsy_not": etsy_note} if a.get("etsy_competition") and etsy_note else {}),

@@ -120,7 +120,7 @@ def season_of(db: Session, shop: Shop, term: str) -> dict | None:
     if not researchable(term):
         return None
     s = service.seasonality(db, term, shop_id=shop.id)
-    return {"monthly": s.monthly, "peak_months": s.peak_months, "seasonal": s.seasonal, "pending": s.pending}
+    return {"monthly": s.monthly, "peak_months": s.peak_months, "seasonal": s.seasonal, "pending": s.pending, "too_rare": s.too_rare, "min_volume": s.min_volume}
 
 
 def search(db: Session, shop: Shop, seed: str, mode: str = "all", refresh: bool = False) -> SearchResult:

@@ -129,10 +129,18 @@ export default function KeywordDetailModal({ shopId, item, onClose, onAnalyze }:
             <SeasonChart season={season} />
           ) : state?.done || season ? (
             <p className="mt-4 border-t border-neutral-100 pt-3 text-xs text-neutral-400 dark:border-neutral-800 dark:text-neutral-500">
-              {t("Mevsimsellik bu kelime için hesaplanamadı: Google Trends güvenilir bir aylık desen çıkaracak kadar arama görmüyor (genellikle ayda birkaç yüz aramanın altındaki kelimeler).", "Seasonality could not be computed for this word: Google Trends does not see enough searches to draw a reliable monthly pattern (usually words below a few hundred searches a month).")}
+              {season?.too_rare
+                ? t(
+                    `Aylık arama ${season.min_volume.toLocaleString(locale)}'in altında olduğu için mevsimsellik hesaplanmadı: Google Trends bu kadar az aramada güvenilir bir aylık desen vermiyor.`,
+                    `Seasonality was not computed because monthly searches are below ${season.min_volume.toLocaleString(locale)}: Google Trends does not give a reliable monthly pattern for so few searches.`,
+                  )
+                : t(
+                    "Mevsimsellik bu kelime için hesaplanamadı: Google Trends güvenilir bir aylık desen çıkaracak kadar arama görmüyor.",
+                    "Seasonality could not be computed for this word: Google Trends does not see enough searches to draw a reliable monthly pattern.",
+                  )}
             </p>
           ) : (
-            <SeasonChart season={{ monthly: [], peak_months: [], seasonal: false, pending: true }} />
+            <SeasonChart season={{ monthly: [], peak_months: [], seasonal: false, pending: true, too_rare: false, min_volume: 0 }} />
           )}
         </div>
 

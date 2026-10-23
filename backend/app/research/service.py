@@ -70,6 +70,8 @@ class SeasonView:
     seasonal: bool = False
     pending: bool = False
     refused: str | None = None
+    too_rare: bool = False  # ölçülmüş aylık arama `research_season_min_volume` altında: istenmez, ücret ödenmez
+    min_volume: int = 0
 
 
 def season_view(monthly: list[int] | None) -> SeasonView:
@@ -93,6 +95,10 @@ def seasonality(db: Session, term: str, *, market: str | None = None, language: 
     view = season_view(json.loads(latest.monthly_json)) if latest and latest.monthly_json else SeasonView()
     if latest and latest.expires_at > now:
         return view
+    minimum = int(policy.get("research_season_min_volume"))
+    metric = pool.latest_metrics(db, [row.id], market, language).get(row.id) if row else None
+    if metric is not None and (metric.search_volume or 0) < minimum:  # hacmi ölçülmemiş kelime için karar verilemez; yalnızca ölçülmüş düşük hacim elenir
+        return SeasonView(too_rare=True, min_volume=minimum)
     key = f"season:{market}:{language}:{key_term}"
     if jobs.active_by_key(db, key):
         view.pending = True

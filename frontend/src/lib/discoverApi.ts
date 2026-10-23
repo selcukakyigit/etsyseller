@@ -32,7 +32,15 @@ export type DiscoverItem = {
 export type SearchStatus = "ready" | "pending" | "refused" | "empty" | "invalid";
 
 /** Takvim ayına göre göreli ilgi (Google Trends, 5 yıl ortalaması); monthly[0]=Ocak, en yüksek ay 100. Profil yoksa monthly boş. */
-export type Season = { monthly: number[]; peak_months: number[]; seasonal: boolean; pending: boolean };
+export type Season = {
+  monthly: number[];
+  peak_months: number[];
+  seasonal: boolean;
+  pending: boolean;
+  /** Ölçülmüş aylık arama `min_volume` altında: mevsimsellik istenmedi (ücret yok) */
+  too_rare: boolean;
+  min_volume: number;
+};
 
 export type DiscoverSearch = {
   seed: string;
