@@ -153,6 +153,20 @@ def search(db: Session, shop: Shop, seed: str, mode: str = "all", refresh: bool 
     )
 
 
+def detail(db: Session, shop: Shop, term: str) -> tuple[Item, dict | None] | None:
+    """Kelime ayrıntısı (ekranda kelimeye tıklayınca açılan pencere): havuzdaki ölçüm (12 aylık seri dahil) ve mevsimsellik profili.
+    Kelime havuzda ölçülmemişse None (önce araştırılmalı). Mevsimsellik yoksa kuyruğa alınır (`pending`); sağlayıcıya istek atılmaz."""
+    term = normalize(term)
+    if not researchable(term):
+        return None
+    metric = service.peek(db, [term]).get(term)
+    if metric is None:
+        return None
+    crowd = exposure.counts(db, [term])
+    item = _item(term, metric, crowd, int(policy.get("research_crowd_full_shops")), _shop_tags(db, shop), _saved_terms(db, shop.workspace_id))
+    return item, season_of(db, shop, term)
+
+
 _etsy_limiter = SlidingWindow(limit=12, window=600)  # mağaza başına 10 dakikada en fazla 12 ölçüm (her biri en çok ETSY_RESULTS_MAX Etsy isteği)
 
 

@@ -152,3 +152,46 @@ def test_volume_at_or_above_the_minimum_still_gets_a_season(db, provider, monkey
     worker.run_once(db)
     res = discover.search(db, SHOP, "metal farm sign")
     assert not res.season["too_rare"] and res.season["pending"]
+
+
+def test_assistant_keyword_detail_gives_the_monthly_series_and_season(db, provider):
+    from app.assistant import tools as assistant_tools
+
+    ctx = NS(db=db, shop=SHOP, user_id=7)
+    assert tools.keyword_detail(ctx, {"term": ""})["error"]
+    assert tools.keyword_detail(ctx, {"term": "never researched phrase"})["durum"] == "olculmemis", "ölçülmemiş kelime önce araştırılmalı"
+
+    tools.research_keywords(ctx, {"seed": "metal farm sign"})
+    worker.run_once(db)
+    first = tools.keyword_detail(ctx, {"term": "metal farm sign"})
+    series = first["aylik_arama_son_12_ay"]
+    assert list(series)[0] == "Kas 2025" and list(series)[-1] == "Eki 2026" and len(series) == 12, "ay adları son aydan geriye sayılır"
+    assert first["google_aylik_arama"] and "Etsy arama hacmi değil" in first["not"]
+
+    worker.run_once(db)
+    done = tools.keyword_detail(ctx, {"term": "Metal  Farm Sign"})
+    assert done["mevsimsellik"]["zirve_aylar"] == ["Eki", "Kas"] and done["mevsimsellik"]["mevsimsel"] is True
+
+    # aynı biçimlendirme research_keywords'te de kullanılır (ikinci uygulama yok)
+    assert tools.research_keywords(ctx, {"seed": "metal farm sign"})["mevsimsellik"]["zirve_aylar"] == ["Eki", "Kas"]
+
+
+def test_assistant_research_can_refresh_like_the_screen(db, provider):
+    ctx = NS(db=db, shop=SHOP, user_id=7)
+    tools.research_keywords(ctx, {"seed": "metal farm sign"})
+    worker.run_once(db)
+    before = provider.count("suggest")
+    tools.research_keywords(ctx, {"seed": "metal farm sign"})
+    worker.run_once(db)
+    assert provider.count("suggest") == before, "refresh olmadan havuzdan okunur, sağlayıcıya gidilmez"
+    tools.research_keywords(ctx, {"seed": "metal farm sign", "refresh": True})
+    worker.run_once(db)
+    assert provider.count("suggest") == before + 1, "refresh=true yeniden araştırır (ekrandaki 'Yeniden araştır' ile aynı)"
+
+
+def test_keyword_detail_is_registered_everywhere_the_assistant_needs_it():
+    from app.assistant import tools as t
+
+    assert "keyword_detail" in {x["name"] for x in t.TOOLS} and "keyword_detail" in t.EXECUTORS
+    assert "keyword_detail" in t.LISTING_TOOL_NAMES and "keyword_detail" in t.TOOL_GROUPS["discover"]
+    assert "keyword_detail" in t.TOOL_LABELS and "keyword_detail" in t.TOOL_LABELS_EN

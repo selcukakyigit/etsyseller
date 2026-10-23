@@ -2,6 +2,8 @@
 havuzda olmayan ya da eskimiş aramalar kuyruğa girer, sonuç genellikle bir iki dakikada hazır olur. Kullanıcıya ham arama sayısı gösterilmez, yalnızca bant."""
 from app.research import discover, etsy_top
 
+_MONTHS = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"]
+
 _DEMAND = {"low": "düşük", "medium": "orta", "high": "yüksek", None: "henüz ölçülmedi"}
 _INTENT = {"informational": "bilgi arıyor", "commercial": "karşılaştırıyor", "transactional": "satın almaya yakın", "navigational": "belirli bir yer arıyor", None: None}
 _REFUSED = {
@@ -35,11 +37,24 @@ def _item(i: discover.Item) -> dict:
     return out
 
 
+def _season_out(season: dict | None) -> dict | None:
+    """Mevsimsellik profilini model için biçimlendirir (hazır / aylık arama çok az); hazırlanıyorsa ya da yoksa None."""
+    if season and season["monthly"]:
+        return {
+            "mevsimsel": season["seasonal"], "zirve_aylar": [_MONTHS[m - 1] for m in season["peak_months"]],
+            "aylik_ilgi_0_100": dict(zip(_MONTHS, season["monthly"])),
+            "not": "Google Trends'ten 5 yıllık takvim ayı profili (zirve = 100); satış zirvesinden 1-2 ay ÖNCE listing hazır olmalı. Hacim değil, yıllık şekildir.",
+        }
+    if season and season.get("too_rare"):
+        return {"not": f"Aylık arama {season['min_volume']}'in altında olduğu için mevsimsellik hesaplanmadı (Google Trends bu kadar az aramada güvenilir desen vermez); mevsimsellik hakkında tahmin yürütme."}
+    return None
+
+
 def research_keywords(ctx, a: dict) -> dict:
     seed = " ".join(str(a.get("seed", "")).split())
     if not seed:
         return {"error": "Araştırılacak kelime gerekli (İngilizce, ör. 'metal farm sign')."}
-    r = discover.search(ctx.db, ctx.shop, seed, "questions" if a.get("questions") else "all")
+    r = discover.search(ctx.db, ctx.shop, seed, "questions" if a.get("questions") else "all", bool(a.get("refresh")))
     if r.status == "invalid":
         return {"error": "Kelime çok uzun ya da boş (en fazla 10 kelime / 80 karakter)."}
     if r.status == "pending":
@@ -59,16 +74,7 @@ def research_keywords(ctx, a: dict) -> dict:
             for item in items:
                 if counts.get(item["kelime"]) is not None:
                     item["etsy_ilan_sayisi"] = counts[item["kelime"]]
-    season = None
-    if r.season and r.season["monthly"]:
-        names = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"]
-        season = {
-            "mevsimsel": r.season["seasonal"], "zirve_aylar": [names[m - 1] for m in r.season["peak_months"]],
-            "aylik_ilgi_0_100": dict(zip(names, r.season["monthly"])),
-            "not": "Google Trends'ten 5 yıllık takvim ayı profili (zirve = 100); satış zirvesinden 1-2 ay ÖNCE listing hazır olmalı. Hacim değil, yıllık şekildir.",
-        }
-    elif r.season and r.season.get("too_rare"):
-        season = {"not": f"Aylık arama {r.season['min_volume']}'in altında olduğu için mevsimsellik hesaplanmadı (Google Trends bu kadar az aramada güvenilir desen vermez); mevsimsellik hakkında tahmin yürütme."}
+    season = _season_out(r.season)
     return {
         "arama": r.seed, "durum": "hazir", **({"mevsimsellik": season} if season else {}), "tohum": _item(r.seed_item) if r.seed_item else None, "oneriler": items,
         "toplam_oneri": len(r.items), "toplam_aylik_arama": r.total_volume, **({"etsy_not": etsy_note} if a.get("etsy_competition") and etsy_note else {}),
@@ -76,6 +82,38 @@ def research_keywords(ctx, a: dict) -> dict:
                 "etsy_ilan_sayisi (varsa) = Etsy'de o aramada kaç aktif ilan var: gerçek Etsy rekabeti; arama ÷ ilan oranı yüksekse fırsattır. "
                 "kalabalik = son günlerde birçok mağazaya önerildi, ana ifade yapma. listingde_var = mağazada zaten etiket. Kullanıcı isterse save_keywords ile koleksiyona kaydet."),
     }
+
+
+def _month_labels(last_month: str | None, count: int) -> list[str]:
+    """Serinin son ayından ("YYYY-AA") geriye ardışık ay adları ("Eki 2025"); son ay bilinmiyorsa sıra numarası."""
+    try:
+        year, month = (int(x) for x in (last_month or "").split("-"))
+    except ValueError:
+        return [str(i + 1) for i in range(count)]
+    end = year * 12 + month - 1
+    return [f"{_MONTHS[(end - (count - 1 - i)) % 12]} {(end - (count - 1 - i)) // 12}" for i in range(count)]
+
+
+def keyword_detail(ctx, a: dict) -> dict:
+    term = " ".join(str(a.get("term", "")).split())
+    if not term:
+        return {"error": "Kelime gerekli (İngilizce)."}
+    found = discover.detail(ctx.db, ctx.shop, term)
+    if found is None:
+        return {"kelime": term, "durum": "olculmemis", "not": "Bu kelime havuzda ölçülmemiş. Önce research_keywords ile araştır (kelime öneri listesinde çıkar ya da tohum olarak ara), sonra tekrar çağır."}
+    item, season = found
+    out = {**_item(item), "kelime": item.term}
+    if item.monthly:
+        out["aylik_arama_son_12_ay"] = dict(zip(_month_labels(item.last_month, len(item.monthly)), item.monthly))
+    formatted = _season_out(season)
+    if formatted:
+        out["mevsimsellik"] = formatted
+    elif season and season["pending"]:
+        out["mevsimsellik"] = {"durum": "hazirlaniyor", "not": "Mevsimsellik ilk kez isteniyor (1-2 dakika); kullanıcıya söyle, biraz sonra aynı kelimeyle tekrar çağır."}
+    else:
+        out["mevsimsellik"] = {"not": "Mevsimsellik bu kelime için çıkarılamadı (Google Trends yeterli veri vermiyor); tahmin yürütme."}
+    out["not"] = "Google verisidir (Etsy arama hacmi değil). aylik_arama_son_12_ay: ay ay Google aramaları; mevsimsellik ise 5 yıllık takvim ayı profilidir."
+    return out
 
 
 def saved_keywords(ctx, a: dict) -> dict:
@@ -139,10 +177,20 @@ TOOLS: list[dict] = [
             "properties": {
                 "seed": {"type": "string", "description": "Araştırılacak kelime/ifade (İngilizce, en fazla 10 kelime)"},
                 "questions": {"type": "boolean", "description": "true ise yalnızca soru kalıpları (how/what/why…): müşteri soruları, SSS ve açıklama fikirleri için"},
+                "refresh": {"type": "boolean", "description": "true ise havuzdaki sonucu beklemeden yeniden araştırır (ekrandaki 'Yeniden araştır'); yalnızca kullanıcı güncel veri isterse. Günlük yeni araştırma hakkından düşer"},
                 "etsy_competition": {"type": "boolean", "description": "true ise en çok aranan ilk 15 kelime için Etsy'deki aktif ilan sayısını da ölçer (gerçek Etsy rekabeti; yalnızca kullanıcı rekabeti/fırsatı sorarsa)"},
             },
             "required": ["seed"],
         },
+    },
+    {
+        "name": "keyword_detail",
+        "description": (
+            "Tek bir kelimenin ayrıntısı (Keşfet'te kelimeye tıklayınca açılan pencere): son 12 ayın ay ay Google araması, mevsimsellik (hangi aylar zirve), CPC, reklam rekabeti, niyet. "
+            "'Bu kelime hangi ay zirve yapıyor', 'mevsimsel mi', 'son aylarda arama nasıl' soruları için. Kelime daha önce research_keywords ile havuza girmiş olmalı; yoksa 'olculmemis' döner. "
+            "Kredi harcamaz; mevsimsellik ilk kez isteniyorsa 1-2 dakikada hazır olur. Aylık araması çok düşük kelimede mevsimsellik hesaplanmaz."
+        ),
+        "input_schema": {"type": "object", "properties": {"term": {"type": "string", "description": "Kelime/ifade (İngilizce)"}}, "required": ["term"]},
     },
     {
         "name": "saved_keywords",
@@ -163,6 +211,6 @@ TOOLS: list[dict] = [
         },
     },
 ]
-EXECUTORS = {"research_keywords": research_keywords, "saved_keywords": saved_keywords, "save_keywords": save_keywords, "etsy_top_results": etsy_top_results}
-LABELS = {"etsy_top_results": "Etsy'deki rakiplere bakıyor", "research_keywords": "Kelimeleri araştırıyor", "saved_keywords": "Kayıtlı kelimelere bakıyor", "save_keywords": "Kelimeleri kaydediyor"}
-LABELS_EN = {"etsy_top_results": "Looking at Etsy competitors", "research_keywords": "Researching keywords", "saved_keywords": "Looking at saved keywords", "save_keywords": "Saving keywords"}
+EXECUTORS = {"keyword_detail": keyword_detail, "research_keywords": research_keywords, "saved_keywords": saved_keywords, "save_keywords": save_keywords, "etsy_top_results": etsy_top_results}
+LABELS = {"keyword_detail": "Kelimenin ayrıntısına bakıyor", "etsy_top_results": "Etsy'deki rakiplere bakıyor", "research_keywords": "Kelimeleri araştırıyor", "saved_keywords": "Kayıtlı kelimelere bakıyor", "save_keywords": "Kelimeleri kaydediyor"}
+LABELS_EN = {"keyword_detail": "Looking at the keyword details", "etsy_top_results": "Looking at Etsy competitors", "research_keywords": "Researching keywords", "saved_keywords": "Looking at saved keywords", "save_keywords": "Saving keywords"}
