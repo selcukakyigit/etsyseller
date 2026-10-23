@@ -4,7 +4,7 @@ import { ReactNode, useEffect, useRef, useState } from "react";
 import { useT } from "@/lib/i18n-client";
 
 /** Başlık ya da alanın yanında "?" simgesi: uzun açıklamayı ekranda sürekli göstermek yerine tıklayınca (mobilde de çalışır) küçük bir kutuda açar. */
-export default function HelpTip({ children, className = "" }: { children: ReactNode; className?: string }) {
+export default function HelpTip({ children, className = "", align = "left" }: { children: ReactNode; className?: string; /** "right": kutu simgenin solına açılır (sağ kenara yakın yerlerde kırpılmasın). */ align?: "left" | "right" }) {
   const { t } = useT();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
@@ -44,7 +44,7 @@ export default function HelpTip({ children, className = "" }: { children: ReactN
       {open && (
         <span
           role="tooltip"
-          className="absolute left-0 top-full z-30 mt-1.5 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-neutral-200 bg-white p-3 text-left text-xs font-normal normal-case leading-relaxed text-neutral-700 shadow-xl dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+          className={`absolute ${align === "right" ? "right-0" : "left-0"} top-full z-30 mt-1.5 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-neutral-200 bg-white p-3 text-left text-xs font-normal normal-case leading-relaxed text-neutral-700 shadow-xl dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200`}
         >
           {children}
         </span>
