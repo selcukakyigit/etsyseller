@@ -140,7 +140,7 @@ def search(db: Session, shop: Shop, seed: str, mode: str = "all", refresh: bool 
     # Soru listesinde yalnızca gerçek sorular gösterilir (sağlayıcı süzgecinin eski, yanlış kayıtlarına karşı da korur).
     terms = [t for t in found.metrics if not questions or is_question(t)][:MAX_RESULTS]
     own = service.peek(db, [term])
-    if not terms:
+    if not terms and (questions or not own.get(term)):  # (soru sekmesi hariç) kelimenin kendi ölçümü havuzdaysa kartı gösterilir (öneri listesi hazır olmasa ya da hak dolsa da)
         status = "pending" if found.pending else "refused" if found.refused else "empty"
         return SearchResult(seed=term, status=status, refused=found.refused, mode=mode)
     crowd = exposure.counts(db, terms + [term])

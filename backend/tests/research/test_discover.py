@@ -110,6 +110,15 @@ def test_daily_new_search_allowance(db, provider):
     assert discover.search(db, SHOP_B, "metal farm sign").status == "ready", "havuzda hazır arama kotaya takılmaz"
 
 
+def test_term_known_only_as_a_suggestion_shows_its_own_card_when_the_allowance_is_used(db, provider):
+    _research(db, SHOP_A)  # "metal farm sign big" havuzda ölçümlü bir öneri satırı; kendisi hiç tohum olarak araştırılmadı
+    app_settings.set_many(db, {"research_shop_daily_searches": 0})
+    result = discover.search(db, SHOP_B, "metal farm sign big")
+    assert result.status == "ready" and result.refused == "shop_searches"
+    assert result.seed_item.volume == 5000 and result.items == [], "kendi ölçümü gösterilir, öneri listesi hazır değil"
+    assert discover.search(db, SHOP_B, "never researched sign").status == "refused", "havuzda hiç yoksa eskisi gibi reddedilir"
+
+
 def test_assistant_tools_use_the_same_functions_and_hide_raw_numbers(db, provider):
     ctx = NS(db=db, shop=SHOP_A, user_id=7)
     assert tools.research_keywords(ctx, {"seed": ""})["error"]
