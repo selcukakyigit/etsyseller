@@ -5,6 +5,7 @@ Etsy kuralları burada korunur: fiyat aynı anda yalnızca TEK bir varyasyona g�
 göre değiştiği `*_on_property` listelerinde belirtilmelidir. Her değişiklikten sonra bu listeler verilerden yeniden hesaplanır."""
 import copy
 import re
+import secrets
 
 from app.listings import dimensions
 
@@ -117,7 +118,7 @@ def recompute_dependencies(work: dict) -> str | None:
 
 
 def apply_inventory(
-    work: dict, *, where: dict[str, str] | None = None, quantity=None, price=None, sku=None, enabled=None, auto_sku=None,
+    work: dict, *, where: dict[str, str] | None = None, quantity=None, price=None, sku=None, enabled=None, auto_sku=None, random_sku=None,
 ) -> tuple[list[str], list[str], int]:
     """Seçilen kombinasyonlara (where boşsa hepsine; varyasyonsuz listing'de tek ürüne) stok, fiyat, SKU ve açık/kapalı yazar.
     Döner: (değişen alanlar, hatalar, etkilenen kombinasyon sayısı)."""
@@ -175,6 +176,11 @@ def apply_inventory(
             for p in chosen:
                 p["sku"] = generated[id(p)]
             changed.append("sku")
+    if random_sku is not None:
+        generated = random_skus(chosen, str(random_sku), {p.get("sku") for p in products if p not in chosen and p.get("sku")})
+        for p, value in zip(chosen, generated):
+            p["sku"] = value
+        changed.append("sku")
     if enabled is not None:
         flag = bool(enabled)
         remaining = sum(1 for p in products if p not in chosen for o in _offerings(p) if o.get("is_enabled", True))
@@ -190,6 +196,32 @@ def apply_inventory(
         if rule:
             errors.append(rule)
     return changed, errors, len(chosen)
+
+
+def random_skus(chosen: list[dict], prefix: str = "", taken: set[str] | None = None) -> list[str]:
+    """Her kombinasyona benzersiz, rastgele ama okunur SKU: önek + 4 rastgele harf/rakam + seçeneğin ilk 3 harfi (ör. BM-7A4K-BLK). Modelin kafadan
+    "rastgele" yazması tekrar eder ve sahte kalır; rastgelelik burada sunucuda üretilir. Etsy SKU sınırı 32 karakter."""
+    taken = set(taken or ())
+    prefix = re.sub(r"[^A-Z0-9-]+", "", prefix.upper()).strip("-")
+    out: list[str] = []
+    for p in chosen:
+        tail = "".join(re.sub(r"[^A-Z0-9]+", "", (pv.get("values") or [""])[0].upper())[:3] for pv in p.get("property_values", []))
+        while True:
+            value = "-".join(x for x in (prefix, secrets.token_hex(2).upper(), tail) if x)[:32]
+            if value not in taken:
+                taken.add(value)
+                out.append(value)
+                break
+    return out
+
+
+def sku_summary(work: dict) -> list[dict]:
+    """Her kombinasyonun GERÇEK durumu (seçenekler, SKU, stok): araç sonucu bunu döner ki model yazdığı değeri değil gerçeği raporlasın."""
+    return [
+        {"secenekler": ", ".join(f"{pv['property_name']}: {', '.join(pv.get('values') or [])}" for pv in p.get("property_values", [])) or "-",
+         "sku": p.get("sku") or "", "stok": sum(o.get("quantity") or 0 for o in _offerings(p))}
+        for p in _products(work)
+    ]
 
 
 def auto_sku_for(product: dict, prefix: str = "") -> str:

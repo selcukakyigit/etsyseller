@@ -38,10 +38,12 @@ def overview(db: Session = Depends(get_db)):
 @router.get("/keywords", response_model=admin.KeywordsPageOut)
 def keywords(
     q: str = "", state: str = Query("", pattern="^(|fresh|stale|missing)$"), market: str | None = None, language: str | None = None,
+    sort: str = Query("new", pattern="^(new|volume|cpc|difficulty|measured)$"), source: str = Query("", max_length=30), etsy: bool = False,
     page: int = Query(1, ge=1), db: Session = Depends(get_db),
 ):
     return admin.keywords(
         db, q=q, state=state, market=market or policy.get("research_default_market"), language=language or policy.get("research_default_language"), page=page,
+        sort=sort, source=source, etsy=etsy,
     )
 
 
@@ -93,9 +95,9 @@ def calls(db: Session = Depends(get_db)):
     return admin.recent_calls(db)
 
 
-@router.get("/cost")
+@router.get("/cost", response_model=admin.CostOut)
 def cost(db: Session = Depends(get_db)):
-    return admin.daily_cost(db)
+    return admin.cost_report(db)
 
 
 @router.get("/settings")

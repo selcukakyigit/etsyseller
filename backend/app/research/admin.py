@@ -1,6 +1,9 @@
 """Yönetim ekranları için havuz sorguları (yalnızca okuma + küçük işlemler). Ham sayısal tablolar yalnızca burada, yalnızca yöneticiye gider."""
+import calendar
 import datetime as dt
 import json
+import statistics
+from collections import Counter
 
 from pydantic import BaseModel
 from sqlalchemy import case, func, select
@@ -8,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core import app_settings
 from app.core.dates import iso
+from app.insights.models import EtsyKeywordData
 from app.research import budget, credentials, exposure, outcomes, policy, pool
 from app.research.models import KeywordLink, KeywordMetric, KeywordTerm, ProviderCall, ResearchJob
 from app.research.providers import DEFAULT_PROVIDER
@@ -44,6 +48,7 @@ class KeywordRowOut(BaseModel):
     intent: str | None
     measured_at: str | None
     state: str  # fresh | stale | missing
+    etsy_shops: int = 0  # kaç mağaza bu kelimeyi Marketplace Insights'tan yapıştırmış (yalnızca sayı)
 
 
 class KeywordsPageOut(BaseModel):
@@ -85,8 +90,23 @@ class SignalsOut(BaseModel):
     low_data: int
 
 
+class EtsyInsightsOut(BaseModel):
+    """Mağazaların Marketplace Insights'tan yapıştırdığı verinin özeti (mağaza başına en yeni yapıştırma). Yalnızca toplu sayılar, mağaza kimliği yok;
+    kullanıcı kaynaklı olduğu için havuzdaki Google ölçümünden ayrı gösterilir ve ona karıştırılmaz."""
+
+    shops: int
+    searches_min: int | None
+    searches_median: int | None
+    searches_max: int | None
+    results_median: int | None
+    trend_median: int | None
+    conversion: str | None  # en sık görülen dönüşüm bandı
+    latest_on: str | None
+
+
 class KeywordDetailOut(BaseModel):
     keyword: KeywordRowOut
+    etsy: EtsyInsightsOut | None
     signals: SignalsOut
     history: list[MetricOut]
     related: list[RelatedOut]
@@ -114,6 +134,28 @@ class JobsPageOut(BaseModel):
     total: int
     page: int
     per_page: int
+
+
+class CostDayOut(BaseModel):
+    day: str
+    cost_usd: float
+    calls: int
+    errors: int
+
+
+class CostEndpointOut(BaseModel):
+    endpoint: str
+    cost_usd: float
+    calls: int
+    errors: int
+
+
+class CostOut(BaseModel):
+    days: list[CostDayOut]  # eksik günler 0 ile doldurulur (grafik kesintisiz)
+    by_endpoint: list[CostEndpointOut]
+    month_spend: float
+    month_budget: float
+    projected_month: float  # bu ayın şu ana kadarki gidişine göre ay sonu tahmini
 
 
 class CallOut(BaseModel):
@@ -147,16 +189,36 @@ def overview(db: Session) -> OverviewOut:
     )
 
 
-def _row(kw: KeywordTerm, m: KeywordMetric | None, now: dt.datetime) -> KeywordRowOut:
+def _row(kw: KeywordTerm, m: KeywordMetric | None, now: dt.datetime, etsy_shops: int = 0) -> KeywordRowOut:
     state = "missing" if m is None else "fresh" if m.expires_at > now else "stale"
     return KeywordRowOut(
         id=kw.id, term=kw.term, language=kw.language, first_source=kw.first_source, created_at=iso(kw.created_at), last_used_at=iso(kw.last_used_at) if kw.last_used_at else None,
         market=m.market if m else None, search_volume=m.search_volume if m else None, cpc=m.cpc if m else None, competition=m.competition if m else None,
         difficulty=m.difficulty if m else None, intent=m.intent if m else None, measured_at=iso(m.measured_at) if m else None, state=state,
+        etsy_shops=etsy_shops,
     )
 
 
-def keywords(db: Session, *, q: str, state: str, market: str, language: str, page: int) -> KeywordsPageOut:
+SORTS = {
+    "new": lambda: (KeywordTerm.id.desc(),),
+    "volume": lambda: (KeywordMetric.search_volume.desc().nulls_last(), KeywordTerm.id.desc()),
+    "cpc": lambda: (KeywordMetric.cpc.desc().nulls_last(), KeywordTerm.id.desc()),
+    "difficulty": lambda: (KeywordMetric.difficulty.desc().nulls_last(), KeywordTerm.id.desc()),
+    "measured": lambda: (KeywordMetric.measured_at.desc().nulls_last(), KeywordTerm.id.desc()),
+}
+
+
+def _etsy_shop_counts(db: Session, terms: list[str]) -> dict[str, int]:
+    rows = db.execute(
+        select(EtsyKeywordData.keyword, func.count(func.distinct(EtsyKeywordData.shop_id)))
+        .where(EtsyKeywordData.source == "marketplace_insights", EtsyKeywordData.keyword.in_(terms)).group_by(EtsyKeywordData.keyword)
+    ).all()
+    return {k: int(n) for k, n in rows}
+
+
+def keywords(
+    db: Session, *, q: str, state: str, market: str, language: str, page: int, sort: str = "new", source: str = "", etsy: bool = False,
+) -> KeywordsPageOut:
     now = dt.datetime.utcnow()
     newest = (
         select(KeywordMetric.keyword_id, func.max(KeywordMetric.measured_at).label("m"))
@@ -171,6 +233,10 @@ def keywords(db: Session, *, q: str, state: str, market: str, language: str, pag
     )
     if q.strip():
         base = base.where(KeywordTerm.term.like(f"%{q.strip().lower()}%"))
+    if source:
+        base = base.where(KeywordTerm.first_source == source)
+    if etsy:
+        base = base.where(KeywordTerm.term.in_(select(EtsyKeywordData.keyword).where(EtsyKeywordData.source == "marketplace_insights")))
     if state == "missing":
         base = base.where(KeywordMetric.id.is_(None))
     elif state == "fresh":
@@ -178,8 +244,38 @@ def keywords(db: Session, *, q: str, state: str, market: str, language: str, pag
     elif state == "stale":
         base = base.where(KeywordMetric.expires_at <= now)
     total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
-    rows = db.execute(base.order_by(KeywordTerm.id.desc()).limit(PER_PAGE).offset((page - 1) * PER_PAGE)).all()
-    return KeywordsPageOut(items=[_row(k, m, now) for k, m in rows], total=total, page=page, per_page=PER_PAGE)
+    order = SORTS.get(sort, SORTS["new"])()
+    rows = db.execute(base.order_by(*order).limit(PER_PAGE).offset((page - 1) * PER_PAGE)).all()
+    shops = _etsy_shop_counts(db, [k.term for k, _ in rows])
+    return KeywordsPageOut(items=[_row(k, m, now, shops.get(k.term, 0)) for k, m in rows], total=total, page=page, per_page=PER_PAGE)
+
+
+def etsy_insights(db: Session, term: str) -> EtsyInsightsOut | None:
+    """Mağaza başına en yeni Marketplace Insights yapıştırması; hiç yoksa None."""
+    rows = db.scalars(
+        select(EtsyKeywordData).where(EtsyKeywordData.source == "marketplace_insights", EtsyKeywordData.keyword == term)
+        .order_by(EtsyKeywordData.captured_on.desc(), EtsyKeywordData.id.desc())
+    ).all()
+    latest: dict[int, EtsyKeywordData] = {}
+    for r in rows:
+        latest.setdefault(r.shop_id, r)
+    if not latest:
+        return None
+    picked = list(latest.values())
+
+    def values(field: str) -> list[int]:
+        return [v for v in (getattr(r, field) for r in picked) if v is not None]
+
+    def median(vs: list[int]) -> int | None:
+        return int(statistics.median_low(vs)) if vs else None
+
+    searches = values("searches")
+    bands = Counter(r.conversion for r in picked if r.conversion)
+    return EtsyInsightsOut(
+        shops=len(picked), searches_min=min(searches) if searches else None, searches_median=median(searches), searches_max=max(searches) if searches else None,
+        results_median=median(values("listings_count")), trend_median=median(values("trend_pct")),
+        conversion=bands.most_common(1)[0][0] if bands else None, latest_on=picked[0].captured_on.isoformat(),
+    )
 
 
 def keyword_detail(db: Session, keyword_id: int, market: str) -> KeywordDetailOut | None:
@@ -203,7 +299,7 @@ def keyword_detail(db: Session, keyword_id: int, market: str) -> KeywordDetailOu
         better=oc.better if oc else 0, worse=oc.worse if oc else 0, same=oc.same if oc else 0, unclear=oc.unclear if oc else 0, low_data=oc.low_data if oc else 0,
     )
     return KeywordDetailOut(
-        keyword=_row(kw, current, now), signals=signals,
+        keyword=_row(kw, current, now, _etsy_shop_counts(db, [kw.term]).get(kw.term, 0)), etsy=etsy_insights(db, kw.term), signals=signals,
         history=[MetricOut(
             source=m.source, market=m.market, search_volume=m.search_volume, cpc=m.cpc, competition=m.competition, difficulty=m.difficulty, intent=m.intent,
             monthly=json.loads(m.monthly_json) if m.monthly_json else None, measured_at=iso(m.measured_at), expires_at=iso(m.expires_at),
@@ -241,14 +337,36 @@ def recent_calls(db: Session) -> list[CallOut]:
     ) for c in rows]
 
 
-def daily_cost(db: Session, days: int = 30) -> list[dict]:
-    since = dt.datetime.utcnow() - dt.timedelta(days=days)
+def cost_report(db: Session, days: int = 30) -> CostOut:
+    """Son `days` günün günlük ve uç nokta bazlı maliyeti + bu ayın gidişine göre ay sonu tahmini."""
+    now = dt.datetime.utcnow()
+    since = (now - dt.timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
     day = func.date(ProviderCall.created_at)
-    rows = db.execute(
-        select(day, func.sum(ProviderCall.cost_usd), func.count(), func.sum(case((ProviderCall.ok.is_(False), 1), else_=0)))
-        .where(ProviderCall.created_at >= since).group_by(day).order_by(day)
-    ).all()
-    return [{"day": str(d), "cost_usd": round(float(c or 0), 4), "calls": int(n), "errors": int(e or 0)} for d, c, n, e in rows]
+    failed = func.sum(case((ProviderCall.ok.is_(False), 1), else_=0))
+    per_day = {
+        str(d): CostDayOut(day=str(d), cost_usd=round(float(c or 0), 4), calls=int(n), errors=int(e or 0))
+        for d, c, n, e in db.execute(
+            select(day, func.sum(ProviderCall.cost_usd), func.count(), failed).where(ProviderCall.created_at >= since).group_by(day)
+        ).all()
+    }
+    series = []
+    for i in range(days):
+        d = (since + dt.timedelta(days=i)).date().isoformat()
+        series.append(per_day.get(d) or CostDayOut(day=d, cost_usd=0, calls=0, errors=0))
+    by_endpoint = [
+        CostEndpointOut(endpoint=ep, cost_usd=round(float(c or 0), 4), calls=int(n), errors=int(e or 0))
+        for ep, c, n, e in db.execute(
+            select(ProviderCall.endpoint, func.sum(ProviderCall.cost_usd), func.count(), failed)
+            .where(ProviderCall.created_at >= since).group_by(ProviderCall.endpoint).order_by(func.sum(ProviderCall.cost_usd).desc())
+        ).all()
+    ]
+    spend = budget.month_spend(db)
+    elapsed = max(1.0, (now - budget.month_start(now)).total_seconds() / 86400)
+    projected = spend / elapsed * calendar.monthrange(now.year, now.month)[1]
+    return CostOut(
+        days=series, by_endpoint=by_endpoint, month_spend=round(spend, 4), month_budget=float(policy.get("research_monthly_budget_usd")),
+        projected_month=round(max(projected, spend), 4),
+    )
 
 
 def settings_validate(values: dict) -> dict:

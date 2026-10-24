@@ -1,16 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { Badge, Section, StatCard, UsageBar, useFormat } from "@/components/admin/ui";
-import HelpTip from "@/components/ui/HelpTip";
+import { Badge, Section, StatCard, useFormat } from "@/components/admin/ui";
 import { BlockSpinner } from "@/components/ui/Spinner";
 import { useT } from "@/lib/i18n-client";
 import { researchAdmin } from "@/lib/researchApi";
 import { useApiData } from "@/lib/useApiData";
-import { fmtMoney } from "./shared";
+import CostPanel from "./CostPanel";
 
 export default function OverviewSection() {
-  const { t, locale } = useT();
+  const { t } = useT();
   const f = useFormat();
   const { data, error } = useApiData("admin:research:overview", researchAdmin.overview);
 
@@ -43,17 +42,7 @@ export default function OverviewSection() {
         <StatCard label={t("Ölçüm kaydı", "Metric rows")} value={f.num(data.metrics)} />
       </div>
 
-      <Section
-        title={t("Aylık maliyet", "Monthly cost")}
-        action={<HelpTip align="right">{t("Bütçe dolunca yeni sağlayıcı isteği yapılmaz; havuzdaki eski veri 'güncel değil' etiketiyle sunulur. Tavan Veri işlemleri'nden değişir.", "When the budget is reached no new provider requests are made; old pool data is shown as stale. Change the cap under Data operations.")}</HelpTip>}
-      >
-        <div className="space-y-2">
-          <p className="text-sm tabular-nums text-neutral-900 dark:text-neutral-100">
-            {fmtMoney(data.spend_month, locale)} / {fmtMoney(data.budget_month, locale)}
-          </p>
-          <UsageBar used={data.spend_month} limit={data.budget_month || 1} />
-        </div>
-      </Section>
+      <CostPanel />
 
       <Section title={t("İş kuyruğu", "Job queue")}>
         <div className="flex flex-wrap gap-2">

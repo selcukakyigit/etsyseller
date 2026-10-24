@@ -7,6 +7,7 @@ import { useT } from "@/lib/i18n-client";
 import { BlockSpinner, Spinner } from "@/components/ui/Spinner";
 import { toast } from "@/lib/toast";
 import { Pager } from "@/components/ui/Pager";
+import HelpTip from "@/components/ui/HelpTip";
 
 type Loaded = { rows: EtsyDataSaved[]; to_check: { keyword: string; listing_id: number; listing_title: string }[] };
 
@@ -26,12 +27,19 @@ export default function EtsyDataTab({ shopId, listingId }: { shopId: number; lis
   const [parsed, setParsed] = useState<(EtsyDataParsed & { selected: boolean[] }) | null>(null);
   const [busy, setBusy] = useState<"" | "parse" | "save">("");
   const [pages, setPages] = useState<Partial<Record<EtsyDataSource, number>>>({});
+  const [filter, setFilter] = useState<"all" | EtsyDataSource>("all");
+  const [query, setQuery] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
 
   const sourceLabel: Record<EtsyDataSource, string> = {
     marketplace_insights: t("Marketplace Insights (arama, sonuç, dönüşüm)", "Marketplace Insights (searches, results, conversion)"),
     search_terms: t("Arama terimleri (listing'i getiren aramalar)", "Search terms (searches that brought visits)"),
     ads: t("Etsy Ads arama terimleri", "Etsy Ads search queries"),
+  };
+  const sourceShort: Record<EtsyDataSource, string> = {
+    marketplace_insights: "Marketplace Insights",
+    search_terms: t("Listing aramaları", "Listing searches"),
+    ads: "Etsy Ads",
   };
   const compLabel = { low: t("düşük", "low"), medium: t("orta", "medium"), high: t("yüksek", "high") };
   const convLabel = {
@@ -134,7 +142,20 @@ export default function EtsyDataTab({ shopId, listingId }: { shopId: number; lis
   if (error && !data) return <p className="text-sm text-red-600 dark:text-red-400">{error}</p>;
   if (!data) return <BlockSpinner />;
 
-  const groups = (Object.keys(sourceLabel) as EtsyDataSource[]).map((s) => [s, data.rows.filter((r) => r.source === s)] as const).filter(([, rows]) => rows.length);
+  const needle = query.trim().toLowerCase();
+  const matching = needle ? data.rows.filter((r) => r.keyword.includes(needle)) : data.rows;
+  const sources = (Object.keys(sourceLabel) as EtsyDataSource[]).filter((s) => data.rows.some((r) => r.source === s));
+  const active = sources.includes(filter as EtsyDataSource) ? filter : "all"; // süzülen tür silinip bittiyse Tümü'ne dön
+  const groups = sources
+    .filter((s) => active === "all" || active === s)
+    .map((s) => [s, matching.filter((r) => r.source === s)] as const)
+    .filter(([, rows]) => rows.length);
+  const chip = (active: boolean) =>
+    `rounded-full border px-2.5 py-0.5 text-xs ${
+      active
+        ? "border-[#D97757] bg-[#D97757]/10 font-semibold text-[#B4553A] dark:text-[#E89A7F]"
+        : "border-neutral-200 text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+    }`;
 
   return (
     <div className="space-y-4">
@@ -296,8 +317,29 @@ export default function EtsyDataTab({ shopId, listingId }: { shopId: number; lis
         </div>
       )}
 
+      {data.rows.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button type="button" onClick={() => { setFilter("all"); setPages({}); }} className={chip(active === "all")}>
+            {t("Tümü", "All")} · {num(matching.length)}
+          </button>
+          {sources.map((s) => (
+            <button key={s} type="button" onClick={() => { setFilter(s); setPages({}); }} className={chip(active === s)}>
+              {sourceShort[s]} · {num(matching.filter((r) => r.source === s).length)}
+            </button>
+          ))}
+          <input
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); setPages({}); }}
+            placeholder={t("Kelime ara…", "Search keywords…")}
+            className="ml-auto w-40 rounded-lg border border-neutral-300 bg-white px-2.5 py-1 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+          />
+        </div>
+      )}
+
       {groups.length === 0 ? (
-        <p className="text-sm text-neutral-400 dark:text-neutral-500">{t("Bu listing için henüz Etsy verisi yok.", "No Etsy data for this listing yet.")}</p>
+        <p className="text-sm text-neutral-400 dark:text-neutral-500">
+          {data.rows.length ? t("Bu süzgeçte satır yok.", "No rows match this filter.") : t("Bu listing için henüz Etsy verisi yok.", "No Etsy data for this listing yet.")}
+        </p>
       ) : (
         groups.map(([source, all]) => {
           const pageCount = Math.ceil(all.length / PAGE_SIZE);
@@ -307,6 +349,22 @@ export default function EtsyDataTab({ shopId, listingId }: { shopId: number; lis
           <div key={source}>
             <p className="mb-1.5 text-xs font-medium text-neutral-400 dark:text-neutral-500">
               {sourceLabel[source]} · {num(all.length)}
+              {source === "marketplace_insights" && (
+                <HelpTip className="ml-1.5">
+                  {t(
+                    "Arama, sonuç ve dönüşüm Etsy'deki tüm alıcılar için o aramanın değeridir; senin listing'inin değil. Dönüşüm, aramayı yapanların ne kadarının satın aldığını gösterir. Bu veri Kelime Havuzu rozetlerini ve AI önerisini besler.",
+                    "Searches, results and conversion are for that search across all Etsy buyers, not for your listing. Conversion shows how many of the people who search it buy. This data feeds the Keyword pool badges and the AI suggestion.",
+                  )}
+                </HelpTip>
+              )}
+              {source === "ads" && (
+                <HelpTip className="ml-1.5">
+                  {t(
+                    "Görüntülenme, reklamının o aramada kaç kez gösterildiğidir; aramanın toplam hacmi değildir. Bütçen ve teklifin bu sayıyı etkiler. Rozetlere ve arama hacmine karışmaz.",
+                    "Views is how often your ad was shown for that search, not the search's total volume. Your budget and bid affect it. It does not mix into the badges or search volume.",
+                  )}
+                </HelpTip>
+              )}
             </p>
             <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
               <table className="w-full min-w-[520px] text-xs">

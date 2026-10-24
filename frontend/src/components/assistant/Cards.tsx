@@ -377,6 +377,35 @@ export default function Card({ card, shopId, onAsk, active = true }: { card: Cha
     return <InvoiceReviewCard shopId={shopId} source={card.source} currency={card.currency} candidates={card.candidates} />;
   }
 
+  if (card.type === "listing_draft" && card.changes && card.changes.length > 0) {
+    // Tek alan değişikliği: bütün listing özetini tekrar göstermek yerine yalnızca ne değiştiğini söyleyen sade kart (ilk oluşturmada tam kart gösterilir).
+    return (
+      <div className={`${box} border-emerald-300 dark:border-emerald-800`}>
+        <div className="flex items-center justify-between gap-3 p-3 text-xs">
+          <div className="min-w-0">
+            <div className="mb-0.5 inline-block rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+              {t("YEREL DEĞİŞİKLİK · Etsy'ye gönderilmedi", "LOCAL CHANGE · not sent to Etsy")}
+            </div>
+            <div className="truncate text-sm font-semibold">{card.title}</div>
+            <div className="mt-0.5 text-emerald-700 dark:text-emerald-400">
+              {t("Değişen:", "Changed:")} {card.changes.map((c) => changeLabel(c, t)).join(", ")}
+            </div>
+            {card.problems.length > 0 && <div className="mt-1 text-amber-600">{t("Yayın için eksik:", "Missing before publishing:")} {card.problems.join(" ")}</div>}
+          </div>
+          <div className="flex flex-shrink-0 gap-2">
+            <button type="button" onClick={() => setPreview(true)} className="rounded-lg border border-emerald-600 px-3 py-1.5 font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950">
+              {t("Önizle", "Preview")}
+            </button>
+            <Link href={card.edit_url} className="rounded-lg bg-[#D97757] px-3 py-1.5 font-semibold text-white hover:bg-[#C6613F]">
+              {t("Düzenle ve yayınla →", "Edit and publish →")}
+            </Link>
+          </div>
+        </div>
+        {preview && <ListingPreviewModal shopId={shopId} listingId={card.listing_id} onClose={() => setPreview(false)} />}
+      </div>
+    );
+  }
+
   if (card.type === "listing_draft") {
     return (
       <div className={`${box} border-emerald-300 dark:border-emerald-800`}>

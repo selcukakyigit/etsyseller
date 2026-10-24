@@ -16,6 +16,7 @@ class Facts:
     text: str  # bilinen her şey (başlık, açıklama, malzeme, varyasyon, özellik, kullanıcının söyledikleri), küçük harf
     personalizable: bool = False
     variations: dict[str, list[str]] = field(default_factory=dict)
+    said: str | None = None  # kullanıcının KENDİ sözleri (yeni listing'de); iddia kontrolü yalnızca bunlara bakar, modelin yazdığı metne değil
 
     @property
     def item_words(self) -> set[str]:
@@ -25,6 +26,11 @@ class Facts:
     @property
     def known_words(self) -> set[str]:
         return {w for w in words(self.text) if w not in STOP}
+
+    @property
+    def claim_text(self) -> str:
+        """İddia ("UV400", "polarized"…) doğrulaması için kaynak: yeni listing'de kullanıcının sözleri, var olan listing'de listing'in kendi metni."""
+        return (self.said if self.said is not None else self.text).lower()
 
     @property
     def colors(self) -> set[str]:
@@ -39,11 +45,11 @@ def lead_phrase(title: str) -> str:
 
 def from_listing(
     title: str, description: str = "", tags: list[str] | None = None, materials: list[str] | None = None,
-    variations: dict[str, list[str]] | None = None, personalizable: bool = False, product: str | None = None, extra: str = "",
+    variations: dict[str, list[str]] | None = None, personalizable: bool = False, product: str | None = None, extra: str = "", said: str | None = None,
 ) -> Facts:
     variations = variations or {}
     text = "\n".join([
         title or "", description or "", " ".join(tags or []), " ".join(materials or []),
         " ".join(f"{n} {' '.join(v)}" for n, v in variations.items()), extra or "",
     ]).lower()
-    return Facts(product=(product or lead_phrase(title)).strip().lower(), text=text, personalizable=personalizable, variations=variations)
+    return Facts(product=(product or lead_phrase(title)).strip().lower(), text=text, personalizable=personalizable, variations=variations, said=said)

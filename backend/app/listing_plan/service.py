@@ -11,15 +11,21 @@ from app.shops.models import Shop
 def for_listing(
     db: Session, shop: Shop, listing: dict, *, key: str, variations: dict[str, list[str]] | None = None, product: str | None = None,
     extra_facts: str = "", model_tags: list[str] | None = None, current_title: str = "", keep_proven_lead: bool = False, exclude_id: int | None = None,
+    said_only: bool = False, said: str | None = None,
 ) -> plan_mod.Plan:
     """`listing`: başlık/etiket/açıklama/malzeme/kategori (Etsy'deki listing, taslak ya da asistanın yeni listing argümanları).
-    `current_title`: kullanıcının seçtiği/yazdığı başlık; verilirse açılış odur. `keep_proven_lead`: var olan listing'in açılışı satış
+    `said_only`: yeni listing — ürün kartı YALNIZCA ürün adı, varyasyonlar ve kullanıcının sözlerinden (`extra_facts`) kurulur; modelin yazdığı başlık/
+    açıklama/etiketler karta girmez (yoksa model "UV400" yazınca kart da bilir ve iddia kontrolü geçerdi). `current_title`: kullanıcının seçtiği/yazdığı başlık; verilirse açılış odur. `keep_proven_lead`: var olan listing'in açılışı satış
     getirmişse (kendi satışı ya da bu listing'e sipariş getiren arama) korunur. `key`: farklılık için listing'e özgü sabit anahtar."""
     title = str(listing.get("title") or "")
-    facts = facts_mod.from_listing(
-        title, str(listing.get("description") or ""), list(listing.get("tags") or []), list(listing.get("materials") or []),
-        variations or {}, bool(listing.get("is_personalizable") or listing.get("personalizable")), product=product, extra=extra_facts,
-    )
+    personal = bool(listing.get("is_personalizable") or listing.get("personalizable"))
+    if said_only:
+        facts = facts_mod.from_listing(product or title, "", [], [], variations or {}, personal, product=product, extra=extra_facts, said=extra_facts if said is None else said)
+    else:
+        facts = facts_mod.from_listing(
+            title, str(listing.get("description") or ""), list(listing.get("tags") or []), list(listing.get("materials") or []),
+            variations or {}, personal, product=product, extra=extra_facts,
+        )
     pool = sources.pool(db, shop, {**listing, "title": title or facts.product})
     if keep_proven_lead and not current_title:
         lead = facts_mod.lead_phrase(title)

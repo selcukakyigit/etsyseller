@@ -123,7 +123,7 @@ def test_niche_market_lets_a_measured_high_conversion_phrase_open_the_title():
 def test_unverified_candidate_needs_the_model_and_only_confirmed_ones_enter(monkeypatch):
     seen = {}
 
-    def fake_run(f, check, want_new):
+    def fake_run(f, check, want_new, want_questions=True):
         seen["check"] = check
         return {"metal dragonfly lawn"} & set(check), [], [], []
 
@@ -159,12 +159,12 @@ def test_google_only_market_is_crowded_and_generic_gift_phrase_does_not_lead():
 
 def test_thin_pool_asks_ai_for_ideas_and_queues_them(monkeypatch):
     calls = {}
-    monkeypatch.setattr(plan.ideas, "run", lambda f, check, want_new: (set(), ["retro mod shades", "thick acrylic shades", "polarized shades"], ["are these uv400"], ["shades"]))
+    monkeypatch.setattr(plan.ideas, "run", lambda f, check, want_new, want_questions=True: (set(), ["retro mod shades", "thick acrylic shades", "polarized shades"], ["are these uv400"], ["shades"]))
     monkeypatch.setattr(plan.sources, "queue_measurement", lambda shop, phrases: calls.setdefault("q", phrases) and len(phrases))
     p = plan.build(SUN_POOL[:2], SUN, key="k", research=([], [], 0), shop=object())
     tags = [t["tag"] for t in p.tags]
     assert "retro mod shades" in tags and "polarized shades" not in tags  # eşanlamlı (shades) karta girer, özellik (polarized) girmez
-    assert ("polarized shades", "kartta olmayan kelime: polarized") in p.rejected
+    assert ("polarized shades", "doğrulanmamış iddia") in p.rejected  # iddia kelimesi kartta yoksa elenir (ayrıca model doğrulamasına da gitmez)
     assert p.data["ideas"] == 2 and calls["q"] == ["retro mod shades", "thick acrylic shades"]
     assert any(q["q"] == "are these uv400" for q in p.questions)
 
@@ -180,3 +180,72 @@ def test_user_title_is_respected_and_tags_complete_from_written_ones():
 def test_brief_has_no_raw_numbers():
     text = _bottle("shopB:1").brief()
     assert "165000" not in text and "KELİME PLANI" in text or "KEYWORD PLAN" in text
+
+
+def test_unverified_claim_phrases_and_near_duplicate_tags_do_not_enter_the_plan():
+    sun = facts_mod.from_listing("Vintage square sunglasses", "Black and white frames.", variations={"Color": ["Black", "White"]}, product="vintage square sunglasses")
+    pool = [P("vintage square sunglasses", google_volume=5000, etsy_results=40000), P("uv400 sunglasses", google_volume=9900, etsy_results=60000),
+            P("polarized sunglasses", google_volume=90000, etsy_results=50000), P("mens sunglasses", google_volume=60000, etsy_results=90000),
+            P("men sunglasses", google_volume=59000, etsy_results=95000), P("womens sunglasses", google_volume=70000, etsy_results=99000),
+            P("women sunglasses", google_volume=69000, etsy_results=99500), P("retro square sunglasses", google_volume=2000, etsy_results=9000)]
+    p = plan.build(pool, sun, key="k", research=([], [], 0), use_ideas=False)
+    tags = [t["tag"] for t in p.tags]
+    assert "uv400 sunglasses" not in tags and "polarized sunglasses" not in tags
+    assert ("uv400 sunglasses", "doğrulanmamış iddia") in p.rejected
+    from app.ai import quality
+    assert len({quality.tag_key(t) for t in tags}) == len(tags)  # yakın-aynı etiket yok
+
+
+def test_no_demand_evidence_still_gives_lead_options_so_the_title_check_is_never_empty():
+    sun = facts_mod.from_listing("square sunglasses", "", [], [], {"Color": ["Black", "White"]}, product="square sunglasses", extra="siyah beyaz kare gözlük")
+    pool = [P("retro sunglasses"), P("vintage sunglasses"), P("square sunglasses"), P("unisex sunglasses")]  # havuzda terim var ama hiçbirinin ölçümü yok
+    p = plan.build(pool, sun, key="k", research=([], [], 0), use_ideas=False)
+    assert p.lead_options and p.lead in p.lead_options
+    assert plan.title_problems("Totally Unrelated Title For Something", p)  # artık boş seçenek her başlığı geçirmez
+
+
+def test_claims_are_checked_against_what_the_user_said_not_what_the_model_wrote():
+    from app.listing_plan import service
+
+    said = "iki renk beyaz siyah kare gözlük"
+    model_written = {"title": "Classic Square Sunglasses, UV400", "description": "UV400 protection sunglasses.", "tags": ["uv400 sunglasses"], "personalizable": False}
+    facts = facts_mod.from_listing("square sunglasses", "", [], [], {}, False, product="square sunglasses", extra=said, said=said)
+    assert fit.reason("uv400 sunglasses", facts) == "doğrulanmamış iddia"
+    # model "facts" parametresine UV400 yazsa bile (bilinen kelimeye girer) iddia kullanıcı sözlerinde olmadığı için yine elenir
+    with_model_facts = facts_mod.from_listing("square sunglasses", "", [], [], {}, False, product="square sunglasses", extra=said + " uv400", said=said)
+    assert fit.reason("uv400 sunglasses", with_model_facts) == "doğrulanmamış iddia"
+    assert service.for_listing  # said_only yolu içe aktarılabilir
+    user_said_it = facts_mod.from_listing("square sunglasses", "", [], [], {}, False, product="square sunglasses", extra=said + " uv400 korumalı", said=said + " uv400 korumalı")
+    assert fit.reason("uv400 sunglasses", user_said_it) is None
+
+
+def test_title_check_accepts_the_opening_words_in_any_order_within_the_first_words():
+    sun = facts_mod.from_listing("square sunglasses", "", [], [], {}, False, product="square sunglasses", extra="kare gözlük")
+    p = plan.build([P("retro sunglasses", google_volume=900), P("vintage sunglasses", google_volume=800)], sun, key="k", research=([], [], 0), use_ideas=False)
+    assert "retro sunglasses" in p.lead_options
+    assert not plan.title_problems("Retro Square Sunglasses, Unisex", p)
+    assert plan.title_problems("Classic Frames For Summer Days", p)
+
+
+def test_unanswered_buyer_questions_are_asked_not_invented(monkeypatch):
+    sun = facts_mod.from_listing("square sunglasses", "", [], [], {"Color": ["Black", "White"]}, product="square sunglasses", extra="siyah beyaz kare gözlük acrylic frame", said="siyah beyaz kare gözlük acrylic frame")
+    qs = [{"q": "do these come with a case", "google_volume": 1600}, {"q": "are acrylic sunglasses durable", "google_volume": 300}, {"q": "what size sunglasses do i need", "google_volume": 900}]
+    p = plan.build([P("retro sunglasses", google_volume=900)], sun, key="k", research=([], qs, 0), use_ideas=False)
+    asked = [q["q"] for q in p.ask]
+    assert "do these come with a case" in asked  # "case" kullanıcının sözlerinde yok: cevabı bilinmiyor, kullanıcıya sorulur
+    assert "are acrylic sunglasses durable" not in asked  # "acrylic" biliniyor: cevap olgudan gelir
+    assert len(asked) <= 2 and "KULLANICIYA SOR" in p.brief() or "ASK THE USER" in p.brief()
+
+
+def test_when_the_pool_has_no_questions_the_ai_is_asked_for_them(monkeypatch):
+    seen = {}
+
+    def fake_run(f, check, want_new, want_questions=True):
+        seen["want_questions"] = want_questions
+        return set(), [], ["do these come with a case"], []
+
+    monkeypatch.setattr(plan.ideas, "run", fake_run)
+    monkeypatch.setattr(plan.sources, "queue_measurement", lambda shop, phrases: 0)
+    sun = facts_mod.from_listing("square sunglasses", "", [], [], {}, product="square sunglasses", extra="kare gözlük", said="kare gözlük")
+    p = plan.build([P("retro sunglasses", google_volume=900)] * 1 + [P(f"square sunglasses {i}", google_volume=900) for i in range(25)], sun, key="k", research=([], [], 0), shop=object())
+    assert seen["want_questions"] is True and [q["q"] for q in p.ask] == ["do these come with a case"]

@@ -53,6 +53,9 @@ def reason(phrase: str, facts: Facts) -> str | None:
     if is_question(low):
         return "kendin-yap sorusu" if words(low)[:2] == ["how", "to"] and set(w) & DIY_QUESTION else None
     known = facts.known_words
+    claims = [m.group(0).lower() for m in quality.RISKY_CLAIMS.finditer(low)]
+    if any(c not in facts.claim_text for c in claims):
+        return "doğrulanmamış iddia"  # ör. "uv400 sunglasses": kullanıcı söylemediyse etiket de olmaz
     if not facts.personalizable and quality.PERSONALIZATION.search(low):
         return "kişiselleştirme yok"
     if set(w) & facts.colors:

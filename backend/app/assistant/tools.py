@@ -83,6 +83,7 @@ class Ctx:
     message: str = ""  # kullanıcının bu mesajı (yapıştırılan fatura metni gibi, modele yeniden yazdırmadan okumak için)
     cards: list[dict] = field(default_factory=list)
     session_id: int | None = None  # sohbet oturumu: üretilen resimler bu oturuma kaydedilir
+    ask_checked: bool = False  # brief_check planın cevabı bilinmeyen sorularını eklemeyi bir kez hatırlatır
     plan: Any = None  # bu turda keyword_pool'un kurduğu kelime planı (brief_check başlık seçeneklerini buna göre denetler)
     plan_cache: dict = field(default_factory=dict)  # create_listing_draft yeniden denemelerinde plan bir kez kurulur: {anahtar: Plan}
     draft_rejections: int = 0  # create_listing_draft kalite denetimiyle en fazla bu kadar reddedilir; sonra taslak uyarılarla yine de oluşur (kullanıcı hata döngüsünde kalmasın)
@@ -847,7 +848,7 @@ def _draft_plan(ctx: Ctx, a: dict, title: str, tags: list[str], variations: dict
                "taxonomy_id": int(a["taxonomy_id"]) if a.get("taxonomy_id") else None, "personalizable": bool(a.get("personalizable") or a.get("personalization_questions"))}
     try:
         plan = plan_service.for_listing(ctx.db, ctx.shop, listing, key=key, variations=variations, product=a.get("product"), extra_facts=source,
-                                        model_tags=tags, current_title=title)
+                                        model_tags=tags, current_title=title, said_only=True)
     except Exception:  # noqa: BLE001 - plan yardımcıdır; kurulamazsa modelin etiketleri kalır
         log.warning("Kelime planı kurulamadı", exc_info=True)
         plan = None
@@ -1177,6 +1178,7 @@ def brief_check(ctx: Ctx, a: dict) -> dict:
             "label": " ".join(str(q["label"]).split())[:120],
             "options": [" ".join(str(o).split())[:140] for o in q.get("options") or [] if str(o).strip()][:4],
             "type": q.get("type") if q.get("type") in ("price", "title") else "text",
+            "plan_question": " ".join(str(q.get("plan_question") or "").lower().split()).rstrip("?")[:140],
         }
         if item["type"] == "text" and _TITLE_QUESTION.search(item["label"]):
             item["type"] = "title"  # model tipi unuttuysa da başlık sorusu başlık kartı olarak çizilir
@@ -1186,13 +1188,29 @@ def brief_check(ctx: Ctx, a: dict) -> dict:
             plan = getattr(ctx, "plan", None)
             if plan is None:
                 return {"error": "Başlık önerilerinden önce keyword_pool'u İngilizce ürün adıyla (query) ve İngilizce olgularla (facts) çağır; seçenekleri planın açılış ifadeleriyle kur, sonra kartı yeniden çağır."}
+            said = _user_facts(ctx, {})
+            claimed = [o for o in item["options"] if quality.claim_problems(o, said)]
+            if claimed:
+                return {"error": f"Bu başlık seçeneklerinde kullanıcının söylemediği iddia var (UV400, polarized, waterproof gibi): {claimed}. Yalnızca verilen bilgiyi yaz; iddiayı çıkar ve kartı yeniden çağır."}
+            if not plan.lead_options:
+                return {"error": "Kelime planı açılış ifadesi üretemedi; keyword_pool'u ürün adı (query) ve olgularla (facts) yeniden çağır."}
             off = [o for o in item["options"] if plan_mod.title_problems(o, plan)]
             if off:
                 return {"error": f"Şu başlık seçenekleri planın açılış ifadelerinden biriyle başlamıyor: {off}. Her seçenek şunlardan biriyle başlasın: {plan.lead_options}; ardından 2-3 nesnel niteleyici, 15 kelimenin altı."}
         if item["type"] == "price":
             item["unit"] = "$"
         questions.append(item)
-    questions = questions[:4]
+    plan = getattr(ctx, "plan", None)
+    if plan is not None and getattr(plan, "ask", None) and not getattr(ctx, "ask_checked", False):
+        if not {q["plan_question"] for q in questions} & {q["q"] for q in plan.ask}:
+            ctx.ask_checked = True  # bir kez hatırlatılır; kullanıcıyı soru yağmuruna tutmamak için ikinci çağrı geçer
+            return {"error": "Kelime planının cevabı BİLİNMEYEN alıcı soruları var: " + "; ".join(q["q"] for q in plan.ask) + ". En az birini kartta kısa bir soru olarak ekle "
+                    "(kullanıcının dilinde; plan_question alanına İngilizce soruyu aynen yaz; seçenekler ör. ['Var', 'Yok']); yoksa SSS'ye cevap UYDURMAK zorunda kalırsın. Sonra kartı yeniden çağır."}
+    skip = tr("Yazma, atla", "Skip it")
+    for q in questions:  # planın sorusuna her zaman bir "atla" seçeneği: "Yok" gerçek bir cevaptır (SSS'ye "kılıf yok" yazılır); atlanan soru SSS'ye hiç girmez
+        if q.get("plan_question") and skip not in q["options"]:
+            q["options"] = [*q["options"][:3], skip]
+    questions = [{k: v for k, v in q.items() if k != "plan_question" or v} for q in questions[:4]]
     if not questions:
         return {"error": "Eksik yoksa kart gösterme: create_listing_draft'ı hemen çağır."}
     ctx.cards[:] = [c for c in ctx.cards if c.get("type") not in ("brief", "choices")]
@@ -1710,21 +1728,24 @@ def keyword_pool(ctx: Ctx, a: dict) -> dict:
         if row is None:
             return {"error": "Listing yerelde yok."}
         listing = json.loads(row.raw_json)
-        key, product, extra = f"{ctx.shop.id}:{lid}", None, ""
+        key, product, extra, said = f"{ctx.shop.id}:{lid}", None, "", None
     elif a.get("query"):
         product = " ".join(str(a["query"]).split()).lower()
         listing = {"title": product, "tags": [], "taxonomy_id": int(a["taxonomy_id"]) if a.get("taxonomy_id") else None, "description": str(a.get("facts") or "")}
         key, extra = f"{ctx.shop.id}:new:{ctx.session_id}:{product}", _user_facts(ctx, {})
+        said = extra  # iddia kontrolü yalnızca kullanıcının sözlerine bakar; modelin verdiği "facts" yalnızca bilinen kelimelere eklenir
     else:
         return {"error": "listing_id ya da query ver."}
-    plan = plan_service.for_listing(ctx.db, ctx.shop, listing, key=key, product=product, extra_facts=extra, keep_proven_lead=lid is not None, exclude_id=lid)
+    plan = plan_service.for_listing(ctx.db, ctx.shop, listing, key=key, product=product, keep_proven_lead=lid is not None, exclude_id=lid, said_only=lid is None,
+                                    extra_facts=f"{extra} {a.get('facts') or ''}".strip(), said=said)
     ctx.plan = plan
     return {
         "plan": plan.brief(),
         "acilis_secenekleri": plan.lead_options,
+        "kullaniciya_sorulacaklar": [q["q"] for q in plan.ask],
         "not": ("Başlık seçenekleri (brief_check type=title) bu açılış ifadelerinin her biriyle BAŞLAR, ardından 2-3 nesnel niteleyici; 15 kelimenin altı. "
                 "Etiketleri create_listing_draft'ta sunucu plandan yerleştirir; sen ürüne özgü olanları yaz, plan tamamlar. "
-                "Alıcı sorularından cevabı bilinmeyen ama önemli olanı brief_check'te kullanıcıya sor."),
+                "kullaniciya_sorulacaklar (cevabı bilinmeyen alıcı soruları) brief_check'te kullanıcıya SORULUR: kullanıcının dilinde kısa soru, plan_question alanına İngilizce soru; SSS'ye cevabını uydurma."),
     }
 
 
@@ -2610,14 +2631,14 @@ def edit_inventory(ctx: Ctx, a: dict) -> dict:
     """Seçilen kombinasyonların (where) ya da tüm listing'in stok, fiyat, SKU ve açık/kapalı durumunu değiştirir; varyasyonsuz listing'de
     where verilmez. Hata varsa hiçbir şey yazılmaz."""
     lid = int(a["listing_id"])
-    if not any(a.get(k) is not None for k in ("quantity", "price", "sku", "enabled", "auto_sku")):
-        return {"error": "Değişiklik belirtilmedi (quantity, price, sku, auto_sku ya da enabled)."}
+    if not any(a.get(k) is not None for k in ("quantity", "price", "sku", "enabled", "auto_sku", "random_sku")):
+        return {"error": "Değişiklik belirtilmedi (quantity, price, sku, auto_sku, random_sku ya da enabled)."}
     result: dict = {}
 
     def run(trial: dict):
         changed, errors, count = inventory_edit.apply_inventory(
             trial, where={str(k): str(v) for k, v in (a.get("where") or {}).items()}, quantity=a.get("quantity"), price=a.get("price"), sku=a.get("sku"), enabled=a.get("enabled"),
-            auto_sku=a.get("auto_sku"),
+            auto_sku=a.get("auto_sku"), random_sku=a.get("random_sku"),
         )
         result.update(changed=changed, errors=errors, count=count)
 
@@ -2625,8 +2646,9 @@ def edit_inventory(ctx: Ctx, a: dict) -> dict:
     if err:
         return err
     if result["errors"]:
-        return {"degisenler": [], "hatalar": result["errors"], "not": "Hiçbir şey yazılmadı; hatayı kullanıcıya olduğu gibi söyle."}
-    return _save_fields(ctx, lid, trial, result["changed"], [], etkilenen_kombinasyon=result["count"])
+        return {"degisenler": [], "hatalar": result["errors"], "kombinasyonlar": inventory_edit.sku_summary(_work_or_error(ctx, lid)[0] or {}),
+                "not": "Hiçbir şey yazılmadı (kombinasyonlar: mevcut GERÇEK durum); hatayı kullanıcıya olduğu gibi söyle."}
+    return _save_fields(ctx, lid, trial, result["changed"], [], etkilenen_kombinasyon=result["count"], kombinasyonlar=inventory_edit.sku_summary(trial))
 
 
 def add_variation_option(ctx: Ctx, a: dict) -> dict:
@@ -3092,7 +3114,7 @@ TOOLS: list[dict] = [
     {"name": "edit_personalization_question", "description": "Listing'deki TEK bir kişiselleştirme (Özel seçenekler) sorusunu sıra numarasıyla (get_listing.kisisellestirme sırası, 1'den başlar) düzenler: metni, açıklamasını, zorunlu/isteğe bağlı olmasını, en fazla karakterini, seçenek listesi seçeneklerini değiştirir; delete=true siler; move_to ile sırasını değiştirir. Diğer sorulara dokunmaz ve kimlikleri korur; sorular için personalization_questions (hepsini baştan yazar) KULLANMA. Yeni soru eklemek için set_listing_fields.add_personalization_questions.", "input_schema": _obj({"listing_id": {"type": "integer"}, "number": {"type": "integer"}, "question_text": {"type": "string"}, "instructions": {"type": "string"}, "required": {"type": "boolean"}, "max_allowed_characters": {"type": "integer"}, "options": {"type": "array", "items": {"type": "string"}, "description": "Yalnızca seçenek listesi sorusunda: seçeneklerin TAMAMI, istenen sırayla"}, "delete": {"type": "boolean"}, "move_to": {"type": "integer"}}, ["listing_id", "number"])},
     {"name": "delete_listing_photo", "description": "Listing taslağından bir fotoğrafı kaldırır: sıra numarasıyla (photo_number, 1'den başlar) ya da fotoğraf kimliğiyle (image_id; sohbetteki resim kartından). Etsy'deki fotoğraf yayınlayınca silinir.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer"}, "photo_numbers": {"type": "array", "items": {"type": "integer"}, "description": "Birden çok fotoğrafı TEK çağrıda sil (sıra numaraları, ör. eski ham fotoğraflar [1, 2, 3])"}, "image_id": {"type": "integer"}}, ["listing_id"])},
     {"name": "set_photo_alt_text", "description": "Taslak (henüz Etsy'ye yüklenmemiş) bir fotoğrafın alt metnini yazar; sıra numarasıyla. Etsy'de yayındaki fotoğrafların alt metni değiştirilemez.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer"}, "alt_text": {"type": "string", "description": "Resimde görüneni anlatan tek cümle, en fazla 125 karakter önerilir"}}, ["listing_id", "photo_number", "alt_text"])},
-    {"name": "edit_inventory", "description": "Stok, fiyat, SKU ve açık/kapalı durumunu değiştirir. Varyasyonsuz listing'de where verme ('stok 50 olsun' = quantity 50). Varyasyonlu listing'de where ile kombinasyon seç ({'Size': 'XL', 'Color': 'Red'}; kısmi seçim eşleşen TÜM kombinasyonları etkiler) ya da where vermeden hepsini değiştir. quantity 1–999; kombinasyonu satıştan kaldırmak için enabled=false. Fiyat aynı anda yalnızca tek varyasyona göre değişebilir (Etsy). Önce get_listing ile mevcut seçeneklere bak. Hata varsa hiçbir şey yazılmaz.", "input_schema": _obj({"listing_id": {"type": "integer"}, "where": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Varyasyon adı → seçenek"}, "quantity": {"type": "integer"}, "price": {"type": "number"}, "sku": {"type": "string"}, "auto_sku": {"type": "string", "description": "Seçilen TÜM kombinasyonlara okunur SKU üretir (önek + seçenekler, ör. önek GLS → GLS-15X20CM). Önek boş string de olabilir. 'Otomatik SKU ekle' için bunu kullan; tek tek sku verme."}, "enabled": {"type": "boolean"}}, ["listing_id"])},
+    {"name": "edit_inventory", "description": "Stok, fiyat, SKU ve açık/kapalı durumunu değiştirir. Varyasyonsuz listing'de where verme ('stok 50 olsun' = quantity 50). Varyasyonlu listing'de where ile kombinasyon seç ({'Size': 'XL', 'Color': 'Red'}; kısmi seçim eşleşen TÜM kombinasyonları etkiler) ya da where vermeden hepsini değiştir. quantity 1–999; kombinasyonu satıştan kaldırmak için enabled=false. Fiyat aynı anda yalnızca tek varyasyona göre değişebilir (Etsy). Önce get_listing ile mevcut seçeneklere bak. Hata varsa hiçbir şey yazılmaz.", "input_schema": _obj({"listing_id": {"type": "integer"}, "where": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Varyasyon adı → seçenek"}, "quantity": {"type": "integer"}, "price": {"type": "number"}, "sku": {"type": "string"}, "auto_sku": {"type": "string", "description": "Seçilen TÜM kombinasyonlara okunur SKU üretir (önek + seçenekler, ör. önek GLS → GLS-15X20CM). Önek boş string de olabilir. 'Otomatik SKU ekle' için bunu kullan; tek tek sku verme."}, "random_sku": {"type": "string", "description": "RASTGELE SKU: seçilen TÜM kombinasyonlara sunucu benzersiz rastgele kod üretir (önek + 4 rastgele harf/rakam + seçenek, ör. BM-7A4K-BLK). 'Rastgele SKU ekle' için bunu kullan; kodu kendin uydurma. Önek boş olabilir. Sonuçtaki kombinasyonlar yazılan GERÇEK değerlerdir: kullanıcıya onları söyle."}, "enabled": {"type": "boolean"}}, ["listing_id"])},
     {"name": "add_variation_option", "description": "Var olan bir varyasyona YENİ SEÇENEK ekler (ör. Size varyasyonuna '15x20 cm'); mevcut stok, SKU, fiyat ve fotoğraf bağları korunur. Seçenek eklemek için set_variations ile baştan kurma. Yeni satırlar copy_from seçeneğinin (verilmezse ilkinin) satırlarından kopyalanır; varyasyon fiyata göre değişiyorsa price ver. Etsy'nin hazır değerleriyle kurulu (standart) varyasyonlarda da çalışır: ad hazır listedekilerden biriyse standart değer olarak, değilse özel değer olarak eklenir. Önce get_listing ile mevcut seçeneklere bak. Hata varsa hiçbir şey yazılmaz.", "input_schema": _obj({"listing_id": {"type": "integer"}, "variation": {"type": "string"}, "option": {"type": "string"}, "price": {"type": "number"}, "quantity": {"type": "integer"}, "copy_from": {"type": "string", "description": "Hangi mevcut seçeneğin ayarları kopyalansın"}}, ["listing_id", "variation", "option"])},
     {"name": "remove_variation_option", "description": "Bir varyasyon seçeneğini ve onu içeren tüm kombinasyonları kaldırır (ör. variation 'Color', option 'Red'). Diğer seçenekler ve fiyatlar korunur; set_variations gibi baştan kurmaz.", "input_schema": _obj({"listing_id": {"type": "integer"}, "variation": {"type": "string"}, "option": {"type": "string"}}, ["listing_id", "variation", "option"])},
     {"name": "set_variation_photo", "description": "Bir varyasyon seçeneğine listing fotoğrafı bağlar (ör. Color: Red → 3. fotoğraf). photo_number vermezsen bağı kaldırır. Etsy yalnızca TEK bir varyasyona fotoğraf bağlamaya izin verir.", "input_schema": _obj({"listing_id": {"type": "integer"}, "variation": {"type": "string"}, "option": {"type": "string"}, "photo_number": {"type": "integer"}}, ["listing_id", "variation", "option"])},
@@ -3141,7 +3163,7 @@ TOOLS: list[dict] = [
     {"name": "mark_order_shipped", "description": "ONAY GEREKİR. Siparişi Etsy'de kargoya verildi işaretler (alıcıya bildirim gidebilir). confirm=true verilmeden yalnızca ne olacağını özetler.", "input_schema": _obj({"receipt_id": {"type": "integer"}, "confirm": {"type": "boolean"}, "tracking_code": {"type": "string"}, "carrier_name": {"type": "string"}}, ["receipt_id"])},
 ]
 
-TOOLS.append({"name": "brief_check", "description": "YENİ LİSTİNG'TEN ÖNCE (fiyat ya da başka eksik varken): anladıklarını ve eksikleri TEK kartta gösterir; kullanıcı butona basar ya da yazar, cevapları tek mesajda gelir, sonra taslağı TEK seferde kurarsın. Resimden/mesajdan belli olan şeyi sorma. Kartı yalnızca gerçekten eksik varsa çağır.", "input_schema": _obj({"understood": {"type": "array", "description": "Anladıkların: [{label, value}] (ürün, ölçüler, renkler, adet, ölçü birimleri). Kullanıcının dilinde, kısa.", "items": _obj({"label": {"type": "string"}, "value": {"type": "string"}}, ["label", "value"])}, "questions": {"type": "array", "description": "Eksikler, en fazla 4: [{label (kısa soru), options (en çok 4 hazır cevap, boş olabilir), type (price = fiyat | title = 3 başlık önerisi, kullanıcı seçer ya da yazar | text)}]. Kişiselleştirme (yalnızca resimde yazı alanı/isim gibi ipucu varsa ya da belirsizse) 'Var / Yok' seçenekleriyle sorulur.", "items": _obj({"label": {"type": "string"}, "options": {"type": "array", "items": {"type": "string"}}, "type": {"type": "string", "enum": ["price", "title", "text"]}}, ["label"])}}, ["understood", "questions"])})
+TOOLS.append({"name": "brief_check", "description": "YENİ LİSTİNG'TEN ÖNCE (fiyat ya da başka eksik varken): anladıklarını ve eksikleri TEK kartta gösterir; kullanıcı butona basar ya da yazar, cevapları tek mesajda gelir, sonra taslağı TEK seferde kurarsın. Resimden/mesajdan belli olan şeyi sorma. Kartı yalnızca gerçekten eksik varsa çağır.", "input_schema": _obj({"understood": {"type": "array", "description": "Anladıkların: [{label, value}] (ürün, ölçüler, renkler, adet, ölçü birimleri). Kullanıcının dilinde, kısa.", "items": _obj({"label": {"type": "string"}, "value": {"type": "string"}}, ["label", "value"])}, "questions": {"type": "array", "description": "Eksikler, en fazla 4: [{label (kısa soru), options (en çok 4 hazır cevap, boş olabilir), type (price = fiyat | title = 3 başlık önerisi, kullanıcı seçer ya da yazar | text)}]. Kişiselleştirme (yalnızca resimde yazı alanı/isim gibi ipucu varsa ya da belirsizse) 'Var / Yok' seçenekleriyle sorulur.", "items": _obj({"label": {"type": "string"}, "options": {"type": "array", "items": {"type": "string"}}, "type": {"type": "string", "enum": ["price", "title", "text"]}, "plan_question": {"type": "string", "description": "Bu soru kelime planının 'kullaniciya_sorulacaklar' listesinden birini soruyorsa o İngilizce soru (aynen)"}}, ["label"])}}, ["understood", "questions"])})
 TOOLS.append({"name": "ask_user", "description": "Sohbette DOKUNULABİLİR seçenek kartı gösterir. kind=question: yalnızca gerçekten bilinemeyen bir bilgiyi (fiyat, ürün adı…) ya da geri dönüşü zor bir işin onayını sorarken (ör. 'Evet, yayınla' / 'Vazgeç'); 2-4 kısa seçenek, 'Sen karar ver' sunucu tarafından eklenir. kind=suggestions: cevabın sonundaki sıradaki adım önerileri (2-3 kısa komut: 'Fiyatı ekle', 'Ek görsel üret'). Seçenek metni kullanıcının mesajı olarak gönderilir, bu yüzden tam ve anlaşılır bir istek olsun. Cevap başına en fazla bir kez çağır; aynı metni cevaba da yazma.", "input_schema": _obj({"question": {"type": "string", "description": "Kısa soru ya da başlık (ör. 'Fiyat ne olsun?', 'Sıradaki adım?')"}, "options": {"type": "array", "items": {"type": "string"}, "description": "2-4 kısa seçenek"}, "kind": {"type": "string", "enum": ["question", "suggestions"]}}, ["question", "options"])})
 
 # Kullanıcıya gösterilen ilerleme metinleri ("asistan şu an ne yapıyor").

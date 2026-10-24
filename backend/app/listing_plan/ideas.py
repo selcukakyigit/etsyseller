@@ -27,12 +27,12 @@ never features or claims (not "polarized", "waterproof").
 Return ONLY JSON: {{"check": ["..."], "phrases": ["..."], "questions": ["..."], "synonyms": ["..."]}}"""
 
 
-def run(facts: Facts, to_check: list[str], want_new: bool) -> tuple[set[str], list[str], list[str], list[str]]:
+def run(facts: Facts, to_check: list[str], want_new: bool, want_questions: bool = True) -> tuple[set[str], list[str], list[str], list[str]]:
     """(onaylanan adaylar, yeni ifadeler, sorular, ürün türü eşanlamlıları). Eşanlamlılar karta eklenir (shades, eyewear): ürün türü adı
     güvenlidir; özellik kelimesi (polarized) ise karta girmez, onu taşıyan ifade doğrulanmadıkça plana alınmaz."""
     from app.ai.vision import VisionError, ask_text, text_model
 
-    if not to_check and not want_new:
+    if not to_check and not want_new and not want_questions:
         return set(), [], [], []
     summary = f"Product: {facts.product}\n{' '.join(facts.text.split())[:900]}"
     prompt = PROMPT.format(facts=summary, check=", ".join(to_check[:MAX_CHECK]) or "(none)", want="About 25" if want_new else "0")

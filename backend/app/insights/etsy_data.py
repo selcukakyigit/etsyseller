@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.images import for_llm
 from app.core.i18n import tr
+from app.insights import etsy_paste
 from app.insights.models import EtsyKeywordData, TrackedKeyword
 from app.shops.models import Shop
 
@@ -113,8 +114,10 @@ def parse(text: str | None = None, image: tuple[bytes, str] | None = None) -> di
     """Yapıştırılan tabloyu okur; KAYDETMEZ. Döner: {source, period_start, period_end, rows}."""
     if not (text and text.strip()) and not image:
         raise EtsyDataError(tr("Yapıştırılacak bir tablo ya da ekran görüntüsü yok.", "There is no table or screenshot to read."))
-    raw = _ai(text.strip() if text else None, image)
-    source = raw.get("source") if raw.get("source") in SOURCES else "marketplace_insights"
+    raw = etsy_paste.parse_text(text) if text and not image else None  # sabit biçimli tablolar yapay zekâsız okunur
+    if raw is None:
+        raw = _ai(text.strip() if text else None, image)
+    source = etsy_paste.coerce_source(raw)
     rows = []
     seen: set[str] = set()
     for r in raw.get("rows") or []:

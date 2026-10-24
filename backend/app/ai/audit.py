@@ -114,6 +114,8 @@ def generation_problems(
     taslak oluşturması aynısını kullanır; sorun varsa model geri bildirimle yeniden dener."""
     problems = quality.all_problems(title, tags, product_description, others, source_text, quality.size_options(variations))
     problems += quality.fact_problems(title, product_description, source_text or "", variations)
+    # Doğrulanmamış iddia (ör. "UV400") başlıkta/etiketlerde de aynı kural: kullanıcı söylemediyse yazılmaz.
+    problems += [p.replace("Açıklamada", "Başlık/etiketlerde").replace("The description has", "The title/tags have") for p in quality.claim_problems(f"{title} {' '.join(tags)}", source_text)]
     product = quality.strip_common_paragraphs(product_description, others)
     problems += [text for id, text in structure_issues(product, digital) if id not in _NOT_ENFORCED]
     problems += [text for _id, text in coverage_issues(product_description, product, variations, personalizable)]

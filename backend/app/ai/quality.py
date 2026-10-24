@@ -20,7 +20,8 @@ MAX_INTRO_SIMILARITY = 0.6  # açıklamanın ilk ~60 kelimesinin benzerliği
 _WORD = re.compile(r"[^\W_]+")  # her dildeki harf ve rakamlar (ä, ß, é, ç, ğ…)
 _STOP = {"the", "and", "for", "with", "your", "our", "you", "from", "this", "that", "a", "an", "of", "in", "to", "or", "by", "on", "at", "is", "it"}
 RISKY_CLAIMS = re.compile(
-    r"\b(hardware (?:is |are )?(?:included|provided)|(?:included|free) hardware|warranty|lifetime|(?:water|weather|rust|fade|scratch|uv)[- ]?(?:proof|resistant)|certified|fireproof|hypoallergenic)\b", re.I
+    r"\b(hardware (?:is |are )?(?:included|provided)|(?:included|free) hardware|warranty|lifetime|(?:water|weather|rust|fade|scratch|uv)[- ]?(?:proof|resistant)|certified|fireproof|hypoallergenic|"
+    r"uv ?(?:400|protect\w*|block\w*|filter\w*)|polari[sz]ed|anti[- ]glare|(?:100%|full) protection)\b", re.I
 )
 
 
@@ -178,6 +179,7 @@ def _with_conversions(nums: set[str]) -> set[str]:
 _FILLER = re.compile(
     r"\b(?:see (?:the )?variations?|(?:are|is) (?:set|listed|shown) (?:as|in) (?:the )?(?:product )?variations?|choose (?:it )?from the (?:size|color|colour|option)s? (?:menu|dropdown)|"
     r"(?:prices?|stock)(?: and (?:stock|prices?))? (?:per \w+ )?(?:are|is) listed in the variations?|select your (?:size|option) (?:from|in) the (?:menu|dropdown))\b", re.I)
+_EVASIVE_ANSWER = re.compile(r"\b(?:please |feel free to )?(?:ask|contact|message|write to) us\b|\bplease ask\b|\b(?:up)?on request\b", re.I)
 _PERSONAL_LINE = re.compile(r"personali[sz]|engrav|your name|name or (?:short )?text|custom name", re.I)
 
 
@@ -188,6 +190,12 @@ def filler_problems(description: str) -> list[str]:
         out.append(tr(
             "Açıklamada \"varyasyonlara bakın / seçenekler varyasyon olarak ayarlı\" gibi bilgi vermeyen dolgu cümle var; seçenekleri adıyla say (ör. \"Sizes: 50 cm, 70 cm\"), dolgu yazma.",
             "The description has filler such as \"see variations\"; list the options by name (e.g. \"Sizes: 50 cm, 70 cm\") instead.",
+        ))
+    qa = re.split(r"^QUESTIONS\s*$", description, maxsplit=1, flags=re.M)
+    if len(qa) == 2 and _EVASIVE_ANSWER.search(qa[1].split("\n\n\n")[0]):
+        out.append(tr(
+            "Soru-cevap bölümünde bilgi vermeyen cevap var (\"bize sorun / istek üzerine\"); cevabı bilinmeyen soruyu SİL, yalnızca cevabı bilinen olguyu yaz.",
+            "A Q&A answer gives no information (\"ask us / on request\"); delete questions whose answer is unknown and write only known facts.",
         ))
     lines = [ln for ln in description.split("\n") if ln.strip() and not ln.strip()[0] in "☛➲✔✓ツ"]
     if sum(1 for ln in lines if _PERSONAL_LINE.search(ln)) >= 3:
@@ -295,6 +303,26 @@ def clean_title(title: str, variations: dict[str, list[str]]) -> str:
     return t.strip(" ,-–|/")
 
 
+_AUDIENCE_FORMS = {"mens": "men", "man": "men", "womens": "women", "woman": "women", "kids": "kid", "childrens": "kid", "children": "kid"}
+
+
+def tag_key(tag: str) -> str:
+    """Etiketin "aynı arama" anahtarı: tekil/çoğul, iyelik ve kitle varyantları aynı sayılır ("mens sunglasses" = "men sunglasses",
+    "womens" = "women"); kelime sırası önemsizdir."""
+    out = []
+    for w in re.findall(r"[a-z0-9]+", tag.lower().replace("'", "")):
+        w = _AUDIENCE_FORMS.get(w, w)
+        out.append(w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w)
+    return " ".join(sorted(out))
+
+
+def near_duplicate_tags(tags: list[str]) -> list[list[str]]:
+    groups: dict[str, list[str]] = {}
+    for t in tags:
+        groups.setdefault(tag_key(t), []).append(t)
+    return [g for g in groups.values() if len(g) > 1]
+
+
 def tag_problems(tags: list[str]) -> list[str]:
     out: list[str] = []
     if len(tags) != TAG_COUNT:
@@ -307,6 +335,12 @@ def tag_problems(tags: list[str]) -> list[str]:
         out.append(tr(
             f"Etiket renk listesi gibi ({', '.join(colorful)}); renkler varyasyonda zaten var, arama ifadesi olan bir etiketle değiştir.",
             f"A tag reads like a color list ({', '.join(colorful)}); colors are already variations, replace it with a search phrase.",
+        ))
+    twins = near_duplicate_tags(tags)
+    if twins:
+        out.append(tr(
+            f"Birbirinin neredeyse aynısı etiketler var ({'; '.join(' = '.join(g) for g in twins)}); aynı aramayı iki kez kullanma, birini farklı bir alıcı niyetiyle değiştir.",
+            f"Some tags are near-duplicates ({'; '.join(' = '.join(g) for g in twins)}); do not spend two tags on the same search, replace one with a different buyer intent.",
         ))
     single = [t for t in tags if " " not in t]
     if len(single) > 3:

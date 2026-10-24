@@ -33,6 +33,21 @@ export type ResearchKeyword = {
   intent: string | null;
   measured_at: string | null;
   state: KeywordState;
+  etsy_shops: number;
+};
+
+export type KeywordSort = "new" | "volume" | "cpc" | "difficulty" | "measured";
+
+/** Mağazaların Marketplace Insights'tan yapıştırdığı verinin özeti (yalnızca toplu sayılar; Google ölçümünden ayrı). */
+export type ResearchEtsyInsights = {
+  shops: number;
+  searches_min: number | null;
+  searches_median: number | null;
+  searches_max: number | null;
+  results_median: number | null;
+  trend_median: number | null;
+  conversion: "very_low" | "low" | "medium" | "high" | "very_high" | null;
+  latest_on: string | null;
 };
 
 export type ResearchPage<T> = { items: T[]; total: number; page: number; per_page: number };
@@ -63,6 +78,7 @@ export type ResearchSignals = {
 
 export type ResearchKeywordDetail = {
   keyword: ResearchKeyword;
+  etsy: ResearchEtsyInsights | null;
   signals: ResearchSignals;
   history: ResearchMetric[];
   related: { term: string; search_volume: number | null; relation: string }[];
@@ -97,6 +113,14 @@ export type ResearchCall = {
   created_at: string;
 };
 
+export type ResearchCost = {
+  days: { day: string; cost_usd: number; calls: number; errors: number }[];
+  by_endpoint: { endpoint: string; cost_usd: number; calls: number; errors: number }[];
+  month_spend: number;
+  month_budget: number;
+  projected_month: number;
+};
+
 export type ResearchSettings = {
   research_enabled: boolean;
   research_default_market: string;
@@ -118,8 +142,8 @@ const post = <T>(path: string, body?: unknown) => apiRequest<T>(`${BASE}${path}`
 
 export const researchAdmin = {
   overview: () => apiRequest<ResearchOverview>(`${BASE}/overview`),
-  keywords: (p: { q: string; state: string; page: number }) => {
-    const params = new URLSearchParams({ q: p.q, state: p.state, page: String(p.page) });
+  keywords: (p: { q: string; state: string; page: number; sort: KeywordSort; source: string; etsy: boolean }) => {
+    const params = new URLSearchParams({ q: p.q, state: p.state, page: String(p.page), sort: p.sort, source: p.source, etsy: String(p.etsy) });
     return apiRequest<ResearchPage<ResearchKeyword>>(`${BASE}/keywords?${params}`);
   },
   keyword: (id: number) => apiRequest<ResearchKeywordDetail>(`${BASE}/keywords/${id}`),
@@ -128,6 +152,7 @@ export const researchAdmin = {
   retryJob: (id: number) => post<{ ok: boolean }>(`/jobs/${id}/retry`),
   cancelJob: (id: number) => post<{ ok: boolean }>(`/jobs/${id}/cancel`),
   calls: () => apiRequest<ResearchCall[]>(`${BASE}/calls`),
+  cost: () => apiRequest<ResearchCost>(`${BASE}/cost`),
   settings: () => apiRequest<ResearchSettings>(`${BASE}/settings`),
   saveSettings: (values: Partial<ResearchSettings>) =>
     apiRequest<ResearchSettings>(`${BASE}/settings`, { method: "PUT", body: JSON.stringify({ values }) }),

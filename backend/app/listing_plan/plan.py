@@ -40,6 +40,7 @@ class Plan:
     tags: list[dict]  # [{tag, role, confidence}]
     great_for: list[str]
     questions: list[dict]  # [{q, demand}] alıcı soruları (bant, ham sayı değil)
+    ask: list[dict]  # cevabı bilinmeyen alıcı soruları: kullanıcıya SORULUR (SSS'ye uydurma cevap yazılmaz)
     sibling_words: list[str]  # benzer listing başlıklarında geçen, ikincil öbekte tekrarlanmaması gereken kelimeler
     data: dict = field(default_factory=dict)  # {measured, partial, estimate, ideas, queued}
     rejected: list[tuple[str, str]] = field(default_factory=list)
@@ -63,6 +64,11 @@ class Plan:
             + ", ".join(f"{t['tag']} [{t['role']}]" for t in self.tags),
             tr(f"- GREAT FOR adayları: {', '.join(self.great_for)}", f"- GREAT FOR candidates: {', '.join(self.great_for)}") if self.great_for else "",
         ]
+        if self.ask:
+            lines.append(tr(
+                "- KULLANICIYA SOR (cevabı bilinmiyor; brief_check'te kısa bir soru olarak, kullanıcının dilinde ve plan_question alanıyla): " + "; ".join(q["q"] + "?" for q in self.ask),
+                "- ASK THE USER (answer unknown; as a short question in brief_check in the user's language with the plan_question field): " + "; ".join(q["q"] + "?" for q in self.ask),
+            ))
         if self.questions:
             lines.append(tr(
                 "- Alıcıların sorduğu sorular (talep bandıyla). SORU-CEVAP'a YALNIZCA cevabı verilen bilgide olanları yaz; cevabı bilinmeyen ama önemli olanı kullanıcıya sor, uydurma:",
@@ -73,6 +79,23 @@ class Plan:
         lines.append(tr(f"- Veri: {d.get('measured', 0)} ölçülü, {d.get('partial', 0)} kısmi, {d.get('estimate', 0)} tahmin etiket; {d.get('queued', 0)} ölçüm sırada.",
                         f"- Data: {d.get('measured', 0)} measured, {d.get('partial', 0)} partial, {d.get('estimate', 0)} estimated tags; {d.get('queued', 0)} measurements queued."))
         return "\n".join(x for x in lines if x)
+
+
+_QUESTION_NOISE = {"how", "what", "why", "when", "where", "which", "who", "can", "does", "do", "is", "are", "should", "will", "was", "you", "these", "this",
+                   "that", "come", "comes", "with", "there", "have", "has", "get", "long", "much", "many", "need", "buy", "good", "best", "work", "works", "make", "made"}
+
+
+def unanswered(qs: list[dict], facts: Facts, limit: int = 2) -> list[dict]:
+    """Cevabı bilinmeyen sorular: sorunun içerik kelimeleri (ürün adı ve soru sözcükleri hariç) kullanıcının sözlerinde/olgularda hiç geçmiyorsa cevap
+    bilinmiyor demektir ("do these come with a case?": "case" hiçbir yerde yok). Talebi yüksek olandan başlayarak en fazla `limit` soru."""
+    known = facts.known_words | set(words(facts.claim_text))
+    rank = {"high": 0, "medium": 1, "low": 2, None: 3}
+    out = []
+    for q in sorted(qs, key=lambda q: rank.get(q.get("demand"), 3)):
+        content = {w for w in words(q["q"]) if len(w) > 2 and w not in _QUESTION_NOISE and w not in facts.item_words}
+        if content and not content & known:
+            out.append(q)
+    return out[:limit]
 
 
 def _stable(key: str, phrase: str) -> float:
@@ -136,6 +159,16 @@ def _candidates(raw: list[dict], facts: Facts, title_words: set[str], seen: set[
     return out, rejected, check
 
 
+def _dedupe(cands: list[dict]) -> list[dict]:
+    """Aynı aramayı iki kez harcamamak için yakın-aynı adaylardan ("mens sunglasses" / "men sunglasses" / "womens sunglasses") yalnızca en iyisi kalır."""
+    best: dict[str, dict] = {}
+    for c in cands:
+        k = quality.tag_key(c["tag"])
+        if k not in best or c["score"] > best[k]["score"]:
+            best[k] = c
+    return list(best.values())
+
+
 def _scored(item: dict, facts: Facts, title_words: set[str]) -> dict:
     s, conf = scoring.score(item)
     return {**item, "score": round(s * _relevance(item, facts), 3), "confidence": conf, "role": scoring.role_of(item["tag"], title_words), "angle": _angle(item["tag"])}
@@ -158,17 +191,19 @@ def build(
     cands, rejected, to_check = _candidates([*raw_pool, *suggestions, *model_cands], facts, title_words, seen)
 
     # Yapay zekâ (tek çağrı): kartta olmayan kelime taşıyanları doğrula + veri zayıfsa yeni fikir. Model yoksa doğrulanmamışlar elenir.
+    cands = _dedupe(cands)
     idea_count = 0
     thin = len([c for c in cands if len(c["tag"]) <= standard.TAG_MAX_LEN]) < ideas.MIN_CANDIDATES
     kept: set[str] = set()
-    if use_ideas and shop is not None and (to_check or thin):
-        kept, phrases, idea_questions, synonyms = ideas.run(facts, [c["tag"] for c in sorted(to_check, key=lambda c: -c["score"])], want_new=thin)
+    need_questions = not questions  # havuzda bu ürün için alıcı sorusu yoksa (araştırma işleri bütçeye takılabilir) yapay zekâ sorar
+    if use_ideas and shop is not None and (to_check or thin or need_questions):
+        kept, phrases, idea_questions, synonyms = ideas.run(facts, [c["tag"] for c in sorted(to_check, key=lambda c: -c["score"])], want_new=thin, want_questions=need_questions)
         if synonyms:  # ürün türü eşanlamlıları karta eklenir; doğrulanacaklar ve yeni fikirler genişlemiş kartla yeniden süzülür
             facts = replace(facts, text=" ".join([facts.text, *synonyms]))
             kept |= {c["tag"] for c in to_check if fit.reason(c["tag"], facts) is None}
         more, more_rejected, unchecked = _candidates([{"tag": p, "source": "ai", "score": 0, "sample_size": 0} for p in phrases], facts, title_words, seen)
         more_rejected += [(c["tag"], c["why"]) for c in unchecked]
-        cands += more
+        cands = _dedupe(cands + more)
         rejected += more_rejected  # yeni fikirlerde de kartta olmayan kelime varsa (doğrulanmadığı için) alınmaz
         idea_count = len(more)
         queued += sources.queue_measurement(shop, [c["tag"] for c in more])
@@ -196,6 +231,8 @@ def build(
         v = c["score"] * (1 - 0.6 * (c.get("crowd") or 0))
         return v * 0.85 if c["angle"] and c["angle"] in sibling_angles else v
 
+    if not pool_lead:  # talep kanıtı yoksa (havuzda ölçüm henüz yok) açılış yine de seçilir: ürün kelimesini taşıyan en iyi puanlı aday, o da yoksa ürün adı
+        pool_lead = [c for c in cands if c["role"] != "occasion" and c["tag"] not in sibling_leads and set(words(c["tag"])) & facts.item_words and len(c["tag"].split()) >= 2]
     ranked = sorted(pool_lead, key=lead_value, reverse=True)
     lead = None
     if current_title:
@@ -205,6 +242,8 @@ def build(
         best = lead_value(ranked[0])
         ties = [c for c in ranked if lead_value(c) >= TIE * best]
         lead = max(ties, key=lambda c: _stable(key, c["tag"]))
+    if lead is None and facts.product:
+        lead = {"tag": facts.product, "angle": _angle(facts.product)}
     options = ([lead["tag"]] if lead else []) + [c["tag"] for c in ranked if not lead or c["tag"] != lead["tag"]][:2]
 
     # Etiketler: rol kotası, ölçülü/kısmi önce, puan bandı + listing'e özgü sıra, benzer listing'le en fazla MAX_SHARED_TAGS ortak.
@@ -239,11 +278,12 @@ def build(
     for q in questions:
         if fit.reason(q["q"], facts) is None and len(qs) < 6:
             qs.append({"q": q["q"], "demand": bands.demand_band(q.get("google_volume"))})
-    conf = [c["confidence"] for c in chosen_tags]
+    ask = unanswered(qs, facts)
+    conf =[c["confidence"] for c in chosen_tags]
     return Plan(
         version=VERSION, shape=shape, lead=lead["tag"] if lead else None, lead_options=options, lead_angle=lead_angle,
         tags=[{"tag": c["tag"], "role": c["role"], "confidence": c["confidence"]} for c in chosen_tags],
-        great_for=great_for, questions=qs, sibling_words=sibling_words[:12],
+        great_for=great_for, questions=qs, ask=ask, sibling_words=sibling_words[:12],
         data={"measured": conf.count("measured"), "partial": conf.count("partial"), "estimate": conf.count("estimate"), "ideas": idea_count, "queued": queued},
         rejected=rejected,
     )
@@ -265,8 +305,8 @@ def title_problems(title: str, plan: Plan) -> list[str]:
     """Başlık planın açılış seçeneklerinden biriyle başlamıyorsa geri bildirim (kullanıcının kendi başlığına karışılmaz: çağıran karar verir)."""
     if not plan.lead_options:
         return []
-    low = " ".join(title.lower().split())
-    if any(low.startswith(o) or low.startswith(o.rstrip("s")) for o in plan.lead_options):
+    head = set(words(" ".join(title.split()[:8])))  # açılışın tüm kelimeleri başlığın ilk 8 kelimesinde geçsin (sıra ve araya giren kelime serbest: "Retro Square Sunglasses" = "retro sunglasses")
+    if any({w[:-1] if len(w) > 3 and w.endswith("s") else w for w in words(o)} <= {w[:-1] if len(w) > 3 and w.endswith("s") else w for w in head} for o in plan.lead_options):
         return []
     return [tr(
         f"Başlık planın açılış ifadesiyle başlamıyor; şunlardan biriyle başlat: {', '.join(plan.lead_options)}.",
