@@ -1665,7 +1665,7 @@ export const api = {
       return requestForm<EtsyDataParsed>(`/api/shops/${shopId}/insights/etsy-data/parse`, fd);
     },
     saveEtsyData: (shopId: number, body: { listing_id: number | null; source: EtsyDataSource; period_start: string | null; period_end: string | null; rows: EtsyDataRow[] }) =>
-      request<{ saved: number; tracked: string[] }>(`/api/shops/${shopId}/insights/etsy-data`, { method: "POST", body: JSON.stringify(body) }),
+      request<{ saved: number; updated: number; tracked: string[] }>(`/api/shops/${shopId}/insights/etsy-data`, { method: "POST", body: JSON.stringify(body) }),
     listingEtsyData: (shopId: number, listingId: number) =>
       request<{ rows: EtsyDataSaved[]; to_check: { keyword: string; listing_id: number; listing_title: string }[] }>(`/api/shops/${shopId}/insights/listings/${listingId}/etsy-data`),
     deleteEtsyData: (shopId: number, ids: number[]) =>

@@ -4,7 +4,8 @@ import { useState } from "react";
 import { api, ProcessingProfileInput, ReadinessStateDefinition } from "@/lib/api";
 import { Modal, btnGhost, btnPrimary } from "@/components/listing-editor/Modal";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
-import { Pager, SectionHeader, errorText, iconBtn, inputCls, isPermissionError, labelCls, outlineBtn } from "./shared";
+import { Pager } from "@/components/ui/Pager";
+import { SectionHeader, errorText, iconBtn, inputCls, isPermissionError, labelCls, outlineBtn } from "./shared";
 import { tNow, useT } from "@/lib/i18n-client";
 import { BlockSpinner } from "@/components/ui/Spinner";
 

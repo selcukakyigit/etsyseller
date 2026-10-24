@@ -3,6 +3,7 @@
 import { ReactNode, useEffect, useRef } from "react";
 import { CloseIcon } from "@/components/icons";
 import { useT } from "@/lib/i18n-client";
+import { useScrollLock } from "@/lib/useScrollLock";
 
 /** Mobilde alttan açılan panel (filtreler, kısa seçimler). Esc ya da arka plana dokunma kapatır; açıkken arkadaki
  * sayfa kaymaz. `footer`: panelin altına yapışan düğmeler (ör. "Sonuçları göster"). */
@@ -28,14 +29,10 @@ export default function BottomSheet({
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", onKey);
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     closeRef.current?.focus();
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = overflow;
-    };
+    return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+  useScrollLock(open);
 
   if (!open) return null;
   return (

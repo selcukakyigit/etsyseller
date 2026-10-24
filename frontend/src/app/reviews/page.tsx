@@ -6,7 +6,7 @@ import { api, ShopReview, ShopReviewStats } from "@/lib/api";
 import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import AppShell from "@/components/AppShell";
 import { pageContainer } from "@/components/layout/pageContainer";
-import { Pager } from "@/components/shipping/shared";
+import { Pager } from "@/components/ui/Pager";
 import { useT } from "@/lib/i18n-client";
 import { useCached } from "@/lib/pageCache";
 import { PageSpinner } from "@/components/ui/Spinner";

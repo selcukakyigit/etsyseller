@@ -1,5 +1,6 @@
 "use client";
 
+import { useScrollLock } from "@/lib/useScrollLock";
 import { ReactNode, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { tNow } from "@/lib/i18n";
@@ -32,6 +33,7 @@ export function Modal({
   // Yalnızca tarayıcıda bağlandığını anlamanın yolu bu — kaçınılmaz bir istisna.
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setMounted(true), []);
+  useScrollLock();
   if (!mounted) return null;
 
   return createPortal(
@@ -60,7 +62,7 @@ export function Modal({
             </button>
           )}
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-6 pb-4">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-6 pb-4">{children}</div>
         {footer && (
           <div className="flex items-center justify-between border-t border-neutral-100 px-6 py-4 dark:border-neutral-800">
             {footer}

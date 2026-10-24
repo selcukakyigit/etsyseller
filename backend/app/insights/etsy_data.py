@@ -130,6 +130,22 @@ def parse(text: str | None = None, image: tuple[bytes, str] | None = None) -> di
     return {"source": source, "period_start": _date(raw.get("period_start")), "period_end": _date(raw.get("period_end")), "rows": rows}
 
 
+def _same_measurement(
+    db: Session, shop: Shop, listing_id: int | None, keyword: str, source: str, start: dt.date | None, end: dt.date | None,
+) -> EtsyKeywordData | None:
+    """Aynı ölçüm daha önce kaydedildiyse o satır: aynı kelime, kaynak ve listing, ayrıca aynı dönem (dönem bilinmiyorsa aynı gün).
+    Farklı dönemin verisi eskinin üstüne yazılmaz, yeni tarihli satır olur; zaman içindeki değişim böyle korunur."""
+    q = select(EtsyKeywordData).where(
+        EtsyKeywordData.shop_id == shop.id, EtsyKeywordData.keyword == keyword, EtsyKeywordData.source == source,
+        EtsyKeywordData.listing_id.is_(None) if listing_id is None else EtsyKeywordData.listing_id == listing_id,
+    )
+    if start and end:
+        q = q.where(EtsyKeywordData.period_start == start, EtsyKeywordData.period_end == end)
+    else:
+        q = q.where(EtsyKeywordData.period_start.is_(None), EtsyKeywordData.captured_on == dt.date.today())
+    return db.scalars(q.order_by(EtsyKeywordData.id.desc())).first()
+
+
 def save(db: Session, shop: Shop, listing_id: int | None, source: str, rows: list[dict], period_start: str | None = None, period_end: str | None = None) -> dict:
     """Onaylanan satırları kaydeder. Listing'e ait arama terimleri / reklam verisinde listing'i en çok getiren aramalar
     (sıra takibinde yer varsa) takibe eklenir."""
@@ -138,16 +154,21 @@ def save(db: Session, shop: Shop, listing_id: int | None, source: str, rows: lis
     if source not in SOURCES:
         raise EtsyDataError(tr("Geçersiz veri türü.", "Invalid data type."))
     ps, pe = _date(period_start), _date(period_end)
-    saved = 0
+    start = dt.date.fromisoformat(ps) if ps else None
+    end = dt.date.fromisoformat(pe) if pe else None
+    saved = updated = 0
     for r in rows[:MAX_ROWS]:
         kw = re.sub(r"\s+", " ", str(r.get("keyword") or "").strip().lower())[:100]
         if len(kw) < 2:
             continue
-        db.add(EtsyKeywordData(
-            shop_id=shop.id, listing_id=listing_id, keyword=kw, source=source, **_extras(r),
-            period_start=dt.date.fromisoformat(ps) if ps else None, period_end=dt.date.fromisoformat(pe) if pe else None,
-            **{f: _int(r.get(f)) for f in NUM_FIELDS},
-        ))
+        values = {**_extras(r), **{f: _int(r.get(f)) for f in NUM_FIELDS}}
+        row = _same_measurement(db, shop, listing_id, kw, source, start, end)
+        if row is not None:  # aynı ölçümün yeniden yapıştırılması (ör. güncellenen Ads tablosu): satır çoğalmaz, değerler yenilenir
+            for k, v in values.items():
+                setattr(row, k, v)
+            updated += 1
+            continue
+        db.add(EtsyKeywordData(shop_id=shop.id, listing_id=listing_id, keyword=kw, source=source, period_start=start, period_end=end, **values))
         saved += 1
     db.commit()
 
@@ -164,7 +185,7 @@ def save(db: Session, shop: Shop, listing_id: int | None, source: str, rows: lis
                 tracked.append(str(r["keyword"]).lower())
             except rank.RankError:
                 break
-    return {"saved": saved, "tracked": tracked}
+    return {"saved": saved, "updated": updated, "tracked": tracked}
 
 
 def _out(r: EtsyKeywordData) -> dict:

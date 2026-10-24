@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import Logo from "@/components/Logo";
 import { CloseIcon } from "@/components/icons";
 import { useT } from "@/lib/i18n-client";
+import { useScrollLock } from "@/lib/useScrollLock";
 import SidebarNav, { ShellProps } from "./SidebarNav";
 
 /** Mobil menü çekmecesi (lg altı): soldan kayar, kenar çubuğunun aynısını gösterir. Esc, arka plana dokunma ya da bir
@@ -18,14 +19,10 @@ export default function MobileDrawer({ open, onClose, ...props }: ShellProps & {
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", onKey);
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     closeRef.current?.focus();
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = overflow;
-    };
+    return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+  useScrollLock(open);
 
   return (
     <div className={`fixed inset-0 z-[70] lg:hidden ${open ? "" : "pointer-events-none"}`} aria-hidden={!open}>

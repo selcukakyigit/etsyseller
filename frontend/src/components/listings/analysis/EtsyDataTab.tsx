@@ -6,8 +6,11 @@ import { useCached } from "@/lib/pageCache";
 import { useT } from "@/lib/i18n-client";
 import { BlockSpinner, Spinner } from "@/components/ui/Spinner";
 import { toast } from "@/lib/toast";
+import { Pager } from "@/components/ui/Pager";
 
 type Loaded = { rows: EtsyDataSaved[]; to_check: { keyword: string; listing_id: number; listing_title: string }[] };
+
+const PAGE_SIZE = 10;
 
 const input =
   "w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
@@ -22,6 +25,7 @@ export default function EtsyDataTab({ shopId, listingId }: { shopId: number; lis
   const [image, setImage] = useState<File | null>(null);
   const [parsed, setParsed] = useState<(EtsyDataParsed & { selected: boolean[] }) | null>(null);
   const [busy, setBusy] = useState<"" | "parse" | "save">("");
+  const [pages, setPages] = useState<Partial<Record<EtsyDataSource, number>>>({});
   const fileInput = useRef<HTMLInputElement>(null);
 
   const sourceLabel: Record<EtsyDataSource, string> = {
@@ -90,11 +94,10 @@ export default function EtsyDataTab({ shopId, listingId }: { shopId: number; lis
     setBusy("save");
     try {
       const r = await api.insights.saveEtsyData(shopId, { listing_id: listingId, source: parsed.source, period_start: parsed.period_start, period_end: parsed.period_end, rows });
-      toast.success(
-        r.tracked.length
-          ? t(`${r.saved} satır kaydedildi; sıra takibine eklendi: ${r.tracked.join(", ")}`, `${r.saved} rows saved; added to rank tracking: ${r.tracked.join(", ")}`)
-          : t(`${r.saved} satır kaydedildi`, `${r.saved} rows saved`),
-      );
+      const done = r.updated
+        ? t(`${r.saved} yeni satır, ${r.updated} satır güncellendi`, `${r.saved} new rows, ${r.updated} rows updated`)
+        : t(`${r.saved} satır kaydedildi`, `${r.saved} rows saved`);
+      toast.success(r.tracked.length ? t(`${done}; sıra takibine eklendi: ${r.tracked.join(", ")}`, `${done}; added to rank tracking: ${r.tracked.join(", ")}`) : done);
       setParsed(null);
       setText("");
       setImage(null);
@@ -296,9 +299,15 @@ export default function EtsyDataTab({ shopId, listingId }: { shopId: number; lis
       {groups.length === 0 ? (
         <p className="text-sm text-neutral-400 dark:text-neutral-500">{t("Bu listing için henüz Etsy verisi yok.", "No Etsy data for this listing yet.")}</p>
       ) : (
-        groups.map(([source, rows]) => (
+        groups.map(([source, all]) => {
+          const pageCount = Math.ceil(all.length / PAGE_SIZE);
+          const page = Math.min(pages[source] ?? 0, pageCount - 1);
+          const rows = all.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+          return (
           <div key={source}>
-            <p className="mb-1.5 text-xs font-medium text-neutral-400 dark:text-neutral-500">{sourceLabel[source]}</p>
+            <p className="mb-1.5 text-xs font-medium text-neutral-400 dark:text-neutral-500">
+              {sourceLabel[source]} · {num(all.length)}
+            </p>
             <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
               <table className="w-full min-w-[520px] text-xs">
                 <tbody className="text-neutral-700 dark:text-neutral-300">
@@ -327,8 +336,10 @@ export default function EtsyDataTab({ shopId, listingId }: { shopId: number; lis
                 </tbody>
               </table>
             </div>
+            <Pager page={page} pages={pageCount} onPage={(p) => setPages((cur) => ({ ...cur, [source]: p }))} />
           </div>
-        ))
+          );
+        })
       )}
     </div>
   );
