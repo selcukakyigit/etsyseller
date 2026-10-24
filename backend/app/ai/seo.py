@@ -5,7 +5,7 @@ from app.ai import audit, catalog, layout, quality, standard
 from app.ai.catalog import ResolvedModel
 from app.ai.client import get_anthropic_client, get_openai_client, openai_limits
 from app.billing import metering
-from app.keywords import scoring
+from app.listing_plan import plan as plan_mod
 from app.listings import fields
 
 SYSTEM_PROMPT = f"""Sen bir Etsy SEO uzmanısın. Sana bir listing'in mevcut başlığı, etiketleri ve açıklaması verilecek. Görevin, Etsy'nin Ağustos 2025 başlık rehberine ve alıcı niyetini anlayan aramaya uygun; aynı zamanda yapay zekâ alışveriş asistanlarının rahat okuyup önerebileceği net, olgusal ve tutarlı bir başlık, {standard.TAG_COUNT} etiket ve açıklama önerisi üretmek.
@@ -20,11 +20,12 @@ Bu listing'e özgü ek kurallar:
 - Açıklamanın sonundaki sabit/standart bölümleri (kargo-teslimat süreleri, garanti/iade politikası, iletişim bilgisi, telif/yasal uyarı, özel boyut talebi gibi mağaza genelinde tekrar eden kısımlar) OLDUĞU GİBİ, kısaltmadan, sembollerini (☛ ➲ ✔ ツ vb.) ve formatını koruyarak açıklamanın sonuna aynen ekle; asla silme, kısaltma veya parafraze etme
 - Açıklamadaki kısa olgu maddelerini (malzeme, ölçü, seçenekler) yalnızca verilen veriden yaz. Kurulum/montaj, donanım, garanti, su/hava dayanımı gibi verilmeyen bilgiyi ASLA ekleme; bir madde için veri yoksa o maddeyi hiç yazma
 - Orijinal dile (Türkçe/İngilizce vb.) sadık kal, ürünün gerçek özelliklerini uydurma, sadece verilen bilgiyi yeniden düzenle ve genişlet
-- Sana "Kullanılabilir anahtar kelime havuzu" verilirse: ifadeler ROLLERE ayrılmış ve puana göre sıralıdır; her birinin yanında verinin durumu yazar.
-  * ÖNCE alaka: ürüne gerçekten uymayan ifadeyi puanı ne olursa olsun kullanma. Sonra rollere göre seç: başlık ana öbeği ve etiketlerde ana ürün ifadesi, orta kapsam, uzun kuyruk, vesile/alıcı ve stil/malzeme etiketlerinden dengeli bir karışım kur; 13 etiketin hepsi aynı geniş ifadenin varyasyonu olmasın
-  * veri "ölçülü": aylık arama ve sonuç sayısı gerçek; ARAMA ÷ SONUÇ oranı yüksek ifadeler fırsattır. "kısmi": sonuç sayısı, dönüşüm ya da senin satışın biliniyor. "tahmin": talep BİLİNMİYOR, yalnızca kelime yapısı ya da rakip kullanımı var; bunları körü körüne güvenme. "kalabalık": birçok farklı mağazaya önerilmiş ifadeyi ana öbek yapma, en fazla bir etikette kullan; ürüne özgü, daha az önerilmiş uzun kuyruklu alternatifleri öne al (herkes aynı kelimeyle yarışmasın). "Google verisi hazırlanıyor": talep SIFIR değil, henüz bilinmiyor. "Google'da talep: düşük/orta/yüksek" yardımcı bir göstergedir, Etsy hacmi DEĞİLDİR: tek başına ana öbek seçme gerekçesi yapma
-  * Yüz binlerce sonuçlu geniş aramalar (ör. "metal wall art") ve dönüşümü düşük olanlar ana öbek olmasın, en fazla bir etikette geçsin; kanıtlanmış satışı olan ("senin benzer listing'lerinde N satış", "bu listing'e N siparişle gelmiş") ifadeleri koru
-  * Arama hacmi hızla düşen (değişim çok negatif) ifadeyi ana öbek yapma; havuzdaki her kelimeyi zorla kullanma, uydurma/alakasız kelime ekleme
+- Sana bir KELİME PLANI verilir (sunucu kurdu: ürüne uymayan, marka içeren ve kalabalık ifadeler zaten elendi; açılış farklılık için seçildi):
+  * Başlığı plandaki açılış ifadesiyle BAŞLAT, ardından karttan 2-3 nesnel niteleyici ekle; plan "benzer listing'lerde geçen kelimeler" verdiyse ikincil öbekte onları tekrarlama
+  * Etiketleri sunucu plandan yerleştirir: "tags" alanına plandaki etiketleri yaz (ürüne açıkça uymayan varsa çıkar, yerine ürüne özgü bir tane koy)
+  * Açılış cümlesinde plandaki ifadelerden 1-2'sini doğal geçir; GREAT FOR için plandaki vesile/alıcı adaylarından ürüne uyanları kullan
+  * SORU-CEVAP için plandaki alıcı sorularından YALNIZCA cevabı verilen bilgide olanları yaz; cevabı bilinmeyen soruyu yazma, uydurma
+  * Plan açılışı mevcut başlığın açılışıyla aynıysa (satış getirmiş ya da düzeltme turu) onu değiştirme
 - materials: ürünün gerçekten yapıldığı malzemeler (en fazla 13, her biri en fazla 45 karakter, parantez ve özel karakter yok). Verilen mevcut malzeme listesini ve açıklamadan açıkça anlaşılan malzemeleri düzenle; verilmeyen bir malzemeyi UYDURMA. Bilgi yoksa mevcut listeyi aynen döndür.
 - rationale: yaptığın değişikliklerin gerekçesini 2-3 cümleyle Türkçe özetle
 
@@ -89,36 +90,13 @@ def _others_block(title: str, tags: list[str], others: list[dict]) -> str:
     )
 
 
-def _fit_tags(tags: list[str], pool: list[dict], title: str) -> list[str]:
-    """Etsy 20 karakteri aşan etiketi reddeder. Kısaltılamayan etiketi havuzdaki en yüksek puanlı, sığan ve kullanılmayan adayla değiştirir;
-    havuz yetmezse kelime atarak (tek kelimeye kadar) ya da kesilerek sığdırır. Böylece öneri yayınlanamaz etiketle çıkmaz."""
-    limit = standard.TAG_MAX_LEN
-    out = [t for t in tags if len(t) <= limit]
-    if len(out) == len(tags):
-        return tags
-    used = {t.lower() for t in out}
-    spare = [p["tag"] for p in scoring.rank(pool, title) if len(p["tag"]) <= limit and p["tag"].lower() not in used]
-    for t in tags:
-        if len(t) <= limit:
-            continue
-        if spare:
-            pick = spare.pop(0)
-        else:
-            words = t.split()
-            while len(words) > 1 and len(" ".join(words)) > limit:
-                words.pop()
-            pick = " ".join(words)[:limit].strip()
-        if pick and pick.lower() not in {x.lower() for x in out}:
-            out.append(pick)
-    return out
-
-
 def generate_seo_suggestion(
-    listing: dict, keyword_pool: list[dict] | None = None, others: list[dict] | None = None, diagnosis_brief: str = "",
+    listing: dict, plan: plan_mod.Plan | None = None, others: list[dict] | None = None, diagnosis_brief: str = "",
     variations: dict[str, list[str]] | None = None, fact_source: dict | None = None,
 ) -> dict:
-    """`others`: mağazanın diğer listing'leri (başlık/etiket/açıklama). Verilirse öneri hem biçim kurallarına hem de
-    "diğer listing'lerin kopyası olmama" denetimine tabi tutulur; ihlalde model geri bildirimle yeniden denenir."""
+    """`plan`: kelime planı (bkz. app/listing_plan): model başlığı açılış ifadesiyle kurar, etiketleri sunucu plandan yerleştirir
+    (modelinkiler yalnızca eksik kalanı tamamlar). `others`: mağazanın diğer listing'leri (başlık/etiket/açıklama). Verilirse öneri hem
+    biçim kurallarına hem de "diğer listing'lerin kopyası olmama" denetimine tabi tutulur; ihlalde model geri bildirimle yeniden denenir."""
     others = others or []
     listing_payload = {
         "title": listing.get("title", ""),
@@ -137,8 +115,8 @@ def generate_seo_suggestion(
     ])
 
     user_content = f"Mevcut listing verisi:\n{json.dumps(listing_payload, ensure_ascii=False, indent=2)}"
-    if keyword_pool:
-        user_content += f"\n\nKullanılabilir anahtar kelime havuzu:\n{scoring.brief(keyword_pool, listing_payload["title"])}"
+    if plan is not None:
+        user_content += f"\n\n{plan.brief()}"
     user_content += _others_block(listing_payload["title"], listing_payload["tags"], others)
     if diagnosis_brief:
         user_content += f"\n\n{diagnosis_brief}\nGerekçede (rationale) bu teşhise göre neyi neden değiştirdiğini açıkla."
@@ -147,11 +125,15 @@ def generate_seo_suggestion(
     problems: list[str] = []
     for attempt in range(MAX_RETRIES + 1):
         tags = quality.fix_long_tags(quality.clean_tags(suggestion.get("tags", [])))
+        if plan is not None:
+            tags = plan_mod.place_tags(plan, tags)
         suggestion["tags"] = tags
         # Ölçü/renk temizliği denetimden önce: yeniden deneme, son hâli görsün (kısalan başlık benzerliği artırabilir)
         suggestion["description"] = layout.normalize(str(suggestion.get("description", "")))
         suggestion["title"] = quality.clean_title(str(suggestion.get("title", "")), variations or {})
         problems = audit.generation_problems(suggestion["title"], tags, str(suggestion.get("description", "")), others, source_text, variations or {}, listing.get("listing_type") == "download", bool(listing.get("is_personalizable")))
+        if plan is not None:
+            problems += plan_mod.title_problems(suggestion["title"], plan)
         if not problems or attempt == MAX_RETRIES:
             break
         feedback = "\n".join(f"- {p}" for p in problems)
@@ -163,7 +145,6 @@ def generate_seo_suggestion(
             + json.dumps(suggestion, ensure_ascii=False)
         )
 
-    suggestion["tags"] = _fit_tags(suggestion.get("tags", []), keyword_pool or [], str(suggestion.get("title", "")))
     description = str(suggestion.get("description", ""))
     suggestion["description"] = quality.strip_claims(description, source_text)  # model denemelerde bırakmadığı uydurma iddia koddan silinir
     if suggestion["tags"] != tags or suggestion["description"] != description:  # düzeltme sonrası uyarılar yeniden hesaplanır

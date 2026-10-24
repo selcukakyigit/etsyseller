@@ -81,6 +81,18 @@ def fix_long_tags(tags: list[str]) -> list[str]:
 _GIFT = re.compile(r"\b(gifts?|for (?:him|her|them|mom|mum|dad|men|women|kids|teens|wife|husband|boyfriend|girlfriend|grandma|grandpa|friends?))\b", re.I)
 _SUBJECTIVE = re.compile(r"\b(beautiful|perfect|best|amazing|stunning|cute|lovely|unique|awesome|gorgeous|must[- ]have)\b", re.I)
 _PROMO = re.compile(r"(free shipping|fast shipping|on sale|\bsale\b|discount|%\s*off|\boff\b\s*\d)", re.I)
+# Kişiselleştirme sözcükleri: listing'de kişiselleştirme sorusu yokken başlık/etiket/açıklamada geçerse alıcıyı yanıltır.
+PERSONALIZATION = re.compile(r"personali[sz]|\bcustom (?:name|text|initials?)\b|\bengrav|\bmonogram|\byour name\b|\binitials?\b|\bname or initials\b", re.I)
+
+
+def personalization_mentions(title: str, tags: list[str], description: str) -> list[str]:
+    """Kişiselleştirmeden söz eden yerler: "title", "tags", "description" (hiçbiri yoksa boş)."""
+    return [name for name, text in (("title", title), ("tags", " | ".join(tags)), ("description", description)) if PERSONALIZATION.search(text or "")]
+
+
+def without_personalization_tags(tags: list[str]) -> list[str]:
+    """Kişiselleştirme kapatıldığında anlamsızlaşan etiketler çıkarılır (ör. "personalized shades", "custom initials")."""
+    return [t for t in tags if not PERSONALIZATION.search(t)]
 
 
 def title_problems(title: str, sizes_vary: bool = True) -> list[str]:

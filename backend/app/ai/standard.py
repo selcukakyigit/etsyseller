@@ -9,8 +9,8 @@ asistanları (ChatGPT, Google AI) de aynı şeyi okur: net, olgusal, tutarlı ve
 açıklamadaki yapı (açılış cümlesi, olgu listesi, soru-cevap) topluluk kaynaklarındaki ortak bulgulara dayanır."""
 
 TITLE_MAX_CHARS = 140  # Etsy sınırı
-TITLE_MAX_WORDS = 22  # 120 karakterlik hedef başlık ~18-20 kelimedir; bunun üstü şişirilmiş sayılır
-TITLE_TARGET_CHARS = (80, 120)  # arama kapsamı için hedef uzunluk (yayın öncesi kontrol de bunu kullanır)
+TITLE_MAX_WORDS = 14  # Etsy (Ağustos 2025): "15 kelimenin altı"; uzun kuyruk etiketlere, özelliklere ve açıklamaya gider
+TITLE_TARGET_CHARS = (50, 110)  # açılış ifadesi + 2-3 nesnel niteleyici bu aralığa düşer (yayın öncesi kontrol de bunu kullanır)
 TITLE_MIN_CHARS = 20
 TITLE_LEAD_CHARS = 40  # ana arama öbeği bu sınırın içinde başlar
 TAG_COUNT = 13
@@ -21,7 +21,7 @@ DESCRIPTION_WORDS = (80, 200)  # ürüne özel kısım (mağazanın sabit bölü
 FAQ_COUNT = (2, 3)  # isteğe bağlı: yalnızca yeni bilgi veriyorsa
 
 TITLE_RULES = (
-    f"UZUN ama TEMİZ: hedef {TITLE_TARGET_CHARS[0]}–{TITLE_TARGET_CHARS[1]} karakter (en çok {TITLE_MAX_WORDS} kelime). Önce ürünün NE olduğu (ana arama öbeği ilk {TITLE_LEAD_CHARS} karakterde), sonra alıcının aradığı NESNEL tanımlar: malzeme, stil, kullanım yeri/oda, ürün tipi eş anlamlısı. Okunur bir ifade olsun, virgüllü kelime yığını değil.",
+    f"KISA ve NET: en çok {TITLE_MAX_WORDS} kelime (Etsy: 15 kelimenin altı), çoğu {TITLE_TARGET_CHARS[0]}–{TITLE_TARGET_CHARS[1]} karakter. Önce ürünün NE olduğu (ana arama öbeği ilk {TITLE_LEAD_CHARS} karakterde, bir kez), sonra en önemli 2-3 NESNEL tanım: malzeme, renk/ölçü yalnızca tek seçenekse, stil ya da kişiselleştirme. Uzun kuyruk ifadeler etiketlere, özelliklere ve açıklamaya gider. Okunur bir ifade olsun, virgüllü kelime yığını değil.",
     "Başlıkta OLMAYACAKLAR: hediye/alıcı ifadeleri (\"gift for dad\", \"for her\"), öznel sözcükler (\"beautiful\", \"perfect\", \"best\"), kargo/indirim bilgisi, aynı kelimenin tekrarı, virgülle sıralanmış kelime listesi.",
     "Başlıktan çıkardığın hediye/alıcı/kullanım yeri/vesile ifadelerini SİLME: etiketlere ve açıklamaya taşı (Etsy bunları oralardan da okur).",
     "Ölçü başlıkta yalnızca tek, sabit ölçülü üründe durur (\"11 oz mug\"); birden çok ölçü ya da renk seçeneği varsa başlığa tek bir seçenek yazma, seçenekler varyasyonlarda ve açıklamada durur.",

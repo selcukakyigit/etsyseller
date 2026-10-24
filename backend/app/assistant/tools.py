@@ -12,6 +12,7 @@ import statistics
 import time
 from collections import Counter
 from dataclasses import dataclass, field
+from typing import Any
 
 from sqlalchemy import func, select
 
@@ -30,8 +31,9 @@ from app.finance import invoices
 from app.finance import service as fin
 from app.listings import bulk, creation, drafts, performance, selection, templates
 from app.listings import service as listing_service
-from app.keywords import scoring
-from app.keywords import service as keyword_service
+from app.listing_plan import plan as plan_mod
+from app.listing_plan import service as plan_service
+from app.listing_plan.facts import lead_phrase
 from app.listings import sync_status as listing_sync
 from app.listings.models import ListingCache, ListingLocal
 from app.orders import service as orders_service
@@ -81,7 +83,8 @@ class Ctx:
     message: str = ""  # kullanıcının bu mesajı (yapıştırılan fatura metni gibi, modele yeniden yazdırmadan okumak için)
     cards: list[dict] = field(default_factory=list)
     session_id: int | None = None  # sohbet oturumu: üretilen resimler bu oturuma kaydedilir
-    keyword_checked: bool = False  # create_listing_draft anahtar kelime denetimini tur başına bir kez yapar (model düzeltip tekrar çağırır)
+    plan: Any = None  # bu turda keyword_pool'un kurduğu kelime planı (brief_check başlık seçeneklerini buna göre denetler)
+    plan_cache: dict = field(default_factory=dict)  # create_listing_draft yeniden denemelerinde plan bir kez kurulur: {anahtar: Plan}
     draft_rejections: int = 0  # create_listing_draft kalite denetimiyle en fazla bu kadar reddedilir; sonra taslak uyarılarla yine de oluşur (kullanıcı hata döngüsünde kalmasın)
     edit_jobs: dict = field(default_factory=dict)  # aynı turda istenen edit_chat_image'lar: {_edit_key: Future}
     image_jobs: list = field(default_factory=list)  # aynı turda istenen görseller önceden paralel başlatılır: [(prompt, referans kimliği, Future)]
@@ -834,15 +837,22 @@ def _latest_message_media(ctx: Ctx) -> tuple[list[str], list[str]]:
     return images, videos
 
 
-def _keyword_feedback(ctx: Ctx, a: dict, title: str, tags: list[str]) -> str | None:
-    """Yeni listing'in etiketlerini sunucudaki puanlı kelime havuzuna göre denetler (yapay zekâ çağırmaz). Havuz kurulamazsa ya da veri yoksa None: taslak engellenmez."""
+def _draft_plan(ctx: Ctx, a: dict, title: str, tags: list[str], variations: dict[str, list[str]], source: str) -> "plan_mod.Plan | None":
+    """Yeni listing'in kelime planı (editördeki AI önerisiyle AYNI işlev). Başlık kullanıcının seçtiği/modelin yazdığıdır (açılış odur); plan
+    etiketleri yerleştirir. Aynı turdaki yeniden denemelerde bir kez kurulur. Kurulamazsa None: taslak yine oluşur."""
+    key = f"{ctx.shop.id}:new:{ctx.session_id}:{lead_phrase(title)}"
+    if key in ctx.plan_cache:
+        return ctx.plan_cache[key]
+    listing = {"title": title, "description": str(a.get("description") or ""), "tags": tags, "materials": list(a.get("materials") or []),
+               "taxonomy_id": int(a["taxonomy_id"]) if a.get("taxonomy_id") else None, "personalizable": bool(a.get("personalizable") or a.get("personalization_questions"))}
     try:
-        tid = int(a["taxonomy_id"]) if a.get("taxonomy_id") else None
-        pool = keyword_service.scored_pool(ctx.db, ctx.shop, {"title": title, "tags": tags, "taxonomy_id": tid})
-        return scoring.coverage_feedback(tags, pool, title)
-    except Exception:  # noqa: BLE001 - kelime denetimi yardımcıdır; hata taslak oluşturmayı engellemez
-        log.warning("Anahtar kelime denetimi yapılamadı", exc_info=True)
-        return None
+        plan = plan_service.for_listing(ctx.db, ctx.shop, listing, key=key, variations=variations, product=a.get("product"), extra_facts=source,
+                                        model_tags=tags, current_title=title)
+    except Exception:  # noqa: BLE001 - plan yardımcıdır; kurulamazsa modelin etiketleri kalır
+        log.warning("Kelime planı kurulamadı", exc_info=True)
+        plan = None
+    ctx.plan_cache[key] = plan
+    return plan
 
 
 def _normalize_sizes(ctx: Ctx, variations: list[dict]) -> tuple[list[dict], list[str]]:
@@ -888,6 +898,10 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     draft_variations = {str(v.get("name") or ""): [str(x.get("value") or "") for x in v.get("values") or []] for v in a.get("variations") or []}
     source = _user_facts(ctx, draft_variations)  # kullanıcının söylediği ölçü/renk/malzeme "uydurma" sayılmaz
     a = {**a, "description": quality.strip_claims(str(a.get("description") or ""), source)}  # kaynakta olmayan "warranty/hardware included" gibi iddialar koddan silinir (SEO önerisiyle aynı kural)
+    plan = _draft_plan(ctx, a, title, tags_checked, draft_variations, source)
+    if plan is not None:  # etiketleri model değil plan yerleştirir; modelinkiler yalnızca plan 13'e ulaşamazsa tamamlar
+        tags_checked = plan_mod.place_tags(plan, tags_checked)
+        a = {**a, "tags": tags_checked}
     problems_pre = audit.generation_problems(title, tags_checked, str(a.get("description") or ""), others, source, draft_variations, a.get("listing_type") == "download", bool(a.get("personalizable")))
     quality_warnings: list[str] = []
     if problems_pre:
@@ -895,10 +909,6 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
             ctx.draft_rejections += 1
             return {"error": "Taslak henüz oluşturulmadı. Kullanıcıya SORMA, onay isteme: şunları kendin düzelt ve create_listing_draft'ı HEMEN tekrar çağır (mağazanın diğer listing'lerinin kopyası olmamalı): " + " ".join(problems_pre)}
         quality_warnings = problems_pre  # düzeltme hakkı doldu: taslak yine oluşur, kalanlar update_listing ile düzeltilir
-    keyword_hint = None
-    if not ctx.keyword_checked:  # anahtar kelime denetimi taslağı engellemez (fazladan tur = fazladan token); öneri sonuçta döner
-        ctx.keyword_checked = True
-        keyword_hint = _keyword_feedback(ctx, a, title, tags_checked)
     _, norm_qty = _shop_norms(ctx)
     qty_assumed = not a.get("quantity")
     # Fiyat yalnızca kullanıcının söylediği değerdir: verilmediyse 0 kalır ve taslak "Fiyat gir." ile yayına hazır sayılmaz.
@@ -1037,8 +1047,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         bad = _crop_in_work(ctx, lid, work, int(spec.get("photo_number") or 1), spec)
         if bad:
             completion.setdefault("kirpma_hatalari", []).append(bad)
-    text_all = " ".join([title, str(a.get("description") or ""), *tags]).lower()
-    if not (work.get("personalization") or {}).get("questions") and re.search(r"personali[sz]|custom (name|text)|engrav|monogram|your name", text_all):
+    if not (work.get("personalization") or {}).get("questions") and quality.personalization_mentions(title, tags, str(a.get("description") or "")):
         completion["kisisellestirme_eksik"] = (
             "Başlık/açıklama kişiselleştirmeden söz ediyor ama listing'de kişiselleştirme (Özel seçenekler) sorusu yok. Kullanıcı isim/yazı istediyse "
             "set_listing_fields.add_personalization_questions ile ekle (açıklamaya gömme); 'Can be personalized' özelliğini de Yes yap."
@@ -1075,8 +1084,12 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
             "yeni üretilen görsellerin alt metni için resimler eklendikten sonra generate_missing_alt_texts çağır; "
             "doldurulabilecek_bos_ozellikler'den ürüne uyanları doldur."
         )
-    if keyword_hint:
-        completion["etiket_onerisi"] = "İsteğe bağlı (kullanıcıya sorma): etiketleri ürüne uyarsa update_listing ile iyileştir; zorunlu değil. " + keyword_hint
+    if plan is not None:
+        completion["anahtar_kelime_plani"] = {"strateji": plan.shape, "acilis": plan.lead, "veri": plan.data}
+        completion["plan_notu"] = (
+            "Etiketler kelime planından yerleştirildi (ürüne uymayan, marka içeren ve kalabalık ifadeler elendi). Özette tek cümleyle söyle; "
+            "veri.queued > 0 ise 'bazı kelimeler ölçülüyor, veri gelince iyileştirebilirim' de. Ham sayı söyleme."
+        )
     if unit_assumed:
         completion["olcu_birimi_varsayildi"] = f"Ölçülerde birim yazılmamıştı; mağazanın alışkanlığı olan '{unit_assumed[0]}' varsayıldı. Özetin sonunda bunu tek cümleyle söyle (yanlışsa kullanıcı düzeltir); soru sorma."
     if quality_warnings:
@@ -1147,6 +1160,9 @@ def ask_user(ctx: Ctx, a: dict) -> dict:
     return {"ok": True, "not": "Seçenek kartı gösterildi. Aynı soruyu ya da önerileri metinde tekrar yazma; kullanıcının dokunmasını ya da yazmasını bekle."}
 
 
+_TITLE_QUESTION = re.compile(r"ba[sş]l[ıi]k|\btitle\b", re.IGNORECASE)
+
+
 def brief_check(ctx: Ctx, a: dict) -> dict:
     """Yeni listing'ten ÖNCE: anlaşılanları ve eksikleri tek kartta gösterir. Kullanıcının cevapları tek mesajda gelir, taslak tek seferde kurulur."""
     understood = [
@@ -1162,6 +1178,17 @@ def brief_check(ctx: Ctx, a: dict) -> dict:
             "options": [" ".join(str(o).split())[:140] for o in q.get("options") or [] if str(o).strip()][:4],
             "type": q.get("type") if q.get("type") in ("price", "title") else "text",
         }
+        if item["type"] == "text" and _TITLE_QUESTION.search(item["label"]):
+            item["type"] = "title"  # model tipi unuttuysa da başlık sorusu başlık kartı olarak çizilir
+        if item["type"] == "title" and len(item["options"]) < 3:
+            return {"error": "Başlık sorusunda 3 hazır başlık önerisi (options) ŞART: ürünü resimden/tariften çıkar, 3 farklı kısa İngilizce başlık fikri yaz ve kartı yeniden çağır. Öneri yazamıyorsan başlık sorusunu hiç ekleme."}
+        if item["type"] == "title":  # başlık seçenekleri kelime planının açılışlarıyla kurulur (veriye dayalı, mağazadaki benzerlerden farklı)
+            plan = getattr(ctx, "plan", None)
+            if plan is None:
+                return {"error": "Başlık önerilerinden önce keyword_pool'u İngilizce ürün adıyla (query) ve İngilizce olgularla (facts) çağır; seçenekleri planın açılış ifadeleriyle kur, sonra kartı yeniden çağır."}
+            off = [o for o in item["options"] if plan_mod.title_problems(o, plan)]
+            if off:
+                return {"error": f"Şu başlık seçenekleri planın açılış ifadelerinden biriyle başlamıyor: {off}. Her seçenek şunlardan biriyle başlasın: {plan.lead_options}; ardından 2-3 nesnel niteleyici, 15 kelimenin altı."}
         if item["type"] == "price":
             item["unit"] = "$"
         questions.append(item)
@@ -1674,21 +1701,30 @@ def shipping_invoices(ctx: Ctx, a: dict) -> dict:
 
 
 def keyword_pool(ctx: Ctx, a: dict) -> dict:
-    """Etsy etiket havuzu: kendi başarılı listing'lerinin ve rakiplerin etiketleri. Var olan listing için listing_id, yeni ürün için query + taxonomy_id ver."""
-    if a.get("listing_id"):
-        row = ctx.db.scalars(select(ListingCache).where(ListingCache.shop_id == ctx.shop.id, ListingCache.listing_id == int(a["listing_id"]))).one_or_none()
+    """Kelime planı (editördeki AI önerisiyle AYNI, bkz. app/listing_plan): açılış ifadesi seçenekleri, sunucunun yerleştireceği etiketler,
+    alıcı soruları ve veri durumu. Var olan listing için listing_id; yeni ürün için İngilizce query (ürün adı) + facts (İngilizce olgular) +
+    isteğe bağlı taxonomy_id. Plan bu turda brief_check'in başlık seçeneklerini denetler."""
+    lid = int(a["listing_id"]) if a.get("listing_id") else None
+    if lid is not None:
+        row = ctx.db.scalars(select(ListingCache).where(ListingCache.shop_id == ctx.shop.id, ListingCache.listing_id == lid)).one_or_none()
         if row is None:
             return {"error": "Listing yerelde yok."}
         listing = json.loads(row.raw_json)
+        key, product, extra = f"{ctx.shop.id}:{lid}", None, ""
     elif a.get("query"):
-        listing = {"title": str(a["query"]), "tags": [], "taxonomy_id": int(a["taxonomy_id"]) if a.get("taxonomy_id") else None}
+        product = " ".join(str(a["query"]).split()).lower()
+        listing = {"title": product, "tags": [], "taxonomy_id": int(a["taxonomy_id"]) if a.get("taxonomy_id") else None, "description": str(a.get("facts") or "")}
+        key, extra = f"{ctx.shop.id}:new:{ctx.session_id}:{product}", _user_facts(ctx, {})
     else:
         return {"error": "listing_id ya da query ver."}
-    pool = keyword_service.scored_pool(ctx.db, ctx.shop, listing)
+    plan = plan_service.for_listing(ctx.db, ctx.shop, listing, key=key, product=product, extra_facts=extra, keep_proven_lead=lid is not None, exclude_id=lid)
+    ctx.plan = plan
     return {
-        "adaylar": scoring.brief(pool, listing.get("title") or "", limit=max(5, min(int(a.get("limit") or 30), 40))),
-        "not": ("Roller ve veri durumu (ölçülü / kısmi / tahmin) ile puana göre sıralı. Önce ürüne UYUP UYMADIĞINA bak, sonra rollere göre dengeli seç; "
-                "tahmin etiketli ifadelerde talep bilinmiyor. \"Google'da talep: düşük/orta/yüksek\" Etsy hacmi değildir, yardımcı göstergedir. Etiket en fazla 20 karakter; hepsini kopyalama."),
+        "plan": plan.brief(),
+        "acilis_secenekleri": plan.lead_options,
+        "not": ("Başlık seçenekleri (brief_check type=title) bu açılış ifadelerinin her biriyle BAŞLAR, ardından 2-3 nesnel niteleyici; 15 kelimenin altı. "
+                "Etiketleri create_listing_draft'ta sunucu plandan yerleştirir; sen ürüne özgü olanları yaz, plan tamamlar. "
+                "Alıcı sorularından cevabı bilinmeyen ama önemli olanı brief_check'te kullanıcıya sor."),
     }
 
 
@@ -2194,7 +2230,32 @@ def set_listing_fields(ctx: Ctx, a: dict) -> dict:
             if dropped:
                 extra["kaldirilan_ozellikler"] = dropped
             extra["sonraki_adim"] = "Yeni kategorinin zorunlu özelliklerini get_category_attributes ile kontrol et."
+    if "personalization_questions" in changed and not (work.get("personalization") or {}).get("questions"):
+        extra.update(_after_personalization_off(work))
+        if "tags" in extra.pop("_changed", ()):
+            changed.append("tags")
     return _save_fields(ctx, lid, work, changed, errors, **extra)
+
+
+def _after_personalization_off(work: dict) -> dict:
+    """Kişiselleştirme kapatıldı: kişiselleştirme etiketleri sunucuda çıkarılır; başlık/açıklama hâlâ söz ediyorsa model yeniden yazmaya yönlendirilir
+    (önceden yalnızca soru alanı boşalıyor, "Personalized … Name or Initials" başlıkta kalıyordu)."""
+    out: dict = {}
+    tags = list(work.get("tags") or [])
+    kept = quality.without_personalization_tags(tags)
+    if kept != tags:
+        work["tags"] = kept
+        out["cikarilan_etiketler"] = [t for t in tags if t not in kept]
+        out["_changed"] = ("tags",)
+    left = [p for p in quality.personalization_mentions(str(work.get("title") or ""), [], str(work.get("description") or "")) if p != "tags"]
+    if left or kept != tags:
+        out["kisisellestirme_kapatildi"] = (
+            "Kişiselleştirme kapandı. " + (f"{', '.join(left)} hâlâ kişiselleştirmeden söz ediyor: update_listing ile bu ifadeleri çıkararak yeniden yaz "
+            "(isim/harf/kazıma/custom/personalized yok). " if left else "")
+            + (f"Çıkarılan {len(tags) - len(kept)} etiketin yerine update_listing ile ürüne uyan yeni etiketler ekle (13'e tamamla). " if kept != tags else "")
+            + "'Can be personalized' özelliği varsa set_listing_attributes ile No yap. Kullanıcıya sorma, hemen yap."
+        )
+    return out
 
 
 
@@ -2946,9 +3007,10 @@ TOOLS: list[dict] = [
     {"name": "similar_listings", "description": "Mağazadaki benzer listing'leri bulur (İngilizce anahtar kelimelerle): fiyatlarını, etiketlerini, başlık üslubunu ve açıklama örneğini verir. Yeni listing'de fiyat ve üslup için MUTLAKA bak.", "input_schema": _obj({"query": {"type": "string", "description": "İngilizce ürün anahtar kelimeleri, ör. 'mountain metal wall art'"}, "limit": {"type": "integer"}}, ["query"])},
     {"name": "find_category", "description": "Etsy kategori ağacında ada göre arar ve kategori kimliği (taxonomy_id) bulur.", "input_schema": _obj({"query": {"type": "string"}}, ["query"])},
     {"name": "create_listing_draft", "description": "Yeni listing YEREL TASLAĞI oluşturur (Etsy'ye göndermez). Kullanıcının verdiği bilgileri ve sohbete yüklediği resimleri (image_ids) kullanır; verilmeyen adet mağazanın tipik değeriyle doldurulur; verilmeyen fiyat BOŞ kalır ve taslak yayına hazır sayılmaz. Kullanıcı SEO uyumlu yazmanı isterse ya da bilgi kabaysa başlık, 13 etiket ve açıklamayı sen üret; ürünün gerçek özelliklerini uydurma.", "input_schema": _obj({
-        "title": {"type": "string", "description": "En fazla 140 karakter, doğal okunan, ilk 40 karakterde ana anahtar kelime"},
+        "title": {"type": "string", "description": "Kelime planının açılış ifadesiyle (kullanıcının seçtiği başlık seçeneği) başlar; 15 kelimenin altı, doğal okunan"},
+        "product": {"type": "string", "description": "Kısa İngilizce ürün adı (keyword_pool'a verdiğin query), ör. 'insulated water bottle'"},
         "description": {"type": "string", "description": "YALNIZCA ürüne özel kısım (satış paragrafı + özellik maddeleri). Mağazanın sabit bölümleri otomatik eklenir; onları yazma"},
-        "tags": {"type": "array", "items": {"type": "string"}, "description": "En fazla 13 etiket, her biri en fazla 20 karakter"},
+        "tags": {"type": "array", "items": {"type": "string"}, "description": "Ürüne özgü etiket önerilerin (en fazla 20 karakter). Son 13 etiketi sunucu kelime planından yerleştirir; seninkiler aday olur ve eksik kalanı tamamlar"},
         "price": {"type": "number", "description": "Mağaza para biriminde birim fiyat. YALNIZCA kullanıcı söylediyse ver; söylemediyse BOŞ BIRAK (tahmin etme, benzer listing'lerden çıkarma). Boşsa taslak 'Fiyat gir.' eksiğiyle oluşur ve yayınlanamaz."},
         "dimensions": _obj({"length": {"type": "number"}, "width": {"type": "number"}, "height": {"type": "number"}, "unit": {"type": "string", "enum": ["mm", "cm", "m", "in", "ft"]}}),
         "description_template_id": {"type": "integer", "description": "Kullanılacak hazır açıklama metni. Verilmezse mağazanın VARSAYILAN şablonu kullanılır; 0 = şablon kullanma. Şablon kullanılırken description'a kargo/garanti/iletişim gibi sabit kısımları YAZMA."},
@@ -2978,7 +3040,7 @@ TOOLS: list[dict] = [
     {"name": "order_detail", "description": "Tek siparişin ayrıntısı: kalemler ve seçenekler, kişiselleştirme cevapları, alıcı/hediye notu, kargo yöntemi, takip kodu ve maliyet. Sipariş numarasını list_orders'tan al.", "input_schema": _obj({"receipt_id": {"type": "integer"}}, ["receipt_id"])},
     {"name": "orders_missing_costs", "description": "Ürün maliyeti tanımlı olmadığı için kârı eksik hesaplanan siparişler ve en çok eksik kalan ürünler. Tarih verilmezse son 90 gün.", "input_schema": _obj({"start_date": DATE, "end_date": DATE, "limit": {"type": "integer"}})},
     {"name": "shipping_invoices", "description": "Kayıtlı kargo/gümrük faturaları (gönderi başına): toplam tutar, kalemler (nakliye/gümrük/ek hizmet), aynı gönderiye fazla kesilmiş kalem uyarıları ve siparişe bağlanamayanlar. Alıcı adı, takip no, ürün ya da fatura no ile aranabilir.", "input_schema": _obj({"query": {"type": "string"}, "kind": {"type": "string", "enum": ["nakliye", "gümrük", "ek hizmet", "diğer"]}, "start_date": DATE, "end_date": DATE, "sort": {"type": "string", "enum": ["inv_date", "order_date", "buyer", "amount"]}, "limit": {"type": "integer"}})},
-    {"name": "keyword_pool", "description": "Etiket/anahtar kelime havuzu (kendi satan listing'lerinin ve rakiplerin etiketleri). Var olan listing için listing_id; yeni ürün için İngilizce query ve taxonomy_id (find_category'den) ver. Başlık/etiket yazmadan önce bak.", "input_schema": _obj({"listing_id": {"type": "integer"}, "query": {"type": "string"}, "taxonomy_id": {"type": "integer"}, "limit": {"type": "integer"}})},
+    {"name": "keyword_pool", "description": "KELİME PLANI (editördeki AI önerisiyle aynı): kendi satışlar, Etsy verisi, rakipler ve araştırma havuzundan; ürüne uymayan/marka/kalabalık ifadeleri eler, mağazadaki benzer listing'lerden farklı bir açılış ifadesi seçer, etiketleri ve alıcı sorularını kurar. Yeni ürün için başlık önerilerinden ÖNCE çağır: query = kısa İngilizce ürün adı, facts = İngilizce olgular (malzeme, ölçü/kapasite, özellik, kişiselleştirme), varsa taxonomy_id. Var olan listing için listing_id. Ücretsizdir (yerel veri; eksik kelimeler ölçüm için kuyruğa girer).", "input_schema": _obj({"listing_id": {"type": "integer"}, "query": {"type": "string", "description": "Kısa İngilizce ürün adı, ör. 'insulated water bottle'"}, "facts": {"type": "string", "description": "İngilizce olgular, ör. 'stainless steel, 750 ml, keeps cold, engraved name up to 30 characters'"}, "taxonomy_id": {"type": "integer"}})},
     {"name": "update_listing", "description": "Var olan bir listing'in ya da daha önce oluşturduğun taslağın (negatif listing_id) başlık, açıklama, etiket, fiyat, VARYASYONLAR (boyut/renk vb.), bölüm, kargo profili, iade politikası, hazırlık süresi, üretim ortağı veya otomatik yenilemesini YEREL TASLAK olarak değiştirir (Etsy'ye göndermez). Kullanıcı sohbette konuşulan listing'e/taslağa bir şey eklemek ya da değiştirmek isterse HER ZAMAN bunu kullan; create_listing_draft ile yeni taslak AÇMA. Önce get_listing ile mevcut hâline bak.", "input_schema": _obj({
         "listing_id": {"type": "integer"}, "new_title": {"type": "string"}, "new_description": {"type": "string"},
         "set_tags": {"type": "array", "items": {"type": "string"}, "description": "Etiketlerin tamamını bununla değiştirir (en fazla 13)"},
@@ -3108,7 +3170,7 @@ TOOL_LABELS = {
     "orders_overview": "Sipariş sayılarını çıkarıyor",
     "order_detail": "Siparişi açıyor",
     "orders_missing_costs": "Maliyeti eksik siparişleri tarıyor",
-    "keyword_pool": "Anahtar kelime havuzuna bakıyor",
+    "keyword_pool": "Kelime planını hazırlıyor",
     "shipping_invoices": "Kargo faturalarına bakıyor",
     "regenerate_listing_image": "Fotoğrafı yeniden oluşturuyor",
     "upscale_listing_photo": "Fotoğrafı yüksek çözünürlüğe çıkarıyor",
@@ -3177,7 +3239,7 @@ TOOL_LABELS_EN = {
     "orders_overview": "Counting orders",
     "order_detail": "Opening the order",
     "orders_missing_costs": "Finding orders with missing costs",
-    "keyword_pool": "Checking the keyword pool",
+    "keyword_pool": "Preparing the keyword plan",
     "shipping_invoices": "Checking shipping invoices",
     "regenerate_listing_image": "Regenerating the photo",
     "upscale_listing_photo": "Upscaling the photo",

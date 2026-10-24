@@ -25,6 +25,21 @@ def text_model(task: str) -> ResolvedModel:
         raise VisionError(str(exc)) from exc
 
 
+def ask_text(model: ResolvedModel, prompt: str, max_tokens: int = 120, task: str = "vision") -> str:
+    """Tek mesajlık kısa metin çağrısı (kategori seçici, kelime fikirleri); sağlayıcıdan bağımsız, ölçülür. Hata = VisionError."""
+    try:
+        if model.provider == "anthropic":
+            resp = get_anthropic_client().messages.create(model=model.model_id, max_tokens=max_tokens, messages=[{"role": "user", "content": prompt}])
+            raw = "".join(b.text for b in resp.content if b.type == "text")
+        else:
+            resp = get_openai_client().chat.completions.create(model=model.model_id, messages=[{"role": "user", "content": prompt}], **openai_limits(model.model_id, max_tokens))
+            raw = resp.choices[0].message.content or ""
+        metering.record_response(task, model, resp)
+        return raw
+    except Exception as exc:  # noqa: BLE001
+        raise VisionError(f"Yapay zekâ sağlayıcısı hata verdi: {str(exc)[:200]}") from exc
+
+
 def _clip(text: str) -> str:
     text = " ".join(text.split()).strip(' "')
     if len(text) <= ALT_MAX:

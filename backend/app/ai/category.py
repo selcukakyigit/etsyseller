@@ -7,9 +7,7 @@ gerçekten var olan bir düğümdür; uydurma kategori çıkamaz. Model katalogd
 import json
 import re
 
-from app.ai.client import get_anthropic_client, get_openai_client, openai_limits
-from app.ai.vision import VisionError, text_model
-from app.billing import metering
+from app.ai.vision import ask_text, text_model
 
 MAX_LEVELS = 8
 
@@ -17,20 +15,6 @@ MAX_LEVELS = 8
 def _uses(node: dict, used_ids: set[int]) -> bool:
     """Düğümün kendisi ya da altındaki bir kategori mağazada kullanılıyor mu?"""
     return node["id"] in used_ids or any(_uses(c, used_ids) for c in node.get("children") or [])
-
-
-def _ask(model, prompt: str) -> str:
-    try:
-        if model.provider == "anthropic":
-            resp = get_anthropic_client().messages.create(model=model.model_id, max_tokens=120, messages=[{"role": "user", "content": prompt}])
-            raw = "".join(b.text for b in resp.content if b.type == "text")
-        else:
-            resp = get_openai_client().chat.completions.create(model=model.model_id, messages=[{"role": "user", "content": prompt}], **openai_limits(model.model_id, 120))
-            raw = resp.choices[0].message.content or ""
-        metering.record_response("vision", model, resp)
-        return raw
-    except Exception as exc:  # noqa: BLE001
-        raise VisionError(f"Yapay zekâ sağlayıcısı hata verdi: {str(exc)[:200]}") from exc
 
 
 def navigate(title: str, description: str, tags: list[str], materials: list[str], roots: list[dict], used_ids: set[int]) -> int | None:
@@ -52,7 +36,7 @@ def navigate(title: str, description: str, tags: list[str], materials: list[str]
             + ('- Go deeper only while a child describes THIS kind of product. Answer "stop" if no child clearly fits, if the remaining children are narrower product types that do not match (e.g. "Signs" for decorative art that is not a sign), or if the product is multi-purpose and the children would split it; the current category is then final (a broader category is fine).\n' if can_stop else "")
             + 'Return ONLY JSON: {"id": ' + ('<child id or "stop">' if can_stop else "<child id>") + "}"
         )
-        raw = _ask(model, prompt)
+        raw = ask_text(model, prompt)
         match = re.search(r"\{.*\}", raw, re.S)
         try:
             choice = json.loads(match.group(0)).get("id") if match else None

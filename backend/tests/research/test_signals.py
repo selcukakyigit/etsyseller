@@ -34,8 +34,11 @@ def test_crowded_phrase_scores_lower_and_is_flagged_without_numbers():
     unique = {**base, "tag": "rusty barn sign", "crowd": 0.0}
     plain = {**base, "tag": "rusty barn sign"}
     assert scoring.score(crowded)[0] < scoring.score(plain)[0] < scoring.score(unique)[0]
-    note = scoring._data_note(crowded)
-    assert "kalabal" in note and "30" not in note
+    from app.listing_plan import facts, plan
+
+    pool = [crowded, {**unique, "tag": "metal barn sign"}]
+    brief = plan.build(pool, facts.from_listing("Metal wall art", "metal barn sign"), key="k", research=([], [], 0), use_ideas=False).brief()
+    assert "30" not in brief  # kalabalık sayısı modele hiç gitmez
 
 
 def test_outcomes_count_only_final_measured_ai_tag_changes(db):

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { api, WorkingCopy } from "@/lib/api";
 import { useT } from "@/lib/i18n-client";
+import { useScrollLock } from "@/lib/useScrollLock";
 import { BlockSpinner } from "@/components/ui/Spinner";
 import EtsyLink from "@/components/ui/EtsyLink";
 
@@ -49,6 +50,7 @@ function Accordion({ title, defaultOpen = false, children }: { title: string; de
  *  Yerel değişiklik varsa onu, yoksa Etsy'deki hâlini gösterir. Hiçbir şeyi değiştirmez, Etsy'ye istek atmaz. */
 export default function ListingPreviewModal({ shopId, listingId, shopName, onClose }: { shopId: number; listingId: number; shopName?: string; onClose: () => void }) {
   const { t } = useT();
+  useScrollLock();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [active, setActive] = useState(0);
   const [videoIdx, setVideoIdx] = useState<number | null>(null); // seçiliyse ana alanda video oynar
@@ -147,9 +149,10 @@ export default function ListingPreviewModal({ shopId, listingId, shopName, onClo
   };
   const materialsText = data ? data.materials.join(", ") : "";
   const descLong = (data?.description.length ?? 0) > 420 || (data?.description.split("\n").length ?? 0) > 7;
+  const titleWords = (data?.title ?? "").split(/[\s,|/–—-]+/).filter(Boolean).length; // quality.title_problems ile aynı sayım
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-start justify-center overflow-y-auto bg-black/50 p-3 sm:p-8" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-[110] flex items-start justify-center overflow-y-auto overscroll-contain bg-black/50 p-3 sm:p-8" onMouseDown={onClose}>
       <div className="w-full max-w-6xl rounded-2xl bg-[#faf9f7] shadow-2xl dark:bg-neutral-950" onMouseDown={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between gap-3 border-b border-neutral-200 px-5 py-3 dark:border-neutral-800">
           <div className="flex items-center gap-2">
@@ -373,7 +376,11 @@ export default function ListingPreviewModal({ shopId, listingId, shopName, onClo
               <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
                 <h3 className="mb-2 text-sm font-semibold">{t("Yayın öncesi kontrol", "Pre-publish check")}</h3>
                 <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
-                  <Check ok={data.title.length >= 80 && data.title.length <= 140 ? true : data.title.length > 0 && data.title.length <= 140 ? "warn" : false} label={t(`Başlık ${data.title.length}/140 karakter`, `Title ${data.title.length}/140 characters`)} hint={data.title.length < 80 ? t("80–120 arası daha iyi", "80–120 is better") : undefined} />
+                  <Check
+                    ok={titleWords > 0 && titleWords < 15 && data.title.length >= 20 && data.title.length <= 140 ? true : data.title.length > 0 && data.title.length <= 140 ? "warn" : false}
+                    label={t(`Başlık ${titleWords} kelime, ${data.title.length}/140 karakter`, `Title ${titleWords} words, ${data.title.length}/140 characters`)}
+                    hint={titleWords >= 15 ? t("Etsy 15 kelimenin altını öneriyor", "Etsy recommends fewer than 15 words") : data.title.length < 20 ? t("çok kısa", "too short") : undefined}
+                  />
                   <Check ok={data.tags.length === 13 ? true : data.tags.length > 0 ? "warn" : false} label={t(`${data.tags.length}/13 etiket`, `${data.tags.length}/13 tags`)} hint={data.tags.length < 13 ? t("13'ünü de kullan", "use all 13") : undefined} />
                   <Check ok={images.length >= 5 ? true : images.length > 0 ? "warn" : false} label={t(`${images.length} fotoğraf`, `${images.length} photos`)} hint={images.length < 5 ? t("en az 5 önerilir", "at least 5 recommended") : undefined} />
                   <Check ok={data.description.length >= 300 ? true : data.description.length > 0 ? "warn" : false} label={t(`Açıklama ${data.description.length} karakter`, `Description ${data.description.length} characters`)} />

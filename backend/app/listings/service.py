@@ -20,7 +20,7 @@ from app.etsy import variation_images as etsy_variation_images
 from app.etsy import videos as etsy_videos
 from app.etsy.client import EtsyClient
 from app.listings import image_cache
-from app.keywords import service as keyword_service
+from app.listing_plan import service as plan_service
 from app.listings.models import ListingCache, ListingChange, ListingDraft, ListingLocal, ListingStatSnapshot, ListingVersion
 from app.listings.schemas import (
     ImageOrderIn,
@@ -478,7 +478,13 @@ def generate_for_listing(db: Session, shop: Shop, listing_id: int, overrides: Su
         if overrides.inventory:
             inventory = overrides.inventory
 
-    keyword_pool = keyword_service.scored_pool(db, shop, listing)
+    variations = quality.variation_values(inventory)
+    # Kelime planı (asistanla AYNI): açılış ifadesi, etiketler, alıcı soruları. Düzeltme turunda mevcut başlığın açılışı korunur;
+    # satış getiren açılış her zaman korunur.
+    keyword_plan = plan_service.for_listing(
+        db, shop, listing, key=f"{shop.id}:{listing_id}", variations=variations, current_title=listing.get("title", "") if instruction else "",
+        keep_proven_lead=True, exclude_id=listing_id,
+    )
 
     # Satış teşhisi (yalnızca Etsy'deki listing'ler için): öneri, listing'in neden düştüğüne göre odaklanır.
     brief = ""
@@ -494,7 +500,7 @@ def generate_for_listing(db: Session, shop: Shop, listing_id: int, overrides: Su
         ).strip()
 
     try:
-        suggestion = seo.generate_seo_suggestion(listing, keyword_pool=keyword_pool, others=quality.shop_others(db, shop.id, exclude_id=listing_id), diagnosis_brief=brief, variations=quality.variation_values(inventory), fact_source=fact_source)
+        suggestion = seo.generate_seo_suggestion(listing, plan=keyword_plan, others=quality.shop_others(db, shop.id, exclude_id=listing_id), diagnosis_brief=brief, variations=variations, fact_source=fact_source)
     except NotConfigured as exc:
         raise SuggestionError(str(exc)) from exc
     except (ValueError, json.JSONDecodeError) as exc:
