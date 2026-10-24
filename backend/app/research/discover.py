@@ -58,6 +58,7 @@ class SearchResult:
     season: dict | None = None  # tohum kelimenin mevsimsellik profili: {"monthly": [12], "peak_months": [..], "seasonal": bool, "pending": bool}
     mode: str = "all"  # all | questions
     measured_at: str | None = None  # listedeki ölçümlerin en yenisi (ISO); verinin ne zaman alındığını gösterir
+    related_only: bool = False  # kelimenin kendi öneri listesi yok; liste, havuzda bu kelimeyi içeren ölçülmüş kelimelerdir
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -140,6 +141,10 @@ def search(db: Session, shop: Shop, seed: str, mode: str = "all", refresh: bool 
     # Soru listesinde yalnızca gerçek sorular gösterilir (sağlayıcı süzgecinin eski, yanlış kayıtlarına karşı da korur).
     terms = [t for t in found.metrics if not questions or is_question(t)][:MAX_RESULTS]
     own = service.peek(db, [term])
+    related_only = False
+    if not terms and not questions and own.get(term):  # kendi öneri listesi yok: başka aramalardan havuza girmiş, bu kelimeyi içeren ölçülmüş kelimeler gösterilir
+        found.metrics = service.peek_containing(db, term, limit=MAX_RESULTS)
+        terms, related_only = list(found.metrics), bool(found.metrics)
     if not terms and (questions or not own.get(term)):  # (soru sekmesi hariç) kelimenin kendi ölçümü havuzdaysa kartı gösterilir (öneri listesi hazır olmasa ya da hak dolsa da)
         status = "pending" if found.pending else "refused" if found.refused else "empty"
         return SearchResult(seed=term, status=status, refused=found.refused, mode=mode)
@@ -153,7 +158,7 @@ def search(db: Session, shop: Shop, seed: str, mode: str = "all", refresh: bool 
     stale = bool(found.pending) or not all(m.fresh for m in found.metrics.values())
     return SearchResult(
         seed=term, status="ready", refused=found.refused, seed_item=_item(term, own.get(term), crowd, full, mine, saved), items=items,
-        stale=(stale and bool(found.pending)) or bool(season and season["pending"]), season=season,
+        stale=(stale and bool(found.pending)) or bool(season and season["pending"]), season=season, related_only=related_only,
         total_volume=sum(i.volume or 0 for i in items), mode=mode,
         measured_at=iso(max((m.measured_at for m in list(found.metrics.values()) + list(own.values())), default=None)),
     )

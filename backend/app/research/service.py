@@ -162,6 +162,17 @@ def peek(db: Session, terms: list[str], *, market: str | None = None, language: 
     return {term: _view(term, latest[row.id], now) for term, row in rows.items() if row.id in latest}
 
 
+def peek_containing(db: Session, term: str, *, market: str | None = None, language: str | None = None, limit: int = 300) -> dict[str, MetricView]:
+    """Yalnızca OKUR: havuzda ölçümü olan, `term`in sözcüklerini içeren kelimeler (hacmi çoktan aza, en çok `limit`)."""
+    market, language = _market(market, language)
+    rows = pool.containing_terms(db, normalize(term), language, limit)
+    latest = pool.latest_metrics(db, [r.id for r in rows], market, language)
+    now = dt.datetime.utcnow()
+    views = [_view(r.term, latest[r.id], now) for r in rows if r.id in latest and latest[r.id].search_volume is not None]
+    views.sort(key=lambda v: -(v.search_volume or 0))
+    return {v.term: v for v in views[:limit]}
+
+
 def _market(market: str | None, language: str | None) -> tuple[str, str]:
     return market or policy.get("research_default_market"), language or policy.get("research_default_language")
 

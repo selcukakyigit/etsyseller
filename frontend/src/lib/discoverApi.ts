@@ -58,6 +58,7 @@ export type DiscoverSearch = {
   /** budget | shop_daily | shop_searches | disabled | not_configured | market */
   refused: string | null;
   seed_item: DiscoverItem | null;
+  related_only?: boolean;
   items: DiscoverItem[];
   stale: boolean;
   total_volume: number;

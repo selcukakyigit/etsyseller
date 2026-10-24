@@ -119,6 +119,16 @@ def test_term_known_only_as_a_suggestion_shows_its_own_card_when_the_allowance_i
     assert discover.search(db, SHOP_B, "never researched sign").status == "refused", "havuzda hiç yoksa eskisi gibi reddedilir"
 
 
+def test_pool_terms_containing_a_phrase_are_listed_without_its_own_suggestion_list(db, provider):
+    from app.research import service
+
+    _research(db, SHOP_A)
+    found = service.peek_containing(db, "sign farm")  # sözcük sırası önemsiz, kelimenin kendisi hariç
+    assert "metal farm sign big" in found and "metal farm sign tiny" in found and "sign farm" not in found
+    assert list(found)[0] == "metal farm sign big", "hacmi çok olan önce"
+    assert service.peek_containing(db, "unrelated words") == {}
+
+
 def test_assistant_tools_use_the_same_functions_and_hide_raw_numbers(db, provider):
     ctx = NS(db=db, shop=SHOP_A, user_id=7)
     assert tools.research_keywords(ctx, {"seed": ""})["error"]

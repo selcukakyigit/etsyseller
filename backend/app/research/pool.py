@@ -62,6 +62,18 @@ def find_terms(db: Session, displays: list[str], language: str) -> dict[str, Key
     return found
 
 
+def containing_terms(db: Session, term: str, language: str, limit: int = 300) -> list[KeywordTerm]:
+    """Yalnızca OKUR: içinde `term`in tüm sözcüklerini geçiren (sırası önemsiz) diğer havuz kelimeleri. Kelimenin kendi öneri listesi
+    yokken (hak doldu, henüz çekilmedi) başka aramalardan havuza girmiş benzerlerini göstermek için."""
+    words = [w for w in term.split() if len(w) > 1]
+    if not words:
+        return []
+    q = select(KeywordTerm).where(KeywordTerm.language == language, KeywordTerm.term != term)
+    for w in words:
+        q = q.where(KeywordTerm.term.like(f"%{w.replace('%', '').replace('_', '')}%"))
+    return list(db.scalars(q.limit(limit * 3)))
+
+
 def touch(db: Session, ids: list[int]) -> None:
     now = dt.datetime.utcnow()
     for part in _chunks(ids):
