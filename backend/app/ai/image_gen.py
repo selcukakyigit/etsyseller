@@ -40,9 +40,7 @@ NO_BRAND = (
 )
 
 LOGO_DIRECTIVE = (
-    "
-
-LOGO TALİMATI: {ordinal} verilen görsel satıcının KENDİ logosudur. Onu ürünün üzerine, istenen yere (istek bir yer "
+    "\n\nLOGO TALİMATI: {ordinal} verilen görsel satıcının KENDİ logosudur. Onu ürünün üzerine, istenen yere (istek bir yer "
     "belirtmiyorsa ürünün doğal, görünür ve küçük bir noktasına) yerleştir: logonun şeklini, harflerini, renklerini ve oranını "
     "BİREBİR koru; yeniden çizme, çarpıtma, yazısını değiştirme, ikinci kopya ekleme. Ürünün yüzeyine uygun perspektif, ışık ve "
     "malzeme (baskı/kabartma/oyma) uyumu ver. Logo dışında başka marka ekleme."
