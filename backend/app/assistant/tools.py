@@ -3269,7 +3269,7 @@ LISTING_TOOL_NAMES = frozenset({
     "personalization_library", "edit_inventory", "add_variation_option", "remove_variation_option", "set_variation_photo", "copy_listing", "discard_listing_changes",
     "delete_listing", "generation_options", "analyze_listing_values", "generate_listing_video", "add_video_to_listing", "remove_listing_video", "publish_listing_draft", "deactivate_listing",
     "list_description_templates", "save_description_template", "delete_description_templates", "listing_health_status", "workspace_status", "keyword_pool",
-    "research_keywords", "keyword_detail", "saved_keywords", "save_keywords", "etsy_top_results",
+    "research_keywords", "keyword_detail", "upcoming_seasons", "saved_keywords", "save_keywords", "etsy_top_results",
     "remember_note", "forget_note", "market_research", "suggest_price", "bulk_update_listings", "rewrite_listings", "continue_rewrite", "stop_rewrite", "pinterest_content", "make_pin_image", "add_digital_file", "remove_digital_file", "set_listing_type",
 })
 
@@ -3281,7 +3281,7 @@ TOOL_GROUPS: dict[str, frozenset[str]] = {
     "bulk": frozenset({"bulk_update_listings", "publish_staged_batch", "rewrite_listings", "continue_rewrite", "stop_rewrite"}),
     "social": frozenset({"pinterest_content", "make_pin_image"}),
     "digital": frozenset({"add_digital_file", "remove_digital_file", "set_listing_type"}),
-    "discover": frozenset({"research_keywords", "keyword_detail", "saved_keywords", "save_keywords", "etsy_top_results"}),
+    "discover": frozenset({"research_keywords", "keyword_detail", "upcoming_seasons", "saved_keywords", "save_keywords", "etsy_top_results"}),
 }
 GROUP_WORDS: dict[str, re.Pattern] = {
     "market": re.compile(r"piyasa|rakip|trend|popüler|popular|talep|araştır|research|competitor|seo|oluştur|create|yeni listing|taslak", re.I),
@@ -3289,7 +3289,7 @@ GROUP_WORDS: dict[str, re.Pattern] = {
     "bulk": re.compile(r"toplu|bütün|tüm |hepsi|bulk|all listings|yeniden yaz|rewrite|rewrite all|holiday|occasion|%|yüzde|zam\b|indirim|artır|arttır|düşür|indir\b|stokları|stoğu", re.I),
     "social": re.compile(r"pinterest|\bpin\b|sosyal|hashtag|instagram|social", re.I),
     "digital": re.compile(r"dijital|digital|printable|indirilebilir|download|şablon|template|\bpdf\b|\bzip\b", re.I),
-    "discover": re.compile(r"keşfet|discover|kelime araştır|keyword research|keyword idea|anahtar kelime|kayıtlı kelime|kaydet.*kelime|saved keyword|koleksiyon|collection|mevsim|season|zirve|hangi ay|rekabet|competition|rakip|kolay mı|etsy.*ilk|ne aran|what.*search|talep|related keyword|ilgili kelime", re.I),
+    "discover": re.compile(r"keşfet|discover|kelime araştır|keyword research|keyword idea|anahtar kelime|kayıtlı kelime|kaydet.*kelime|saved keyword|koleksiyon|collection|mevsim|season|zirve|hangi ay|yaklaşan|upcoming|bu ay|önümüzdeki|rekabet|competition|rakip|kolay mı|etsy.*ilk|ne aran|what.*search|talep|related keyword|ilgili kelime", re.I),
 }
 _CORE_LISTING_TOOLS = LISTING_TOOL_NAMES - frozenset().union(*TOOL_GROUPS.values())
 

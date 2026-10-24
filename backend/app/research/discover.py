@@ -6,6 +6,7 @@ Kurallar: sağlayıcıya istek burada atılmaz (eksik veri `research.service.exp
 import datetime as dt
 import json
 import time
+from collections import Counter
 from dataclasses import asdict, dataclass, field
 
 from sqlalchemy import delete, func, select
@@ -67,24 +68,29 @@ def clean_collection(name: str | None) -> str:
 
 
 _TAGS_TTL = 300.0  # sn: "Sende var" işareti için etiketler; her aramada tüm listing JSON'u yeniden okunmasın
-_tags_cache: dict[int, tuple[float, set[str]]] = {}
+_tags_cache: dict[int, tuple[float, Counter]] = {}
 
 
-def _shop_tags(db: Session, shop: Shop) -> set[str]:
+def _shop_tag_counts(db: Session, shop: Shop) -> Counter:
+    """Mağazanın etiketleri ve kaç listing'te kullanıldıkları (5 dk önbellekte)."""
     now = time.monotonic()
     hit = _tags_cache.get(shop.id)
     if hit and now - hit[0] < _TAGS_TTL:
         return hit[1]
-    out: set[str] = set()
+    out: Counter = Counter()
     for (raw,) in db.execute(select(ListingCache.raw_json).where(ListingCache.shop_id == shop.id).execution_options(stream_results=True, yield_per=200)):
         try:
-            out.update(normalize(str(t)) for t in json.loads(raw).get("tags") or [])
+            out.update({normalize(str(t)) for t in json.loads(raw).get("tags") or []})  # listing başına bir kez
         except (ValueError, AttributeError):
             continue
     if len(_tags_cache) > 500:  # bellek sınırı: çok mağazada eskiler atılır
         _tags_cache.clear()
     _tags_cache[shop.id] = (now, out)
     return out
+
+
+def _shop_tags(db: Session, shop: Shop) -> set[str]:
+    return set(_shop_tag_counts(db, shop))
 
 
 def _saved_terms(db: Session, workspace_id: int, collection: str | None = None) -> set[str]:
@@ -194,11 +200,15 @@ class SavedView:
     total: int
 
 
+def _collection_counts(db: Session, workspace_id: int) -> list[tuple[str, int]]:
+    return db.execute(
+        select(SavedKeyword.collection, func.count()).where(SavedKeyword.workspace_id == workspace_id).group_by(SavedKeyword.collection).order_by(SavedKeyword.collection)
+    ).all()
+
+
 def saved(db: Session, shop: Shop, collection: str | None = None) -> SavedView:
     ws = shop.workspace_id
-    counts = db.execute(
-        select(SavedKeyword.collection, func.count()).where(SavedKeyword.workspace_id == ws).group_by(SavedKeyword.collection).order_by(SavedKeyword.collection)
-    ).all()
+    counts = _collection_counts(db, ws)
     names = [c for c, _ in counts]
     current = clean_collection(collection) if collection is not None else (names[0] if names else "")
     rows = db.scalars(
@@ -243,3 +253,64 @@ def unsave(db: Session, shop: Shop, terms: list[str], collection: str | None = N
     ))
     db.commit()
     return int(res.rowcount or 0)
+
+
+# ---- Ana ekran (arama yapılmadan önce): mağazanın kendi etiketlerinden başlangıç noktaları ve yaklaşan sezon
+
+HOME_TAGS = 12  # ana ekranda gösterilen en sık kullanılan etiket sayısı
+UPCOMING_MONTHS = 3  # "yaklaşan sezon": bugünden itibaren bu kadar ay içinde zirve yapanlar (bu ay dahil)
+SEASON_FILL_PER_VISIT = 5  # ana ekran bir ziyarette en fazla bu kadar etiketin mevsimselliğini kuyruğa alır (kelime başına tek sefer, 90 gün önbellekte)
+
+
+@dataclass
+class Home:
+    tags: list[Item]  # mağazanın en sık etiketleri (ölçümü varsa talep bilgisiyle)
+    upcoming: list[dict]  # önümüzdeki aylarda zirve yapacak etiketler: Item alanları + in_months (0 = şimdi zirvede) + peak_months
+    collections: list[dict]  # [{"name": "", "count": 3}, …]
+    preparing: bool  # bazı etiketlerin mevsimselliği hesaplanıyor: ekran biraz sonra yeniden sorar
+
+
+def months_until_peak(peak_months: list[int], today: dt.date, horizon: int = UPCOMING_MONTHS) -> int | None:
+    """Bugünden kaç ay sonra zirve ayına girilir (0 = bu ay zirve); ufukta zirve yoksa None."""
+    for offset in range(horizon + 1):
+        if (today.month - 1 + offset) % 12 + 1 in peak_months:
+            return offset
+    return None
+
+
+def home(db: Session, shop: Shop, today: dt.date | None = None) -> Home:
+    """Boş Keşfet ekranı için mağazaya özel içerik. Havuzu yalnızca okur; tek istisna: ölçülmüş hacmi yeterli olup mevsimselliği hiç çekilmemiş en sık etiketler
+    için mevsimsellik işi kuyruğa alınır (bütçe, tek-uçuş ve günlük iş sınırları geçerli; sonuç ekranda belirir). Ortak bir "herkesin aradığı" listesi YOKTUR:
+    her mağazanın girişi kendi etiketlerinden gelir (aynı kelimelere koşuşmayı önler)."""
+    today = today or dt.date.today()
+    counts = _shop_tag_counts(db, shop)
+    terms = [t for t, _ in counts.most_common() if researchable(t)][:HOME_TAGS]
+    metrics = service.peek(db, terms)
+    seasons = service.season_cached(db, terms)
+    minimum = int(policy.get("research_season_min_volume"))
+    preparing = False
+    queued = 0
+    for term in terms:  # en sık etiketten başlayarak; yalnızca ölçülmüş ve yeterince aranan, mevsimselliği hiç çekilmemiş olanlar
+        m = metrics.get(term)
+        if queued >= SEASON_FILL_PER_VISIT:
+            break
+        if term in seasons or m is None or (m.search_volume or 0) < minimum:
+            continue
+        view = service.seasonality(db, term, shop_id=shop.id)
+        queued += 1
+        preparing = preparing or view.pending
+    crowd = exposure.counts(db, terms)
+    full = int(policy.get("research_crowd_full_shops"))
+    mine = set(counts)
+    saved_terms = _saved_terms(db, shop.workspace_id)
+    items = [_item(t, metrics.get(t), crowd, full, mine, saved_terms) for t in terms]
+    upcoming = []
+    for item in items:
+        view = seasons.get(item.term)
+        if view is None or not view.seasonal:
+            continue
+        ahead = months_until_peak(view.peak_months, today)
+        if ahead is not None:
+            upcoming.append({**vars(item), "in_months": ahead, "peak_months": view.peak_months})
+    upcoming.sort(key=lambda u: (u["in_months"], -(u["volume"] or 0)))
+    return Home(tags=items, upcoming=upcoming, collections=[{"name": c, "count": int(n)} for c, n in _collection_counts(db, shop.workspace_id)], preparing=preparing)

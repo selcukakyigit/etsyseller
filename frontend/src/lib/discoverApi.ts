@@ -29,6 +29,16 @@ export type DiscoverItem = {
   saved: boolean;
 };
 
+/** Boş Keşfet ekranı: mağazanın en sık etiketleri, yaklaşan sezon, koleksiyonlar (backend discover.home). */
+export type DiscoverHomeData = {
+  tags: DiscoverItem[];
+  /** Önümüzdeki 3 ayda zirve yapacak etiketler; in_months 0 = şimdi zirvede */
+  upcoming: (DiscoverItem & { in_months: number; peak_months: number[] })[];
+  collections: SavedCollection[];
+  /** Bazı etiketlerin mevsimselliği hesaplanıyor: ekran biraz sonra yeniden sorar */
+  preparing: boolean;
+};
+
 export type SearchStatus = "ready" | "pending" | "refused" | "empty" | "invalid";
 
 /** Takvim ayına göre göreli ilgi (Google Trends, 5 yıl ortalaması); monthly[0]=Ocak, en yüksek ay 100. Profil yoksa monthly boş. */
@@ -93,6 +103,7 @@ export const discoverApi = {
     apiRequest<{ added: number }>(`${base(shopId)}/saved`, { method: "POST", body: JSON.stringify({ terms, collection }) }),
   unsave: (shopId: number, terms: string[], collection: string) =>
     apiRequest<{ removed: number }>(`${base(shopId)}/saved/remove`, { method: "POST", body: JSON.stringify({ terms, collection }) }),
+  home: (shopId: number) => apiRequest<DiscoverHomeData>(`${base(shopId)}/home`),
   /** Tek kelimenin mevsimsellik profili; `pending` iken yoklanır. Geçersiz kelimede season null. */
   season: (shopId: number, q: string) => apiRequest<{ season: Season | null }>(`${base(shopId)}/season?q=${encodeURIComponent(q)}`),
   /** Bir aramanın Etsy'deki ilk 20 sonucunun analizi; `limited`: ölçüm hakkı geçici doldu. */

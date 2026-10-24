@@ -32,6 +32,22 @@ QUALITY_BASELINE = (
     "net odak, dengeli kompozisyon. Yapay/dijital değil, gerçek bir kamerayla çekilmiş gibi görünmeli."
 )
 
+NO_BRAND = (
+    "\n\nMARKA KURALI: Başkalarının marka/ticari marka adı, logosu ya da sloganı görselde OLMASIN (Stanley, Yeti, Hydro Flask, "
+    "Nike vb.) — ürün şekli bilinen bir markaya benzese bile marka yazısı UYDURMA. İSTİSNA: satıcının KENDİ markası/logosu — "
+    "istekte adı verilmişse ya da logo görseli olarak referans verilmişse — istenen yere aynen (harfi, rengi, oranı bozmadan) "
+    "yerleştirilir. Kişiselleştirme yazısı ve referans fotoğrafta zaten bulunan yazı da korunur."
+)
+
+LOGO_DIRECTIVE = (
+    "
+
+LOGO TALİMATI: {ordinal} verilen görsel satıcının KENDİ logosudur. Onu ürünün üzerine, istenen yere (istek bir yer "
+    "belirtmiyorsa ürünün doğal, görünür ve küçük bir noktasına) yerleştir: logonun şeklini, harflerini, renklerini ve oranını "
+    "BİREBİR koru; yeniden çizme, çarpıtma, yazısını değiştirme, ikinci kopya ekleme. Ürünün yüzeyine uygun perspektif, ışık ve "
+    "malzeme (baskı/kabartma/oyma) uyumu ver. Logo dışında başka marka ekleme."
+)
+
 CAMERA_DIRECTIVE_TPL = (
     "\n\nKAMERA TALİMATI — bunu MUTLAKA uygula: {camera_prompt}\n"
     "Bu bir KAMERA konumu değişikliğidir: dünya (duvar, zemin, mobilya, ürün, ışık, gölgeler) sabit kalır, yalnızca kameranın bakış noktası "
@@ -71,6 +87,7 @@ def _build_prompt(prompt: str | None, camera_prompt: str | None, distance_prompt
         parts.append(DISTANCE_DIRECTIVE_TPL.format(distance_prompt=distance_prompt.strip()))
     if prompt and prompt.strip():
         parts.append(SCENE_DIRECTIVE_TPL.format(prompt=prompt.strip()))
+    parts.append(NO_BRAND)
     return "".join(parts)
 
 
@@ -143,6 +160,11 @@ def _run(parts: list, aspect_ratio: str | None = None, model_db_id: int | None =
     raise ImageGenError(f"Gemini bir görsel döndürmedi, tekrar dene.{detail}")
 
 
+def _ordinal(n: int) -> str:
+    """`n`. görsel (1'den başlar) için Türkçe sıra sözcüğü; istemler görselleri verilme sırasıyla anar."""
+    return {1: "birinci", 2: "ikinci", 3: "üçüncü", 4: "dördüncü"}.get(n, f"{n}.")
+
+
 def regenerate_image(
     image_bytes: bytes,
     content_type: str,
@@ -153,6 +175,7 @@ def regenerate_image(
     subject_reference: tuple[bytes, str] | None = None,
     model_db_id: int | None = None,
     variant_key: str | None = None,
+    logo: tuple[bytes, str] | None = None,
 ) -> tuple[bytes, str]:
     """Tek bir ürün fotoğrafını yeniden oluşturur. `prompt` sahne talimatı, `camera_prompt` (kamera açısı
     küpünden) ve `distance_prompt` (mesafe/kadraj seçiciden) ayrı, öncelikli talimat katmanları olarak
@@ -177,12 +200,16 @@ def regenerate_image(
         parts.append(types.Part.from_bytes(data=subj_bytes, mime_type=subj_type))
         ordinal = "üçüncü" if reference is not None else "ikinci"
         full_prompt += SUBJECT_REFERENCE_DIRECTIVE.format(ordinal=ordinal)
+    if logo is not None:
+        parts.append(types.Part.from_bytes(data=logo[0], mime_type=logo[1]))
+        full_prompt += LOGO_DIRECTIVE.format(ordinal=_ordinal(len(parts)))
     parts.append(types.Part.from_text(text=full_prompt))
     return _run(parts, None, model_db_id, variant_key)
 
 
 def generate_from_text(
     prompt: str, reference: tuple[bytes, str] | None = None, model_db_id: int | None = None, variant_key: str | None = None,
+    logo: tuple[bytes, str] | None = None,
 ) -> tuple[bytes, str]:
     """Kaynak fotoğraf olmadan, yalnızca metin talimatından yeni bir görsel üretir — sıfırdan listing
     oluştururken kullanılır. `reference` verilirse (ör. aynı listing'in başka bir fotoğrafı ya da bir
@@ -194,6 +221,7 @@ def generate_from_text(
         f"fotoğrafını üret. İstek: {prompt.strip()}\n\n"
         "Gerçek bir kamerayla çekilmiş gibi doğal ışık, gölge ve kompozisyon kullan. Ürünün kadrajda yalnızca "
         "BİR KEZ göründüğünden emin ol — asla ikinci bir hayalet/kopya/yansıma kopyası ekleme."
+        + NO_BRAND
     )
     parts: list = []
     if reference is not None:
@@ -205,6 +233,9 @@ def generate_from_text(
             "da yazıyı yanlış/bulanık/tekrar eden şekilde yeniden çizme. Yalnızca sahneyi/açıyı/mesafeyi/ışığı "
             "isteğe göre farklılaştır. Referansın en-boy oranına yakın kal, aşırı uzun/dar bir kadraj üretme."
         )
+    if logo is not None:
+        parts.append(types.Part.from_bytes(data=logo[0], mime_type=logo[1]))
+        full_prompt += LOGO_DIRECTIVE.format(ordinal=_ordinal(len(parts)))
     parts.append(types.Part.from_text(text=full_prompt))
     return _run(parts, model_db_id=model_db_id, variant_key=variant_key)
 

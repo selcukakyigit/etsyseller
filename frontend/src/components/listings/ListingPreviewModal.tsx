@@ -193,7 +193,7 @@ export default function ListingPreviewModal({ shopId, listingId, shopName, onClo
                   ))}
                 </div>
               )}
-              <div className="relative aspect-square min-w-0 flex-1 self-start overflow-hidden rounded-2xl bg-neutral-200 dark:bg-neutral-900">
+              <div className="relative aspect-square w-full min-w-0 self-start overflow-hidden md:w-auto md:flex-1 rounded-2xl bg-neutral-200 dark:bg-neutral-900">
                 {videoIdx !== null && videos[videoIdx] ? (
                   <video key={videos[videoIdx].video_id} src={videos[videoIdx].video_url} controls autoPlay muted playsInline className="absolute inset-0 h-full w-full bg-black object-contain" />
                 ) : images[active] ? (

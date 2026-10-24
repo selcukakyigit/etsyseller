@@ -31,6 +31,15 @@ def search(
     return result.as_dict()
 
 
+@router.get("/home")
+def home(background: BackgroundTasks, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    """Boş Keşfet ekranı: mağazanın en sık etiketleri, yaklaşan sezon ve koleksiyonlar. `preparing`: bazı mevsimsellikler hesaplanıyor, ekran yeniden sorar."""
+    view = discover.home(db, shop)
+    if view.preparing:
+        background.add_task(run_queue)
+    return {"tags": [vars(i) for i in view.tags], "upcoming": view.upcoming, "collections": view.collections, "preparing": view.preparing}
+
+
 @router.get("/season")
 def season(background: BackgroundTasks, q: str = Query(min_length=1, max_length=120), shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
     """Tek bir kelimenin mevsimsellik profili (kelime penceresi için). Havuzda yoksa iş kuyruğa alınır; `pending` iken ekran yoklar."""

@@ -80,3 +80,11 @@ Sonuç ve alınan önlemler:
 - Mevsimsellik (Google Trends, ≈0,011 $) ölçülmüş aylık araması `research_season_min_volume` (100) altındaki kelime için istenmez: Trends o kadar az aramada desen vermez, ücret boşa giderdi. Hacmi hiç ölçülmemiş kelimede karar verilemez, istenir.
 - Etsy sitesini proxy ile taramak (scraping) YAPILMAZ: şartlara aykırı ve Etsy API anahtarını (tüm ürünün anahtarı) riske atar. Ekran görüntüsü yükleme/eklenti fikirleri değerlendirildi, şimdilik yapılmadı.
 - Açık soru: Etsy'nin (developer@etsy.com) resmi bir sıralama verisi sunup sunmadığı sorulabilir.
+
+## Keşfet ana ekranı (arama yapılmadan önce) — YAZILDI (2026-10-24)
+
+`discover.home` (+ `GET /discover/home`, asistan: `upcoming_seasons`): son aramalar (tarayıcıda), mağazanın en sık 12 etiketi (ölçümü varsa Google aylık aramasıyla),
+yaklaşan sezon (etiketlerden önümüzdeki 3 ayda zirve yapanlar; mevsimsellik havuzdan okunur) ve koleksiyonlar.
+- Ortak "en çok aranan" listesi BİLEREK yok: 1000 kullanıcı aynı kelimelere koşardı (kısır döngü). Her mağazanın girişi kendi etiketlerinden gelir.
+- Ücret: ana ekran ölçülmüş ve `research_season_min_volume` üstü, mevsimsellik profili hiç çekilmemiş etiketler için ziyaret başına en çok 5 mevsimsellik işi kuyruğa alır
+  (≈0,011 $ / kelime, 90 gün önbellek, tek-uçuş; bütçe ve günlük iş sınırları geçerli). Ölçülmemiş etiket için hiçbir şey istenmez.

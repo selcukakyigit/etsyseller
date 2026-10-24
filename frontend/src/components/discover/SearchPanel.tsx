@@ -9,10 +9,12 @@ import { readPageCache, writePageCache } from "@/lib/pageCache";
 import { toast } from "@/lib/toast";
 import { useUrlTab } from "@/lib/useUrlTab";
 import CollectionBar from "./CollectionBar";
+import DiscoverHome from "./DiscoverHome";
 import EtsyTopModal from "./EtsyTopModal";
 import KeywordDetailModal from "./KeywordDetailModal";
 import FilterBar from "./FilterBar";
 import KeywordTable from "./KeywordTable";
+import { useRecentSearches } from "./useRecentSearches";
 import OverviewCard from "./OverviewCard";
 import SaveBar from "./SaveBar";
 import { useRefusedText } from "./shared";
@@ -30,9 +32,10 @@ const isQuery = (v: string) => v.length > 0 && v.length <= 120;
  * Düzen: özet kart, kaynak notu, sekmeler (Tüm kelimeler / Sorular), koleksiyon çubuğu, araç çubuğu (solda Etsy ilan sayısı, sağda CSV ve Yeniden araştır),
  * kelime grupları, süzgeçler, özet satırı, tablo. Sekme değişince sayfa DEĞİŞMEZ: yalnızca tablonun bulunduğu bölge yüklenir (soru listesi arka planda
  * getirilir); her sekmenin süzgeci, sıralaması ve seçimi kendinde kalır. Sonuçlar anahtarlarıyla ayrı tutulur; anahtar çağrı anında verilir. */
-export default function SearchPanel({ shopId, collections, onSaved }: { shopId: number; collections: SavedCollection[]; onSaved: () => void }) {
+export default function SearchPanel({ shopId, collections, onSaved, onOpenSaved }: { shopId: number; collections: SavedCollection[]; onSaved: () => void; onOpenSaved?: () => void }) {
   const { t, locale } = useT();
   const refusedText = useRefusedText();
+  const { recent, remember, clear: clearRecent } = useRecentSearches(shopId);
   // Aranan kelime URL'de (?q=) tutulur: sayfa yenilense ya da bağlantı paylaşılsa arama kaybolmaz (sonuç havuzdan anında gelir).
   const [query, setQuery] = useUrlTab<string>("q", "", isQuery);
   const [typed, setTyped] = useState<string | null>(null);
@@ -79,10 +82,11 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
     [shopId, keyOf, t],
   );
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    const q = input.trim();
+  async function start(raw: string) {
+    const q = raw.trim();
     if (!q) return;
+    remember(q);
+    setTyped(q);
     setPolls(0);
     setMode("all");
     for (const view of [vAll, vQ]) {
@@ -93,6 +97,11 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
     setLoading(true);
     await load(q, "all");
     setLoading(false);
+  }
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    void start(input);
   }
 
   // Sayfa URL'de bir arama ile açıldıysa (yenileme/paylaşılan bağlantı) sonuç kendiliğinden yüklenir.
@@ -209,7 +218,7 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
 
   return (
     <div className="space-y-4">
-      <form onSubmit={(e) => void submit(e)} className="flex gap-2">
+      <form onSubmit={submit} className="flex gap-2">
         <input
           value={input}
           onChange={(e) => setTyped(e.target.value)}
@@ -228,7 +237,7 @@ export default function SearchPanel({ shopId, collections, onSaved }: { shopId: 
           {error && !allRes ? (
             <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
           ) : !query ? (
-            <p className="py-10 text-center text-sm text-neutral-400 dark:text-neutral-500">{t("Bir kelime yaz; ilgili aramaları, aylık arama sayısını, trendi, CPC'yi ve alıcı niyetini göster.", "Type a keyword to see related searches, monthly searches, trend, CPC and buyer intent.")}</p>
+            <DiscoverHome shopId={shopId} recent={recent} onClearRecent={clearRecent} onPick={(term) => void start(term)} onOpenSaved={onOpenSaved} />
           ) : !allRes ? (
             <div className="space-y-2 py-8 text-center">
               <BlockSpinner />

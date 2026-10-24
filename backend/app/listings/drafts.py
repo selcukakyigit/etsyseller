@@ -261,6 +261,7 @@ def regenerate_image(
     subject_draft_file_id: str | None = None,
     model_db_id: int | None = None,
     variant_key: str | None = None,
+    logo: tuple[bytes, str] | None = None,
 ) -> dict:
     """Sihirli değnek: bir görseli (Etsy'de yayında ya da henüz taslakta) yapay zekâyla yeniden oluşturup
     yeni bir taslak dosyası olarak döner — orijinali silmez, düzenleyici ikisi arasında seçim sunar.
@@ -269,7 +270,7 @@ def regenerate_image(
     `camera_prompt`/`distance_prompt` (kamera açısı küpü/mesafe seçiciden) sahne talimatından AYRI iletilir —
     bkz. ai/image_gen.py `_build_prompt`. `subject_image_id` verilirse (listing'in kendi fotoğraflarından biri,
     ürünün net/temiz göründüğü bir kare), sahnede birden fazla obje olduğunda "ürün bu" diye işaret eden bir
-    referans olarak eklenir.
+    referans olarak eklenir. `logo` (bayt, tür): satıcının kendi logosu; ürünün üzerine birebir yerleştirilir.
 
     ÖNEMLİ: kaynak piksel olarak `image_id`/`draft_file_id` (şu an ekranda görünen sürüm) DEĞİL, zincirin
     KÖKÜ kullanılır (bkz. `_origin_image_bytes`) — art arda üretimlerde sapmanın birikmesini önlemek için.
@@ -287,7 +288,7 @@ def regenerate_image(
     if subject_image_id is not None:
         subject_reference = _source_image_bytes(db, shop, listing_id, subject_image_id, subject_draft_file_id)
     new_bytes, mime = image_gen.regenerate_image(
-        content, content_type, prompt, reference, camera_prompt, distance_prompt, subject_reference, model_db_id, variant_key
+        content, content_type, prompt, reference, camera_prompt, distance_prompt, subject_reference, model_db_id, variant_key, logo
     )
     filename = f"ai-regen{image_gen.guess_extension(mime)}"
     return save_file(db, shop, listing_id, "image", filename, mime, new_bytes, origin_key=origin_key)

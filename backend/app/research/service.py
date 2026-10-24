@@ -114,6 +114,18 @@ def seasonality(db: Session, term: str, *, market: str | None = None, language: 
     return view
 
 
+def season_cached(db: Session, terms: list[str], *, market: str | None = None, language: str | None = None) -> dict[str, SeasonView]:
+    """Yalnızca OKUR: havuzda mevsimsellik ölçümü olan kelimelerin (süresi dolmuş olsa da) profili. İş açmaz, sağlayıcıya gitmez; ölçümü olmayan kelime sonuçta yoktur."""
+    market, language = _market(market, language)
+    rows = pool.find_terms(db, terms, language)
+    out: dict[str, SeasonView] = {}
+    for term, row in rows.items():
+        latest = pool.latest_season(db, row.id, market, language)
+        if latest:
+            out[term] = season_view(json.loads(latest.monthly_json)) if latest.monthly_json else SeasonView()
+    return out
+
+
 def _series(monthly_json: str | None) -> list[int]:
     """[[yıl, ay, hacim], …] -> tarih sırasıyla (eskiden yeniye) hacimler; en fazla son 12 ay."""
     if not monthly_json:

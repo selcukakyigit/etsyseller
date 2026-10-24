@@ -66,7 +66,7 @@ export default function DiscoverPage() {
           <>
             {/* İki panel de bağlı kalır: sekme değişince aranan kelime ve seçim kaybolmasın. */}
             <div className={tab === "search" ? "" : "hidden"}>
-              <SearchPanel key={activeShop.id} shopId={activeShop.id} collections={collections.data?.collections ?? []} onSaved={() => setRefreshKey((k) => k + 1)} />
+              <SearchPanel key={activeShop.id} shopId={activeShop.id} collections={collections.data?.collections ?? []} onSaved={() => setRefreshKey((k) => k + 1)} onOpenSaved={() => setTab("saved")} />
             </div>
             <div className={tab === "saved" ? "" : "hidden"}>
               <SavedPanel key={activeShop.id} shopId={activeShop.id} refreshKey={refreshKey} onChanged={() => setRefreshKey((k) => k + 1)} />

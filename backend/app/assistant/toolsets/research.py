@@ -116,6 +116,28 @@ def keyword_detail(ctx, a: dict) -> dict:
     return out
 
 
+def upcoming_seasons(ctx, a: dict) -> dict:
+    """Mağazanın en sık etiketlerinden önümüzdeki 3 ayda zirve yapacaklar (Keşfet ana ekranındaki "Yaklaşan sezon" ile aynı fonksiyon)."""
+    view = discover.home(ctx.db, ctx.shop, getattr(ctx, "today", None))
+    rows = [
+        {
+            "kelime": u["term"], "zirve_aylar": [_MONTHS[m - 1] for m in u["peak_months"]], "kac_ay_sonra": u["in_months"],
+            **({"google_aylik_arama": u["volume"]} if u["volume"] is not None else {}),
+        }
+        for u in view.upcoming
+    ]
+    out = {"yaklasan_sezon": rows, "incelenen_etiket": len(view.tags)}
+    if view.preparing:
+        out["hazirlaniyor"] = True
+    out["not"] = (
+        "kac_ay_sonra: 0 = bu ay zirvede. Alıcılar zirveden 1-2 ay ÖNCE aramaya başlar; listing'i yayına hazır tut. Mevsimsellik Google Trends'ten (5 yıl) gelir, Etsy verisi değildir. "
+        + ("Bazı etiketlerin mevsimselliği şu an hesaplanıyor; kullanıcıya söyle, 1-2 dakika sonra aynı aracı tekrar çağır. " if view.preparing else "")
+        + ("Önümüzdeki 3 ayda zirve yapan etiket görünmüyor (ya da aylık araması çok düşük etiketlerin mevsimselliği hesaplanmaz); mevsim uydurma. " if not rows else "")
+        + "Başka bir kelimenin ayrıntısı için keyword_detail."
+    )
+    return out
+
+
 def saved_keywords(ctx, a: dict) -> dict:
     v = discover.saved(ctx.db, ctx.shop, a.get("collection"))
     return {
@@ -193,6 +215,14 @@ TOOLS: list[dict] = [
         "input_schema": {"type": "object", "properties": {"term": {"type": "string", "description": "Kelime/ifade (İngilizce)"}}, "required": ["term"]},
     },
     {
+        "name": "upcoming_seasons",
+        "description": (
+            "Mağazanın en sık kullandığı etiketlerden ÖNÜMÜZDEKİ 3 AYDA arama zirvesi yapacak olanlar (Keşfet ana ekranındaki 'Yaklaşan sezon'). "
+            "'Yaklaşan sezonda neye hazırlanmalıyım', 'hangi ürünüm yakında zirve yapar', 'bu ay/önümüzdeki aylarda ne satar' soruları için. Kredi harcamaz; hesaplanmamış mevsimsellikler arka planda hazırlanır."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
         "name": "saved_keywords",
         "description": "Kullanıcının Keşfet'te kaydettiği kelimeler ve koleksiyonları (talep bandıyla). 'Kaydettiğim kelimeler', 'koleksiyonlarım' için. collection verilmezse ilk koleksiyon.",
         "input_schema": {"type": "object", "properties": {"collection": {"type": "string", "description": "Koleksiyon adı (boş = Genel)"}}, "required": []},
@@ -211,6 +241,6 @@ TOOLS: list[dict] = [
         },
     },
 ]
-EXECUTORS = {"keyword_detail": keyword_detail, "research_keywords": research_keywords, "saved_keywords": saved_keywords, "save_keywords": save_keywords, "etsy_top_results": etsy_top_results}
-LABELS = {"keyword_detail": "Kelimenin ayrıntısına bakıyor", "etsy_top_results": "Etsy'deki rakiplere bakıyor", "research_keywords": "Kelimeleri araştırıyor", "saved_keywords": "Kayıtlı kelimelere bakıyor", "save_keywords": "Kelimeleri kaydediyor"}
-LABELS_EN = {"keyword_detail": "Looking at the keyword details", "etsy_top_results": "Looking at Etsy competitors", "research_keywords": "Researching keywords", "saved_keywords": "Looking at saved keywords", "save_keywords": "Saving keywords"}
+EXECUTORS = {"upcoming_seasons": upcoming_seasons, "keyword_detail": keyword_detail, "research_keywords": research_keywords, "saved_keywords": saved_keywords, "save_keywords": save_keywords, "etsy_top_results": etsy_top_results}
+LABELS = {"upcoming_seasons": "Yaklaşan sezonlara bakıyor", "keyword_detail": "Kelimenin ayrıntısına bakıyor", "etsy_top_results": "Etsy'deki rakiplere bakıyor", "research_keywords": "Kelimeleri araştırıyor", "saved_keywords": "Kayıtlı kelimelere bakıyor", "save_keywords": "Kelimeleri kaydediyor"}
+LABELS_EN = {"upcoming_seasons": "Checking upcoming seasons", "keyword_detail": "Looking at the keyword details", "etsy_top_results": "Looking at Etsy competitors", "research_keywords": "Researching keywords", "saved_keywords": "Looking at saved keywords", "save_keywords": "Saving keywords"}

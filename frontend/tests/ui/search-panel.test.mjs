@@ -14,8 +14,18 @@ const QUESTIONS = [item("how to hang metal wall art", 260), item("what is metal 
 const ready = (items, mode = "all") => ({ seed: "metal wall art", status: "ready", refused: null, seed_item: item("metal wall art", 18100), items, stale: false, total_volume: 0, mode, measured_at: "2026-10-23T10:00:00Z" });
 const pending = (mode = "all") => ({ seed: "metal wall art", status: "pending", refused: null, seed_item: null, items: [], stale: false, total_volume: 0, mode, measured_at: null });
 
+const HOME = {
+  tags: [item("metal farm sign", 18100), item("barn decor", 900), item("ranch gate", null)],
+  upcoming: [{ ...item("christmas ornaments", 22000), in_months: 1, peak_months: [11, 12] }, { ...item("pumpkin sign", 8000), in_months: 0, peak_months: [10] }],
+  collections: [{ name: "Farm", count: 3 }],
+  preparing: false,
+};
+let homeCalls = 0;
 let calls = [], script = [];
-globalThis.__api = async (path) => { calls.push(path); const next = script.shift(); return typeof next === "function" ? next(path) : next; };
+globalThis.__api = async (path) => {
+  if (path.includes("/discover/home")) { homeCalls++; return HOME; }
+  calls.push(path); const next = script.shift(); return typeof next === "function" ? next(path) : next;
+};
 
 const el = document.createElement("div"); document.body.appendChild(el);
 const root = createRoot(el);
@@ -149,6 +159,7 @@ console.log("11 yenilemede arama kalıyor OK");
 // 12) KOLEKSİYON: yokken önce oluştur; oluşturulunca satırdaki yeşil + ile tek dokunuşta ekle, ✓ ile çıkar; toplu seçim aktif koleksiyona ekler
 const server = new Set();
 globalThis.__api = async (path, init) => {
+  if (path.includes("/discover/home")) return HOME;
   calls.push(path + (init?.body ? " " + init.body : ""));
   if (path.includes("/discover/search")) return ready(ALL);
   if (path.includes("/discover/saved/remove")) { for (const t of JSON.parse(init.body).terms) server.delete(t); return { removed: 1 }; }
@@ -344,5 +355,77 @@ eq(cardHost.querySelectorAll("[data-testid=season] .bg-\\[\\#D97757\\]").length,
 await renderCard({ monthly: [], peak_months: [], seasonal: false, pending: false, too_rare: true, min_volume: 100 });
 eq(cardHost.querySelector("[data-testid=season-rare]").textContent.includes("100'in altında"), true, "kartta da az aranan kelime için açıklama");
 console.log("15 mevsimsellik OK");
+
+// 17) BOŞ EKRAN: son aramalar, yaklaşan sezon, mağazandan başla, koleksiyonlar; tıklayınca araştırır; son aramalar hatırlanır
+const { clearPageCache: clearCache17 } = await import("../../src/lib/pageCache.ts");
+const HOME_BEFORE = globalThis.__api;
+let preparingHome = false;
+globalThis.__api = async (path, init) => {
+  if (path.includes("/discover/home")) { homeCalls++; return preparingHome ? { ...HOME, upcoming: [], preparing: true } : HOME; }
+  calls.push(path);
+  return path.includes("/discover/search") ? ready(ALL) : HOME_BEFORE(path, init);
+};
+const mount17 = async (props = {}) => {
+  w.history.replaceState(null, "", "/discover");
+  clearCache17();
+  const host = document.body.appendChild(document.createElement("div"));
+  const r = createRoot(host);
+  await act(async () => r.render(h(SearchPanel, { shopId: 1, collections: [], onSaved: () => {}, ...props })));
+  await act(async () => { await sleep(60); });
+  return { host, r };
+};
+localStorage.clear();
+let openedSaved = 0;
+let m = await mount17({ onOpenSaved: () => { openedSaved++; } });
+const sectionTitles = () => [...m.host.querySelectorAll("h2")].map((e) => e.textContent);
+eq(sectionTitles(), ["Yaklaşan sezon", "Mağazandan başla", "Koleksiyonların"], "ilk açılışta son arama yok; diğer bölümler var");
+const cards = [...m.host.querySelectorAll("button")].filter((b) => b.textContent.includes("Zirve"));
+eq(cards.length, 2, "iki yaklaşan sezon kartı");
+eq(cards[0].textContent.includes("Zirve: Kas, Ara") && cards[0].textContent.includes("1 ay sonra") && cards[0].textContent.includes("22.000"), true, "zirve ayları, kalan süre ve Google aylık araması");
+eq(cards[1].textContent.includes("şimdi zirvede"), true, "bu ay zirvedeyse 'şimdi zirvede'");
+eq(/havuz|DataForSEO|pool|kuyruk|API/i.test(m.host.textContent), false, "iç işleyiş kelimeleri görünmemeli");
+const tagChip = [...m.host.querySelectorAll("button")].find((b) => b.textContent.startsWith("barn decor"));
+eq(tagChip.textContent.includes("900"), true, "etiketin yanında Google aylık araması (ölçülmüşse)");
+const rangeChip = [...m.host.querySelectorAll("button")].find((b) => b.textContent.startsWith("ranch gate"));
+eq(/\d/.test(rangeChip.textContent), false, "ölçülmemiş etiketin yanında sayı yok");
+const col = [...m.host.querySelectorAll("button")].find((b) => b.textContent.startsWith("Farm"));
+await act(async () => col.dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
+eq(openedSaved, 1, "koleksiyona tıklayınca Kaydedilenler sekmesi açılır");
+
+// etikete tıklamak o kelimeyi araştırır ve son aramalara yazar
+calls = [];
+await act(async () => tagChip.dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
+await act(async () => { await sleep(60); });
+eq(calls.some((c) => c.includes("/discover/search") && c.includes("q=barn%20decor")), true, "tıklanan etiket araştırılmalı (tek tıkla, ikinci basış gerekmez)");
+eq(m.host.querySelectorAll("tbody tr").length, 5, "sonuç ilk tıklamada görünür");
+eq(JSON.parse(localStorage.getItem("ulagg:discover-recent:1")), ["barn decor"], "arama son aramalara yazıldı");
+await act(async () => m.r.unmount());
+m.host.remove();
+
+// yeniden açılışta son arama çipi görünür; bir çip aramayı yeniden başlatır; Temizle siler
+m = await mount17();
+eq(sectionTitles()[0], "Son aramaların", "son aramalar en üstte");
+const recentChip = [...m.host.querySelectorAll("section")][0].querySelector("button.rounded-full");
+eq(recentChip.textContent, "barn decor", "son arama çipi");
+const clearBtn = [...m.host.querySelectorAll("button")].find((b) => b.textContent === "Temizle");
+await act(async () => clearBtn.dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
+eq(sectionTitles().includes("Son aramaların"), false, "Temizle ile son aramalar silinir");
+await act(async () => m.r.unmount());
+m.host.remove();
+
+// mevsimsellikler hazırlanırken yer tutucu metin; bir süre sonra kendiliğinden yeniden sorar
+preparingHome = true;
+homeCalls = 0;
+m = await mount17();
+eq(m.host.textContent.includes("sezonları hesaplanıyor"), true, "hazırlanırken açıklama");
+preparingHome = false;
+await act(async () => { await sleep(5400); });
+eq(homeCalls >= 2, true, "hazırlanıyorsa ekran yeniden sorar");
+eq(m.host.textContent.includes("sezonları hesaplanıyor"), false, "hazır olunca açıklama kalkar");
+eq(m.host.querySelectorAll("h2").length >= 2 && m.host.textContent.includes("christmas ornaments"), true, "hazır olunca yaklaşan sezon kartları gelir");
+await act(async () => m.r.unmount());
+m.host.remove();
+globalThis.__api = HOME_BEFORE;
+console.log("17 boş ekran: son aramalar, yaklaşan sezon, etiketler, koleksiyonlar OK");
 console.log("PANEL DAVRANIŞ TESTLERİ GEÇTİ");
 process.exit(0);
