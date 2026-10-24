@@ -1760,12 +1760,15 @@ def regenerate_listing_image(ctx: Ctx, a: dict) -> dict:
     camera_prompt, distance_prompt, bad = _camera_prompts(a)
     if bad:
         return {"error": bad}
+    logo, logo_err = _logo_source(ctx, a)
+    if logo_err:
+        return logo_err
     try:
         result = drafts.regenerate_image(
             ctx.db, ctx.shop, lid, image_id, img.get("draft_file_id"), a.get("prompt"),
             None, camera_prompt, distance_prompt,
             int(a["subject_image_id"]) if a.get("subject_image_id") else None, a.get("subject_draft_file_id"),
-            int(a["model_id"]) if a.get("model_id") else None, a.get("variant"),
+            int(a["model_id"]) if a.get("model_id") else None, a.get("variant"), logo,
         )
     except (ImageGenError, ValueError) as exc:
         return {"error": str(exc)}
@@ -1834,8 +1837,9 @@ def prefetch_images(ctx: Ctx, calls: list[tuple[str, dict]]) -> None:
 
     from app.ai.image_gen import regenerate_image
 
-    wanted = [a for name, a in calls if name == "generate_chat_image" and str(a.get("prompt") or "").strip()]
-    edits = [a for name, a in calls if name == "edit_chat_image" and (a.get("prompt") or a.get("azimuth") or a.get("elevation") or a.get("distance"))]
+    # Logolu çağrılar paralel başlatılmaz (logo sırayla yürütülürken çözülür); sonuç aynı, yalnızca sıralı çalışır.
+    wanted = [a for name, a in calls if name == "generate_chat_image" and str(a.get("prompt") or "").strip() and not a.get("logo_image_id")]
+    edits = [a for name, a in calls if name == "edit_chat_image" and not a.get("logo_image_id") and (a.get("prompt") or a.get("azimuth") or a.get("elevation") or a.get("distance"))]
     if len(wanted) + len(edits) < 2:
         return
     pool = ThreadPoolExecutor(max_workers=IMAGE_PARALLEL)
@@ -1885,12 +1889,15 @@ def generate_chat_image(ctx: Ctx, a: dict) -> dict:
         if ref is None or ref.shop_id != ctx.shop.id or not ref.path or not ref.content_type.startswith("image/"):
             return {"error": "Referans resim bulunamadı; sistem mesajındaki resim listesinden bir kimlik ver."}
         reference = (blobstore.read(ref.path), ref.content_type)
+    logo, logo_err = _logo_source(ctx, a)
+    if logo_err:
+        return logo_err
     try:
         future = _take_image_job(ctx, prompt, str(a.get("reference_image_id") or ""))  # aynı turda paralel başlatılmışsa sonucunu bekle
         if future is not None:
             data, mime = future.result()
         else:
-            data, mime = generate_from_text(prompt, reference, int(a["model_id"]) if a.get("model_id") else None, a.get("variant"))
+            data, mime = generate_from_text(prompt, reference, int(a["model_id"]) if a.get("model_id") else None, a.get("variant"), logo)
     except (ImageGenError, ValueError, FileNotFoundError) as exc:
         return {"error": str(exc)}
     saved = chat_service.save_image(ctx.db, ctx.shop, ctx.session_id, f"ai-generated{guess_extension(mime)}", mime, data)
@@ -1946,9 +1953,20 @@ def _edit_source(ctx: Ctx, a: dict):
     return {"error": "Kaynak belirt: sohbetteki resim için image_id, listing fotoğrafı için listing_id + photo_number."}
 
 
+def _logo_source(ctx: Ctx, a: dict):
+    """Kullanıcının sohbete yüklediği KENDİ logosu (logo_image_id): ((bayt, tür), None) ya da (None, {"error"}); verilmemişse (None, None).
+    Başka bir hesabın resmi görülmez (shop_id eşleşmesi)."""
+    if not a.get("logo_image_id"):
+        return None, None
+    img = ctx.db.get(ChatImage, str(a["logo_image_id"]))
+    if img is None or img.shop_id != ctx.shop.id or not img.path or not img.content_type.startswith("image/"):
+        return None, {"error": "Logo resmi bulunamadı; sistem mesajındaki resim listesinden logonun kimliğini ver."}
+    return (blobstore.read(img.path), img.content_type), None
+
+
 def _edit_key(a: dict) -> str:
     """Aynı turdaki edit_chat_image çağrılarını paralel iş ile eşleştirir (kaynak + istek)."""
-    keys = ("image_id", "listing_id", "photo_number", "prompt", "azimuth", "elevation", "distance", "model_id", "variant")
+    keys = ("image_id", "listing_id", "photo_number", "prompt", "azimuth", "elevation", "distance", "model_id", "variant", "logo_image_id")
     return json.dumps({k: a.get(k) for k in keys}, sort_keys=True, default=str)
 
 
@@ -1966,6 +1984,9 @@ def edit_chat_image(ctx: Ctx, a: dict) -> dict:
     if bad:
         return {"error": bad}
     lid = int(a["listing_id"]) if a.get("listing_id") else None
+    logo, logo_err = _logo_source(ctx, a)
+    if logo_err:
+        return logo_err
     try:
         resolved = _edit_source(ctx, a)
         if isinstance(resolved, dict):
@@ -1983,7 +2004,7 @@ def edit_chat_image(ctx: Ctx, a: dict) -> dict:
         else:
             new_bytes, mime = regenerate_image(
                 source[0], source[1], a.get("prompt"), None, camera_prompt, distance_prompt, None,
-                int(a["model_id"]) if a.get("model_id") else None, a.get("variant"),
+                int(a["model_id"]) if a.get("model_id") else None, a.get("variant"), logo,
             )
     except (ImageGenError, ValueError, FileNotFoundError) as exc:
         return {"error": str(exc)}
@@ -2976,6 +2997,7 @@ TOOLS: list[dict] = [
         **_CAMERA_SCHEMA,
         "prompt": {"type": "string", "description": "Sahne talimatı, ör. 'oturma odasında göster', 'arka planı beyaz yap'"},
         "subject_image_id": {"type": "integer"},
+        "logo_image_id": {"type": "string", "description": "Kullanıcının sohbete yüklediği KENDİ logosunun resim kimliği; ürünün üzerine birebir yerleştirilir (yerini prompt'ta yaz: 'göğüs cebine', 'kapağın ortasına')"},
         **_QUALITY_SCHEMA,
     }, ["listing_id"])},
     {"name": "upscale_listing_photo", "description": "Listing fotoğrafını YALNIZCA yüksek çözünürlüğe (2K ya da 4K) çıkarır: içerik, kadraj, yazı ve renkler değişmez (düzenleyicideki 'Yükselt' ile aynı). photo_number verilmezse listing'in TÜM fotoğrafları. Kredi harcar (generation_options.yukseltme: fotoğraf başına kredi); kullanıcı açıkça '2K/4K yap, çözünürlüğü artır, netleştir' dediyse onay sorma, hemen yap ve kaç kredi harcandığını söyle. Yeni sürüm fotoğrafın yerine geçer, alt metin korunur; yalnızca taslağa yazar.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer", "description": "1'den başlayan sıra; yoksa tüm fotoğraflar"}, "size": {"type": "string", "enum": ["2K", "4K"]}}, ["size"])},
@@ -3022,12 +3044,13 @@ TOOLS: list[dict] = [
     {"name": "add_video_to_listing", "description": "Listing taslağına video ekler: ÜRETİLMİŞ video için file_id (kullanıcının 'listing'e ekle' mesajında yazar) ya da kullanıcının sohbete YÜKLEDİĞİ kendi videosu için chat_video_id (KULLANICI VİDEOLARI listesinden). Ya biri ya öbürü. listing_id verilmezse sohbetteki en son yeni taslak. Bir listing'e en fazla 2 video.", "input_schema": _obj({"file_id": {"type": "string"}, "chat_video_id": {"type": "string"}, "listing_id": {"type": "integer"}}, [])},
     {"name": "crop_listing_photo", "description": "Listing fotoğrafını kırpar: ratio 1:1 (kare, küçük resim için ideal), 4:3, 3:4 ya da original; zoom 1–4 (1 = tam kadraj, büyüdükçe yakınlaşır); center_x/center_y 0–1 odak noktası (0.5, 0.5 = orta; sol-üst 0,0). 'Ana resmi kırp, ürün ortada olsun' = photo_number 1, ratio 1:1. Resim kırpmak için edit_chat_image KULLANMA (o yeni görsel üretir, kredi harcar); kırpma ücretsizdir. Yalnızca yerel taslağa yazar.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer"}, "ratio": {"type": "string", "enum": ["1:1", "4:3", "3:4", "original"]}, "zoom": {"type": "number"}, "center_x": {"type": "number"}, "center_y": {"type": "number"}}, ["listing_id", "photo_number"])},
     {"name": "move_listing_photo", "description": "Listing taslağındaki bir fotoğrafın sırasını değiştirir. 'Üçüncü resmi ana resim yap' = photo_number 3, to_position 1 (ana fotoğraf birinci sıradadır). Fotoğraf sırası için update_listing KULLANMA.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer", "description": "Taşınacak fotoğrafın şimdiki sırası (1'den başlar)"}, "to_position": {"type": "integer", "description": "Hedef sıra (varsayılan 1 = ana fotoğraf)"}}, ["listing_id", "photo_number"])},
-    {"name": "generate_chat_image", "description": "Kaynak fotoğraf OLMADAN yeni bir görsel üretir (ör. 'Noel temalı beyaz tişört, foto-gerçekçi model üzerinde, yakın çekim'); yüklenen bir tasarımı/ürünü kullanmak için reference_image_id ver. Her çağrı TEK görsel üretir: N görsel isteniyorsa N kez çağır, her birinde FARKLI kadraj/açı/sahne ver. Sonuç sohbette gösterilir, listing'e girmez. Kredi harcar; kullanıcı açıkça istediyse onay sorma, hemen üret. prompt'u İngilizce, somut yaz: ürün, renk, ortam, kadraj, ışık, üzerindeki yazı/tasarım.", "input_schema": _obj({"prompt": {"type": "string"}, "reference_image_id": {"type": "string", "description": "Yüklenen tasarımın/ürünün sohbet resim kimliği (isteğe bağlı)"}, **_QUALITY_SCHEMA}, ["prompt"])},
+    {"name": "generate_chat_image", "description": "Kaynak fotoğraf OLMADAN yeni bir görsel üretir (ör. 'Noel temalı beyaz tişört, foto-gerçekçi model üzerinde, yakın çekim'); yüklenen bir tasarımı/ürünü kullanmak için reference_image_id ver. Her çağrı TEK görsel üretir: N görsel isteniyorsa N kez çağır, her birinde FARKLI kadraj/açı/sahne ver. Sonuç sohbette gösterilir, listing'e girmez. Kredi harcar; kullanıcı açıkça istediyse onay sorma, hemen üret. prompt'u İngilizce, somut yaz: ürün, renk, ortam, kadraj, ışık, üzerindeki yazı/tasarım.", "input_schema": _obj({"prompt": {"type": "string"}, "reference_image_id": {"type": "string", "description": "Yüklenen tasarımın/ürünün sohbet resim kimliği (isteğe bağlı)"}, "logo_image_id": {"type": "string", "description": "Kullanıcının sohbete yüklediği KENDİ logosunun resim kimliği; ürünün üzerine birebir yerleştirilir (yerini prompt'ta yaz: 'göğüs cebine', 'kapağın ortasına')"}, **_QUALITY_SCHEMA}, ["prompt"])},
     {"name": "edit_chat_image", "description": "AI ile YENİ bir görsel üretir (arka plan temizle/değiştir, 'ürünü kullanımda / oturma odasında göster', kamera açısı). Kaynak: sohbetteki bir resim (image_id) YA DA bir listing fotoğrafı (listing_id + photo_number). Sonuç sohbette simgeli bir kartla gösterilir, kaynak değişmez. Listing'e YALNIZCA kullanıcı 'ekle' dediyse add_to_listing=true ver; vermezsen sadece gösterilir ve kullanıcı beğenirse ekler ya da yeniden ürettirir. Etsy'ye hiçbir şey göndermez; kredi harcar.", "input_schema": _obj({
         "image_id": {"type": "string", "description": "Kaynak: sohbete eklenen resmin kimliği (sistem mesajındaki listeden)"},
         "photo_number": {"type": "integer", "description": "Kaynak: listing_id ile birlikte, listing'in o sıradaki fotoğrafı (1'den başlar)"},
         "alt_text": {"type": "string", "description": "VERME: üretilen görseli göremediğin için alt metni sunucu görsele bakarak yazar."}, "add_to_listing": {"type": "boolean", "description": "Yalnızca kullanıcı açıkça eklenmesini istediyse true"},
         "prompt": {"type": "string", "description": "Ne yapılacağı, ör. 'arka planı beyaz yap', 'oturma odasında duvara asılı göster'"},
+        "logo_image_id": {"type": "string", "description": "Kullanıcının sohbete yüklediği KENDİ logosunun resim kimliği; ürünün üzerine birebir yerleştirilir (yerini prompt'ta yaz: 'göğüs cebine', 'kapağın ortasına')"},
         **_CAMERA_SCHEMA,
         **_QUALITY_SCHEMA,
         "listing_id": {"type": "integer", "description": "Kaynak fotoğrafın listing'i; add_to_listing ile sonucun ekleneceği listing de budur (vermezsen en son yeni taslak)"},
