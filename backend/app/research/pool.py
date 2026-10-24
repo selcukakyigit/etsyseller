@@ -94,6 +94,12 @@ def add_metrics(
     """Her kayıt için YENİ ölçüm satırı ekler (eskisini ezmez). Sağlayıcının hiç döndürmediği kelimeler için boş ölçüm de yazılır: TTL boyunca yeniden sorulmaz."""
     now = dt.datetime.utcnow()
     by_term = {r.term: r for r in records}
+    for part in _chunks([kw.id for kw in terms.values()]):  # eski "güncel" satırlar kapanır; liste ekranı gruplamadan güncel ölçümü bulur
+        db.execute(
+            update(KeywordMetric).where(
+                KeywordMetric.keyword_id.in_(part), KeywordMetric.market == market, KeywordMetric.language == language, KeywordMetric.is_latest.is_(True),
+            ).values(is_latest=False)
+        )
     rows = []
     for term, kw in terms.items():
         rec = by_term.get(term) or MetricRecord(term=term)

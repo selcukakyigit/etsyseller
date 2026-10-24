@@ -2,7 +2,7 @@
 yazar. Mağazaya ait hiçbir veri (satış, taslak, performans) buraya girmez (bkz. CLAUDE.md "Research data")."""
 import datetime as dt
 
-from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.crypto import EncryptedText
@@ -33,7 +33,11 @@ class KeywordMetric(Base):
     Bu GOOGLE verisidir; Etsy aramasının hacmi değildir."""
 
     __tablename__ = "keyword_metrics"
-    __table_args__ = (Index("ix_keyword_metrics_lookup", "keyword_id", "market", "language", "measured_at"),)
+    __table_args__ = (
+        Index("ix_keyword_metrics_lookup", "keyword_id", "market", "language", "measured_at"),
+        # Yönetim listesi her kelimenin güncel ölçümünü `is_latest` ile bulur (tüm geçmişi gruplamadan); kısmi dizin yalnızca güncel satırları tutar.
+        Index("ix_keyword_metrics_latest", "market", "language", "keyword_id", postgresql_where=text("is_latest"), sqlite_where=text("is_latest")),
+    )
 
     id: Mapped[int] = mapped_column(_ID, primary_key=True, autoincrement=True)
     keyword_id: Mapped[int] = mapped_column(_ID, ForeignKey("keyword_terms.id", ondelete="CASCADE"))
@@ -49,6 +53,8 @@ class KeywordMetric(Base):
     monthly_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # [[yıl, ay, hacim], …]
     measured_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
+    # Bu kelime + pazar + dil için EN YENİ ölçüm mü (`pool.add_metrics` yeni satır eklerken eskisini kapatır).
+    is_latest: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
 
 
 class KeywordTrend(Base):

@@ -1,16 +1,28 @@
 "use client";
 
 import { Badge } from "@/components/admin/ui";
-import type { KeywordState, ResearchJob } from "@/lib/researchApi";
+import type { KeywordState, ResearchJob, ResearchKeyword } from "@/lib/researchApi";
 import { useT } from "@/lib/i18n-client";
 
 /** Yönetim > Araştırma sayfalarının ortak küçük parçaları. */
 
-export function StateBadge({ state }: { state: KeywordState }) {
+export function StateBadge({ state, reason = "", detail = "" }: { state: KeywordState; reason?: ResearchKeyword["reason"]; detail?: string }) {
   const { t } = useT();
   if (state === "fresh") return <Badge tone="good">{t("Güncel", "Fresh")}</Badge>;
   if (state === "stale") return <Badge tone="warn">{t("Yenilenmeli", "Stale")}</Badge>;
-  return <Badge tone="muted">{t("Metrik yok", "No metrics")}</Badge>;
+  // Ölçüm yok: nedeni ayrı ayrı gösterilir (sırada, başarısız, başka pazarda ölçülmüş, hiç istenmemiş).
+  const why = {
+    queued: ["muted", t("Sırada", "Queued"), ""],
+    failed: ["bad", t("Ölçülemedi", "Failed"), detail],
+    other_market: ["warn", t("Başka pazarda", "Other market"), t(`Ölçüm şu pazarlarda var: ${detail}`, `Measured in: ${detail}`)],
+    none: ["muted", t("Henüz istenmedi", "Not requested"), ""],
+  } as const;
+  const [tone, label, title] = reason ? why[reason] : (["muted", t("Metrik yok", "No metrics"), ""] as const);
+  return (
+    <span title={title || undefined}>
+      <Badge tone={tone}>{label}</Badge>
+    </span>
+  );
 }
 
 export function JobStatusBadge({ status }: { status: ResearchJob["status"] }) {

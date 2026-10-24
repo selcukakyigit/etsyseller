@@ -6,7 +6,7 @@ import { Modal, btnGhost } from "@/components/listing-editor/Modal";
 import HelpTip from "@/components/ui/HelpTip";
 import { BlockSpinner } from "@/components/ui/Spinner";
 import { useT } from "@/lib/i18n-client";
-import { KeywordSort, ResearchEtsyInsights, ResearchKeyword, researchAdmin } from "@/lib/researchApi";
+import { KeywordFilters, KeywordSort, ResearchEtsyInsights, ResearchKeyword, researchAdmin } from "@/lib/researchApi";
 import { toast } from "@/lib/toast";
 import { useApiData } from "@/lib/useApiData";
 import { StateBadge, fmtMoney, useRefusedText } from "./shared";
@@ -23,6 +23,7 @@ export default function KeywordExplorer() {
   const [page, setPage] = useState(1);
   const [openId, setOpenId] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
+  const [measuring, setMeasuring] = useState(false);
   const { data, error, reload } = useApiData(`admin:research:keywords:${q}:${state}:${sort}:${source}:${etsy}:${page}`, () =>
     researchAdmin.keywords({ q, state, page, sort, source, etsy }),
   );
@@ -52,6 +53,9 @@ export default function KeywordExplorer() {
               "Numbers are GOOGLE data (not Etsy search volume). Users never see raw numbers; they only influence suggestions. 'Stale': the measurement expired; used keywords refresh automatically overnight.",
             )}
           </HelpTip>
+          {state === "missing" && data && data.total > 0 && (
+            <Button onClick={() => setMeasuring(true)}>{t("Bu listedekileri ölç", "Measure this list")}</Button>
+          )}
           <Button tone="primary" onClick={() => setAdding(true)}>
             {t("Kelime ekle / yenile", "Add / refresh keywords")}
           </Button>
@@ -132,7 +136,9 @@ export default function KeywordExplorer() {
 
       {data && data.total > data.per_page && (
         <div className="mt-3 flex items-center justify-between text-xs text-neutral-500 dark:text-neutral-400">
-          <span>{t(`${f.num(data.total)} kelime`, `${f.num(data.total)} keywords`)}</span>
+          <span>
+            {t(`${f.num(data.total)}${data.capped ? "+" : ""} kelime`, `${f.num(data.total)}${data.capped ? "+" : ""} keywords`)}
+          </span>
           <div className="flex items-center gap-2">
             <Button disabled={page <= 1} onClick={() => setPage(page - 1)}>
               ←
@@ -147,6 +153,18 @@ export default function KeywordExplorer() {
         </div>
       )}
 
+      {measuring && data && (
+        <MeasureModal
+          filters={{ q, state, source, etsy }}
+          count={Math.min(data.total, 1000)}
+          capped={data.total > 1000 || !!data.capped}
+          onClose={() => setMeasuring(false)}
+          onDone={() => {
+            setMeasuring(false);
+            reload();
+          }}
+        />
+      )}
       {openId !== null && <KeywordDetailModal id={openId} onClose={() => setOpenId(null)} />}
       {adding && (
         <AddModal
@@ -176,7 +194,7 @@ function KeywordRow({ k, onOpen, date }: { k: ResearchKeyword; onOpen: () => voi
       <td className="py-2 pr-3 text-right tabular-nums text-neutral-700 dark:text-neutral-300">{k.search_volume === null ? "—" : k.search_volume.toLocaleString(locale)}</td>
       <td className="py-2 pr-3 text-right tabular-nums text-neutral-700 dark:text-neutral-300">{k.cpc === null ? "—" : fmtMoney(k.cpc, locale)}</td>
       <td className="py-2 pr-3">
-        <StateBadge state={k.state} />
+        <StateBadge state={k.state} reason={k.reason} detail={k.reason_detail} />
       </td>
       <td className="py-2 text-neutral-500 dark:text-neutral-400">{date}</td>
     </tr>
@@ -319,6 +337,55 @@ function EtsyInsightsBox({ etsy }: { etsy: ResearchEtsyInsights }) {
         {etsy.shops < 3 && <Badge tone="muted">{t("Az mağaza", "Few shops")}</Badge>}
       </p>
     </div>
+  );
+}
+
+/** Süzgeçteki kelimelerin (en çok 1000) ölçümünü tek istekle kuyruğa alır; sayfalamadan bağımsızdır. */
+function MeasureModal({ filters, count, capped, onClose, onDone }: { filters: KeywordFilters; count: number; capped: boolean; onClose: () => void; onDone: () => void }) {
+  const { t } = useT();
+  const f = useFormat();
+  const refusedText = useRefusedText();
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    setBusy(true);
+    try {
+      const r = await researchAdmin.measure(filters);
+      const refused = refusedText(r.refused);
+      if (refused) toast.error(refused);
+      else toast.success(t(`${r.pending} kelime ${r.requests} istekle kuyruğa alındı.`, `${r.pending} keywords queued in ${r.requests} request(s).`));
+      if (r.pending > 0) onDone();
+    } catch (e) {
+      if (errorText(e)) toast.error(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      title={t("Bu listedekileri ölç", "Measure this list")}
+      widthClass="max-w-md"
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" onClick={onClose} className={btnGhost}>
+            {t("Vazgeç", "Cancel")}
+          </button>
+          <Button tone="primary" busy={busy} onClick={() => void submit()}>
+            {t(`Ölç (${f.num(count)})`, `Measure (${f.num(count)})`)}
+          </Button>
+        </>
+      }
+    >
+      <p className="text-sm text-neutral-700 dark:text-neutral-300">
+        {t(
+          `Ölçümü olmayan ${f.num(count)} kelime tek istekle sağlayıcıya gönderilir (istek başına ücret, kelime sayısından bağımsız).`,
+          `${f.num(count)} keywords without a measurement are sent to the provider in a single request (priced per request, not per keyword).`,
+        )}
+        {capped && ` ${t("Liste daha uzun; tek seferde en fazla 1000 kelime ölçülür, işlem bitince tekrar basabilirsin.", "The list is longer; at most 1000 keywords are measured at a time, press again when it finishes.")}`}
+      </p>
+    </Modal>
   );
 }
 

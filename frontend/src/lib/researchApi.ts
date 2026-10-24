@@ -33,6 +33,9 @@ export type ResearchKeyword = {
   intent: string | null;
   measured_at: string | null;
   state: KeywordState;
+  /** Yalnızca state === "missing": ölçümün neden olmadığı. */
+  reason: "" | "queued" | "failed" | "other_market" | "none";
+  reason_detail: string;
   etsy_shops: number;
 };
 
@@ -50,7 +53,9 @@ export type ResearchEtsyInsights = {
   latest_on: string | null;
 };
 
-export type ResearchPage<T> = { items: T[]; total: number; page: number; per_page: number };
+export type ResearchPage<T> = { items: T[]; total: number; page: number; per_page: number; capped?: boolean };
+
+export type KeywordFilters = { q: string; state: string; source: string; etsy: boolean };
 
 export type ResearchMetric = {
   source: string;
@@ -146,6 +151,8 @@ export const researchAdmin = {
     const params = new URLSearchParams({ q: p.q, state: p.state, page: String(p.page), sort: p.sort, source: p.source, etsy: String(p.etsy) });
     return apiRequest<ResearchPage<ResearchKeyword>>(`${BASE}/keywords?${params}`);
   },
+  measure: (f: KeywordFilters) =>
+    post<{ matched: number; pending: number; requests: number; refused: string | null }>("/keywords/measure", f),
   keyword: (id: number) => apiRequest<ResearchKeywordDetail>(`${BASE}/keywords/${id}`),
   refresh: (terms: string[]) => post<{ pending: number; refused: string | null }>("/keywords/refresh", { terms }),
   jobs: (p: { status: string; page: number }) => apiRequest<ResearchPage<ResearchJob>>(`${BASE}/jobs?status=${p.status}&page=${p.page}`),

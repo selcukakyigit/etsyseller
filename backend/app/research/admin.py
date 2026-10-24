@@ -13,6 +13,7 @@ from app.core import app_settings
 from app.core.dates import iso
 from app.insights.models import EtsyKeywordData
 from app.research import budget, credentials, exposure, outcomes, policy, pool
+from app.research import jobs as queue
 from app.research.models import KeywordLink, KeywordMetric, KeywordTerm, ProviderCall, ResearchJob
 from app.research.providers import DEFAULT_PROVIDER
 
@@ -48,12 +49,16 @@ class KeywordRowOut(BaseModel):
     intent: str | None
     measured_at: str | None
     state: str  # fresh | stale | missing
+    # Yalnızca state == missing: queued (iş sırada) | failed (iş başarısız/vazgeçildi) | other_market (başka pazarda ölçülmüş) | none (hiç istenmemiş)
+    reason: str = ""
+    reason_detail: str = ""  # failed: hata mesajı; other_market: pazarlar
     etsy_shops: int = 0  # kaç mağaza bu kelimeyi Marketplace Insights'tan yapıştırmış (yalnızca sayı)
 
 
 class KeywordsPageOut(BaseModel):
     items: list[KeywordRowOut]
-    total: int
+    total: int  # TOTAL_CAP'te durur
+    capped: bool = False  # true: gerçek sayı `total`dan büyük ("10.000+")
     page: int
     per_page: int
 
@@ -189,13 +194,13 @@ def overview(db: Session) -> OverviewOut:
     )
 
 
-def _row(kw: KeywordTerm, m: KeywordMetric | None, now: dt.datetime, etsy_shops: int = 0) -> KeywordRowOut:
+def _row(kw: KeywordTerm, m: KeywordMetric | None, now: dt.datetime, etsy_shops: int = 0, reason: tuple[str, str] = ("", "")) -> KeywordRowOut:
     state = "missing" if m is None else "fresh" if m.expires_at > now else "stale"
     return KeywordRowOut(
         id=kw.id, term=kw.term, language=kw.language, first_source=kw.first_source, created_at=iso(kw.created_at), last_used_at=iso(kw.last_used_at) if kw.last_used_at else None,
         market=m.market if m else None, search_volume=m.search_volume if m else None, cpc=m.cpc if m else None, competition=m.competition if m else None,
         difficulty=m.difficulty if m else None, intent=m.intent if m else None, measured_at=iso(m.measured_at) if m else None, state=state,
-        etsy_shops=etsy_shops,
+        etsy_shops=etsy_shops, reason=reason[0], reason_detail=reason[1],
     )
 
 
@@ -216,19 +221,17 @@ def _etsy_shop_counts(db: Session, terms: list[str]) -> dict[str, int]:
     return {k: int(n) for k, n in rows}
 
 
-def keywords(
-    db: Session, *, q: str, state: str, market: str, language: str, page: int, sort: str = "new", source: str = "", etsy: bool = False,
-) -> KeywordsPageOut:
-    now = dt.datetime.utcnow()
-    newest = (
-        select(KeywordMetric.keyword_id, func.max(KeywordMetric.measured_at).label("m"))
-        .where(KeywordMetric.market == market, KeywordMetric.language == language).group_by(KeywordMetric.keyword_id).subquery()
-    )
+TOTAL_CAP = 10_000  # sayım bu kadar satırda durur ("10.000+"): büyük havuzda her sayfada tüm tabloyu saymayalım
+MEASURE_MAX = 1000  # tek tıkla ölçtürülebilecek en fazla kelime (sağlayıcının tek istek sınırı)
+
+
+def _keyword_base(*, q: str, state: str, market: str, language: str, source: str, etsy: bool, now: dt.datetime):
     base = (
         select(KeywordTerm, KeywordMetric)
-        .outerjoin(newest, newest.c.keyword_id == KeywordTerm.id)
-        .outerjoin(KeywordMetric, (KeywordMetric.keyword_id == newest.c.keyword_id) & (KeywordMetric.measured_at == newest.c.m)
-                   & (KeywordMetric.market == market) & (KeywordMetric.language == language))
+        .outerjoin(
+            KeywordMetric,
+            (KeywordMetric.keyword_id == KeywordTerm.id) & (KeywordMetric.market == market) & (KeywordMetric.language == language) & KeywordMetric.is_latest.is_(True),
+        )
         .where(KeywordTerm.language == language)
     )
     if q.strip():
@@ -243,11 +246,60 @@ def keywords(
         base = base.where(KeywordMetric.expires_at > now)
     elif state == "stale":
         base = base.where(KeywordMetric.expires_at <= now)
-    total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
+    return base
+
+
+def _missing_reasons(db: Session, terms: list[str], market: str, language: str) -> dict[str, tuple[str, str]]:
+    """Ölçümü olmayan kelimelerin NEDEN olmadığı: iş sırada mı, başarısız mı, başka pazarda mı ölçülmüş, hiç istenmemiş mi."""
+    wanted = set(terms)
+    out = {t: ("none", "") for t in terms}
+    markets: dict[str, list[str]] = {}
+    for term, other in db.execute(
+        select(KeywordTerm.term, KeywordMetric.market).join(KeywordMetric, KeywordMetric.keyword_id == KeywordTerm.id)
+        .where(KeywordTerm.language == language, KeywordTerm.term.in_(wanted), KeywordMetric.market != market).distinct()
+    ):
+        markets.setdefault(term, []).append(other)
+    for term, found in markets.items():
+        out[term] = ("other_market", ", ".join(sorted(found)))
+    recent = db.scalars(
+        select(ResearchJob).where(
+            ResearchJob.market == market, ResearchJob.language == language, ResearchJob.status.in_(("queued", "running", "failed", "dead")),
+            ResearchJob.kind.in_(("volume", "suggest", "trend")),
+        ).order_by(ResearchJob.id.desc()).limit(500)
+    ).all()
+    seen: dict[str, tuple[str, str]] = {}
+    for job in recent:  # en yeniden eskiye; sıradaki iş, başarısız eski işten önce gelir
+        p = queue.params(job)
+        names = set(p.get("terms", [])) | ({p["seed"]} if p.get("seed") else set())
+        status = "queued" if job.status in queue.ACTIVE else "failed"
+        for term in names & wanted:
+            if term not in seen or (status == "queued" and seen[term][0] != "queued"):
+                seen[term] = (status, job.error[:200] if status == "failed" else "")
+    out.update(seen)
+    return out
+
+
+def keywords(
+    db: Session, *, q: str, state: str, market: str, language: str, page: int, sort: str = "new", source: str = "", etsy: bool = False,
+) -> KeywordsPageOut:
+    now = dt.datetime.utcnow()
+    base = _keyword_base(q=q, state=state, market=market, language=language, source=source, etsy=etsy, now=now)
+    counted = db.scalar(select(func.count()).select_from(base.limit(TOTAL_CAP + 1).subquery())) or 0
     order = SORTS.get(sort, SORTS["new"])()
     rows = db.execute(base.order_by(*order).limit(PER_PAGE).offset((page - 1) * PER_PAGE)).all()
     shops = _etsy_shop_counts(db, [k.term for k, _ in rows])
-    return KeywordsPageOut(items=[_row(k, m, now, shops.get(k.term, 0)) for k, m in rows], total=total, page=page, per_page=PER_PAGE)
+    missing = [k.term for k, m in rows if m is None]
+    reasons = _missing_reasons(db, missing, market, language) if missing else {}
+    return KeywordsPageOut(
+        items=[_row(k, m, now, shops.get(k.term, 0), reasons.get(k.term, ("", ""))) for k, m in rows],
+        total=min(counted, TOTAL_CAP), capped=counted > TOTAL_CAP, page=page, per_page=PER_PAGE,
+    )
+
+
+def measure_terms(db: Session, *, q: str, state: str, market: str, language: str, source: str = "", etsy: bool = False) -> list[str]:
+    """Süzgece uyan kelimeler (en çok MEASURE_MAX), toplu ölçtürmek için; sayfalamadan bağımsız."""
+    base = _keyword_base(q=q, state=state, market=market, language=language, source=source, etsy=etsy, now=dt.datetime.utcnow())
+    return [k.term for k, _ in db.execute(base.order_by(KeywordTerm.id.desc()).limit(MEASURE_MAX)).all()]
 
 
 def etsy_insights(db: Session, term: str) -> EtsyInsightsOut | None:
@@ -310,8 +362,6 @@ def keyword_detail(db: Session, keyword_id: int, market: str) -> KeywordDetailOu
 
 
 def _job_out(job: ResearchJob) -> JobOut:
-    from app.research import jobs as queue
-
     p = queue.params(job)
     return JobOut(
         id=job.id, kind=job.kind, market=job.market, language=job.language, status=job.status, attempts=job.attempts, shop_id=job.shop_id,

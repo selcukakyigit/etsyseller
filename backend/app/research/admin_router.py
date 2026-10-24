@@ -21,6 +21,15 @@ class RefreshIn(BaseModel):
     market: str | None = None
 
 
+class MeasureIn(BaseModel):
+    """Yönetim listesindeki süzgeçle aynı; süzgece uyan kelimelerin (en çok 1000) ölçümü tek istekle kuyruğa alınır."""
+
+    q: str = ""
+    state: str = Field("", pattern="^(|fresh|stale|missing)$")
+    source: str = Field("", max_length=30)
+    etsy: bool = False
+
+
 class CredentialsIn(BaseModel):
     login: str = Field(min_length=1, max_length=200)
     password: str = Field(min_length=1, max_length=200)
@@ -60,6 +69,20 @@ def refresh(payload: RefreshIn, admin_user: User = Depends(admin_only), db: Sess
     result = service.request_refresh(db, payload.terms, market=payload.market)
     audit.record(db, admin_user, "research.refresh", f"{len(payload.terms)} terms", result.refused or "")
     return {"pending": result.pending, "refused": result.refused}
+
+
+@router.post("/keywords/measure")
+def measure(payload: MeasureIn, admin_user: User = Depends(admin_only), db: Session = Depends(get_db)):
+    market, language = policy.get("research_default_market"), policy.get("research_default_language")
+    terms = admin.measure_terms(db, q=payload.q, state=payload.state, market=market, language=language, source=payload.source, etsy=payload.etsy)
+    if not terms:
+        return {"matched": 0, "pending": 0, "requests": 0, "refused": None}
+    result = service.request_refresh(db, terms, market=market, language=language)
+    audit.record(db, admin_user, "research.measure", f"{len(terms)} terms", result.refused or "")
+    return {
+        "matched": len(terms), "pending": result.pending, "refused": result.refused,
+        "requests": -(-len(terms) // get_provider().max_volume_terms) if result.pending else 0,
+    }
 
 
 @router.get("/jobs", response_model=admin.JobsPageOut)

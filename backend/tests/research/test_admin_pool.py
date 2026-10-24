@@ -62,3 +62,52 @@ def test_cost_report_fills_empty_days_groups_by_endpoint_and_projects(db):
     assert sum(d.cost_usd for d in out.days) == 0.85 and sum(1 for d in out.days if d.calls == 0) >= 27
     assert [(e.endpoint, e.cost_usd, e.errors) for e in out.by_endpoint] == [("volume", 0.75, 1), ("trends", 0.1, 0)]
     assert out.projected_month >= out.month_spend
+
+
+def test_add_metrics_keeps_exactly_one_latest_row_and_the_list_shows_it(db):
+    from app.research.records import MetricRecord
+
+    rows = pool.get_or_create_terms(db, ["metal sign"], "en", "volume")
+    for volume in (100, 250):
+        pool.add_metrics(db, rows, [MetricRecord(term="metal sign", search_volume=volume)], provider="p", source="google_ads", market="US", language="en", ttl_days=21)
+        db.commit()
+    flags = [(m.search_volume, m.is_latest) for m in db.query(KeywordMetric).order_by(KeywordMetric.id)]
+    assert flags == [(100, False), (250, True)]
+    assert _list(db).items[0].search_volume == 250
+    pool.add_metrics(db, rows, [MetricRecord(term="metal sign", search_volume=7)], provider="p", source="google_ads", market="GB", language="en", ttl_days=21)
+    db.commit()
+    assert sum(m.is_latest for m in db.query(KeywordMetric)) == 2, "farklı pazar ayrı güncel satır"
+
+
+def test_missing_rows_say_why(db, provider):
+    from app.research import service
+    from app.research.models import ResearchJob
+
+    rows = pool.get_or_create_terms(db, ["queued term", "failed term", "gb only", "never asked"], "en", "volume")
+    service.request_refresh(db, ["queued term"])  # sıraya girer
+    db.add(ResearchJob(kind="volume", provider="dataforseo", market="US", language="en", idem_key="dead1", params_json='{"terms": ["failed term"]}', status="dead", error="boom"))
+    _metric(db, rows["gb only"], 5, 0.1)
+    db.flush()
+    db.query(KeywordMetric).update({KeywordMetric.market: "GB"})
+    db.commit()
+    by = {i.term: (i.state, i.reason, i.reason_detail) for i in _list(db).items}
+    assert by["queued term"] == ("missing", "queued", "")
+    assert by["failed term"] == ("missing", "failed", "boom")
+    assert by["gb only"] == ("missing", "other_market", "GB")
+    assert by["never asked"] == ("missing", "none", "")
+
+
+def test_total_is_capped_and_bulk_measure_follows_the_filters(db, provider, monkeypatch):
+    from app.research import service
+
+    rows = pool.get_or_create_terms(db, ["a one", "b two", "c three"], "en", "volume")
+    _metric(db, rows["a one"], 10, 0.1)
+    db.commit()
+    monkeypatch.setattr(admin, "TOTAL_CAP", 2)
+    out = _list(db)
+    assert (out.total, out.capped) == (2, True)
+    monkeypatch.undo()
+    terms = admin.measure_terms(db, q="", state="missing", market="US", language="en")
+    assert sorted(terms) == ["b two", "c three"], "ölçümü olanlar ölçtürülmez"
+    result = service.request_refresh(db, terms, market="US", language="en")
+    assert result.pending == 2 and result.refused is None
