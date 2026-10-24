@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+import re
+
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from sqlalchemy.orm import Session
 
 from app.account import danger, service
@@ -15,6 +17,21 @@ from app.core.i18n import get_lang
 from app.core.uploads import read_limited
 
 router = APIRouter(prefix="/api/account", tags=["account"])
+# Herkese açık avatar adresi (dosya adı rastgele ek taşır, tahmin edilemez); içerik kalıcı depodan okunur.
+public_router = APIRouter(tags=["account"])
+_AVATAR_NAME = re.compile(r"^[\w-]{1,80}\.png$")
+
+
+@public_router.get("/static/avatars/{name}")
+def avatar_file(name: str):
+    if not _AVATAR_NAME.match(name):
+        raise HTTPException(404, "Not found")
+    try:
+        content = service.read_avatar(name)
+    except FileNotFoundError:
+        raise HTTPException(404, "Not found") from None
+    # Ad her yüklemede değişir: tarayıcı süresiz önbellekleyebilir (depoya her görünümde gidilmez).
+    return Response(content, media_type="image/png", headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 MAX_AVATAR_BYTES = 5 * 1024 * 1024
 

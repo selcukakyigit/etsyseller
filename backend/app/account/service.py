@@ -6,9 +6,10 @@ from PIL import Image, UnidentifiedImageError
 from sqlalchemy.orm import Session
 
 from app.auth.models import User
+from app.core import blobstore
 
-AVATAR_DIR = Path(__file__).resolve().parent.parent.parent / "uploads" / "avatars"
-AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+# Avatarlar kalıcı depoda ("avatars/<ad>"): Render'ın diski her yayında silindiği için yerel diske yazılan fotoğraf kırık resme dönerdi.
+AVATAR_PREFIX = "avatars/"
 
 ALLOWED_AVATAR_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 AVATAR_SIZE = 512  # square, in pixels
@@ -45,9 +46,21 @@ def save_avatar(db: Session, user: User, filename: str, content: bytes) -> User:
 
     # Rastgele ek, URL'nin tahmin edilmesini ve eski fotoğrafın önbellekte kalmasını engeller.
     new_filename = f"{user.id}-{secrets.token_urlsafe(12)}.png"
-    image.save(AVATAR_DIR / new_filename, format="PNG")
-    if user.avatar_filename:
-        (AVATAR_DIR / user.avatar_filename).unlink(missing_ok=True)
+    out = BytesIO()
+    image.save(out, format="PNG")
+    blobstore.put(AVATAR_PREFIX + new_filename, out.getvalue(), "image/png")
+    old = user.avatar_filename
     user.avatar_filename = new_filename
     db.commit()
+    if old:
+        remove_avatar_file(old)
     return user
+
+
+def read_avatar(name: str) -> bytes:
+    """Avatar dosyasının içeriği; yoksa FileNotFoundError."""
+    return blobstore.read(blobstore.path_of(AVATAR_PREFIX + name))
+
+
+def remove_avatar_file(name: str) -> None:
+    blobstore.remove([blobstore.path_of(AVATAR_PREFIX + name)])

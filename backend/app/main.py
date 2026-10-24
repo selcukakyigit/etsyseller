@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.errors import register_error_handlers
@@ -43,11 +42,11 @@ from app.taxonomy import models as _taxonomy_models  # noqa: F401
 from app.research import models as _research_models  # noqa: F401
 from app.core import app_settings as _app_settings  # noqa: F401
 
+from app.account.router import public_router as avatar_router
 from app.account.router import router as account_router
 from app.admin.router import router as admin_router
 from app.research.admin_router import router as research_admin_router
 from app.research.discover_router import router as discover_router
-from app.account.service import AVATAR_DIR
 from app.auth.router import router as auth_router
 from app.assistant.router import router as assistant_router
 from app.banners.router import router as banners_router
@@ -131,9 +130,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Yalnızca avatarlar herkese açık servis edilir (dosya adı tahmin edilemez). Taslak/sohbet/önbellek görselleri
-# uploads/ altında kalır ve yalnızca yetki kontrolü yapan uç noktalardan sunulur — klasörün tamamı asla mount edilmez.
-app.mount("/static/avatars", StaticFiles(directory=str(AVATAR_DIR)), name="avatars")
+# Yalnızca avatarlar herkese açık servis edilir (dosya adı tahmin edilemez; `account.avatar_file`, kalıcı depodan). Taslak/sohbet/önbellek görselleri
+# yalnızca yetki kontrolü yapan uç noktalardan sunulur — klasörün tamamı asla mount edilmez.
 
 @app.exception_handler(Exception)
 async def unhandled_error_handler(request: Request, exc: Exception):
@@ -171,6 +169,7 @@ def healthz():
 
 app.include_router(auth_router)
 app.include_router(account_router)
+app.include_router(avatar_router)
 app.include_router(shops_router)
 app.include_router(listings_router)
 app.include_router(listing_generation_router)

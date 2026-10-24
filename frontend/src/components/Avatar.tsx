@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import { API_URL, User } from "@/lib/api";
 
 // Fotoğrafı olmayan kullanıcıya, kimliğine göre hep aynı çıkan sevimli bir ikon verilir.
@@ -25,13 +28,15 @@ export default function Avatar({
   className?: string;
 }) {
   const src = avatarSrc(user?.avatar_url);
+  const [brokenSrc, setBrokenSrc] = useState<string | null>(null); // dosyası kaybolmuş (eski, diske yazılmış) fotoğraf kırık resim yerine ikona döner
   const style = { width: size, height: size };
-  if (src) {
+  if (src && brokenSrc !== src) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
         src={src}
         alt=""
+        onError={() => setBrokenSrc(src)}
         referrerPolicy="no-referrer"
         style={style}
         className={`rounded-full object-cover flex-shrink-0 ${className}`}

@@ -24,16 +24,21 @@ def _remote() -> bool:
     return bool(settings.supabase_url and settings.supabase_secret_key)
 
 
+def path_of(key: str) -> str:
+    """`put(key, …)`in döndüreceği yol; yalnızca anahtar biliniyorsa (veritabanında yol yerine anahtar tutulan dosyalar, ör. avatarlar) okumak/silmek için."""
+    return PREFIX + key if _remote() else str(LOCAL_ROOT / key)
+
+
 def put(key: str, content: bytes, content_type: str) -> str:
     """Dosyayı kaydeder, veritabanına yazılacak yolu döner. `key` örn. "drafts/12/-3/<uuid>.jpg"."""
     if _remote():
         storage.ensure_bucket(BUCKET, MAX_BYTES)
         storage.upload(BUCKET, key, content, content_type or "application/octet-stream")
-        return PREFIX + key
+        return path_of(key)
     path = LOCAL_ROOT / key
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(content)
-    return str(path)
+    return path_of(key)
 
 
 def read(path: str) -> bytes:

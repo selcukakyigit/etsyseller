@@ -10,7 +10,7 @@ import httpx
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.account.service import AVATAR_DIR
+from app.account.service import remove_avatar_file
 from app.auth.models import User, Workspace, WorkspaceMember
 from app.auth.workspaces import workspace_ids
 from app.core import blobstore
@@ -104,7 +104,7 @@ def delete_account(db: Session, user: User) -> None:
     # işlem tekrar denenebilir (giriş açık kalıp verisi silinmiş yarım durum tutarlı biçimde yeniden denenir).
     _delete_supabase_user(supabase_id)
     if avatar:
-        (AVATAR_DIR / avatar).unlink(missing_ok=True)
+        remove_avatar_file(avatar)
     user_id = user.id
     delete_user_tickets(db, user_id)  # ek dosyaları depodan kalkar; satırlar kullanıcıyla birlikte cascade ile gider
     db.expire_all()
