@@ -64,7 +64,8 @@ BATCH_DENIED = frozenset({
     "set_photo_alt_text", "set_variation_photo", "generate_listing_video", "add_video_to_listing", "remove_listing_video", "generation_options", "make_pin_image", "pinterest_content",
     # taslak sonrası ince ayar (şimdilik sohbetten tek tek): varyasyon, stok, kişiselleştirme, dijital dosya, tür
     "edit_inventory", "add_variation_option", "remove_variation_option", "edit_personalization_question", "personalization_library", "add_digital_file", "remove_digital_file", "set_listing_type",
-    # araştırma ve çözümleme (ön kontrol zaten rakipleri tarar; kullanıcıya özel analizler sohbette)
+    # araştırma ve çözümleme (ön kontrol zaten rakipleri tarar; kullanıcıya özel analizler sohbette); link okuma toplu işte sunucu tarafında, çözümleme adımında yapılır (items[].links)
+    "read_link",
     "search_listings", "analyze_listing_values", "listing_health_status", "workspace_status", "market_research", "suggest_price", "research_keywords", "keyword_detail", "upcoming_seasons",
     "saved_keywords", "save_keywords", "etsy_top_results",
     # şablon yönetimi, hafıza, destek: kullanıcı kararı

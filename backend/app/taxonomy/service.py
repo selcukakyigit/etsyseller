@@ -17,6 +17,12 @@ def _get(path: str) -> dict:
     return resp.json()
 
 
+def get_public_listing(listing_id: int) -> dict:
+    """Herkese açık bir listing'in verisi (başlık, açıklama, etiket, malzeme, fiyat, görüntülenme, kategori). Uygulamanın kendi API anahtarıyla; mağaza/OAuth gerekmez.
+    Etsy kuralı: ilan içeriği kalıcı saklanmaz; çağıran yalnızca o istekte kullanır."""
+    return _get(f"/listings/{int(listing_id)}")
+
+
 def get_seller_taxonomy_nodes() -> list[dict]:
     """Taxonomy is shop-independent and doesn't require an OAuth token — just
     the app's own api key, per Etsy's docs. No EtsyClient/shop needed here."""

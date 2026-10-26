@@ -271,7 +271,7 @@ _DONE_CLAIM = re.compile(
 _CARD_TOOLS = frozenset({"ask_user", "brief_check"})
 _READ_ONLY_TOOLS = frozenset({
     "find_category", "shop_defaults", "similar_listings", "keyword_pool", "shop_options", "search_listings", "get_listing", "get_category_attributes", "workspace_status",
-    "market_research", "suggest_price", "batch_listings_status", "media_job_status", "listing_health_status", "generation_options", "list_description_templates", "personalization_library", "ask_user", "brief_check",
+    "market_research", "suggest_price", "batch_listings_status", "media_job_status", "read_link", "listing_health_status", "generation_options", "list_description_templates", "personalization_library", "ask_user", "brief_check",
 })
 
 
