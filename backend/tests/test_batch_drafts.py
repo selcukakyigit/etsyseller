@@ -532,3 +532,20 @@ def test_fit_rejects_a_specific_material_the_card_does_not_have():
 
     card = facts_mod.from_listing("Metal wall art", "2mm metal wall decor", materials=["metal"], product="metal wall art")
     assert (fit.reason("steel wall decor", card) or "").startswith("kartta olmayan özgül malzeme") and fit.reason("metal wall decor", card) is None
+
+
+def test_a_wide_source_photo_keeps_a_wide_scene_and_a_square_one_is_left_to_the_model():
+    import io
+
+    from PIL import Image
+    from app.ai import image_gen
+
+    def png(w, h):
+        buf = io.BytesIO()
+        Image.new("RGB", (w, h), "gray").save(buf, "PNG")
+        return buf.getvalue()
+
+    assert image_gen.source_aspect(png(648, 281))[0] == "21:9", "2.3:1 duvar panosu kareye sığdırılıp kesilmez"
+    assert image_gen.source_aspect(png(1000, 1000))[0] is None and image_gen.source_aspect(png(1200, 1000))[0] is None
+    assert image_gen.source_aspect(png(300, 900))[0] == "1:4" or image_gen.source_aspect(png(300, 900))[0] == "9:16"
+    assert image_gen.source_aspect(b"not an image") == (None, None)

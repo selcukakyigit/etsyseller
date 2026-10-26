@@ -2317,6 +2317,8 @@ def _autofill_in_work(ctx: Ctx, lid: int, work: dict) -> tuple[list[str], list[s
         if d["property_id"] in chosen or fields._is_dimension(d) or inventory_edit.covered_by_variation(work, d["display_name"]):
             continue
         names = [v["name"] for v in d["possible_values"]]
+        hint = {w for w in re.findall(r"[a-z]+", f"{work.get('title') or ''} {' '.join(work.get('materials') or [])} {' '.join(work.get('tags') or [])}".lower()) if len(w) > 2}
+        names = sorted(names, key=lambda n: (not (set(re.findall(r"[a-z]+", n.lower())) & hint), n))  # uzun listelerde (Materials: yüzlerce) listing'le ilgili değerler 80'lik dilime girsin
         brief.append({"name": d["display_name"], "required": bool(d.get("is_required")), "max_choices": fields._max_values(d), "allowed": names[:80]})
     dim_items = _dimension_items(ctx, work, defs)
     if not brief:

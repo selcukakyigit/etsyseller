@@ -29,6 +29,11 @@ def suggest(title: str, description: str, tags: list[str], materials: list[str],
         "- Fill an attribute when the product, photos or description make it clear (material, orientation, framed/unframed, lighting, handle, "
         "dishwasher/microwave safe only if stated, etc.). For giftable products also pick fitting Holiday and Occasion values "
         "(e.g. Christmas, Valentine's Day, Mother's Day, Father's Day, Birthday, Wedding, Anniversary) up to max_choices.\n"
+        "- Multi-value attributes (Room, Materials, Occasion, Holiday, Craft, Style…): select EVERY allowed value that truthfully fits, up to max_choices; do not stop at one or two. "
+        "Room: wall art, decor and furniture fit every room they could hang/stand in (living room, bedroom, kitchen & dining, office, entryway…) unless the seller said otherwise. "
+        "Materials: include the stated material and any other listed value that is clearly the same material (e.g. 'Metal'; a specific metal only if stated). "
+        "Never pick a use or setting the seller did not say (e.g. outdoor/patio/garden/bathroom for a product described only for indoor walls).
+"
         "- If a variation already covers an attribute (e.g. a Color variation and the Color/Primary color attribute, or a Size variation and Size), skip that attribute.\n"
         "- Skip attributes you cannot determine; never guess facts such as safety or capacity that are not stated or visible.\n"
         'Return ONLY JSON: {"attributes": [{"name": "<attribute name>", "values": ["<allowed value>", ...]}]}'

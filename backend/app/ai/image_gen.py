@@ -93,6 +93,31 @@ class ImageGenError(Exception):
     pass
 
 
+# Modelin desteklediği en-boy oranları. Kaynak fotoğraf belirgin biçimde geniş/dar ise (ör. 2.3:1 duvar panosu) sahne de ona yakın bir oranda üretilir; aksi halde model kareye
+# sığdırıp ürünün uçlarını keser.
+_ASPECTS = {"1:1": 1.0, "2:3": 2 / 3, "3:2": 1.5, "3:4": 0.75, "4:3": 4 / 3, "4:5": 0.8, "5:4": 1.25, "9:16": 9 / 16, "16:9": 16 / 9, "21:9": 21 / 9, "4:1": 4.0, "1:4": 0.25}
+FULL_PRODUCT = (
+    "\n\nÜRÜN KADRAJDA TAMAMEN görünsün: hiçbir kenarından kesilmesin, ucu/köşesi kadraj dışında kalmasın; kaynak görseldeki en-boy oranını ({ratio} civarı) koru, ürünü kısaltma, ezme ya da uzatma."
+)
+
+
+def source_aspect(image_bytes: bytes) -> tuple[str | None, float | None]:
+    """Kaynak belirgin biçimde geniş (>=1.5) ya da dar (<=0.67) ise en yakın desteklenen oran ve gerçek oran; kareye yakınsa (None, oran), okunamazsa (None, None)."""
+    import io
+    import math
+
+    from PIL import Image
+
+    try:
+        with Image.open(io.BytesIO(image_bytes)) as im:
+            ratio = im.width / im.height
+    except Exception:  # noqa: BLE001 - okunamayan görselde model kendi oranını seçer
+        return None, None
+    if 0.67 < ratio < 1.5:
+        return None, ratio
+    return min(_ASPECTS, key=lambda k: abs(math.log(_ASPECTS[k] / ratio))), ratio
+
+
 def _choose(model_db_id: int | None, variant_key: str | None, task: str = "image") -> tuple[catalog.ResolvedModel, catalog.Variant | None]:
     """Kullanıcının seçtiği görsel modeli ve seçeneği; seçim yoksa görevin ("image", "upscale") modeli ve varsayılan seçeneği.
     Şimdilik yalnızca Google (Gemini görsel modelleri) destekleniyor."""
@@ -201,8 +226,11 @@ def regenerate_image(
     if logo is not None:
         parts.append(types.Part.from_bytes(data=logo[0], mime_type=logo[1]))
         full_prompt += LOGO_DIRECTIVE.format(ordinal=_ordinal(len(parts)))
+    aspect, ratio = source_aspect(image_bytes)
+    if aspect and ratio:
+        full_prompt += FULL_PRODUCT.format(ratio=f"{ratio:.1f}:1" if ratio >= 1 else f"1:{1 / ratio:.1f}")
     parts.append(types.Part.from_text(text=full_prompt))
-    return _run(parts, None, model_db_id, variant_key)
+    return _run(parts, aspect, model_db_id, variant_key)
 
 
 def generate_from_text(
