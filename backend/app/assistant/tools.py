@@ -71,6 +71,7 @@ def _taxonomy() -> dict[int, str]:
     return _taxonomy_cache
 
 
+UNATTENDED_REJECTIONS = 1
 MAX_DRAFT_REJECTIONS = 0  # model reddedilince ikinci çağrıyı yapmayıp 'teknik hata' diyor (oturum 50/51): taslak HER ZAMAN kurulur, sorunlar kalite_uyarilari olarak döner ve update_listing ile düzeltilir
 
 
@@ -924,7 +925,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         problems_pre = [*(plan_mod.title_problems(title, free) if free else []), *problems_pre]
     quality_warnings: list[str] = []
     if problems_pre:
-        if ctx.draft_rejections < MAX_DRAFT_REJECTIONS:
+        if ctx.draft_rejections < (UNATTENDED_REJECTIONS if ctx.unattended else MAX_DRAFT_REJECTIONS):  # toplu alt çalıştırma retten sonra yeniden dener; sohbet modeli denemez
             ctx.draft_rejections += 1
             return {"error": "Taslak henüz oluşturulmadı. Kullanıcıya SORMA, onay isteme: şunları kendin düzelt ve create_listing_draft'ı HEMEN tekrar çağır (mağazanın diğer listing'lerinin kopyası olmamalı): " + " ".join(problems_pre)}
         quality_warnings = problems_pre  # düzeltme hakkı doldu: taslak yine oluşur, kalanlar update_listing ile düzeltilir
