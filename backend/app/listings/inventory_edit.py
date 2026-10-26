@@ -111,7 +111,9 @@ def recompute_dependencies(work: dict) -> str | None:
     if price is None or len(price) > 1:
         return "Fiyat aynı anda yalnızca tek bir varyasyona göre değişebilir (Etsy kuralı); kombinasyon fiyatlarını buna göre ver."
     inv["price_on_property"] = price
-    inv["quantity_on_property"] = _depends_on(products, pids, _quantity_of) or pids
+    # Stok her kombinasyonda aynıysa hiçbir varyasyona bağlı değildir; "tüm varyasyonlara" yazmak (eski davranış) fiyat tek varyasyona bağlıyken düzenleyicinin Etsy kuralını
+    # bozar ("bir alan tüm varyasyonlara bağlıysa diğerleri kapalı ya da tümü"): fiyatın bağlı olduğu varyasyonu izler, fiyat da sabitse tümüne bağlanır.
+    inv["quantity_on_property"] = _depends_on(products, pids, _quantity_of) or price or pids
     skus = {p.get("sku") or "" for p in products}
     inv["sku_on_property"] = pids if len(skus) > 1 else []
     return None

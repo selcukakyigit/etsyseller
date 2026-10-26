@@ -80,3 +80,20 @@ def test_the_category_picker_does_not_override_the_shops_established_category(db
     assert tools._keeps_established_category(ctx, 129, 1027) is False and tools._keeps_established_category(ctx, None, 129) is False
     monkeypatch.setattr(tools.listing_service, "get_top_categories", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("x")))
     assert tools._keeps_established_category(ctx, 1027, 129) is False, "mağaza verisi alınamazsa seçici karar verir"
+
+
+def test_uniform_stock_follows_the_price_variation_so_the_editor_rule_holds(db, monkeypatch):
+    shop = Shop(user_id=1, workspace_id=1, etsy_shop_id=1005, etsy_user_id=7, shop_name="S5")
+    db.add(shop); db.commit()
+    monkeypatch.setattr(tools, "_autofill_in_work", lambda *a, **k: ([], []))
+    monkeypatch.setattr(tools, "_category_defs", lambda tid: [])
+    ctx = tools.Ctx(db=db, shop=shop, user_id=5, today=None, message="stok 30", cards=[{"type": "brief"}])
+    out = tools.create_listing_draft(ctx, {
+        "title": "Bubble Line Art Metal Wall Decor Panel", "product": "metal wall decor", "taxonomy_id": 1029, "quantity": 30,
+        "description": "Bubble line art metal wall panel.\n\nDETAILS\n• Sizes: Small; Large\n• Colors: Black; White",
+        "variations": [{"name": "Size", "values": [{"value": "Small", "price": 50}, {"value": "Large", "price": 90}]}, {"name": "Color", "values": [{"value": "Black"}, {"value": "White"}]}]})
+    from app.listings import drafts
+    inv = json.loads(drafts._local_row(db, shop, out["listing_id"]).data_json)["inventory"]
+    size_id = inv["products"][0]["property_values"][0]["property_id"]
+    assert inv["price_on_property"] == [size_id] and inv["quantity_on_property"] == [size_id], "stok eşit: tüm varyasyonlara değil fiyatın bağlı olduğu varyasyona"
+    assert inv["sku_on_property"] == [], "editördeki kural: tek varyasyona ya da tümüne bağlı, ikisi karışmaz"
