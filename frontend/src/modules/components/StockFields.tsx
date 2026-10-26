@@ -159,7 +159,12 @@ export default function StockFields({ value, unit, onChange }: { value: StockFor
                     "Stok rulo (adet) ya da kg olarak tutulur; paket formüllerinde miktar metre yazılır. Bant gibi boyu belli olan rulo için rulo boyunu yaz; balonlu naylon ve streç için rulo ağırlığı, en ve kalınlığı yaz, uzunluğu sistem hesaplar (kayıttan sonra satırda görünür).",
                     "Stock is kept in rolls (pieces) or kg; package formulas give the quantity in metres. For a roll with a known length (tape) enter the roll length; for bubble wrap and stretch film enter the roll weight, width and thickness and the length is worked out (shown on the row after saving).",
                   )
-                : isPlate
+                : isPlate && materialGroup(value.material) === "piece"
+                  ? t(
+                      "Tabaka ölçüsü ambalaj paketlerinde kullanılır: ürünün alanı tabaka alanına bölünerek kaç tabaka gideceği hesaplanır (ör. 1200×600). Ölçü yoksa o paket satırı hesaplanamaz.",
+                      "The sheet size is used in packaging recipes: the product's area is divided by the sheet area to work out how many sheets are needed (e.g. 1200×600). Without a size that recipe line cannot be calculated.",
+                    )
+                  : isPlate
                   ? t(
                       "Plaka boyutu varsa ürünün malzemesi plakadaki alan payından, yoksa ağırlığından ya da hacminden hesaplanır. Tabaka fiyatında kalınlık ve plaka boyutu gerekir.",
                       "With a plate size the product’s material comes from its area share of the plate, otherwise from its weight or volume. A per-sheet price needs thickness and plate size.",

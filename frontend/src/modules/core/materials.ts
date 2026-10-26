@@ -66,8 +66,8 @@ export const GROUP_INFO: Record<MaterialGroup, { tr: string; en: string; hintTr:
   piece: {
     tr: "Adetle sayılan",
     en: "Counted by piece",
-    hintTr: "Kutu, karton, strafor gibi tek tek sayılan malzeme. Ek alan sorulmaz.",
-    hintEn: "Material counted one by one, like boxes, cardboard or styrofoam. No extra fields.",
+    hintTr: "Kutu, karton, strafor gibi tek tek sayılan malzeme. Tabaka olarak alınıyorsa tabaka ölçüsü (ambalaj hesabı için) sorulur.",
+    hintEn: "Material counted one by one, like boxes, cardboard or styrofoam. If bought by the sheet, the sheet size is asked (for packaging calculations).",
   },
   bulk: {
     tr: "Dökme / diğer",

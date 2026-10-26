@@ -63,3 +63,19 @@ def test_an_unused_metre_tape_can_be_switched_to_counted_rolls_with_a_pack(db):
     row = _row(db, a, tape)
     assert (tape.unit, tape.roll_length, tape.pack_unit, tape.pack_size) == ("piece", 100, "box", 80)
     assert row["roll_metres"] == 100 and row["pack_price"] == 6400
+
+
+def test_counted_sheet_material_asks_for_plate_size_so_packages_can_use_its_area(db):
+    """Strafor tabaka: 1200×600 ölçüsü girilebilir; ambalaj tarifi alan payını tabaka alanına böler (2,5 m × 0,15 m ürün → 0,52 tabaka)."""
+    from app.supply.models import PackageLine
+    from app.supply import packages
+
+    assert set(materials.fields_for("piece", "sheet")) == {"thickness_mm", "plate_width", "plate_height"}
+    assert materials.fields_for("piece", "piece") == ()
+    a = _access()
+    foam = pricebook.create_item(db, a, "material", "20 lik strafor", "sheet", "", 50, fields={"material": "styrofoam", "thickness_mm": 20, "plate_width": 1200, "plate_height": 600})
+    assert (foam.thickness_mm, foam.plate_width, foam.plate_height) == (20, 1200, 600)
+    qty, missing = packages.quantity(foam, PackageLine(per_area=1.0, constant=0, per_long=0, per_short=0), (2.5, 0.15))
+    assert missing is None and qty == pytest.approx(0.375 / 0.72)
+    bare = pricebook.create_item(db, a, "material", "Strafor", "sheet", "", 50, fields={"material": "styrofoam"})
+    assert packages.quantity(bare, PackageLine(per_area=1.0, constant=0, per_long=0, per_short=0), (2.5, 0.15)) == (None, "plate"), "ölçü yoksa hesaplanamaz"

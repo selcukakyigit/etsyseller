@@ -115,6 +115,9 @@ def fields_for(group: str | None, unit: str) -> tuple[str, ...]:
     u = units.UNITS.get(unit)
     if group == "sheet" and u is not None:
         return _PLATE if u.dimension in ("sheet", "mass") else _PLATE[:3] if u.dimension in ("area", "volume") else ()
+    if group == "piece" and unit == "sheet":
+        # tabaka olarak alınan adetli malzeme (strafor, karton): ambalaj tarifi alan payını tabaka alanına böler; kalınlık bilgidir
+        return ("thickness_mm", "plate_width", "plate_height")
     if group == "film" and u is not None:
         # adet (rulo): boyu ya da (boyu yoksa) ağırlık × en × kalınlıktan hesaplanır; kütle: en × kalınlık (rulo ağırlığı paket miktarıdır)
         return ("roll_width", "film_um") if u.dimension == "mass" else ("roll_length", "roll_width", "film_um", "plate_kg") if u.dimension == "piece" else ()
