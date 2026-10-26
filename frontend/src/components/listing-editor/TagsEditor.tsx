@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { api, KeywordPoolItem } from "@/lib/api";
 import { scoreFill, scorePercent, scoreTitle } from "@/lib/keywordScore";
+import { cleanTag, useEtsyRules } from "@/lib/etsyRules";
 import { tNow as t } from "@/lib/i18n";
 
-const MAX_TAGS = 13;
+const FALLBACK_MAX_TAGS = 13; // kurallar (backend etsy_rules) yüklenene kadar
 
 function scoreLabel(item: KeywordPoolItem): string {
   if (item.source === "own") return `${item.units ?? 0} ${t("satış", "sales")}`;
@@ -37,7 +38,10 @@ export default function TagsEditor({
   const [poolOpen, setPoolOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const atLimit = tags.length >= MAX_TAGS;
+  const rules = useEtsyRules();
+  const [note, setNote] = useState<string | null>(null);
+  const maxTags = rules?.tag.max_count ?? FALLBACK_MAX_TAGS;
+  const atLimit = tags.length >= maxTags;
 
   async function togglePool() {
     if (poolOpen) {
@@ -62,16 +66,23 @@ export default function TagsEditor({
   const byTag = new Map((shownPool ?? []).map((k) => [k.tag.toLowerCase(), k]));
 
   function add(tag: string) {
-    const t = tag.trim();
-    if (!t || atLimit || tags.some((x) => x.toLowerCase() === t.toLowerCase())) return;
-    onChange([...tags, t]);
+    const raw = tag.trim();
+    const clean = rules ? cleanTag(raw, rules) : raw; // Etsy'nin kabul etmediği karakterler girişte çıkar
+    if (!clean || atLimit) return;
+    if (rules && clean.length > rules.tag.max_len) {
+      setNote(t(`«${clean}» ${rules.tag.max_len} karakteri aşıyor; kısalt.`, `«${clean}» is longer than ${rules.tag.max_len} characters; shorten it.`));
+      return;
+    }
+    if (tags.some((x) => x.toLowerCase() === clean.toLowerCase())) return;
+    setNote(clean !== raw ? t(`Etsy'nin kabul etmediği karakterler çıkarıldı: «${clean}»`, `Characters Etsy does not accept were removed: «${clean}»`) : null);
+    onChange([...tags, clean]);
   }
 
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between">
         <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
-          {t("Etiketler", "Tags")} ({tags.length}/{MAX_TAGS})
+          {t("Etiketler", "Tags")} ({tags.length}/{maxTags})
         </label>
         <button
           type="button"
@@ -147,6 +158,7 @@ export default function TagsEditor({
           </button>
         </div>
       )}
+      {note && <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">{note}</p>}
 
       {shownPool && (
         <div className="mt-3 border-t border-neutral-100 pt-3 dark:border-neutral-800">

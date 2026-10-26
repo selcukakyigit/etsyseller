@@ -18,14 +18,12 @@ from sqlalchemy.orm import Session
 from app.etsy.client import EtsyClient
 from app.listings import drafts, fields, inventory_edit, service, templates
 from app.core import blobstore
+from app.listings import etsy_rules
 from app.listings.models import DraftFile, ListingCache, ListingDraft, ListingLocal
 from app.listings.selection import ListingFilter, select_rows
 from app.shops.models import Shop
 from app.taxonomy import service as taxonomy_service
 
-TITLE_MAX = 140
-TAG_MAX_LEN = 20
-TAGS_MAX = 13
 MIN_PRICE = 0.20
 
 
@@ -53,10 +51,10 @@ class TagsOp(BaseModel):
     @field_validator("add")
     @classmethod
     def _tags(cls, tags: list[str]):
-        clean = [t.strip() for t in tags if t.strip()]
+        clean = [t for t in (etsy_rules.clean_tag(t) for t in tags) if t]
         for t in clean:
-            if len(t) > TAG_MAX_LEN:
-                raise ValueError(f'"{t}" etiketi {TAG_MAX_LEN} karakteri aşıyor.')
+            if len(t) > etsy_rules.TAG_MAX_LEN:
+                raise ValueError(f'"{t}" etiketi {etsy_rules.TAG_MAX_LEN} karakteri aşıyor.')
         return clean
 
 
@@ -220,11 +218,11 @@ def apply_changes(work: dict, c: BulkChanges, apply_template=None, defs_for=None
     """Çalışma kopyasına değişiklikleri uygular; geçersizse hata metni döner (o listing atlanır).
     `apply_template`: bkz. template_applier; şablon, açıklama değişikliğinden sonra uygulanır. `defs_for`: kategori kimliğinden özellik tanımları."""
     if c.title:
-        work["title"] = _text(work["title"], c.title)
+        work["title"] = etsy_rules.clean_title(_text(work["title"], c.title))
         if not work["title"].strip():
             return "Başlık boş kalır."
-        if len(work["title"]) > TITLE_MAX:
-            return f"Başlık {TITLE_MAX} karakteri aşar ({len(work['title'])})."
+        if len(work["title"]) > etsy_rules.TITLE_MAX:
+            return f"Başlık {etsy_rules.TITLE_MAX} karakteri aşar ({len(work['title'])})."
     if c.description:
         work["description"] = _text(work["description"], c.description)
     if apply_template is not None:
@@ -238,8 +236,8 @@ def apply_changes(work: dict, c: BulkChanges, apply_template=None, defs_for=None
             if t.lower() not in have:
                 tags.append(t)
                 have.add(t.lower())
-        if len(tags) > TAGS_MAX:
-            return f"{TAGS_MAX} etiket sınırı aşılır ({len(tags)})."
+        if len(tags) > etsy_rules.TAG_COUNT:
+            return f"{etsy_rules.TAG_COUNT} etiket sınırı aşılır ({len(tags)})."
         work["tags"] = tags
     if c.price:
         err = _apply_price(work["inventory"], c.price)

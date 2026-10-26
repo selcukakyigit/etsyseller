@@ -8,13 +8,15 @@ kategori ve özellikleri birlikte eşleştirmesi (Seller Handbook "Keywords 101"
 asistanları (ChatGPT, Google AI) de aynı şeyi okur: net, olgusal, tutarlı ve eksiksiz bir listing. Etsy'nin yapay zekâ aramasına özel resmî bir kuralı yoktur;
 açıklamadaki yapı (açılış cümlesi, olgu listesi, soru-cevap) topluluk kaynaklarındaki ortak bulgulara dayanır."""
 
-TITLE_MAX_CHARS = 140  # Etsy sınırı
+from app.listings import etsy_rules
+
+TITLE_MAX_CHARS = etsy_rules.TITLE_MAX  # Etsy sınırı
 TITLE_MAX_WORDS = 14  # Etsy (Ağustos 2025): "15 kelimenin altı"; uzun kuyruk etiketlere, özelliklere ve açıklamaya gider
 TITLE_TARGET_CHARS = (50, 110)  # açılış ifadesi + 2-3 nesnel niteleyici bu aralığa düşer (yayın öncesi kontrol de bunu kullanır)
 TITLE_MIN_CHARS = 20
 TITLE_LEAD_CHARS = 40  # ana arama öbeği bu sınırın içinde başlar
-TAG_COUNT = 13
-TAG_MAX_LEN = 20
+TAG_COUNT = etsy_rules.TAG_COUNT
+TAG_MAX_LEN = etsy_rules.TAG_MAX_LEN
 MAX_SHARED_TAGS = 5  # başka tek bir listing'le en fazla bu kadar aynı etiket
 OPENING_CHARS = 160  # arama sonucu önizlemesi ve yapay zekâ özetleri açıklamanın başını okur
 DESCRIPTION_WORDS = (80, 200)  # ürüne özel kısım (mağazanın sabit bölümleri hariç); veri azsa kısa kalabilir, doldurulmaz

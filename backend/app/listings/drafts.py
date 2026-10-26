@@ -21,7 +21,7 @@ from app.etsy import images as etsy_images
 from app.etsy import variation_images as etsy_variation_images
 from app.etsy import videos as etsy_videos
 from app.etsy.client import write_count,  EtsyClient
-from app.listings import changes, image_cache, service
+from app.listings import changes, etsy_rules, image_cache, service
 from app.core import blobstore
 from app.core.i18n import tr
 from app.listings.models import DraftFile, ListingDraft, ListingLocal
@@ -500,6 +500,20 @@ def publish_local(db: Session, shop: Shop, user_id: int, listing_id: int, force:
             "error": f"Bu listing Etsy'de sen kaydettikten sonra değişmiş ({names}). Hiçbir şey yazılmadı.",
         }
 
+    # Etsy'nin reddedeceği değerler hiçbir şey yazılmadan ÖNCE alanıyla birlikte gösterilir (yalnızca gönderilecek alanlar denetlenir).
+    issues = etsy_rules.issues_for(
+        work, core={k for k, x in verdict["core"].items() if x != "skip"}, props={pid for pid, x in verdict["props"].items() if x != "skip"},
+        inventory=verdict["inventory"] != "skip", images=verdict["images"] != "skip",
+    )
+    if issues:
+        _log.warning("Yayın %s durduruldu, Etsy kurallarına uymayan alan: %s", listing_id, "; ".join(i["message"] for i in issues))
+        first = issues[0]
+        more = tr(f" (+{len(issues) - 1} sorun daha)", f" (+{len(issues) - 1} more)") if len(issues) > 1 else ""
+        return {
+            "ok": False, "steps": [], "edit": None, "warnings": [], "conflicts": [], "issues": issues, "error": first["message"] + more,
+            "field": {"section": first["section"], "label": first["label"], "property_id": first.get("property_id")}, "detail": "",
+        }
+
     def step(name: str, fn) -> bool:
         before = write_count()
         try:
@@ -526,6 +540,7 @@ def publish_local(db: Session, shop: Shop, user_id: int, listing_id: int, force:
                     warnings.append(tr(f"{_label(k)} Etsy'den boşaltılamıyor; Etsy'de elle değiştir.", f"{_label(k)} cannot be cleared through Etsy's API; change it on Etsy."))
                 continue
             changed[k] = work[k]
+        changed = etsy_rules.complete_groups(changed, work)  # Etsy bazı alanları birlikte ister (kim yaptı/ne zaman/tedarik; AB garanti dörtlüsü)
         # Etsy yalnızca active/inactive yazmaya izin verir (draft, sold_out, expired… salt okunur).
         if changed.get("state") not in (None, "active", "inactive"):
             changed.pop("state")

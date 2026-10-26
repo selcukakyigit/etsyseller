@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { api, PublishField } from "@/lib/api";
+import { api, PublishField, PublishIssue } from "@/lib/api";
 import { tNow } from "@/lib/i18n";
 
 /**
@@ -18,6 +18,8 @@ export type PublishJob = {
   error?: string;
   /** Hata belirli bir alandan geldiyse: düzenleyici o alana götüren düğme gösterir. `detail`: Etsy'nin ham cevabı (küçük not). */
   field?: PublishField;
+  /** Yayın öncesi denetimin bulduğu sorunlar (her biri kendi alanına götürür). */
+  issues?: PublishIssue[];
   detail?: string;
   warnings?: string[];
   /** Etsy'de sonradan değişmiş alanlar; doluysa hiçbir şey yazılmadı (editör çözümü gösterir). */
@@ -93,7 +95,7 @@ async function run(shopId: number, listingId: number, queuedAt: number, force: b
       const main = r.error ?? tNow("Yayın tamamlanamadı", "Publishing did not finish");
       const failed = r.steps.filter((st) => !st.ok && st.error !== main).map((st) => `${st.name}${st.error ? `: ${st.error}` : ""}`);
       const error = [main, ...failed].join(" — ");
-      setJob(listingId, { phase: "error", queuedAt, startedAt, error, field: r.field ?? undefined, detail: r.detail || undefined });
+      setJob(listingId, { phase: "error", queuedAt, startedAt, error, field: r.field ?? undefined, issues: r.issues, detail: r.detail || undefined });
       outcome = { ok: false, error };
     } else {
       const warnings = r.warnings ?? [];

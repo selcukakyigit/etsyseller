@@ -1,26 +1,42 @@
 "use client";
 
 import { useState } from "react";
+import { cleanWord, useEtsyRules } from "@/lib/etsyRules";
 import { tNow as t } from "@/lib/i18n";
 
+/** Materyal ya da stil listesi: Etsy'nin kabul etmediği karakterler (tire, noktalama…) girişte çıkar; sınırlar backend kurallarından gelir. */
 export default function StringListEditor({
   label,
+  kind,
   values,
-  maxItems,
   onChange,
 }: {
   label: string;
+  kind: "material" | "style";
   values: string[];
-  maxItems?: number;
   onChange: (values: string[]) => void;
 }) {
   const [draft, setDraft] = useState("");
+  const [note, setNote] = useState<string | null>(null);
+  const rules = useEtsyRules();
+  const maxItems = rules?.[kind].max_count;
+  const maxLen = rules && kind === "style" ? rules.style.max_len : undefined;
   const atLimit = maxItems !== undefined && values.length >= maxItems;
 
   function add() {
-    const trimmed = draft.trim();
-    if (!trimmed || atLimit) return;
-    onChange([...values, trimmed]);
+    const raw = draft.trim();
+    const clean = rules ? cleanWord(raw, rules, kind) : raw;
+    if (!clean || atLimit) return;
+    if (maxLen && clean.length > maxLen) {
+      setNote(t(`«${clean}» ${maxLen} karakteri aşıyor; kısalt.`, `«${clean}» is longer than ${maxLen} characters; shorten it.`));
+      return;
+    }
+    if (values.some((v) => v.toLowerCase() === clean.toLowerCase())) {
+      setDraft("");
+      return;
+    }
+    setNote(clean !== raw ? t(`Etsy yalnızca harf, rakam ve boşluk kabul eder; «${clean}» olarak eklendi.`, `Etsy accepts only letters, numbers and spaces; added as «${clean}».`) : null);
+    onChange([...values, clean]);
     setDraft("");
   }
 
@@ -70,6 +86,7 @@ export default function StringListEditor({
           </button>
         </div>
       )}
+      {note && <p className="mt-1 text-xs text-amber-700">{note}</p>}
     </div>
   );
 }

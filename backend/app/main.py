@@ -73,6 +73,7 @@ from app.notifications.router import router as notifications_router
 from app.orders.router import router as orders_router
 from app.shops.router import router as shops_router
 from app.taxonomy.router import router as taxonomy_router
+from app.listings.rules_router import router as etsy_rules_router
 from app.webhooks.router import router as webhooks_router
 
 
@@ -185,6 +186,7 @@ app.include_router(supply_base_router)
 app.include_router(supply_router)
 app.include_router(assistant_router)
 app.include_router(taxonomy_router)
+app.include_router(etsy_rules_router)
 app.include_router(keywords_router)
 app.include_router(contact_router)
 app.include_router(support_router)

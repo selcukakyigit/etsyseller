@@ -17,7 +17,7 @@ from typing import Any
 from sqlalchemy import func, select
 
 from app.assistant import listing_view, prefill
-from app.listings import dimensions, fields, inventory_edit
+from app.listings import dimensions, etsy_rules, fields, inventory_edit
 from app.ai import catalog, video_gen
 from app.listings import generation
 from app.core import blobstore
@@ -685,16 +685,16 @@ def _current_work(ctx: Ctx, listing_id: int) -> dict | None:
 def _tags(raw: list[str]) -> tuple[list[str], list[str]]:
     out, short, seen = [], [], set()
     for t in raw:
-        t = " ".join(str(t).split())
+        t = etsy_rules.clean_tag(t)  # Etsy'nin kabul etmediği karakterler çıkar
         if not t:
             continue
-        if len(t) > bulk.TAG_MAX_LEN:
-            t = t[: bulk.TAG_MAX_LEN].rsplit(" ", 1)[0] if " " in t[: bulk.TAG_MAX_LEN] else t[: bulk.TAG_MAX_LEN]
+        if len(t) > etsy_rules.TAG_MAX_LEN:
+            t = t[: etsy_rules.TAG_MAX_LEN].rsplit(" ", 1)[0] if " " in t[: etsy_rules.TAG_MAX_LEN] else t[: etsy_rules.TAG_MAX_LEN]
             short.append(t)
         if t.lower() not in seen:
             seen.add(t.lower())
             out.append(t)
-    return out[: bulk.TAGS_MAX], short
+    return out[: etsy_rules.TAG_COUNT], short
 
 
 def _build_inventory(work: dict, price: float, quantity: int, variations: list[dict]) -> str | None:
@@ -886,7 +886,7 @@ def _user_facts(ctx: Ctx, variations: dict[str, list[str]]) -> str:
 
 
 def create_listing_draft(ctx: Ctx, a: dict) -> dict:
-    title = " ".join(str(a.get("title", "")).split())[: bulk.TITLE_MAX]
+    title = etsy_rules.clean_title(str(a.get("title", "")))[: etsy_rules.TITLE_MAX]
     if not title:
         return {"error": "Başlık gerekli."}
     if a.get("price") in (None, "", 0) and a.get("listing_type") != "download" and not _brief_shown(ctx):

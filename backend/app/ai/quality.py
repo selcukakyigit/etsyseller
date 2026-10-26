@@ -8,6 +8,7 @@ import re
 
 from app.ai.standard import MAX_SHARED_TAGS, TAG_COUNT, TAG_MAX_LEN, TITLE_MAX_CHARS, TITLE_MAX_WORDS, TITLE_MIN_CHARS
 from app.core.i18n import tr
+from app.listings import etsy_rules
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -50,7 +51,7 @@ def _jaccard(a: set[str], b: set[str]) -> float:
 def clean_tags(tags: list[str]) -> list[str]:
     out, seen = [], set()
     for t in tags:
-        t = " ".join(str(t).split())
+        t = etsy_rules.clean_tag(t)  # Etsy: yalnızca harf, rakam, boşluk, - ve ' (ör. "metal sign!" → "metal sign")
         if t and t.lower() not in seen:
             seen.add(t.lower())
             out.append(t)

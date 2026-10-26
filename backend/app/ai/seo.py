@@ -6,7 +6,7 @@ from app.ai.catalog import ResolvedModel
 from app.ai.client import get_anthropic_client, get_openai_client, openai_limits
 from app.billing import metering
 from app.listing_plan import plan as plan_mod
-from app.listings import fields
+from app.listings import etsy_rules
 
 SYSTEM_PROMPT = f"""Sen bir Etsy SEO uzmanısın. Sana bir listing'in mevcut başlığı, etiketleri ve açıklaması verilecek. Görevin, Etsy'nin Ağustos 2025 başlık rehberine ve alıcı niyetini anlayan aramaya uygun; aynı zamanda yapay zekâ alışveriş asistanlarının rahat okuyup önerebileceği net, olgusal ve tutarlı bir başlık, {standard.TAG_COUNT} etiket ve açıklama önerisi üretmek.
 
@@ -130,7 +130,7 @@ def generate_seo_suggestion(
         suggestion["tags"] = tags
         # Ölçü/renk temizliği denetimden önce: yeniden deneme, son hâli görsün (kısalan başlık benzerliği artırabilir)
         suggestion["description"] = layout.normalize(str(suggestion.get("description", "")))
-        suggestion["title"] = quality.clean_title(str(suggestion.get("title", "")), variations or {})
+        suggestion["title"] = etsy_rules.clean_title(quality.clean_title(str(suggestion.get("title", "")), variations or {}))  # Etsy karakter kuralları
         problems = audit.generation_problems(suggestion["title"], tags, str(suggestion.get("description", "")), others, source_text, variations or {}, listing.get("listing_type") == "download", bool(listing.get("is_personalizable")))
         if plan is not None:
             problems += plan_mod.title_problems(suggestion["title"], plan)
@@ -153,7 +153,7 @@ def generate_seo_suggestion(
         raise ValueError(f"Beklenen {standard.TAG_COUNT} etiket, alınan: {len(suggestion.get('tags', []))}")
 
     # Malzeme: Etsy yalnızca harf, rakam ve boşluk kabul eder ("&", "-", "/", "," gibi işaretler "contains invalid characters" verir).
-    suggestion["materials"] = fields.clean_words(suggestion.get("materials") or [], fields.MAX_MATERIALS, 45)
+    suggestion["materials"] = etsy_rules.clean_words(suggestion.get("materials") or [], etsy_rules.MAX_MATERIALS, 45)
     # Denemelerden sonra hâlâ kalanlar kullanıcıya gösterilir. Diğer listing'lerle çakışma ayrı döner: iki listing'in
     # ortak durumudur ve aynı nişteki ürünlerde kaçınılmaz olabilir; arayüz onu "hata" değil bilgi olarak gösterir.
     description_part = quality.strip_common_paragraphs(str(suggestion.get("description", "")), others)

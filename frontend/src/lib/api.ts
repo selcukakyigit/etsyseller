@@ -787,6 +787,8 @@ export type WorkingCopy = ListingEdit & {
   managed_property_ids: number[];
 };
 
+export type PublishIssue = { key: string; label: string; message: string; section: string; property_id?: number | null };
+
 export type PublishField = { section: string; label: string; property_id: number | null };
 
 export type PublishResult = {
@@ -795,6 +797,8 @@ export type PublishResult = {
   error: string | null;
   /** Yayın belirli bir alanda takıldıysa: düzenleyicideki bölüm kimliği, alanın adı ve (özellikse) kimliği; ekran "alana git" düğmesi gösterir. */
   field?: PublishField | null;
+  /** Yayın öncesi denetimde Etsy kurallarına uymayan alanlar (hiçbir şey yazılmadı). */
+  issues?: PublishIssue[];
   /** Etsy'nin ham cevabı (teknik); yalnızca küçük bir not olarak gösterilir. */
   detail?: string;
   edit: ListingEdit | null;

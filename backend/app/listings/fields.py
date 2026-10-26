@@ -3,7 +3,8 @@
 Asistan araçları (tools.py) bunları kullanır; veritabanına ya da Etsy'ye dokunmaz, böylece her kural tek başına denenebilir.
 Her fonksiyon (değişen alanlar, hatalar) döner: hata varsa o alan yazılmaz, diğerleri yazılır ve araç sonucu hatayı olduğu gibi
 bildirir (model "yaptım" demeden önce neyin olmadığını görsün)."""
-import re
+
+from app.listings.etsy_rules import ECGT_LIMITS, ECGT_TEXT_LIMIT, MAX_MATERIALS, MAX_STYLES, MAX_STYLE_LEN, clean_words
 
 WHO_MADE = ("i_did", "someone_else", "collective")
 WHEN_MADE = (
@@ -14,28 +15,11 @@ WEIGHT_UNITS = ("oz", "lb", "g", "kg")
 DIMENSION_UNITS = ("in", "ft", "mm", "cm", "m", "yd", "inches")
 QUESTION_TYPES = ("text_input", "dropdown", "unlabeled_upload", "labeled_upload")
 
-MAX_MATERIALS = 13
-MAX_STYLES = 2
-MAX_STYLE_LEN = 45
 MAX_QUESTIONS = 5  # Etsy "Custom options"
 MAX_CHARACTERS = 1024
-ECGT_LIMITS = {"ecgt_garan_brand": 25, "ecgt_garan_model": 20, "ecgt_garan_guarantee_details": 255}
-ECGT_TEXT_LIMIT = 255  # diğer AB alanları
 MAX_MULTI = 5  # Etsy çok değerli özelliklerde en fazla 5 seçim (düzenleyicideki PropertyFields ile aynı)
 MAX_MULTI_BY_NAME = {"material features": 1}
 
-_WORD_ONLY = re.compile(r"[^\w\s]|_", re.UNICODE)  # Etsy: malzeme/stil yalnızca harf, rakam ve boşluk içerir
-
-
-def clean_words(values: list, limit: int, max_len: int | None = None) -> list[str]:
-    out: list[str] = []
-    for v in values:
-        text = " ".join(_WORD_ONLY.sub(" ", re.sub(r"['’]", "", str(v))).split())  # "powder-coated" → "powder coated"; kesme işareti silinir
-        if max_len:
-            text = text[:max_len]
-        if text and text.lower() not in {o.lower() for o in out}:
-            out.append(text)
-    return out[:limit]
 
 
 def _norm_text(text) -> str:

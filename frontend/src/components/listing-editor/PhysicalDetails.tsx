@@ -1,7 +1,45 @@
 "use client";
 
 import { useState } from "react";
+import DecimalInput, { IntegerInput } from "@/components/ui/NumberInputs";
 import { tNow as t } from "@/lib/i18n";
+
+const fieldCls =
+  "w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]";
+
+/** Ağırlık/ölçü: yalnızca rakam, boş = girilmemiş; Etsy 0 ya da negatif kabul etmez. */
+function PositiveField({ value, onValue }: { value: number | null; onValue: (v: number | null) => void }) {
+  const [text, setText] = useState<string | null>(null);
+  const parse = (s: string) => (s === "" ? null : Number(s.replace(",", ".")));
+  const shown = text !== null && parse(text) === value ? text : value === null ? "" : String(value);
+  const bad = value !== null && !(value > 0);
+  return (
+    <>
+      <DecimalInput
+        value={shown}
+        onValue={(v) => {
+          setText(v);
+          const n = parse(v);
+          onValue(n === null || Number.isNaN(n) ? null : n);
+        }}
+        onBlur={() => setText(null)}
+        className={fieldCls}
+      />
+      {bad && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{t("0'dan büyük olmalı (ya da boş bırak).", "Must be greater than 0 (or leave it empty).")}</p>}
+    </>
+  );
+}
+
+/** AB garanti süresi: tam sayı, 3-99 yıl. */
+function YearsField({ value, onValue }: { value: number | null; onValue: (v: number | null) => void }) {
+  const bad = value !== null && (value < 3 || value > 99);
+  return (
+    <>
+      <IntegerInput value={value === null ? "" : String(value)} onValue={(v) => onValue(v === "" ? null : Number(v))} className={`${fieldCls} sm:w-40`} />
+      {bad && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{t("3 ile 99 yıl arasında olmalı.", "Must be between 3 and 99 years.")}</p>}
+    </>
+  );
+}
 
 const WEIGHT_UNITS = ["oz", "lb", "g", "kg"];
 const DIMENSION_UNITS = ["in", "ft", "mm", "cm", "m", "yd", "inches"];
@@ -56,11 +94,9 @@ export default function PhysicalDetails({
 }) {
   const [gpsrOpen, setGpsrOpen] = useState(Boolean(ecgtGaranBrand));
 
-  function numberOrNull(value: string): number | null {
-    if (value.trim() === "") return null;
-    const parsed = Number(value);
-    return Number.isNaN(parsed) ? null : parsed;
-  }
+  // AB ticari garantisi: biri doluysa dördü de zorunlu (Etsy); eksikse yayın öncesi uyarı ve burada not.
+  const gpsrFilled = [ecgtGaranBrand, ecgtGaranYears, ecgtGaranModel, ecgtGaranGuaranteeDetails].filter((v) => v !== null && v !== "" && v !== undefined).length;
+  const gpsrPartial = gpsrFilled > 0 && gpsrFilled < 4;
 
   return (
     <section className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 space-y-4">
@@ -71,11 +107,7 @@ export default function PhysicalDetails({
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div>
           <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("Ağırlık", "Weight")}</label>
-          <input
-            value={itemWeight ?? ""}
-            onChange={(e) => onChange({ item_weight: numberOrNull(e.target.value) })}
-            className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
-          />
+          <PositiveField value={itemWeight} onValue={(v) => onChange({ item_weight: v })} />
         </div>
         <div>
           <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("Birim", "Unit")}</label>
@@ -114,27 +146,15 @@ export default function PhysicalDetails({
       <div className="grid grid-cols-3 gap-3">
         <div>
           <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("Uzunluk", "Length")}</label>
-          <input
-            value={itemLength ?? ""}
-            onChange={(e) => onChange({ item_length: numberOrNull(e.target.value) })}
-            className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
-          />
+          <PositiveField value={itemLength} onValue={(v) => onChange({ item_length: v })} />
         </div>
         <div>
           <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("Genişlik", "Width")}</label>
-          <input
-            value={itemWidth ?? ""}
-            onChange={(e) => onChange({ item_width: numberOrNull(e.target.value) })}
-            className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
-          />
+          <PositiveField value={itemWidth} onValue={(v) => onChange({ item_width: v })} />
         </div>
         <div>
           <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("Yükseklik", "Height")}</label>
-          <input
-            value={itemHeight ?? ""}
-            onChange={(e) => onChange({ item_height: numberOrNull(e.target.value) })}
-            className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
-          />
+          <PositiveField value={itemHeight} onValue={(v) => onChange({ item_height: v })} />
         </div>
       </div>
 
@@ -159,8 +179,10 @@ export default function PhysicalDetails({
 
         {gpsrOpen && (
           <div className="mt-3 space-y-3">
-            <p className="text-xs text-neutral-400 dark:text-neutral-500">
-              {t("Bu dört alandan biri doldurulursa hepsi zorunlu olur (Etsy tarafında).", "If one of these four fields is filled in, all of them become required (on Etsy).")}
+            <p className={`text-xs ${gpsrPartial ? "text-red-600 dark:text-red-400" : "text-neutral-400 dark:text-neutral-500"}`}>
+              {gpsrPartial
+                ? t("Marka, model, yıl ve garanti ayrıntısı birlikte doldurulmalı; eksik kalırsa yayın durur.", "Brand, model, years and guarantee details must all be filled in; publishing stops while one is missing.")
+                : t("Bu dört alandan biri doldurulursa hepsi zorunlu olur (Etsy tarafında).", "If one of these four fields is filled in, all of them become required (on Etsy).")}
             </p>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -190,11 +212,7 @@ export default function PhysicalDetails({
               <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">
                 {t("Garanti süresi (yıl, 3-99)", "Guarantee period (years, 3-99)")}
               </label>
-              <input
-                value={ecgtGaranYears ?? ""}
-                onChange={(e) => onChange({ ecgt_garan_years: numberOrNull(e.target.value) })}
-                className="w-full sm:w-40 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-2 text-sm outline-none focus:border-[#D97757]"
-              />
+              <YearsField value={ecgtGaranYears} onValue={(v) => onChange({ ecgt_garan_years: v })} />
             </div>
             <div>
               <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">

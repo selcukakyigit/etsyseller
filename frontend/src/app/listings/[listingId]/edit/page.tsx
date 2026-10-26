@@ -30,6 +30,7 @@ import ListingSettings from "@/components/listing-editor/ListingSettings";
 import PhysicalDetails from "@/components/listing-editor/PhysicalDetails";
 import PersonalizationEditor from "@/components/listing-editor/PersonalizationEditor";
 import StringListEditor from "@/components/listing-editor/StringListEditor";
+import { titleProblem, useEtsyRules } from "@/lib/etsyRules";
 import TagsEditor from "@/components/listing-editor/TagsEditor";
 import { useT } from "@/lib/i18n-client";
 import { Popover, menuItem } from "@/components/ui/Popover";
@@ -58,6 +59,18 @@ export default function ListingEditPage() {
   const conflict = job?.phase === "error" ? job.conflicts : undefined;
   const publishError = job?.phase === "error" && !job.conflicts ? job.error : undefined;
   const publishField = job?.phase === "error" ? job.field : undefined;
+  const publishIssues = job?.phase === "error" ? job.issues : undefined;
+  const etsyRules = useEtsyRules();
+  /** Yayının takıldığı alana götürür: bölümü açar, özellikse satırına kaydırıp kısa süre vurgular. */
+  function goToField(field: { section: string; property_id?: number | null }) {
+    goTo(field.section);
+    setTimeout(() => {
+      const row = field.property_id ? document.querySelector<HTMLElement>(`[data-property-id="${field.property_id}"]`) : null;
+      row?.scrollIntoView({ behavior: "smooth", block: "center" });
+      row?.classList.add("ring-2", "ring-[#D97757]");
+      setTimeout(() => row?.classList.remove("ring-2", "ring-[#D97757]"), 3000);
+    }, 400);
+  }
   const [closed, setClosed] = useState<Record<string, boolean>>({});
   // Odak modu (?focus=photo|price|title_tags|description|text): yalnızca sıradaki adımın alanı görünür, bir turda tek şey değişir.
   const [focus, setFocus] = useState<FocusKey | null>(null);
@@ -340,6 +353,7 @@ export default function ListingEditPage() {
           onChange={(e) => wc.patch({ title: e.target.value })}
           className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-[#D97757] dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100"
         />
+        {etsyRules && titleProblem(edit.title, etsyRules, t) && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{titleProblem(edit.title, etsyRules, t)}</p>}
       </div>
     );
   const descriptionField = () =>
@@ -671,8 +685,8 @@ export default function ListingEditPage() {
             >
             <div className="space-y-5">
               <TagsEditor shopId={activeShop.id} listingId={listingId} tags={edit.tags} onChange={(tags) => wc.patch({ tags })} />
-              <StringListEditor label={t("Materyaller", "Materials")} values={edit.materials} onChange={(materials) => wc.patch({ materials })} />
-              <StringListEditor label={t("Stil", "Style")} values={edit.style} maxItems={2} onChange={(style) => wc.patch({ style })} />
+              <StringListEditor label={t("Materyaller", "Materials")} kind="material" values={edit.materials} onChange={(materials) => wc.patch({ materials })} />
+              <StringListEditor label={t("Stil", "Style")} kind="style" values={edit.style} onChange={(style) => wc.patch({ style })} />
             </div>
 
             <PropertyFields
@@ -806,22 +820,26 @@ export default function ListingEditPage() {
               <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm dark:border-red-900 dark:bg-red-950/40">
                 <p className="mb-1 font-semibold text-red-700 dark:text-red-300">{t("Yayın tamamlanamadı", "Publishing did not finish")}</p>
                 <p className="text-red-700 dark:text-red-300">{publishError}</p>
-                {publishField && (
-                  <button
-                    onClick={() => {
-                      goTo(publishField.section);
-                      // Açılan bölümde ilgili özellik satırına kaydır ve kısa süre vurgula.
-                      setTimeout(() => {
-                        const row = publishField.property_id ? document.querySelector<HTMLElement>(`[data-property-id="${publishField.property_id}"]`) : null;
-                        row?.scrollIntoView({ behavior: "smooth", block: "center" });
-                        row?.classList.add("ring-2", "ring-[#D97757]");
-                        setTimeout(() => row?.classList.remove("ring-2", "ring-[#D97757]"), 3000);
-                      }, 400);
-                    }}
-                    className="mt-2 rounded-full border border-red-300 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950"
-                  >
-                    {t(`«${publishField.label}» alanına git`, `Go to «${publishField.label}»`)}
-                  </button>
+                {publishIssues && publishIssues.length > 1 ? (
+                  <ul className="mt-2 space-y-1">
+                    {publishIssues.map((i, n) => (
+                      <li key={n} className="flex flex-wrap items-center gap-2 text-red-700 dark:text-red-300">
+                        <span>• {i.message}</span>
+                        <button onClick={() => goToField(i)} className="rounded-full border border-red-300 px-2 py-0.5 text-[11px] font-medium hover:bg-red-100 dark:border-red-800 dark:hover:bg-red-950">
+                          {t("Git", "Go")}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  publishField && (
+                    <button
+                      onClick={() => goToField(publishField)}
+                      className="mt-2 rounded-full border border-red-300 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950"
+                    >
+                      {t(`«${publishField.label}» alanına git`, `Go to «${publishField.label}»`)}
+                    </button>
+                  )
                 )}
                 {job?.detail && <p className="mt-2 text-[11px] text-neutral-400 dark:text-neutral-500">{t("Etsy'nin cevabı", "Etsy said")}: {job.detail}</p>}
                 <p className="mt-2 text-xs text-neutral-500">

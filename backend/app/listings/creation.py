@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.etsy.client import EtsyClient
-from app.listings import bulk, digital, drafts, image_cache, service
+from app.listings import bulk, digital, drafts, etsy_rules, image_cache, service
 from app.listings.models import DraftFile, ListingCache, ListingLocal
 from app.listings.schemas import ListingUpdateIn
 from app.shops.models import Shop
@@ -77,7 +77,7 @@ def _copy_work(db: Session, shop: Shop, source: ListingCache, temp_id: int) -> t
     warnings: list[str] = []
     work = copy.deepcopy(bulk.snapshot_cached(source))
     work.update({
-        "listing_id": temp_id, "title": f"{work['title']} (kopya)"[: bulk.TITLE_MAX], "state": "draft",
+        "listing_id": temp_id, "title": f"{work['title']} (kopya)"[: etsy_rules.TITLE_MAX], "state": "draft",
         "url": None, "original_creation_timestamp": None, "ending_timestamp": None, "featured_rank": None,
     })
     id_map: dict[int, int] = {}
