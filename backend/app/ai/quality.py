@@ -404,9 +404,15 @@ def material_problems(text: str, source_text: str | None = None) -> list[str]:
     )]
 
 
+_TURKISH_WORDS = {
+    "ile", "için", "ve", "bir", "olarak", "veya", "değil", "gibi", "kadar", "edilir", "monte", "çivi", "vida", "ürün", "duvar", "siyah", "beyaz", "gri", "altın", "kahverengi",
+    "dekor", "kullanılır", "kullanılabilir", "dış", "mekan", "mekân", "yok", "var", "boyut", "adet", "renk",
+}
+
+
 def language_problems(text: str) -> list[str]:
     """Etsy metni İngilizce yazılır; kullanıcının Türkçe sözü olduğu gibi kopyalanmışsa (ör. "çivi ile monte edilir") çevrilmeli."""
-    hits = sorted({m.group(0) for line in text.splitlines() if _TURKISH_ONLY.search(line) for m in re.finditer(r"[^\W\d_]*[ğĞıİşŞ][^\W\d_]*", line)})
+    hits = sorted({w for w in _WORD.findall(text.lower()) if w in _TURKISH_WORDS or _TURKISH_ONLY.search(w)})
     if not hits:
         return []
     return [tr(
