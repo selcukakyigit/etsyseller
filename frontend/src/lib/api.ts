@@ -794,7 +794,7 @@ export type BatchState = {
   job_id: string; status: "analyzing" | "review" | "running" | "done" | "stopped"; review: boolean; total: number; analyzed: number; done: number; failed: number; skipped: number; running: number;
   listing_ids: number[];
   items: {
-    index: number; images: number; image_id: string; analyzed: boolean; spec: Partial<BatchSpec>; state: "queued" | "running" | "done" | "failed" | "skipped"; listing_id: number | null; title: string;
+    index: number; images: number; image_id: string; files: string[]; analyzed: boolean; spec: Partial<BatchSpec>; state: "queued" | "running" | "done" | "failed" | "skipped"; listing_id: number | null; title: string;
     missing: string[]; warnings: string[]; estimated: string[]; error: string;
   }[];
 };

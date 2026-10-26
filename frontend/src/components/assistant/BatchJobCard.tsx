@@ -73,6 +73,19 @@ function ReviewRow({ shopId, item, spec, onChange }: { shopId: number; item: Row
           </span>
           <input value={spec.name ?? ""} maxLength={120} onChange={(e) => onChange({ name: e.target.value })} className={field} />
         </label>
+        {item.files.length > 0 && (
+          <p className="truncate text-[11px] text-neutral-600 sm:col-span-2 dark:text-neutral-300" title={item.files.join(", ")}>
+            📎 {item.files.join(", ")}
+          </p>
+        )}
+        {spec.digital && item.files.length === 0 && (
+          <p className="text-[11px] text-amber-700 sm:col-span-2 dark:text-amber-400">
+            {t("Dijital ürün ama indirilebilir dosya yok: taslak 'dosya eksik' kalır. Dosyayı sohbete yükleyip hangi ürüne ait olduğunu yaz.", "Digital product but no downloadable file: the draft stays 'file missing'. Upload the file in the chat and say which product it belongs to.")}
+          </p>
+        )}
+        {!spec.digital && item.files.length > 0 && (
+          <p className="text-[11px] text-amber-700 sm:col-span-2 dark:text-amber-400">{t("Fiziksel seçili: bu dosyalar kullanılmaz.", "Physical is selected: these files will not be used.")}</p>
+        )}
         <label>
           <span className="mb-0.5 block text-[10px] text-neutral-500 dark:text-neutral-400">{t("Tür", "Type")}</span>
           <select value={spec.digital ? "digital" : "physical"} onChange={(e) => onChange({ digital: e.target.value === "digital" })} className={field}>
@@ -219,6 +232,7 @@ export default function BatchJobCard({ card, shopId }: { card: Batch; shopId: nu
                   <span className="truncate font-medium text-neutral-900 dark:text-neutral-100">
                     {i.title ? clip(i.title, 90) : i.spec.name ? clip(i.spec.name, 90) : t(`${i.images} resim`, `${i.images} image(s)`)}
                   </span>
+                  {i.files.length > 0 && <span className="text-[11px] text-neutral-500 dark:text-neutral-400">📎 {i.files.length}</span>}
                   {i.listing_id && (
                     <Link href={`/listings/${i.listing_id}/edit`} className="text-[#D97757] hover:underline">
                       {t("Aç", "Open")}

@@ -806,6 +806,15 @@ def _attach_digital_files(ctx: Ctx, lid: int, work: dict, chat_file_ids: list[st
     return notes
 
 
+def _digital_file_ids(ctx: Ctx, a: dict) -> list[str]:
+    """Yeni dijital taslağın dosyaları: modelin verdikleri; vermediyse son mesajdaki resim/video dışı dosyalar. Toplu işte (`ctx.unattended`) bu varsayım YOKTUR:
+    son mesajdaki dosyalar başka ürünlere de ait olabilir, her ürünün dosyasını sunucu açıkça verir."""
+    ids = [str(i) for i in (a.get("digital_file_ids") or [])]
+    if not ids and not ctx.unattended:
+        ids = _latest_message_documents(ctx)
+    return ids
+
+
 def _latest_message_documents(ctx: Ctx) -> list[str]:
     """Kullanıcının son mesajına eklenen resim/video OLMAYAN dosyaların kimlikleri (dijital ürün dosyası adayları)."""
     from app.assistant.models import ChatMessage
@@ -1058,9 +1067,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     if missing_alt:
         completion["alt_metni_eksik_resim"] = missing_alt
     if is_digital:
-        file_ids = list(a.get("digital_file_ids") or [])
-        if not file_ids:  # model vermediyse: son mesajdaki resim/video dışı dosyalar dijital dosyadır
-            file_ids = _latest_message_documents(ctx)
+        file_ids = _digital_file_ids(ctx, a)
         file_notes = _attach_digital_files(ctx, lid, work, file_ids)
         completion["dijital_dosya_sayisi"] = len(work.get("digital_files") or [])
         if file_notes:

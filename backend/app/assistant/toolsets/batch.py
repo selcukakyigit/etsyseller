@@ -86,12 +86,13 @@ TOOLS: list[dict] = [
         "description": "Birden çok ÜRÜNÜN resminden HER BİRİ İÇİN AYRI yerel listing taslağı hazırlar (en fazla 15 ürün; ürün başına en fazla 20 resim). YALNIZCA kullanıcı farklı ürünlerin resimlerini verip "
         "her biri ayrı listing olsun dediğinde kullan; aynı ürünün farklı açıları TEK listing'dir (create_listing_draft). Ürünleri sen gruplarsın: her ürünün TÜM resim kimliklerini image_ids'e ver "
         "(sistem bağlamındaki resim listesinden). Ürünün adını/türünü/kategorisini sunucu resimden ve rakiplerden çıkarır, kullanıcı kartta gözden geçirip onaylar; kullanıcı söylediyse note'a yaz "
-        "(ad, tür dijital/fiziksel, fiyat, kapasite…). Ortak bilgiyi (hepsi için fiyat, stok, varyasyon, kişiselleştirme ve istisnaları) shared'a, kullanıcının sözüne yakın yaz. Kullanıcı 'sormadan yap' "
+        "(ad, tür dijital/fiziksel, fiyat, kapasite…). Dijital ürünün (printable, şablon…) indirilebilir dosyalarını file_ids'e ver (dosyası olan ürün dijital sayılır). Ortak bilgiyi (hepsi için fiyat, stok, varyasyon, kişiselleştirme ve istisnaları) shared'a, kullanıcının sözüne yakın yaz. Kullanıcı 'sormadan yap' "
         "dediyse skip_review=true. Arka planda çalışır, sohbette kart çıkar; Etsy'ye gitmez, resim/video üretmez. Fiyat söylenmediyse SORMA: taslaklar 'Fiyat gir' eksiğiyle kurulur.",
         "input_schema": {"type": "object", "properties": {
             "items": {"type": "array", "maxItems": 15, "description": "Her eleman bir ÜRÜN (bir listing)", "items": {"type": "object", "properties": {
                 "image_ids": {"type": "array", "items": {"type": "string"}, "description": "Bu ürünün TÜM resimlerinin kimlikleri (çekim sırasıyla)"},
                 "note": {"type": "string", "description": "Kullanıcının bu ürün için söyledikleri: ad, tür (dijital/fiziksel), fiyat, ölçü, kapasite… yoksa boş"},
+                "file_ids": {"type": "array", "maxItems": 5, "items": {"type": "string"}, "description": "DİJİTAL ürünün indirilebilir dosyalarının kimlikleri (PDF, ZIP, PNG…; sistem bağlamındaki 'belgeler' listesinden; en fazla 5). Dosyayı ürünle dosya adından ve kullanıcının sözünden eşleştir; emin değilsen önce ask_user ile sor. Resimler (önizleme/mockup) image_ids'e gider. Fiziksel ürünse boş"},
             }, "required": ["image_ids"]}},
             "shared": {"type": "string", "description": "Tüm ürünler için ortak bilgi (kullanıcının sözüne yakın): ör. 'hepsi 20 adet, termos 20 $, duvar dekoru 150 $, duvar dekoru hariç kişiselleştirme var'; yoksa boş"},
             "skip_review": {"type": "boolean", "description": "Kullanıcı 'sormadan yap / kontrol etmeden oluştur' dediyse true: ön kontrol kartı atlanır"},

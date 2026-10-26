@@ -300,3 +300,83 @@ def test_batch_start_turn_drops_suggestion_buttons_and_never_claims_ready():
     assert "hazırlanıyor" in running and "tamamlandı" not in running
     cards2 = [suggestions]
     assert service._guard_batch_reply({"keyword_pool"}, cards2, "Hazır") == "Hazır" and cards2 == [suggestions], "toplu iş başlamadıysa hiçbir şeye dokunulmaz"
+
+
+# ------------------------------------------------------------------ dijital ürünler: dosya eşleştirmesi
+
+def _docs(db, shop, names: dict[str, str]):
+    for fid, filename in names.items():
+        db.add(ChatImage(id=fid, shop_id=shop.id, session_id=None, filename=filename, content_type="application/pdf", path=f"/x/{fid}"))
+    db.commit()
+
+
+def test_create_job_validates_digital_files(db):
+    shop, other = _shop(db, 1), _shop(db, 2)
+    _images(db, shop, ["a1", "b1", "c1"])
+    _docs(db, shop, {"f1": "planner.pdf", "f2": "planner-bonus.zip", "f3": "other.pdf", "bad": "virus.exe"})
+    _docs(db, other, {"o1": "foreign.pdf"})
+    ok = lambda items: batch_drafts.create_job(db, shop, 5, None, items, "")  # noqa: E731
+    assert ok([{"image_ids": ["a1"], "file_ids": ["o1"]}])[1], "başka mağazanın dosyası kullanılamaz"
+    assert ok([{"image_ids": ["a1"], "file_ids": ["a1"]}])[1] and ok([{"image_ids": ["a1"], "file_ids": ["nope"]}])[1], "resim ya da olmayan dosya dijital dosya olamaz"
+    assert ok([{"image_ids": ["a1"], "file_ids": ["bad"]}])[1], "Etsy'nin kabul etmediği tür"
+    assert ok([{"image_ids": ["a1"], "file_ids": ["f1"]}, {"image_ids": ["b1"], "file_ids": ["f1"]}])[1], "aynı dosya iki ürüne verilemez"
+    assert ok([{"image_ids": ["a1"], "file_ids": ["f1", "f2", "f3", "f1", "f2", "f3"]}])[1], "en fazla 5 dosya"
+    job, err = ok([{"image_ids": ["a1"], "file_ids": ["f1", "f2"]}, {"image_ids": ["b1"]}])
+    assert err is None and job.items[0].file_names == ["planner.pdf", "planner-bonus.zip"] and job.items[1].file_ids == []
+    assert batch_drafts.public(job)["items"][0]["files"] == ["planner.pdf", "planner-bonus.zip"]
+
+
+def test_a_product_with_files_is_digital_and_each_draft_gets_only_its_own_files(db, fakes):
+    shop = _shop(db)
+    _images(db, shop, ["a1", "b1", "c1"])
+    _docs(db, shop, {"f1": "planner.pdf", "f2": "planner-bonus.zip", "f3": "calendar.pdf"})
+    job = _job(db, shop, [{"image_ids": ["a1"], "file_ids": ["f1", "f2"]}, {"image_ids": ["b1"]}, {"image_ids": ["c1"], "file_ids": ["f3"]}], review=True)
+    batch_drafts.start(job)
+    _wait(job, {"review"})
+    specs = [i["spec"] for i in batch_drafts.public(job)["items"]]
+    assert [s["digital"] for s in specs] == [True, False, True], "dosyası olan ürün dijitaldir (model ne derse desin)"
+    assert specs[0]["weight"] is None and specs[2]["weight"] is None and specs[1]["weight"] == 1.5, "dijitalde ağırlık yok"
+    batch_drafts.confirm(job, [])
+    _wait(job, {"done"})
+    creates = [args for name, args, _ in fakes.executed if name == "create_listing_draft"]
+    assert [(c["listing_type"], c.get("digital_file_ids")) for c in creates] == [("download", ["f1", "f2"]), ("physical", None), ("download", ["f3"])]
+    assert not [1 for name, args, _ in fakes.executed if name == "set_listing_fields" and "weight" in args and args["listing_id"] in (501, 503)], "dijital taslağa ağırlık yazılmaz"
+    state = batch_drafts.public(job)
+    assert any("kaynak bilgisi" in w for w in state["items"][0]["warnings"]) and not state["items"][1]["warnings"], "Etsy'nin dijital içerik kaynak sorusu hatırlatılır"
+    assert "indirilebilir dosyaları sunucu ekler" in fakes.create_texts[0] and "DİJİTAL" in fakes.create_texts[0]
+
+
+def test_a_model_cannot_swap_the_type_or_borrow_files(db, fakes, monkeypatch):
+    """Model yanlış tür ya da başka ürünün dosyasını verse bile onaylı bilgi (sunucu) geçerlidir."""
+    shop = _shop(db)
+    _images(db, shop, ["a1", "b1"])
+    _docs(db, shop, {"f1": "planner.pdf", "f2": "calendar.pdf"})
+    original = llm.run_agent
+
+    def meddling(model, static, dynamic, history, text, images, schemas, run):
+        real = run
+
+        def run2(name, args):
+            if name == "create_listing_draft":
+                args = {**args, "listing_type": "physical" if "a1" in str(args.get("image_ids")) else "download", "digital_file_ids": ["f2"]}
+            return real(name, args)
+
+        return original(model, static, dynamic, history, text, images, schemas, run2)
+
+    monkeypatch.setattr(llm, "run_agent", meddling)
+    job = _job(db, shop, [{"image_ids": ["a1"], "file_ids": ["f1"]}, {"image_ids": ["b1"]}], review=False)
+    batch_drafts.start(job)
+    _wait(job, {"done"})
+    creates = [args for name, args, _ in fakes.executed if name == "create_listing_draft"]
+    assert (creates[0]["listing_type"], creates[0]["digital_file_ids"]) == ("download", ["f1"]), "ürün 1: dosyası f1, model f2 verse de"
+    assert (creates[1]["listing_type"], "digital_file_ids" in creates[1]) == ("physical", False), "ürün 2 fiziksel: model download/dosya dese de"
+
+
+def test_unattended_runs_never_borrow_the_latest_message_documents(db, monkeypatch):
+    shop = _shop(db)
+    monkeypatch.setattr(tools, "_latest_message_documents", lambda ctx: ["from-last-message"])
+    normal = tools.Ctx(db=db, shop=shop, user_id=5, today=None)
+    batch = tools.Ctx(db=db, shop=shop, user_id=5, today=None, unattended=True)
+    assert tools._digital_file_ids(normal, {}) == ["from-last-message"], "normal akış: model vermediyse son mesajdaki belgeler"
+    assert tools._digital_file_ids(batch, {}) == [], "toplu iş: asla (başka ürünün dosyası olabilir)"
+    assert tools._digital_file_ids(batch, {"digital_file_ids": ["f1"]}) == ["f1"] and tools._digital_file_ids(normal, {"digital_file_ids": ["f1"]}) == ["f1"]

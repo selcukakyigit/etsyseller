@@ -28,7 +28,7 @@ from app.assistant import llm, memory, prompt
 from app.billing import metering
 from app.core.db import SessionLocal
 from app.core.i18n import get_lang, tr
-from app.listings import creation, etsy_rules
+from app.listings import creation, digital, etsy_rules
 from app.shops.models import Shop
 
 log = logging.getLogger(__name__)
@@ -110,6 +110,8 @@ class Item:
     index: int  # 1'den başlar (kullanıcıya gösterilen sıra)
     image_ids: list[str]
     note: str = ""  # kullanıcının bu ürün için söyledikleri (ad, fiyat, tür…)
+    file_ids: list[str] = field(default_factory=list)  # DİJİTAL ürünün indirilebilir dosyaları (sohbet dosya kimlikleri); varsa ürün dijitaldir
+    file_names: list[str] = field(default_factory=list)  # kartta gösterilen dosya adları
     spec: dict = field(default_factory=dict)  # çözümleme sonucu; ön kontrolde kullanıcı düzenler (bkz. _spec_from_report)
     analyzed: bool = False
 
@@ -166,7 +168,21 @@ def create_job(db, shop: Shop, user_id: int, session_id: int | None, items: list
             if iid in seen:
                 return None, tr(f"Aynı resim iki ürüne verilmiş: {iid}", f"The same image was given to two products: {iid}")
             seen.add(iid)
-        out.append(Item(n, ids, " ".join(str(raw.get("note") or "").split())[:500]))
+        files = [str(i) for i in (raw.get("file_ids") or [])]
+        names: list[str] = []
+        if len(files) > digital.MAX_FILES:
+            return None, tr(f"{n}. üründe en fazla {digital.MAX_FILES} dijital dosya olabilir.", f"Product {n} can have at most {digital.MAX_FILES} digital files.")
+        for fid in files:
+            row = service.get_image(db, shop, fid)
+            if row is None or not row.path or row.content_type in service.IMAGE_TYPES or row.content_type in service.VIDEO_TYPES:
+                return None, tr(f"{n}. üründeki dijital dosya bulunamadı (resim/video olmamalı): {fid}", f"A product {n} digital file was not found (it must not be an image/video): {fid}")
+            if not digital.extension_ok(row.filename):
+                return None, tr(f"{row.filename}: bu dosya türü Etsy dijital ürünlerinde kabul edilmiyor.", f"{row.filename}: Etsy does not accept this file type for digital products.")
+            if fid in seen:
+                return None, tr(f"Aynı dosya iki ürüne verilmiş: {row.filename}", f"The same file was given to two products: {row.filename}")
+            seen.add(fid)
+            names.append(row.filename)
+        out.append(Item(n, ids, " ".join(str(raw.get("note") or "").split())[:500], files, names))
     now = time.time()
     with _lock:
         for jid in [k for k, j in _JOBS.items() if now - j.created > JOB_TTL_SECONDS and j.status not in ACTIVE]:
@@ -311,6 +327,10 @@ def _analyze_item(job: Job, item: Item) -> dict:
         if not got:
             return _empty_spec(tr("Ürün çözümlenemedi.", "The product could not be analysed."))
         spec = _spec_from_report(got)
+        if item.file_ids:  # indirilebilir dosyası olan ürün dijitaldir
+            spec["digital"] = True
+        if spec["digital"]:
+            spec.update(weight=None, weight_estimated=False)  # dijitalde kargo/ağırlık yoktur
         spec["categories"] = _categories(job.shop_id, spec["phrase"])
         top = spec["categories"][0] if spec["categories"] else None
         if top and top["share"] >= MIN_CATEGORY_SHARE:
@@ -403,6 +423,11 @@ def _run_item(job: Job, item: Item) -> dict:
         def execute(name: str, args: dict) -> dict:
             if name not in ITEM_TOOLS:
                 return {"error": tr("Bu araç toplu işte kullanılamaz.", "This tool is not available in a batch job.")}
+            if name == "create_listing_draft" and item.spec:  # tür kullanıcının onayına göre sunucudan gelir; dijitalin dosyalarını model unutamaz ya da başka ürünün dosyasını alamaz
+                args = {**args, "listing_type": "download" if item.spec.get("digital") else "physical"}
+                args.pop("digital_file_ids", None)
+                if item.spec.get("digital"):
+                    args["digital_file_ids"] = list(item.file_ids)
             result = tools.execute(ctx, name, args)
             if isinstance(result, dict):
                 if name == "create_listing_draft" and result.get("listing_id"):
@@ -435,9 +460,14 @@ def _run_item(job: Job, item: Item) -> dict:
         missing = list(drafted.get("yayin_icin_eksikler") or [])
         if drafted.get("dijital_dosya_eksik"):
             missing.append(tr("Dijital ürün: indirilebilir dosya eksik.", "Digital product: the downloadable file is missing."))
+        warnings = [str(w) for w in drafted.get("kalite_uyarilari") or []]
+        if item.spec.get("digital"):
+            warnings.append(tr(
+                "Etsy yayında dijital içerik için kaynak bilgisi (kendin yaptın mı / yapay zekâ kullandın mı) isteyebilir; bunu sen seç.",
+                "When publishing, Etsy may ask about the source of the digital content (made by you / AI used); you choose that.",
+            ))
         return {
-            "ok": True, "listing_id": drafted["listing_id"], "title": drafted.get("_title", ""), "missing": [str(m) for m in missing],
-            "warnings": [str(w) for w in drafted.get("kalite_uyarilari") or []], "estimated": estimated,
+            "ok": True, "listing_id": drafted["listing_id"], "title": drafted.get("_title", ""), "missing": [str(m) for m in missing], "warnings": warnings, "estimated": estimated,
         }
     finally:
         db.close()
@@ -453,7 +483,7 @@ def _apply_confirmed(ctx, listing_id: int, spec: dict, execute) -> list[str]:
     if category and work.get("taxonomy_id") != category:
         if not execute("set_listing_fields", {"listing_id": listing_id, "taxonomy_id": category}).get("error"):
             execute("autofill_listing_attributes", {"listing_id": listing_id})  # kategori değişti: o kategorinin özellikleri yeniden doldurulur
-    if spec.get("weight"):
+    if spec.get("weight") and not spec.get("digital"):
         if not execute("set_listing_fields", {"listing_id": listing_id, "weight": spec["weight"], "weight_unit": spec.get("weight_unit") or "oz"}).get("error") and spec.get("weight_estimated"):
             estimated.append("weight")
     return estimated
@@ -463,7 +493,7 @@ def _facts(spec: dict) -> str:
     """Onaylı bilgiler, alt çalıştırmaya olgu olarak verilir (boş olan bilinmiyor demektir: yazma)."""
     if not spec:
         return ""
-    lines = [f"ürün: {spec.get('name') or '(resimden çıkar)'}", f"tür: {'DİJİTAL (listing_type=download)' if spec.get('digital') else 'fiziksel'}"]
+    lines = [f"ürün: {spec.get('name') or '(resimden çıkar)'}", f"tür: {'DİJİTAL (listing_type=download; indirilebilir dosyaları sunucu ekler, digital_file_ids verme; resimler yalnızca ÖNİZLEME/mockup, ürünün kendisi değil; kargo, ağırlık, fiziksel ölçü yazma)' if spec.get('digital') else 'fiziksel'}"]
     lines.append(f"ölçü/kapasite: {spec['size']}" if spec.get("size") else "ölçü/kapasite: BİLİNMİYOR (başlığa ve açıklamaya ölçü/kapasite yazma)")
     lines.append(f"malzeme: {spec['material']}" if spec.get("material") else "malzeme: bilinmiyor (resimde açıkça görünmüyorsa yazma)")
     if spec.get("personalizable"):
@@ -499,7 +529,7 @@ def public(job: Job) -> dict:
     for item in job.items:
         r = job.results.get(item.index, {})
         rows.append({
-            "index": item.index, "images": len(item.image_ids), "image_id": item.image_ids[0], "analyzed": item.analyzed, "spec": item.spec, "state": job.state.get(item.index, "queued"),
+            "index": item.index, "images": len(item.image_ids), "image_id": item.image_ids[0], "files": item.file_names, "analyzed": item.analyzed, "spec": item.spec, "state": job.state.get(item.index, "queued"),
             "listing_id": r.get("listing_id"), "title": r.get("title", ""), "missing": r.get("missing", []), "warnings": r.get("warnings", []), "estimated": r.get("estimated", []),
             "error": r.get("error", ""),
         })

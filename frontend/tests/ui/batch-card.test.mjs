@@ -14,7 +14,7 @@ const spec = (extra = {}) => ({
   name: "Insulated tumbler", phrase: "insulated tumbler", digital: false, size: "", material: "", personalizable: true, personalization_detail: "", weight: 1.5, weight_unit: "lb", weight_estimated: true,
   unsure: ["size", "personalization_detail"], category_id: 1071, categories: [{ taxonomy_id: 1071, path: "Home & Living > Kitchen & Dining > Drinkware > Travel Mugs", share: 0.6 }, { taxonomy_id: 129, path: "Art & Collectibles > Sculpture > Art Objects", share: 0.2 }], error: "", ...extra,
 });
-const item = (index, state, extra = {}) => ({ index, images: 2, image_id: `img${index}`, analyzed: true, spec: spec(), state, listing_id: null, title: "", missing: [], warnings: [], estimated: [], error: "", ...extra });
+const item = (index, state, extra = {}) => ({ index, images: 2, image_id: `img${index}`, files: [], analyzed: true, spec: spec(), state, listing_id: null, title: "", missing: [], warnings: [], estimated: [], error: "", ...extra });
 const job = (status, items) => {
   const count = (s) => items.filter((i) => i.state === s).length;
   return { job_id: "j1", status, review: true, total: items.length, analyzed: items.filter((i) => i.analyzed).length, done: count("done"), failed: count("failed"), skipped: count("skipped"), running: count("running"), listing_ids: items.filter((i) => i.listing_id).map((i) => i.listing_id), items };
@@ -90,6 +90,21 @@ await act(async () => button("Vazgeç").dispatchEvent(new w.MouseEvent("click", 
 eq(calls.find((c) => c.call.startsWith("POST")).call, "POST /api/shops/7/assistant/batch-jobs/j1/stop", "vazgeç = durdur isteği");
 eq(text().includes("Durduruldu"), true, "durduruldu özeti");
 console.log("4 vazgeç OK");
+
+// 5) Dijital ürün: dosya adları görünür; dosyası olmayan dijital ürün uyarılır; dosyası olan ürün fiziksel seçilirse uyarılır
+await act(async () => root2.unmount());
+const root3 = createRoot(el);
+const digitalReview = job("review", [
+  item(1, "queued", { files: ["planner.pdf", "bonus.zip"], spec: spec({ digital: true, weight: null, weight_estimated: false }) }),
+  item(2, "queued", { files: [], spec: spec({ digital: true, weight: null, weight_estimated: false }) }),
+]);
+await act(async () => root3.render(h(BatchJobCard, { card: { type: "batch_job", ...digitalReview }, shopId: 7 })));
+eq(text().includes("planner.pdf, bonus.zip"), true, "dijital dosya adları ürünle birlikte görünür");
+eq(text().includes("indirilebilir dosya yok"), true, "dosyası olmayan dijital ürün uyarılır");
+const typeSelect = [...el.querySelectorAll("select")].find((s) => [...s.options].some((o) => o.value === "digital"));
+await setValue(typeSelect, "physical");
+eq(text().includes("bu dosyalar kullanılmaz"), true, "dosyası olan ürün fiziksel seçilirse uyarılır");
+console.log("5 dijital dosyalar OK");
 
 console.log("BATCH KART TESTLERİ GEÇTİ");
 process.exit(0);
