@@ -648,6 +648,21 @@ def _auto_category(ctx: Ctx, text: str) -> tuple[int, str, str] | None:
     return None
 
 
+ESTABLISHED_CATEGORY_LISTINGS = 5  # mağazanın bu kadar listing'i bir kategorideyse o kategori "yerleşik"tir
+
+
+def _keeps_established_category(ctx: Ctx, current: int | None, picked: int) -> bool:
+    """Seçici, mağazanın yerleşik kategorisini ("Wall Decor", 146 listing) mağazanın hiç kullanmadığı bir kategoriyle ("Sculpture") değiştirmesin: model/kullanıcının seçimi
+    mağaza düzeniyle tutarlıysa kalır. Seçicinin kendi seçimi de mağazada kullanılıyorsa serbest."""
+    if not current:
+        return False
+    try:
+        counts = {c["taxonomy_id"]: int(c.get("count") or 0) for c in listing_service.get_top_categories(ctx.db, ctx.shop, limit=50)}
+    except Exception:  # noqa: BLE001 - mağaza kategorileri alınamazsa seçici karar verir
+        return False
+    return counts.get(current, 0) >= ESTABLISHED_CATEGORY_LISTINGS and counts.get(picked, 0) == 0
+
+
 def _choose_category(ctx: Ctx, title: str, description: str, tags: list[str], materials: list[str], given_id: int | None) -> tuple[int, str] | None:
     """Kategoriyi Etsy'nin kategori ağacında gezinerek seçer (bkz. ai/category.py), seviye seviye aşağı; mağazanın kategorileri yalnızca
     eşitlikte ipucu. Döner: (kimlik, yol) ya da None (seçilemedi: mevcut seçim kalır)."""
@@ -1003,7 +1018,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         picked = _choose_category(ctx, title, str(a.get("description") or ""), tags, [str(m) for m in a.get("materials") or []], work.get("taxonomy_id"))
     except Exception:  # noqa: BLE001 - seçici çalışmazsa (anahtar/ağ) mevcut seçim kalır
         picked = None
-    if picked is not None and picked[0] != work.get("taxonomy_id"):
+    if picked is not None and picked[0] != work.get("taxonomy_id") and not _keeps_established_category(ctx, work.get("taxonomy_id"), picked[0]):
         work["taxonomy_id"] = picked[0]
         category_note = {"yol": picked[1], "neden": "kategori seçici (ürüne en uygun aday)", "otomatik_secildi": True}
     if is_digital:  # dijital: kargo, iade ve işlem profili yok
