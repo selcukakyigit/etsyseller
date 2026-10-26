@@ -8,7 +8,7 @@ from app.auth.models import User
 from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.jobs.research import run_queue
-from app.research import discover, etsy_top
+from app.research import budget, discover, etsy_top
 from app.shops.deps import get_owned_shop
 from app.shops.models import Shop
 
@@ -29,6 +29,12 @@ def search(
     if result.status == "pending" or result.stale:
         background.add_task(run_queue)  # sağlayıcıya istek yanıttan SONRA arka planda gider (dakikalık iş de aynı kuyruğu işler; kilit çift çalışmayı önler)
     return result.as_dict()
+
+
+@router.get("/allowance")
+def allowance(shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    """Bu ay / bugün kalan YENİ kelime araştırması hakkı (havuzda hazır kelimeler sınırsızdır, sayılmaz)."""
+    return budget.search_allowance(db, shop.id)
 
 
 @router.get("/home")

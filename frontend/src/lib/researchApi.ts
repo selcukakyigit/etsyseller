@@ -135,6 +135,7 @@ export type ResearchSettings = {
   research_ttl_jitter: number;
   research_monthly_budget_usd: number;
   research_shop_daily_jobs: number;
+  research_shop_monthly_searches: number;
   research_shop_daily_searches: number;
   research_refresh_per_day: number;
   research_active_days: number;

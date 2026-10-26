@@ -20,10 +20,13 @@ const HOME = {
   collections: [{ name: "Farm", count: 3 }],
   preparing: false,
 };
+let allowanceCalls = 0;
+let allowance = { month_limit: 150, month_used: 38, day_limit: 40, day_used: 3, remaining: 37 };
 let homeCalls = 0;
 let calls = [], script = [];
 globalThis.__api = async (path) => {
   if (path.includes("/discover/home")) { homeCalls++; return HOME; }
+  if (path.includes("/discover/allowance")) { allowanceCalls++; return allowance; }
   calls.push(path); const next = script.shift(); return typeof next === "function" ? next(path) : next;
 };
 
@@ -427,5 +430,25 @@ await act(async () => m.r.unmount());
 m.host.remove();
 globalThis.__api = HOME_BEFORE;
 console.log("17 boş ekran: son aramalar, yaklaşan sezon, etiketler, koleksiyonlar OK");
+
+// 18) Kalan yeni araştırma hakkı gösterilir; her aramadan sonra yeniden okunur; hak bitince 0 görünür
+{
+  const lastApi = globalThis.__api; // önceki senaryolar API taklidini değiştirmiş olabilir: yalnızca hak uç noktasını ekle, gerisini ona bırak
+  globalThis.__api = async (path, init) => (path.includes("/discover/allowance") ? (allowanceCalls++, allowance) : lastApi(path, init));
+  script = [ready(ALL)];
+  await search("allowance seed word");
+  await act(async () => { await sleep(50); });
+  eq(/112 \/ 150/.test(text()), true, "aylık kalan hak görünmeli (150 - 38 = 112)");
+  const callsBefore = allowanceCalls;
+  allowance = { month_limit: 150, month_used: 150, day_limit: 40, day_used: 5, remaining: 0 };
+  script = [ready(ALL)];
+  await search("another seed word");
+  await act(async () => { await sleep(50); });
+  eq(allowanceCalls > callsBefore, true, "arama sonrası hak yeniden okunmalı");
+  eq(/0 \/ 150/.test(text()), true, "hak bitince 0 görünmeli");
+  globalThis.__api = lastApi;
+  console.log("18 kalan araştırma hakkı gösterilir ve arama sonrası güncellenir OK");
+}
+
 console.log("PANEL DAVRANIŞ TESTLERİ GEÇTİ");
 process.exit(0);

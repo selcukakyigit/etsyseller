@@ -28,8 +28,10 @@ export function useRefusedText() {
   const { t } = useT();
   return (reason: string | null): string => {
     switch (reason) {
+      case "shop_month":
+        return t("Bu ayki yeni kelime araştırma hakkın doldu. Daha önce araştırılmış kelimeler sınırsız; hakkın gelecek ay yenilenir.", "You have used this month's new keyword searches. Keywords already researched are unlimited; your allowance renews next month.");
       case "shop_searches":
-        return t("Bugünkü yeni kelime araştırma hakkın doldu. Daha önce araştırılmış kelimeler sınırsız; yarın yeniden dene.", "You have used today's new keyword searches. Keywords already researched are unlimited; try again tomorrow.");
+        return t("Bugünlük yeni kelime araştırma sınırına ulaştın. Daha önce araştırılmış kelimeler sınırsız; yarın devam edebilirsin.", "You have reached today's limit of new keyword searches. Keywords already researched are unlimited; you can continue tomorrow.");
       case "shop_daily":
         return t("Bugünkü araştırma hakkın doldu; yarın yeniden dene.", "You have used today's research allowance; try again tomorrow.");
       case "budget":

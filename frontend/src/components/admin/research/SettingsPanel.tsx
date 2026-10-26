@@ -25,20 +25,24 @@ export default function SettingsPanel() {
   );
 }
 
+const toForm = (s: ResearchSettings) => ({
+  enabled: s.research_enabled,
+  market: s.research_default_market,
+  language: s.research_default_language,
+  ttlVolume: String(s.research_ttl_volume_days),
+  ttlSuggest: String(s.research_ttl_suggest_days),
+  budget: s.research_monthly_budget_usd.toFixed(2),
+  shopDaily: String(s.research_shop_daily_jobs),
+  shopMonthly: String(s.research_shop_monthly_searches),
+  shopSearches: String(s.research_shop_daily_searches),
+  refreshPerDay: String(s.research_refresh_per_day),
+  activeDays: String(s.research_active_days),
+});
+
 function SettingsForm({ initial, onSaved }: { initial: ResearchSettings; onSaved: (s: ResearchSettings) => void }) {
   const { t } = useT();
-  const [form, setForm] = useState({
-    enabled: initial.research_enabled,
-    market: initial.research_default_market,
-    language: initial.research_default_language,
-    ttlVolume: String(initial.research_ttl_volume_days),
-    ttlSuggest: String(initial.research_ttl_suggest_days),
-    budget: initial.research_monthly_budget_usd.toFixed(2),
-    shopDaily: String(initial.research_shop_daily_jobs),
-    shopSearches: String(initial.research_shop_daily_searches),
-    refreshPerDay: String(initial.research_refresh_per_day),
-    activeDays: String(initial.research_active_days),
-  });
+  const [form, setForm] = useState(() => toForm(initial));
+  const [open, setOpen] = useState(false); // kapalıyken tek satır özet; Kaydet formu kapatır
   const [busy, setBusy] = useState(false);
   const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => setForm((f) => ({ ...f, [key]: value }));
 
@@ -53,17 +57,25 @@ function SettingsForm({ initial, onSaved }: { initial: ResearchSettings; onSaved
         research_ttl_suggest_days: Number(form.ttlSuggest),
         research_monthly_budget_usd: Number(form.budget),
         research_shop_daily_jobs: Number(form.shopDaily),
+        research_shop_monthly_searches: Number(form.shopMonthly),
         research_shop_daily_searches: Number(form.shopSearches),
         research_refresh_per_day: Number(form.refreshPerDay),
         research_active_days: Number(form.activeDays),
       });
       onSaved(saved);
+      setForm(toForm(saved));
+      setOpen(false);
       toast.success(t("Kaydedildi.", "Saved."));
     } catch (e) {
       if (errorText(e)) toast.error(errorText(e));
     } finally {
       setBusy(false);
     }
+  }
+
+  function cancel() {
+    setForm(toForm(initial));
+    setOpen(false);
   }
 
   return (
@@ -77,12 +89,28 @@ function SettingsForm({ initial, onSaved }: { initial: ResearchSettings; onSaved
               "Durations are starting assumptions; tune them to real change rates and cost. A ±15% jitter is added so thousands of keywords do not expire on the same day. At the budget cap no new requests are made and old data is served.",
             )}
           </HelpTip>
-          <Button tone="primary" busy={busy} onClick={() => void save()}>
-            {t("Kaydet", "Save")}
-          </Button>
+          {open ? (
+            <>
+              <Button onClick={cancel} disabled={busy}>
+                {t("Vazgeç", "Cancel")}
+              </Button>
+              <Button tone="primary" busy={busy} onClick={() => void save()}>
+                {t("Kaydet", "Save")}
+              </Button>
+            </>
+          ) : (
+            <Button onClick={() => setOpen(true)}>{t("Düzenle", "Edit")}</Button>
+          )}
         </div>
       }
     >
+      {!open ? (
+        <p className="text-sm text-neutral-600 dark:text-neutral-300">
+          {initial.research_enabled ? t("Açık", "On") : t("Kapalı", "Off")} · {initial.research_default_market}/{initial.research_default_language} ·{" "}
+          {t(`bütçe ${initial.research_monthly_budget_usd.toFixed(2)} $/ay`, `budget $${initial.research_monthly_budget_usd.toFixed(2)}/month`)} ·{" "}
+          {t(`mağaza başı ${initial.research_shop_monthly_searches} yeni arama/ay`, `${initial.research_shop_monthly_searches} new searches per shop/month`)}
+        </p>
+      ) : (
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-3">
           <span className="text-sm text-neutral-900 dark:text-neutral-100">{t("Araştırma açık", "Research enabled")}</span>
@@ -107,7 +135,10 @@ function SettingsForm({ initial, onSaved }: { initial: ResearchSettings; onSaved
           <Field label={t("Mağaza başı günlük iş", "Jobs per shop per day")}>
             <IntegerInput value={form.shopDaily} onValue={(v) => set("shopDaily", v)} className={inputClass} />
           </Field>
-          <Field label={t("Mağaza başı günlük yeni kelime araştırması (Keşfet)", "New keyword searches per shop per day (Discover)")}>
+          <Field label={t("Mağaza başı aylık yeni kelime araştırması (Keşfet)", "New keyword searches per shop per month (Discover)")}>
+            <IntegerInput value={form.shopMonthly} onValue={(v) => set("shopMonthly", v)} className={inputClass} />
+          </Field>
+          <Field label={t("Günlük üst sınır (aylık hak tek günde bitmesin)", "Daily ceiling (so the monthly allowance cannot go in one day)")}>
             <IntegerInput value={form.shopSearches} onValue={(v) => set("shopSearches", v)} className={inputClass} />
           </Field>
           <Field label={t("Günlük otomatik yenileme", "Daily auto-refresh")}>
@@ -118,6 +149,7 @@ function SettingsForm({ initial, onSaved }: { initial: ResearchSettings; onSaved
           </Field>
         </div>
       </div>
+      )}
     </Section>
   );
 }

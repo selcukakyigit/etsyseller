@@ -18,7 +18,8 @@ DEFAULTS: dict[str, Any] = {
     "research_ttl_jitter": 0.15,  # TTL'e ±%15 sapma: aynı gün toplanan binlerce kelime aynı gün dolmasın
     "research_monthly_budget_usd": 30.0,  # sistem geneli aylık tavan; aşılınca eski veriyle devam edilir
     "research_shop_daily_jobs": 40,  # bir mağazanın günde en fazla kaç yeni iş açabileceği (listing havuzu işleri dahil)
-    "research_shop_daily_searches": 15,  # bir mağazanın günde en fazla kaç YENİ kelime araştırması (Keşfet); havuzda hazır olan aramalar sayılmaz
+    "research_shop_monthly_searches": 150,  # bir mağazanın ayda en fazla kaç YENİ kelime araştırması (Keşfet); havuzda hazır olan aramalar sayılmaz
+    "research_shop_daily_searches": 40,  # aylık hakkın tek günde tüketilmesini önleyen günlük üst sınır
     "research_refresh_per_day": 2000,  # günlük otomatik yenilemede en fazla kelime
     "research_active_days": 90,  # bu kadar gündür istenmeyen kelime otomatik yenilenmez
     "research_crowd_window_days": 28,  # kalabalık sayacı: son kaç günde önerilen mağazalar sayılır

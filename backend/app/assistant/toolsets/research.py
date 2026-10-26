@@ -1,6 +1,6 @@
 """Keşfet (kelime araştırması) araçları: ekranla AYNI işlevleri çağırır (research/discover.py), ikinci bir uygulama yoktur. Sağlayıcıya istek atılmaz:
 havuzda olmayan ya da eskimiş aramalar kuyruğa girer, sonuç genellikle bir iki dakikada hazır olur. Kullanıcıya ham arama sayısı gösterilmez, yalnızca bant."""
-from app.research import discover, etsy_top
+from app.research import budget, discover, etsy_top
 
 _MONTHS = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"]
 
@@ -9,7 +9,8 @@ _INTENT = {"informational": "bilgi arıyor", "commercial": "karşılaştırıyor
 _REFUSED = {
     "budget": "Araştırma bütçesi doldu; havuzda zaten olan veriler gösterilir.",
     "shop_daily": "Bugünkü araştırma hakkı doldu; yarın yeniden dene.",
-    "shop_searches": "Bugünkü yeni kelime araştırması hakkı doldu (daha önce araştırılmış kelimeler sınırsız); yarın yeniden dene.",
+    "shop_searches": "Bugünlük yeni kelime araştırması sınırına ulaşıldı (daha önce araştırılmış kelimeler sınırsız); yarın yeniden dene.",
+    "shop_month": "Bu ayki yeni kelime araştırması hakkı doldu (daha önce araştırılmış kelimeler sınırsız); gelecek ay yenilenir.",
     "disabled": "Kelime araştırması şu an kapalı.",
     "not_configured": "Kelime araştırması henüz kurulu değil.",
     "market": "Bu pazar desteklenmiyor.",
@@ -55,10 +56,12 @@ def research_keywords(ctx, a: dict) -> dict:
     if not seed:
         return {"error": "Araştırılacak kelime gerekli (İngilizce, ör. 'metal farm sign')."}
     r = discover.search(ctx.db, ctx.shop, seed, "questions" if a.get("questions") else "all", bool(a.get("refresh")))
+    allow = budget.search_allowance(ctx.db, ctx.shop.id)
+    left = {"kalan_yeni_arama_hakki_bu_ay": max(0, allow["month_limit"] - allow["month_used"])}  # yeni araştırma hakkı; havuzdaki kelimeler sayılmaz
     if r.status == "invalid":
         return {"error": "Kelime çok uzun ya da boş (en fazla 10 kelime / 80 karakter)."}
     if r.status == "pending":
-        return {"arama": r.seed, "durum": "hazirlaniyor", "not": "Bu kelime ilk kez araştırılıyor; sonuç genellikle 1-2 dakikada hazır olur. Kullanıcıya söyle, biraz sonra aynı aramayı tekrar çağır."}
+        return {"arama": r.seed, "durum": "hazirlaniyor", **left, "not": "Bu kelime ilk kez araştırılıyor; sonuç genellikle 1-2 dakikada hazır olur. Kullanıcıya söyle, biraz sonra aynı aramayı tekrar çağır."}
     if r.status == "refused":
         return {"arama": r.seed, "durum": "yapilamadi", "not": _REFUSED.get(r.refused, "Araştırma şu an yapılamıyor.")}
     if r.status == "empty":
@@ -76,7 +79,7 @@ def research_keywords(ctx, a: dict) -> dict:
                     item["etsy_ilan_sayisi"] = counts[item["kelime"]]
     season = _season_out(r.season)
     return {
-        "arama": r.seed, "durum": "hazir", **({"mevsimsellik": season} if season else {}), "tohum": _item(r.seed_item) if r.seed_item else None, "oneriler": items,
+        "arama": r.seed, "durum": "hazir", **left, **({"mevsimsellik": season} if season else {}), "tohum": _item(r.seed_item) if r.seed_item else None, "oneriler": items,
         "toplam_oneri": len(r.items), "toplam_aylik_arama": r.total_volume, **({"etsy_not": etsy_note} if a.get("etsy_competition") and etsy_note else {}),
         "not": ("google_aylik_arama = Google'daki aylık arama (Etsy arama hacmi DEĞİL; söylerken Google olduğunu belirt). reklam_rekabeti Google Ads reklam rekabetidir, Etsy rekabeti değil. "
                 "etsy_ilan_sayisi (varsa) = Etsy'de o aramada kaç aktif ilan var: gerçek Etsy rekabeti; arama ÷ ilan oranı yüksekse fırsattır. "

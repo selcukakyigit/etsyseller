@@ -16,6 +16,7 @@ import FilterBar from "./FilterBar";
 import KeywordTable from "./KeywordTable";
 import { useRecentSearches } from "./useRecentSearches";
 import OverviewCard from "./OverviewCard";
+import AllowanceNote from "./AllowanceNote";
 import SaveBar from "./SaveBar";
 import { useRefusedText } from "./shared";
 import { EMPTY_FILTERS, downloadCsv, toCsv } from "./table";
@@ -236,6 +237,8 @@ export default function SearchPanel({ shopId, collections, onSaved, onOpenSaved 
         </Button>
       </form>
 
+      <AllowanceNote shopId={shopId} refreshKey={`${query}:${allRes?.status ?? ""}`} />
+
       {!pageReady ? (
         <div className="min-h-[16rem]">
           {error && !allRes ? (
@@ -268,14 +271,14 @@ export default function SearchPanel({ shopId, collections, onSaved, onOpenSaved 
         <div className="space-y-4">
           {result?.stale && <p className="text-xs text-neutral-400 dark:text-neutral-500">{t("Sonuçlar güncelleniyor…", "Results are being refreshed…")}</p>}
           {allRes?.refused && message(refusedText(allRes.refused), "warn")}
-          {seedItem && <OverviewCard item={seedItem} selected={v.selected.has(seedItem.term)} onToggle={() => v.toggle(seedItem.term)} onAnalyze={() => setAnalyzeTerm(seedItem.term)} season={allRes?.season ?? null} />}
-          <p className="text-xs text-neutral-400 dark:text-neutral-500">
-            {t("Hacim, trend, CPC, rekabet ve niyet Google aramalarına dayanır; Etsy arama hacmi değildir.", "Volume, trend, CPC, competition and intent are based on Google searches; not Etsy search volume.")}
           {allRes?.related_only && (
             <p className="text-xs text-neutral-500 dark:text-neutral-400">
               {t("Bu ifadenin kendi öneri listesi henüz çekilmedi; aşağıda havuzda zaten ölçülmüş, bu ifadeyi içeren kelimeler var.", "This phrase has no suggestion list of its own yet; below are keywords already measured in the pool that contain it.")}
             </p>
           )}
+          {seedItem && <OverviewCard item={seedItem} selected={v.selected.has(seedItem.term)} onToggle={() => v.toggle(seedItem.term)} onAnalyze={() => setAnalyzeTerm(seedItem.term)} season={allRes?.season ?? null} />}
+          <p className="text-xs text-neutral-400 dark:text-neutral-500">
+            {t("Hacim, trend, CPC, rekabet ve niyet Google aramalarına dayanır; Etsy arama hacmi değildir.", "Volume, trend, CPC, competition and intent are based on Google searches; not Etsy search volume.")}
             {measuredAt && ` ${t("Ölçüm:", "Measured:")} ${new Date(measuredAt).toLocaleDateString(locale, { dateStyle: "medium" })}.`}
             {` ${t("Etsy ilan sayısı: Etsy.", "Etsy listing count: Etsy.")}`}
           </p>

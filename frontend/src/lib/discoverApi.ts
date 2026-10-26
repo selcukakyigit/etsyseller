@@ -55,7 +55,7 @@ export type Season = {
 export type DiscoverSearch = {
   seed: string;
   status: SearchStatus;
-  /** budget | shop_daily | shop_searches | disabled | not_configured | market */
+  /** budget | shop_daily | shop_searches (günlük üst sınır) | shop_month (aylık hak) | disabled | not_configured | market */
   refused: string | null;
   seed_item: DiscoverItem | null;
   related_only?: boolean;
@@ -70,6 +70,9 @@ export type DiscoverSearch = {
 };
 
 export type SearchMode = "all" | "questions";
+
+/** Yeni kelime araştırması hakkı: aylık hak + günlük üst sınır; `remaining` şu an yapılabilecek sayı. Havuzda hazır kelimeler sınırsızdır. */
+export type DiscoverAllowance = { month_limit: number; month_used: number; day_limit: number; day_used: number; remaining: number };
 
 /** Etsy'deki ilk 20 sonucun analizi (Etsy verisi; backend research/etsy_top.py). */
 export type EtsyAnalysis = {
@@ -104,6 +107,7 @@ export const discoverApi = {
     apiRequest<{ added: number }>(`${base(shopId)}/saved`, { method: "POST", body: JSON.stringify({ terms, collection }) }),
   unsave: (shopId: number, terms: string[], collection: string) =>
     apiRequest<{ removed: number }>(`${base(shopId)}/saved/remove`, { method: "POST", body: JSON.stringify({ terms, collection }) }),
+  allowance: (shopId: number) => apiRequest<DiscoverAllowance>(`${base(shopId)}/allowance`),
   home: (shopId: number) => apiRequest<DiscoverHomeData>(`${base(shopId)}/home`),
   /** Tek kelimenin mevsimsellik profili; `pending` iken yoklanır. Geçersiz kelimede season null. */
   season: (shopId: number, q: string) => apiRequest<{ season: Season | null }>(`${base(shopId)}/season?q=${encodeURIComponent(q)}`),

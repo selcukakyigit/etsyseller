@@ -263,3 +263,29 @@ def test_http_endpoints(client, db):
     assert client.post("/api/shops/1/discover/saved/remove", json={"terms": ["farm sign big"], "collection": "A"}).json() == {"removed": 1}
     assert client.post("/api/shops/1/discover/etsy-results", json={"terms": []}).status_code == 422
     assert client.post("/api/shops/1/discover/etsy-results", json={"terms": ["x"] * 21}).status_code == 422
+
+
+def test_monthly_allowance_is_the_main_limit_and_the_daily_one_a_ceiling(db, provider):
+    from app.research import budget
+
+    app_settings.set_many(db, {"research_shop_monthly_searches": 3, "research_shop_daily_searches": 2})
+    assert budget.search_allowance(db, 2) == {"month_limit": 3, "month_used": 0, "day_limit": 2, "day_used": 0, "remaining": 2}
+    for seed in ("alpha sign", "beta sign"):
+        assert discover.search(db, SHOP_B, seed).status == "pending"
+    assert discover.search(db, SHOP_B, "gamma sign").refused == "shop_searches", "aylık hak varken günlük üst sınır önce devreye girer"
+    assert budget.search_allowance(db, 2)["remaining"] == 0
+    # günlük sınır kalkınca aylık hak (3) devreye girer: üçüncü araştırma yapılır, dördüncüsü aylık hakla reddedilir
+    app_settings.set_many(db, {"research_shop_daily_searches": 40})
+    assert discover.search(db, SHOP_B, "gamma sign").status == "pending"
+    blocked = discover.search(db, SHOP_B, "delta sign")
+    assert blocked.status == "refused" and blocked.refused == "shop_month"
+    assert budget.search_allowance(db, 2)["remaining"] == 0 and budget.search_allowance(db, 1)["remaining"] == 3, "hak mağazaya özeldir"
+
+
+def test_allowance_endpoint_and_assistant_report_the_remaining_searches(db, client, provider):
+    app_settings.set_many(db, {"research_shop_monthly_searches": 10})
+    discover.search(db, SHOP_A, "alpha sign")
+    body = client.get("/api/shops/1/discover/allowance").json()
+    assert body["month_used"] == 1 and body["remaining"] == 9
+    out = tools.research_keywords(NS(db=db, shop=SHOP_A, user_id=7), {"seed": "beta sign"})
+    assert out["kalan_yeni_arama_hakki_bu_ay"] == 8, "yeni araştırma hakkı asistana da söylenir"

@@ -50,7 +50,7 @@ class Item:
 class SearchResult:
     seed: str
     status: str  # ready | pending | refused | empty | invalid
-    refused: str | None = None  # budget | shop_daily | shop_searches | disabled | not_configured | market
+    refused: str | None = None  # budget | shop_daily | shop_searches | shop_month | disabled | not_configured | market
     seed_item: Item | None = None
     items: list[Item] = field(default_factory=list)
     stale: bool = False  # sonuçlar eski; yenileniyor
