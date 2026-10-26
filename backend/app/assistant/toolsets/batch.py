@@ -4,6 +4,7 @@ Akış: create_listings_from_images → ürünler çözümlenir (kartta ilerleme
 gözden geçirip "Taslakları oluştur"a basar (ya da sohbette onaylarsa start_batch_listings; baştan "sormadan yap" derse skip_review) → ürün başına taslak oluşturulur.
 Etsy'ye hiçbir şey gitmez, resim/video üretilmez (kredi harcanmaz)."""
 from app.assistant import batch_drafts
+from app.assistant.toolsets import links
 from app.core.i18n import tr
 
 
@@ -13,7 +14,7 @@ def _job(ctx, a: dict):
 
 def create_listings_from_images(ctx, a: dict) -> dict:
     skip = bool(a.get("skip_review"))
-    job, error = batch_drafts.create_job(ctx.db, ctx.shop, ctx.user_id, ctx.session_id, a.get("items") or [], str(a.get("shared") or ""), review=not skip)
+    job, error = batch_drafts.create_job(ctx.db, ctx.shop, ctx.user_id, ctx.session_id, a.get("items") or [], str(a.get("shared") or ""), review=not skip, user_texts=links._user_texts(ctx))
     if error:
         return {"error": error}
     batch_drafts.start(job)
@@ -93,6 +94,10 @@ TOOLS: list[dict] = [
                 "image_ids": {"type": "array", "items": {"type": "string"}, "description": "Bu ürünün TÜM resimlerinin kimlikleri (çekim sırasıyla)"},
                 "note": {"type": "string", "description": "Kullanıcının bu ürün için söyledikleri: ad, tür (dijital/fiziksel), fiyat, ölçü, kapasite… yoksa boş"},
                 "file_ids": {"type": "array", "maxItems": 5, "items": {"type": "string"}, "description": "DİJİTAL ürünün indirilebilir dosyalarının kimlikleri (PDF, ZIP, PNG…; sistem bağlamındaki 'belgeler' listesinden; en fazla 5). Dosyayı ürünle dosya adından ve kullanıcının sözünden eşleştir; emin değilsen önce ask_user ile sor. Resimler (önizleme/mockup) image_ids'e gider. Fiziksel ürünse boş"},
+                "links": {"type": "array", "maxItems": 3, "description": "Kullanıcının BU ürün için YAZDIĞI adresler (ürün sayfası, benzer listing); kendin adres uydurma. Sunucu okur ve ön kontrole yansıtır", "items": {"type": "object", "properties": {
+                    "url": {"type": "string"},
+                    "purpose": {"type": "string", "enum": ["product_info", "reference_listing", "competitor"], "description": "product_info = ürünün kendi sayfası (ölçü/malzeme olgusu alınır); reference_listing = 'benzer, referans al' (kopyalama yok); competitor = rakip"},
+                }, "required": ["url"]}},
             }, "required": ["image_ids"]}},
             "shared": {"type": "string", "description": "Tüm ürünler için ortak bilgi (kullanıcının sözüne yakın): ör. 'hepsi 20 adet, termos 20 $, duvar dekoru 150 $, duvar dekoru hariç kişiselleştirme var'; yoksa boş"},
             "skip_review": {"type": "boolean", "description": "Kullanıcı 'sormadan yap / kontrol etmeden oluştur' dediyse true: ön kontrol kartı atlanır"},

@@ -106,5 +106,17 @@ await setValue(typeSelect, "physical");
 eq(text().includes("bu dosyalar kullanılmaz"), true, "dosyası olan ürün fiziksel seçilirse uyarılır");
 console.log("5 dijital dosyalar OK");
 
+// 6) Adresler: kaynak rozeti ve okunan/okunamayan adresler görünür
+await act(async () => root3.unmount());
+const root4 = createRoot(el);
+const linked = job("review", [item(1, "queued", { spec: spec({ size: "40 oz", from_link: ["size"], links: [
+  { url: "https://shop.example/p/1", purpose: "product_info", title: "Tumbler 40 oz", source: "web", error: "" },
+  { url: "https://gone.example/a", purpose: "reference_listing", title: "", source: "", error: "Sayfa okunamadı" },
+] }) })]);
+await act(async () => root4.render(h(BatchJobCard, { card: { type: "batch_job", ...linked }, shopId: 7 })));
+eq(text().includes("adresten") || text().includes("from link"), true, "adresten gelen alan işaretli");
+eq(text().includes("Tumbler 40 oz") && text().includes("Sayfa okunamadı"), true, "okunan ve okunamayan adresler görünür");
+console.log("6 adresler OK");
+
 console.log("BATCH KART TESTLERİ GEÇTİ");
 process.exit(0);

@@ -63,6 +63,9 @@ function ReviewRow({ shopId, item, spec, onChange }: { shopId: number; item: Row
   const { t } = useT();
   const unsure = (k: string) => (spec.unsure ?? []).includes(k);
   const options = spec.categories ?? [];
+  const fromLink = (k: string) => (spec.from_link ?? []).includes(k);
+  const sourceNote = (k: string) => (fromLink(k) ? <span className="ml-1 text-[10px] text-sky-700 dark:text-sky-400">{t("adresten", "from link")}</span> : null);
+  const purposeLabel = (p: string) => (p === "product_info" ? t("ürün sayfası", "product page") : p === "reference_listing" ? t("referans", "reference") : t("rakip", "competitor"));
   return (
     <li className="flex gap-3 px-4 py-3 text-xs">
       <Thumb shopId={shopId} imageId={item.image_id} />
@@ -94,7 +97,7 @@ function ReviewRow({ shopId, item, spec, onChange }: { shopId: number; item: Row
           </select>
         </label>
         <label>
-          <span className="mb-0.5 block text-[10px] text-neutral-500 dark:text-neutral-400">{t("Ölçü / kapasite", "Size / capacity")}</span>
+          <span className="mb-0.5 block text-[10px] text-neutral-500 dark:text-neutral-400">{t("Ölçü / kapasite", "Size / capacity")}{sourceNote("size")}</span>
           <input
             value={spec.size ?? ""}
             maxLength={80}
@@ -104,7 +107,7 @@ function ReviewRow({ shopId, item, spec, onChange }: { shopId: number; item: Row
           />
         </label>
         <label>
-          <span className="mb-0.5 block text-[10px] text-neutral-500 dark:text-neutral-400">{t("Malzeme", "Material")}</span>
+          <span className="mb-0.5 block text-[10px] text-neutral-500 dark:text-neutral-400">{t("Malzeme", "Material")}{sourceNote("material")}</span>
           <input value={spec.material ?? ""} maxLength={80} placeholder={t("bilmiyorsan boş bırak", "leave empty if unknown")} onChange={(e) => onChange({ material: e.target.value })} className={`${field} ${!spec.material && unsure("material") ? warn : ""}`} />
         </label>
         <div>
@@ -137,6 +140,15 @@ function ReviewRow({ shopId, item, spec, onChange }: { shopId: number; item: Row
             ))}
           </select>
         </label>
+        {(spec.links ?? []).length > 0 && (
+          <ul className="space-y-0.5 text-[11px] sm:col-span-2">
+            {(spec.links ?? []).map((l) => (
+              <li key={l.url} className={`truncate ${l.error ? "text-amber-700 dark:text-amber-400" : "text-neutral-600 dark:text-neutral-300"}`} title={l.error || l.url}>
+                🔗 {purposeLabel(l.purpose)} · {l.error ? l.error : clip(l.title || l.url, 70)}
+              </li>
+            ))}
+          </ul>
+        )}
         {spec.error && <p className="text-red-600 sm:col-span-2 dark:text-red-400">{spec.error}</p>}
       </div>
     </li>
