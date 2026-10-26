@@ -158,10 +158,14 @@ def test_only_one_brief_card_per_listing_an_answered_card_is_not_followed_by_ano
     db.add(shop); db.commit()
     session = ChatSession(shop_id=shop.id, user_id=5, title="t")
     db.add(session); db.commit()
-    card = {"understood": [{"label": "Ürün", "value": "Metal wall decor"}], "questions": [{"label": "Montaj?", "options": ["Var", "Yok"], "type": "text"}]}
+    card = {"understood": [{"label": "Ürün", "value": "Metal wall decor"}], "design": "bubble cells honeycomb cellular line art", "questions": [
+        {"label": "Başlık seç", "options": ["Abstract Bubble Cells Line Art Metal Decor", "Organic Honeycomb Pattern Wall Sculpture Panel", "Modern Cellular Motif Hanging Piece"]},
+        {"label": "Montaj?", "options": ["Var", "Yok"], "type": "text"}]}
+
+    from types import SimpleNamespace as _NS
 
     def ctx(**kw):
-        return tools.Ctx(db=db, shop=shop, user_id=5, today=None, session_id=session.id, **kw)
+        return tools.Ctx(db=db, shop=shop, user_id=5, today=None, session_id=session.id, plan=_NS(lead_options=["metal wall decor", "bubble cells", "honeycomb", "cellular"], ask=[]), **kw)
 
     assert tools.brief_check(ctx(), card).get("ok"), "ilk kart gösterilir"
     db.add(ChatMessage(session_id=session.id, role="assistant", content="kart", cards_json=_json.dumps([{"type": "brief"}])))

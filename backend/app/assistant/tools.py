@@ -1333,6 +1333,8 @@ def brief_check(ctx: Ctx, a: dict) -> dict:
         if q.get("plan_question") and skip not in q["options"]:
             q["options"] = [*q["options"][:3], skip]
     questions = [{k: v for k, v in q.items() if k != "plan_question" or v} for q in questions[:4]]
+    if not any(q["type"] == "title" for q in questions):  # yeni listing'de ilk kart HER ZAMAN en az 3 başlık önerisi içerir (kullanıcı seçer ya da kendi başlığını yazar)
+        return {"error": "Kartta BAŞLIK sorusu yok: yeni listing'in ön kontrol kartında her zaman başlık sorusu olur (type=title, en az 3 gerçekten farklı öneri, design alanı dolu). keyword_pool'un planından açılış ifadeleriyle 3 öneri kur ve kartı yeniden çağır; fiyat, montaj, evet/hayır gibi diğer eksikleri aynı karta seçenekli (options) ekle."}
     if not questions:
         return {"error": "Eksik yoksa kart gösterme: create_listing_draft'ı hemen çağır."}
     ctx.cards[:] = [c for c in ctx.cards if c.get("type") not in ("brief", "choices")]

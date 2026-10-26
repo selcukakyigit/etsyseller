@@ -59,22 +59,22 @@ def test_brief_check_reminds_once_to_ask_the_plans_unanswered_question():
     ctx = _ctx(["one", "two", "three"])
     ctx.plan.ask = [{"q": "do these come with a case", "demand": "high"}]
     ctx.ask_checked = False
-    card = {"understood": UNDERSTOOD, "questions": [{"label": "Fiyat?", "type": "price"}]}
+    card = {"understood": UNDERSTOOD, "design": "thermos bottle flask mug tumbler", "questions": [{"label": "Fiyat?", "type": "price"}, {"label": "Başlık seç", "options": ["One Insulated Travel Thermos Bottle", "Two Vacuum Insulated Water Flask Cup", "Three Travel Coffee Mug Tumbler Set"]}]}
     first = brief_check(ctx, card)
     assert "case" in first["error"] and ctx.cards == []
     second = brief_check(ctx, card)  # ikinci çağrı geçer: kullanıcı soru yağmuruna tutulmaz
     assert second.get("ok")
     ctx2 = _ctx(["one", "two", "three"])
     ctx2.plan.ask, ctx2.ask_checked = [{"q": "do these come with a case", "demand": "high"}], False
-    ok = brief_check(ctx2, {"understood": UNDERSTOOD, "questions": [{"label": "Kılıf var mı?", "options": ["Var", "Yok"], "plan_question": "Do these come with a case?"}]})
-    assert ok.get("ok") and ctx2.cards[0]["questions"][0]["plan_question"] == "do these come with a case"
+    ok = brief_check(ctx2, {"understood": UNDERSTOOD, "design": "thermos bottle flask mug tumbler", "questions": [{"label": "Başlık seç", "options": ["One Insulated Travel Thermos Bottle", "Two Vacuum Insulated Water Flask Cup", "Three Travel Coffee Mug Tumbler Set"]}, {"label": "Kılıf var mı?", "options": ["Var", "Yok"], "plan_question": "Do these come with a case?"}]})
+    assert ok.get("ok") and ctx2.cards[0]["questions"][1]["plan_question"] == "do these come with a case"
 
 
 def test_plan_questions_always_get_a_skip_option():
     ctx = _ctx(["one", "two", "three"])
     ctx.plan.ask, ctx.ask_checked = [{"q": "do these come with a case", "demand": "high"}], False
-    brief_check(ctx, {"understood": UNDERSTOOD, "questions": [{"label": "Kılıf var mı?", "options": ["Var", "Yok"], "plan_question": "do these come with a case"}]})
-    options = ctx.cards[0]["questions"][0]["options"]
+    brief_check(ctx, {"understood": UNDERSTOOD, "design": "thermos bottle flask mug tumbler", "questions": [{"label": "Başlık seç", "options": ["One Insulated Travel Thermos Bottle", "Two Vacuum Insulated Water Flask Cup", "Three Travel Coffee Mug Tumbler Set"]}, {"label": "Kılıf var mı?", "options": ["Var", "Yok"], "plan_question": "do these come with a case"}]})
+    options = ctx.cards[0]["questions"][1]["options"]
     assert options[:2] == ["Var", "Yok"] and len(options) == 3 and "atla" in options[2].lower() or "skip" in options[2].lower()
 
 
@@ -82,3 +82,9 @@ def test_title_question_without_the_visible_design_is_rejected():
     ctx = _ctx(["one", "two", "three"])
     out = brief_check(ctx, {"understood": UNDERSTOOD, "questions": [{"label": "Başlık seç", "options": ["One Thermos", "Two Thermos", "Three Thermos"]}]})
     assert "design" in out["error"] and ctx.cards == []
+
+
+def test_the_first_card_always_has_a_title_question():
+    ctx = _ctx(["one", "two", "three"])
+    out = brief_check(ctx, {"understood": UNDERSTOOD, "questions": [{"label": "Fiyat?", "type": "price"}]})
+    assert "BAŞLIK sorusu yok" in out["error"] and ctx.cards == [], "başlık sorusu olmayan kart gösterilmez"
