@@ -102,7 +102,7 @@ def test_uniform_stock_follows_the_price_variation_so_the_editor_rule_holds(db, 
     assert inv["sku_on_property"] == [], "editördeki kural: tek varyasyona ya da tümüne bağlı, ikisi karışmaz"
 
 
-def test_prices_given_on_the_size_options_count_as_a_price_for_the_ask_first_gate(db, monkeypatch):
+def test_a_new_listing_needs_one_brief_card_first_unless_the_user_says_not_to_ask(db, monkeypatch):
     shop = Shop(user_id=1, workspace_id=1, etsy_shop_id=1006, etsy_user_id=7, shop_name="S6")
     db.add(shop); db.commit()
     monkeypatch.setattr(tools, "_autofill_in_work", lambda *a, **k: ([], []))
@@ -110,10 +110,26 @@ def test_prices_given_on_the_size_options_count_as_a_price_for_the_ask_first_gat
     args = {"title": "Bubble Line Art Metal Wall Decor Panel", "product": "metal wall decor", "taxonomy_id": 1029, "quantity": 30,
             "description": "Bubble line art metal wall panel.\n\nDETAILS\n• Sizes: Small; Large\n• Colors: Black; White",
             "variations": [{"name": "Size", "values": [{"value": "Small", "price": 129}, {"value": "Large", "price": 249}]}, {"name": "Color", "values": [{"value": "Black"}, {"value": "White"}]}]}
-    out = tools.create_listing_draft(tools.Ctx(db=db, shop=shop, user_id=5, today=None, message="fiyatlar boyuta göre"), args)  # brief_check gösterilmedi (cards boş)
-    assert out.get("listing_id"), out
-    no_price = {**args, "variations": [{"name": "Size", "values": [{"value": "Small"}, {"value": "Large"}]}, args["variations"][1]], "title": "Bubble Line Art Metal Wall Hanging Panel"}
-    assert "fiyat belli değil" in tools.create_listing_draft(tools.Ctx(db=db, shop=shop, user_id=5, today=None, message="x"), no_price).get("error", ""), "hiç fiyat yoksa kapı hâlâ çalışır"
+    ctx = lambda msg, **kw: tools.Ctx(db=db, shop=shop, user_id=5, today=None, message=msg, **kw)  # noqa: E731
+    asked = tools.create_listing_draft(ctx("fiyatlar boyuta göre"), args)
+    assert "brief_check" in asked.get("error", "") and "BAŞLIK" in asked["error"], "fiyat seçeneklerde verilmiş olsa da kart (başlık önerileriyle) önce gelir"
+    assert tools.create_listing_draft(ctx("fiyatlar boyuta göre", cards=[{"type": "brief"}]), args).get("listing_id"), "kart gösterildi: taslak kurulur"
+    assert tools.create_listing_draft(ctx("sormadan oluştur"), {**args, "title": "Bubble Line Art Metal Wall Hanging Panel"}).get("listing_id"), "kullanıcı sormadan dediyse kart şart değil"
+
+
+def test_obvious_title_mistakes_are_fixed_on_the_server():
+    from app.ai import quality
+
+    said = "2mm metal 140x49 cm 118x40 cm 99x34 cm"
+    bad = "abstract metal wall decor 2mm steel – 140x49 cm (55x19 in) • 118x40 cm (46x16 in) • 99x34 cm (39x13 in)"
+    fixed, notes = quality.autofix_title(bad, True, said)
+    assert fixed == "abstract metal wall decor 2mm" and len(notes) == 2, (fixed, notes)
+    assert quality.autofix_title("Metal Wall Art 140x49 cm", False, said) == ("Metal Wall Art 140x49 cm", []), "tek ölçülü üründe ölçü kalır"
+    assert quality.autofix_title("Metal Wall Art Panel", True, said) == ("Metal Wall Art Panel", []), "hata yoksa dokunulmaz"
+    long = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen"
+    cut, cut_notes = quality.autofix_title(long, True, said)
+    assert len(cut.split()) == 14 and cut_notes
+    assert quality.autofix_title("Steel 140x49 cm", True, said)[0] == "Steel 140x49 cm", "çok kısalırsa özgün korunur"
 
 
 def test_title_suggestions_that_are_nearly_the_same_are_not_alternatives():

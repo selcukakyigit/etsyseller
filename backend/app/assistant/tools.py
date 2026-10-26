@@ -936,9 +936,8 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     if ctx.separate_products and not ctx.unattended and not ctx.redirected:
         ctx.redirected = True
         return {"error": "Kullanıcı birden çok AYRI listing istiyor gibi (toplu grup açık). Her ürün için create_listing_draft'ı kendin çağırma, başlık seçeneklerini ayrı listing sanma: create_listings_from_images'ı çağır (resimleri ürüne göre grupla, fiyat-resim eşleşmesini note'a, ortak bilgiyi shared'a yaz). Kullanıcı gerçekten TEK listing istiyorsa aynı çağrıyı tekrarla."}
-    option_prices = any(isinstance(x, dict) and x.get("price") for v in a.get("variations") or [] for x in v.get("values") or [])  # fiyat boyut seçeneklerinde verilmiş olabilir (oturum 53: 249/159/129 görülmeden reddedildi)
-    if a.get("price") in (None, "", 0) and not option_prices and a.get("listing_type") != "download" and not ctx.unattended and not _brief_shown(ctx):
-        return {"error": "Taslak henüz oluşturulmadı: fiyat belli değil ve kullanıcıya eksikler sorulmadı. ÖNCE brief_check'i çağır (anladıklarını ve eksikleri tek kartta göster: fiyat, kişiselleştirme var mı, eksik ölçü/adet, inç eklensin mi gibi gerçekten bilinmeyenler), sonra kullanıcının cevabını bekle. Kullanıcı kişiselleştirmeyi söylemediyse ekleme."}
+    if not ctx.unattended and not _brief_shown(ctx) and not _NO_QUESTIONS.search(ctx.message or ""):
+        return {"error": "Yeni listing'ten ÖNCE tek ön kontrol kartı gösterilir (kullanıcı 'sormadan yap' demedikçe): ÖNCE keyword_pool, sonra brief_check'i çağır: anladıklarını, BAŞLIK sorusunu (3 gerçekten farklı öneri; design alanı dolu) ve gerçekten bilinmeyen/belirsiz olanları (fiyat yoksa fiyat, çelişki, montaj gibi plan sorusu) TEK kartta sor. Evet/Hayır sorularını da seçenekli (options) yaz. Kullanıcı cevaplayınca create_listing_draft'ı TEK çağrıda çağır."}
     size_variations, unit_assumed = _normalize_sizes(ctx, a.get("variations") or [])
     a = {**a, "variations": size_variations}
     a = {**a, "description": layout.normalize(str(a.get("description") or ""))}  # düzen: bölüm başlıkları, tek tip madde işareti, emoji yok (ai/layout.py)
@@ -946,6 +945,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     others = quality.shop_others(ctx.db, ctx.shop.id)
     draft_variations = {str(v.get("name") or ""): [str(x.get("value") or "") for x in v.get("values") or []] for v in a.get("variations") or []}
     source = _user_facts(ctx, draft_variations)  # kullanıcının söylediği ölçü/renk/malzeme "uydurma" sayılmaz
+    title, title_fixes = quality.autofix_title(title, quality.size_options(draft_variations), source)  # bariz başlık hataları (ölçü, söylenmeyen malzeme, 14+ kelime) sunucuda düzelir
     a = {**a, "description": quality.strip_claims(str(a.get("description") or ""), source)}  # kaynakta olmayan "warranty/hardware included" gibi iddialar koddan silinir (SEO önerisiyle aynı kural)
     plan = _draft_plan(ctx, a, title, tags_checked, draft_variations, source)
     if plan is not None:  # etiketleri model değil plan yerleştirir; modelinkiler yalnızca plan 13'e ulaşamazsa tamamlar
@@ -1133,6 +1133,9 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
             videos_attached += 1
     completion["eklenen_video"] = videos_attached
     completion["standart_varyasyona_cevrilen"] = _standardize(work)
+    if title_fixes:
+        completion["baslik_otomatik_duzeltildi"] = title_fixes
+        completion["baslik_notu"] = "Başlıktaki bariz hatalar sunucuda düzeltildi (baslik_otomatik_duzeltildi); özette tek cümleyle söyle, yeniden düzeltmeye çalışma."
     drafts.save_local(ctx.db, ctx.shop, lid, work, None)
     problems = creation.validate_new(work, activate=True)
     _show_listing(ctx, lid, work, category=category_note["yol"] if category_note else None, price_missing=price_missing, qty_assumed=qty_assumed)
@@ -1221,6 +1224,7 @@ def ask_user(ctx: Ctx, a: dict) -> dict:
     return {"ok": True, "not": "Seçenek kartı gösterildi. Aynı soruyu ya da önerileri metinde tekrar yazma; kullanıcının dokunmasını ya da yazmasını bekle."}
 
 
+_NO_QUESTIONS = re.compile(r"sormadan|soru sorma|kart (?:çıkarma|gösterme)|hemen oluştur|direkt oluştur|onay(?:lamadan| istemeden)|without asking|don't ask|no questions", re.IGNORECASE)
 _TITLE_QUESTION = re.compile(r"ba[sş]l[ıi]k|\btitle\b", re.IGNORECASE)
 
 
@@ -1370,28 +1374,42 @@ def auto_choices(ctx: Ctx) -> None:
         base = float(typical) if typical else 25.0
         prices = sorted({max(1, round(base * f)) for f in (0.8, 1, 1.25)})
         options = [tr(f"Fiyat {p} dolar olsun", f"Set the price to ${p}") for p in prices[:3]]
-        ctx.cards.append({"type": "choices", "kind": "question", "question": tr("Fiyat ne olsun?", "What should the price be?"), "options": [*options, tr("Sen karar ver", "You decide")]})
+        ctx.cards.append({"type": "choices", "kind": "question", "question": tr("Fiyat ne olsun?", "What should the price be?"), "options": [*options, tr("Sen karar ver", "You decide")], "auto": True})
         return
     options = []
     if (card.get("images") or 0) < 4:
         options.append(tr("Ek görsel üret", "Generate more images"))
     options += [tr("Boş özellikleri doldur", "Fill the empty attributes"), tr("Etiketleri iyileştir", "Improve the tags")]
-    ctx.cards.append({"type": "choices", "kind": "suggestions", "question": tr("Sıradaki adım?", "Next step?"), "options": options[:3]})
+    ctx.cards.append({"type": "choices", "kind": "suggestions", "question": tr("Sıradaki adım?", "Next step?"), "options": options[:3], "auto": True})
 
 
 _PAREN_OPTIONS = re.compile(r"[(]([^()]{1,40}(?:[ ]?/[ ]?[^()]{1,40}){1,3})[)][ ]*[?]?[ ]*$")
+_QUOTED_LIST = re.compile(r"(?:seçenekler|options|seç(?:in|im)?)[^:\n]{0,40}:[ ]*((?:[\"“][^\"”\n]{2,45}[\"”][ ]*(?:,|/|ve|and|veya|or)?[ ]*){2,4})", re.IGNORECASE)
+
+
+def reply_options(reply: str) -> list[str]:
+    """Modelin düz metinde yazdığı seçenekler: "(Evet / Hayır)" ya da 'Seçenekler: "A", "B", "C"'. 2-4 kısa seçenek, yoksa boş."""
+    text = (reply or "").strip()
+    m = _QUOTED_LIST.search(text)
+    if m:
+        options = [o.strip() for o in re.findall(r"[\"“]([^\"”\n]{2,45})[\"”]", m.group(1))]
+    else:
+        m = _PAREN_OPTIONS.search(text)
+        options = [o.strip() for o in m.group(1).split("/") if o.strip()] if m else []
+    return options if 2 <= len(options) <= 4 else []
 
 
 def auto_yes_no(ctx: Ctx, reply: str) -> None:
-    """Model soruyu düz metin olarak sordu ("... (Evet / Hayır)") ve kart sunmadıysa seçenekleri düğme yapar: kullanıcı "evet" yazmak zorunda kalmasın."""
-    if any(c.get("type") in ("choices", "brief") for c in ctx.cards):
+    """Model soruyu düz metin olarak sordu ("... (Evet / Hayır)", 'Seçenekler: "A", "B"') ve kart sunmadıysa seçenekleri düğme yapar; sistemin kendi ürettiği genel "Sıradaki adım?"
+    düğmeleri varsa (modelin yazdığı seçeneklerle alakasız) onların yerine geçer. Kullanıcı "evet" yazmak zorunda kalmasın."""
+    options = reply_options(reply)
+    if not options or any(c.get("type") == "brief" for c in ctx.cards):
         return
-    m = _PAREN_OPTIONS.search((reply or "").strip())
-    if not m:
-        return
-    options = [o.strip() for o in m.group(1).split("/") if o.strip()]
-    if 2 <= len(options) <= 4:
-        ctx.cards.append({"type": "choices", "kind": "question", "question": tr("Seçim", "Choose"), "options": options})
+    existing = [c for c in ctx.cards if c.get("type") == "choices"]
+    if existing and not all(c.get("auto") for c in existing):
+        return  # model kendi kartını gösterdi
+    ctx.cards[:] = [c for c in ctx.cards if c.get("type") != "choices"]
+    ctx.cards.append({"type": "choices", "kind": "question", "question": tr("Seçim", "Choose"), "options": options})
 
 
 _CROP_ASKED = re.compile(r"kırp|crop|kare|square|1:1|thumbnail|küçük resim|[34]:[34]", re.IGNORECASE)

@@ -592,3 +592,19 @@ def test_images_already_generated_in_the_chat_are_offered_before_new_ones_are_ge
     ctx = tools.Ctx(db=db, shop=shop, user_id=5, today=None, session_id=session.id)
     assert sorted(tools._session_generated_images(ctx)) == ["gen1", "gen2"], "yüklenen kaynak resim sayılmaz"
     assert tools._session_generated_images(tools.Ctx(db=db, shop=shop, user_id=5, today=None)) == []
+
+
+def test_options_written_in_the_reply_become_buttons_and_replace_the_generic_next_step_card():
+    quoted = 'Hangi adımı yapayım? (Seçenekler hazır: "Başlığı düzelt", "Kategori özelliklerini tamamla", "Ek görsel üretme" — seç)'
+    assert tools.reply_options(quoted) == ["Başlığı düzelt", "Kategori özelliklerini tamamla", "Ek görsel üretme"]
+    assert tools.reply_options("Devam edeyim mi? (Evet / Hayır)") == ["Evet", "Hayır"]
+    assert tools.reply_options("Tamamdır, taslak hazır.") == []
+    auto = {"type": "choices", "kind": "suggestions", "question": "Sıradaki adım?", "options": ["Ek görsel üret", "Boş özellikleri doldur"], "auto": True}
+    ctx = tools.Ctx(db=None, shop=None, user_id=1, today=None, cards=[{"type": "listing_draft"}, dict(auto)])
+    tools.auto_yes_no(ctx, quoted)
+    choices = [c for c in ctx.cards if c["type"] == "choices"]
+    assert len(choices) == 1 and choices[0]["options"][0] == "Başlığı düzelt" and "auto" not in choices[0], "modelin yazdığı seçenekler genel düğmelerin yerine geçer"
+    own = {"type": "choices", "kind": "question", "question": "Q?", "options": ["Var", "Yok"]}
+    ctx2 = tools.Ctx(db=None, shop=None, user_id=1, today=None, cards=[dict(own)])
+    tools.auto_yes_no(ctx2, quoted)
+    assert ctx2.cards == [own], "modelin kendi kartına dokunulmaz"

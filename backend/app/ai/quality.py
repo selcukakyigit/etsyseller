@@ -421,6 +421,38 @@ def language_problems(text: str) -> list[str]:
     )]
 
 
+_SIZE_TOKEN = re.compile(r"[0-9]+(?:[.,][0-9]+)?[ ]*[x×][ ]*[0-9]+(?:[.,][0-9]+)?(?:[ ]*[x×][ ]*[0-9]+(?:[.,][0-9]+)?)?[ ]*(?:cm|mm|inches|inch|in|ft|m|\")?(?:[ ]*[(][^)]*[)])?", re.IGNORECASE)
+_SEPARATORS = r"[•|–—:;,/-]"
+
+
+def autofix_title(title: str, sizes_vary: bool, source_text: str | None) -> tuple[str, list[str]]:
+    """Başlıktaki BARİZ ve güvenle düzeltilebilir hatalar sunucuda düzeltilir (modelin düzeltmesine bırakılırsa yapmıyordu; oturum 55): birden çok ölçü seçeneği varken ölçü, kaynakta olmayan özgül
+    malzeme, 14 kelimeyi aşan kuyruk. Döner: (başlık, yapılanların listesi). Sonuç çok kısalırsa özgün başlık korunur (denetim yine uyarır)."""
+    fixed, notes = title, []
+    if sizes_vary and _SIZE_TOKEN.search(fixed):
+        fixed = _SIZE_TOKEN.sub(" ", fixed)
+        notes.append(tr("başlıktaki ölçüler çıkarıldı (birden çok boyut seçeneği var)", "sizes removed from the title (the listing has several sizes)"))
+    src = html.unescape(source_text or "").lower()
+    for w in sorted({w for w in _WORD.findall(fixed.lower()) if w in SPECIFIC_MATERIALS and not re.search(rf"\b{re.escape(w)}", src)}):
+        fixed = re.sub(rf"\b{re.escape(w)}\b", " ", fixed, flags=re.IGNORECASE)
+        notes.append(tr(f"söylenmeyen malzeme çıkarıldı ({w})", f"unstated material removed ({w})"))
+    fixed = re.sub(rf"(?:[ ]*{_SEPARATORS}[ ]*){{2,}}", " – ", fixed)  # art arda kalan ayırıcılar
+    fixed = re.sub(rf"^[ ]*{_SEPARATORS}[ ]*|[ ]*{_SEPARATORS}[ ]*$", "", " ".join(fixed.split())).strip()
+    words = [w for w in re.split(r"[\s,|/–—-]+", fixed) if w]
+    if len(words) > TITLE_MAX_WORDS:
+        keep, count = [], 0
+        for token in fixed.split():
+            count += len([w for w in re.split(r"[,|/–—-]+", token) if w])
+            if count > TITLE_MAX_WORDS:
+                break
+            keep.append(token)
+        fixed = re.sub(rf"[ ]*{_SEPARATORS}[ ]*$", "", " ".join(keep)).strip()
+        notes.append(tr(f"başlık {TITLE_MAX_WORDS} kelimeye kısaltıldı", f"title shortened to {TITLE_MAX_WORDS} words"))
+    if not notes or len(fixed) < TITLE_MIN_CHARS:
+        return title, []
+    return fixed, notes
+
+
 def brand_problems(title: str, tags: list[str], source_text: str | None = None) -> list[str]:
     src = html.unescape(source_text or "").lower()
     names = sorted({m.group(0).lower() for m in PROTECTED_NAMES.finditer(" ".join([title, *tags]))} - {m.group(0).lower() for m in PROTECTED_NAMES.finditer(src)})
