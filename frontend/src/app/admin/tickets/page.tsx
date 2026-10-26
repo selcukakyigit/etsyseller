@@ -86,7 +86,9 @@ function Tickets() {
                 </details>
               </div>
             }
-            detail={id ? <AdminTicketPane key={id} id={id} options={options.data} canned={canned.data ?? []} onChanged={onChanged} onBack={() => router.push("/admin/tickets")} /> : null}
+            detail={id ? <AdminTicketPane key={id} id={id} options={options.data} canned={canned.data ?? []} onChanged={onChanged} /> : null}
+            detailTitle={t(`Talep #${id}`, `Request #${id}`)}
+            onCloseDetail={() => router.push("/admin/tickets")}
             placeholder={t("Soldan bir talep seç.", "Pick a request on the left.")}
           />
         </>

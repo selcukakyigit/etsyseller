@@ -112,3 +112,13 @@ body {
     font-size: 16px;
   }
 }
+
+/* Mobil çekmece (components/ui/Drawer.tsx): sağdan kayarak açılır. */
+@keyframes ulagg-slide-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.ulagg-slide-in { animation: ulagg-slide-in 0.2s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .ulagg-slide-in { animation: none; }
+}

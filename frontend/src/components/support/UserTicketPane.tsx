@@ -16,7 +16,7 @@ function errorText(e: unknown) {
 }
 
 /** Kullanıcının seçili talebi: konuşma, yanıt kutusu, "çözüldü" ve puan. Talep her değiştiğinde `onChanged` ile liste satırı da güncellenir. */
-export default function UserTicketPane({ id, onChanged, onBack }: { id: number; onChanged: (t: TicketDetail) => void; onBack: () => void }) {
+export default function UserTicketPane({ id, onChanged }: { id: number; onChanged: (t: TicketDetail) => void }) {
   const { t } = useT();
   const f = useFormat();
   const [ticket, setTicket] = useState<TicketDetail | null>(null);
@@ -62,9 +62,6 @@ export default function UserTicketPane({ id, onChanged, onBack }: { id: number; 
   const resolved = ticket.status === "resolved";
   return (
     <div className="space-y-4 rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-      <button type="button" onClick={onBack} className="text-sm text-neutral-500 hover:underline lg:hidden dark:text-neutral-400">
-        ← {t("Taleplerim", "My requests")}
-      </button>
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="min-w-0 flex-1 break-words text-base font-semibold text-neutral-900 dark:text-neutral-100">
           #{ticket.id} · {ticket.subject}

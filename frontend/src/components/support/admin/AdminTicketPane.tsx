@@ -22,13 +22,11 @@ export default function AdminTicketPane({
   options,
   canned,
   onChanged,
-  onBack,
 }: {
   id: number;
   options: TicketOptions;
   canned: CannedReply[];
   onChanged: (t: AdminTicketDetail) => void;
-  onBack: () => void;
 }) {
   const { t } = useT();
   const f = useFormat();
@@ -92,9 +90,6 @@ export default function AdminTicketPane({
   const c = ticket.context;
   return (
     <div className="space-y-4 rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-      <button type="button" onClick={onBack} className="text-sm text-neutral-500 hover:underline lg:hidden dark:text-neutral-400">
-        ← {t("Liste", "List")}
-      </button>
       <h2 className="break-words text-base font-semibold text-neutral-900 dark:text-neutral-100">
         #{ticket.id} · {ticket.subject}
       </h2>

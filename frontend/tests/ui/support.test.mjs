@@ -5,11 +5,14 @@ Object.assign(globalThis, { window: w, document: w.document, localStorage: w.loc
 globalThis.URL.createObjectURL = () => "blob:preview";
 globalThis.URL.revokeObjectURL = () => {};
 globalThis.__toasts = [];
+let desktop = false;
+w.matchMedia = () => ({ get matches() { return desktop; }, addEventListener() {}, removeEventListener() {} });
 
 const { act, createElement: h } = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { default: AdminTicketList } = await import("../../src/components/support/admin/AdminTicketList.tsx");
 const { default: Composer } = await import("../../src/components/support/Composer.tsx");
+const { default: TicketLayout } = await import("../../src/components/support/TicketLayout.tsx");
 
 const eq = (a, b, m) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${m}\n  gelen: ${JSON.stringify(a)}\n  beklenen: ${JSON.stringify(b)}`); };
 const text = () => document.body.textContent;
@@ -81,4 +84,30 @@ eq(document.querySelector("textarea").value, "yarım kalan metin", "taslak, kutu
 await typeInto("");
 await box.unmount();
 console.log("2 yanıt kutusu: 5 dosya sınırı, yapıştırma, Ctrl+Enter, taslak OK");
+
+// ---- 3) Düzen: dar ekranda talep çekmecede, geniş ekranda yerinde
+let closed = 0;
+const layout = (detail) => h(TicketLayout, { list: h("p", null, "LİSTE"), detail: detail && h("p", null, "KONUŞMA"), detailTitle: "Talep #7", onCloseDetail: () => { closed++; }, placeholder: "Bir talep seç" });
+desktop = false;
+let lay = await mount(layout(true));
+const dialog = document.querySelector("[role=dialog]");
+if (!dialog || !dialog.textContent.includes("KONUŞMA") || !dialog.textContent.includes("Talep #7")) throw new Error("dar ekranda talep çekmecede açılmalı");
+if (!lay.el.textContent.includes("LİSTE") || lay.el.textContent.includes("KONUŞMA")) throw new Error("liste yerinde kalmalı, konuşma çekmecede olmalı");
+await act(async () => dialog.querySelector("button[aria-label=Kapat]").click());
+eq(closed, 1, "✕ listeye döndürmeli");
+await act(async () => document.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+eq(closed, 2, "Esc de kapatmalı");
+await lay.unmount();
+await act(async () => {});
+lay = await mount(layout(null));
+if (document.querySelector("[role=dialog]")) throw new Error("talep seçili değilken çekmece olmamalı");
+await lay.unmount();
+desktop = true;
+lay = await mount(layout(true));
+if (document.querySelector("[role=dialog]") || !lay.el.textContent.includes("KONUŞMA")) throw new Error("geniş ekranda konuşma yerinde görünmeli, çekmece olmamalı");
+await lay.unmount();
+lay = await mount(layout(null));
+if (!lay.el.textContent.includes("Bir talep seç")) throw new Error("geniş ekranda seçim yokken yönerge görünmeli");
+await lay.unmount();
+console.log("3 düzen: mobilde çekmece, masaüstünde yerinde bölme OK");
 console.log("DESTEK TESTLERİ GEÇTİ");

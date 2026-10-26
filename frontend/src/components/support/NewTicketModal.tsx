@@ -44,7 +44,7 @@ export default function NewTicketModal({ shopName, prefill, onClose, onCreated }
   }
 
   return (
-    <Modal title={t("Yeni talep", "New request")} widthClass="max-w-2xl" onClose={onClose} closeButton>
+    <Modal title={t("Yeni talep", "New request")} widthClass="max-w-2xl" onClose={onClose} closeButton sheet>
       <div className="min-h-[26rem] space-y-4">
         <div className="space-y-1.5">
           <p className="flex items-center gap-1.5 text-xs font-medium text-neutral-500 dark:text-neutral-400">

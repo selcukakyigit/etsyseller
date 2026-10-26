@@ -13,6 +13,7 @@ export function Modal({
   widthClass = "max-w-5xl",
   onClose,
   closeButton,
+  sheet = false,
 }: {
   title: string;
   /** Başlığın sağında ✕ düğmesi (yalnızca `onClose` ile birlikte). */
@@ -23,6 +24,8 @@ export function Modal({
   widthClass?: string;
   /** Verilirse, boş (karartılmış) alana tıklayınca modal kapanır. */
   onClose?: () => void;
+  /** Telefonda (lg altı) ekranın altından açılan panel gibi görünür; geniş ekranda her zamanki ortalanmış pencere. Yeni pencerelerde açık olmalı. */
+  sheet?: boolean;
 }) {
   // document.body'ye portal: DOM'da nereye yerleştirilirse yerleştirilsin (ör. sticky/overflow-auto bir
   // sidebar içinde) her zaman tam ekranı kaplar. Bir ata öğede transform/overflow varsa fixed konumlandırma
@@ -38,7 +41,7 @@ export function Modal({
 
   return createPortal(
     <div
-      className="fixed inset-0 flex items-center justify-center bg-black/40 p-4"
+      className={`fixed inset-0 flex justify-center bg-black/40 ${sheet ? "items-end p-0 lg:items-center lg:p-4" : "items-center p-4"}`}
       style={{ zIndex: z }}
       onClick={onClose ? (e) => e.target === e.currentTarget && onClose() : undefined}
     >
@@ -46,7 +49,9 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`flex max-h-[90vh] w-full ${widthClass} flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-neutral-900`}
+        className={`flex w-full ${widthClass} flex-col overflow-hidden bg-white shadow-2xl dark:bg-neutral-900 ${
+          sheet ? "max-h-[92dvh] rounded-t-2xl pb-[env(safe-area-inset-bottom)] lg:max-h-[90vh] lg:rounded-2xl lg:pb-0" : "max-h-[90vh] rounded-2xl"
+        }`}
       >
         <div className="flex items-start justify-between gap-3 px-6 pt-6 pb-3">
           <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{title}</h2>

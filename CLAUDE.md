@@ -63,6 +63,15 @@ A modal must not grow or jump while the user works in it. Check this on every ne
 - A modal with tabs or steps wraps its content in a fixed minimum height (`min-h-[...]`, sized to the tallest tab) so switching tabs does not resize the window.
 - Empty, loading and filled states should take roughly the same space (spinner/empty text inside the same area).
 
+## Mobile: sheets and drawers, not page switches
+
+On phones (below `lg`, 1024px) overlays follow the thumb. Check this on every new screen.
+
+- **New `Modal`s get `sheet`**: on mobile it slides up from the bottom like a sheet (max 92dvh, body scrolls); on desktop it stays the centered window. Short choice/filter panels use `BottomSheet` (`@/components/ui/BottomSheet`, `useResponsiveFilters`).
+- **A record's detail next to a list** (ticket, order, …): desktop shows list + detail side by side; mobile keeps the list and opens the detail in `Drawer` (`@/components/ui/Drawer`, full screen from the right). Do not swap list and detail on one page with a "← Back" link. Use `useIsDesktop()` (`@/lib/useMediaQuery`) only for this either/or; everything else stays CSS (`lg:`).
+- The selected record stays in the URL (`?id=`), so the browser back button closes the drawer. Reuse `TicketLayout` for any list + detail screen instead of writing another one.
+- Older modals are not converted all at once; convert one when you touch it.
+
 ## Number fields and display helpers
 
 - Important numeric fields (price, credits, quantity, measures, durations, ids) never accept letters. Use the shared inputs from

@@ -93,7 +93,9 @@ function SupportPageInner() {
         ) : (
           <TicketLayout
             list={list}
-            detail={id ? <UserTicketPane key={id} id={id} onChanged={patchRow} onBack={() => router.push("/support")} /> : null}
+            detail={id ? <UserTicketPane key={id} id={id} onChanged={patchRow} /> : null}
+            detailTitle={t(`Talep #${id}`, `Request #${id}`)}
+            onCloseDetail={() => router.push("/support")}
             placeholder={t("Soldan bir talep seç ya da yenisini aç.", "Pick a request on the left or open a new one.")}
           />
         )}
