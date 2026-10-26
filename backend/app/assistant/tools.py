@@ -71,7 +71,7 @@ def _taxonomy() -> dict[int, str]:
     return _taxonomy_cache
 
 
-MAX_DRAFT_REJECTIONS = 2
+MAX_DRAFT_REJECTIONS = 1  # model iki başarısız çağrıdan sonra bırakıp kullanıcıya soruyor: ikinci çağrı mutlaka taslağı kurar (kalan sorunlar uyarı olarak kartta)
 
 
 @dataclass
@@ -1200,6 +1200,7 @@ def _title_option_problems(options: list[str], said: str, design: str) -> list[s
         if design_words and not words & design_words and not any(d[:5] in w for d in design_words for w in words):
             problems.append(f"'{o}': ürünün görünen tasarımını ({design}) anlatmıyor")
         problems += [f"'{o}': " + p for p in quality.material_problems(o, said)]
+        problems += [f"'{o}': " + p for p in quality.title_problems(o, len(sizes) > 1 or not sizes)]  # taslak denetiminin aynısı (tekrar eden kelime, hediye ifadesi…): kullanıcı seçince reddedilmesin
     return problems
 
 
@@ -1304,6 +1305,21 @@ def auto_choices(ctx: Ctx) -> None:
         options.append(tr("Ek görsel üret", "Generate more images"))
     options += [tr("Boş özellikleri doldur", "Fill the empty attributes"), tr("Etiketleri iyileştir", "Improve the tags")]
     ctx.cards.append({"type": "choices", "kind": "suggestions", "question": tr("Sıradaki adım?", "Next step?"), "options": options[:3]})
+
+
+_PAREN_OPTIONS = re.compile(r"[(]([^()]{1,40}(?:[ ]?/[ ]?[^()]{1,40}){1,3})[)][ ]*[?]?[ ]*$")
+
+
+def auto_yes_no(ctx: Ctx, reply: str) -> None:
+    """Model soruyu düz metin olarak sordu ("... (Evet / Hayır)") ve kart sunmadıysa seçenekleri düğme yapar: kullanıcı "evet" yazmak zorunda kalmasın."""
+    if any(c.get("type") in ("choices", "brief") for c in ctx.cards):
+        return
+    m = _PAREN_OPTIONS.search((reply or "").strip())
+    if not m:
+        return
+    options = [o.strip() for o in m.group(1).split("/") if o.strip()]
+    if 2 <= len(options) <= 4:
+        ctx.cards.append({"type": "choices", "kind": "question", "question": tr("Seçim", "Choose"), "options": options})
 
 
 def _pick_template(ctx: Ctx, a: dict):

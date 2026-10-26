@@ -21,7 +21,13 @@ export default function BriefCard({ card, onAsk, active }: { card: Brief; onAsk?
   const typed = card.questions.map((q, i) => ({ q, i })).filter(({ q }) => q.options.length === 0);
 
   const send = () => {
-    const lines = card.questions.flatMap((q, i) => (picked[i] ? [`${q.label}: ${picked[i]}`] : []));
+    const chosen = card.questions.flatMap((q, i) => (picked[i] ? [{ label: q.label, value: picked[i] }] : []));
+    // Tek soru, yalnızca seçim: mesaj yalnızca seçilen değerdir ("Powder coated"); birden çok sorulu kartta hangi cevabın hangi soruya ait olduğu için "soru: cevap" kalır.
+    if (card.questions.length === 1 && chosen.length === 1 && !text.trim()) {
+      onAsk?.(chosen[0].value);
+      return;
+    }
+    const lines = chosen.map((c) => `${c.label}: ${c.value}`);
     // Hem hazır cevap seçildi hem yazıldıysa model hangisinin geçerli olduğunu bilemez ve geri sorar: yazılan açıkça öncelikli işaretlenir.
     if (text.trim()) lines.push(lines.length > 0 ? `${t("Kendi yazdıklarım (seçimlerle çelişirse BUNLAR geçerli)", "What I wrote myself (wins over the choices above if they conflict)")}: ${text.trim()}` : text.trim());
     onAsk?.(lines.join("\n") || t("Sen karar ver", "You decide"));

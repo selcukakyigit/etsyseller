@@ -32,5 +32,16 @@ await click([...el.querySelectorAll("button")].find((b) => b.textContent === "Me
 await click(create());
 eq(sent[1].startsWith("Başlık seç: Metal Wall Art B\n"), true, "seçim ilk satırda");
 eq(/BUNLAR geçerli|wins over/.test(sent[1]) && sent[1].endsWith("abstract line art bubble metal wall decor gibi"), true, "yazılan öncelikli işaretli");
+// 3) tek soru + yalnızca seçim: mesaj yalnızca seçilen değer
+await act(async () => root.unmount());
+const el2 = document.createElement("div");
+document.body.appendChild(el2);
+const root2 = createRoot(el2);
+const single = { type: "brief", understood: [], questions: [{ label: "Finish for outdoor use (powder coat or raw metal)?", type: "text", options: ["Powder coated", "Raw metal"] }] };
+const sent2 = [];
+await act(async () => root2.render(h(BriefCard, { card: single, onAsk: (m) => sent2.push(m), active: true })));
+await click([...el2.querySelectorAll("button")].find((b) => b.textContent === "Powder coated"));
+await click([...el2.querySelectorAll("button")].find((b) => /listeyi oluştur|create the listing/.test(b.textContent)));
+eq(sent2, ["Powder coated"], "tek soruda mesaj yalnızca seçilen değer");
 console.log("BRIEF KARTI TESTLERİ GEÇTİ");
 process.exit(0);

@@ -42,7 +42,7 @@ def test_title_question_with_options_becomes_title_card():
     ctx = _ctx(["one", "two", "three"])
     out = brief_check(ctx, {"understood": UNDERSTOOD, "design": "thermos", "questions": [
         {"label": "Fiyat?", "type": "price"},
-        {"label": "Başlık seç", "options": ["One Thermos", "Two Thermos", "Three Thermos"]},
+        {"label": "Başlık seç", "options": ["One Insulated Travel Thermos Bottle", "Two Insulated Travel Thermos Bottle", "Three Insulated Travel Thermos Bottle"]},
     ]})
     assert out["ok"]
     types = [q["type"] for q in ctx.cards[0]["questions"]]

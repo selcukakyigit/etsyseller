@@ -557,7 +557,23 @@ def test_title_options_must_show_the_design_and_not_pick_one_size_colour_or_inve
     design = "interlocking bubble cells line art"
     bad = tools._title_option_problems(["metal wall art 2mm steel 140x49 cm black finish"], said, design)
     assert len(bad) >= 3, bad  # tek ölçü, tek renk/finish, steel, tasarım yok
-    assert not tools._title_option_problems(["Abstract Metal Wall Art, Bubble Cells Line Art Decor, 2mm Metal Wall Panel"], said, design)
+    assert not tools._title_option_problems(["Abstract Bubble Cells Line Art Metal Wall Decor"], said, design)
     assert tools._title_option_problems(["Metal Wall Decor, Modern Industrial Sign"], said, design), "tasarımı anlatmayan öneri reddedilir"
-    one = tools._title_option_problems(["Metal Wall Art Bubble Line Art 140x49 cm"], "140x49 cm metal", "bubble line art")
+    one = tools._title_option_problems(["Metal Wall Art Bubble Line Decor 140x49 cm"], "140x49 cm metal", "bubble line art")
     assert not one, "tek ölçülü üründe ölçü başlıkta serbest"
+
+
+def test_a_plain_text_choice_question_becomes_buttons_and_titles_pass_the_draft_audit():
+    ctx = tools.Ctx(db=None, shop=None, user_id=1, today=None)
+    tools.auto_yes_no(ctx, "İnçleri benim dönüştürmemi ister misiniz? (Evet / Hayır)")
+    assert ctx.cards[0]["options"] == ["Evet", "Hayır"] and ctx.cards[0]["kind"] == "question"
+    ctx2 = tools.Ctx(db=None, shop=None, user_id=1, today=None)
+    tools.auto_yes_no(ctx2, "Tamamdır, taslak hazır.")
+    tools.auto_yes_no(ctx2, "Bu bir cümle (not) bitti.")
+    assert ctx2.cards == []
+    ctx3 = tools.Ctx(db=None, shop=None, user_id=1, today=None, cards=[{"type": "brief"}])
+    tools.auto_yes_no(ctx3, "Soru? (A / B)")
+    assert len(ctx3.cards) == 1, "zaten kart varsa eklenmez"
+    said = "2mm metal 140x49 cm, 118x40 cm renkler black white"
+    assert any("tekrar" in p for p in tools._title_option_problems(["outdoor metal wall art abstract metal silhouette"], said, "abstract silhouette")), "'metal' iki kez: öneri olarak sunulmaz"
+    assert tools.MAX_DRAFT_REJECTIONS == 1

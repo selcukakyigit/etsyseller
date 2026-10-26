@@ -477,6 +477,7 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
             "I could not apply that change to the draft; the tool did not change anything. I can try another way, or you can do it in the editor.",
         )
     reply = _guard_media_reply(called, ctx.cards, _guard_batch_reply(called, ctx.cards, reply))
+    tools.auto_yes_no(ctx, reply)
     ctx.cards.sort(key=lambda c: {"listing_draft": 1, "brief": 2, "choices": 2}.get(c.get("type"), 0))  # güncel listing kartı(ları) cevabın en altında (sıra korunur)
     assistant = ChatMessage(
         session_id=session.id, role="assistant", content=reply or tr("Bir cevap üretemedim, tekrar dener misin?", "I couldn't produce an answer, could you try again?"),
