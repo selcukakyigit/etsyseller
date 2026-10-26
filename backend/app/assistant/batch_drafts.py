@@ -58,7 +58,8 @@ BATCH_DENIED = frozenset({
     "create_listings_from_images", "start_batch_listings", "batch_listings_status", "stop_batch_listings", "bulk_update_listings", "rewrite_listings", "continue_rewrite", "stop_rewrite",
     # Etsy'ye giden ya da geri dönüşü zor işler (yayınlama, kapatma, silme)
     "publish_listing_draft", "deactivate_listing", "delete_listing", "discard_listing_changes", "copy_listing",
-    # resim/video üretimi ve düzenleme (karar A: toplu işte üretilmez, kredi harcar)
+    # resim/video üretimi ve düzenleme (karar A: toplu işte üretilmez, kredi harcar; üretim ayrı bir iştir: plan_listing_media, maliyet kartı + düğmeyle onay)
+    "plan_listing_media", "media_job_status", "stop_media_job",
     "generate_chat_image", "edit_chat_image", "add_chat_image_to_listing", "regenerate_listing_image", "upscale_listing_photo", "crop_listing_photo", "delete_listing_photo", "move_listing_photo",
     "set_photo_alt_text", "set_variation_photo", "generate_listing_video", "add_video_to_listing", "remove_listing_video", "generation_options", "make_pin_image", "pinterest_content",
     # taslak sonrası ince ayar (şimdilik sohbetten tek tek): varyasyon, stok, kişiselleştirme, dijital dosya, tür

@@ -252,7 +252,7 @@ _ASKS_CONFIRMATION = re.compile(
     r"yap[ae]yım m[ıi]|oluşturay[ıi]m m[ıi]|deneyeyim m[ıi]|\bse[çc]\b|are you sure|do you confirm|shall i|which (?:one|option)", re.IGNORECASE)
 
 # Etsy'ye gerçekten giden / geri dönüşü zor işler: bunlarda onay istemek doğrudur, ısrar edilmez.
-_CONFIRM_TOOLS = frozenset({"publish_listing_draft", "deactivate_listing", "mark_order_shipped", "delete_listing", "discard_listing_changes", "generate_listing_video", "rewrite_listings", "bulk_update_listings", "publish_staged_batch"})
+_CONFIRM_TOOLS = frozenset({"publish_listing_draft", "deactivate_listing", "mark_order_shipped", "delete_listing", "discard_listing_changes", "generate_listing_video", "plan_listing_media", "rewrite_listings", "bulk_update_listings", "publish_staged_batch"})
 
 _STALL_NOTE = (
     "\n\n[SİSTEM NOTU: Önceki denemende kullanıcıdan onay/seçim istedin işi yapmadan 'başlıyorum' dedin ya da yazma aracı çağırmadan 'güncelledim/ekledim' dedin (araç sonucunu görmeden yapıldı denmez). Kullanıcının isteği zaten açık ve onaylı; "
@@ -271,7 +271,7 @@ _DONE_CLAIM = re.compile(
 _CARD_TOOLS = frozenset({"ask_user", "brief_check"})
 _READ_ONLY_TOOLS = frozenset({
     "find_category", "shop_defaults", "similar_listings", "keyword_pool", "shop_options", "search_listings", "get_listing", "get_category_attributes", "workspace_status",
-    "market_research", "suggest_price", "batch_listings_status", "listing_health_status", "generation_options", "list_description_templates", "personalization_library", "ask_user", "brief_check",
+    "market_research", "suggest_price", "batch_listings_status", "media_job_status", "listing_health_status", "generation_options", "list_description_templates", "personalization_library", "ask_user", "brief_check",
 })
 
 
@@ -330,6 +330,26 @@ def _guard_batch_reply(called: set[str], cards: list[dict], reply: str) -> str:
     return tr(
         f"{job['total']} ürün için taslaklar hazırlanıyor; ilerleme kartta. Bitince taslaklara kartın içinden ulaşabilirsin. Hiçbiri Etsy'ye gitmez; fiyatı söylenmeyenler \"Fiyat gir\" eksiğiyle kurulur.",
         f"Drafts for {job['total']} products are being prepared; progress is in the card. When done you can open them from the card. None goes to Etsy; products without a price are created with a \"Set a price\" gap.",
+    )
+
+
+# Medya planı turunda "ürettim / ekledim" demek yalandır: üretimi kullanıcının [Üret] düğmesi başlatır (kredi harcar), basılana kadar hiçbir şey yapılmaz.
+_MEDIA_CLAIM = re.compile(r"(?:üretildi|üretiyorum|üretiyoruz|üretilecek|ürettim|eklendi|ekledim|başlad[ıi]|tamamlandı|oluşturuldu|generated|generating|started|added|completed|created)", re.IGNORECASE)
+
+
+def _guard_media_reply(called: set[str], cards: list[dict], reply: str) -> str:
+    """Medya planı bu turda çıktıysa: öneri butonları kalkar ve "ürettim/başladı" diyen cevap sunucunun maliyet cümlesiyle değişir (kural istemde de var; burada KODLA zorlanır)."""
+    if "plan_listing_media" not in called:
+        return reply
+    cards[:] = [c for c in cards if not (c.get("type") == "choices" and c.get("kind") == "suggestions")]
+    job = next((c for c in cards if c.get("type") == "media_job"), None)
+    if job is None or not (_MEDIA_CLAIM.search(reply) or not reply.strip()):
+        return reply
+    q = job["quote"]
+    cost = tr(f"≈ {q['credits']} kredi", f"≈ {q['credits']} credits") if q.get("credits_enabled") else tr("kredi sistemi kapalı, ücretsiz", "the credit system is off, so it is free")
+    return tr(
+        f"{q['images']} resim ve {q['videos']} video için maliyet kartı hazır ({cost}). Karttaki [Üret]'e basmadan hiçbir şey üretilmez ve kredi harcanmaz.",
+        f"The cost card is ready for {q['images']} images and {q['videos']} videos ({cost}). Nothing is generated and no credits are spent until you press [Generate] on the card.",
     )
 
 
@@ -455,7 +475,7 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
             "Bu değişikliği taslağa uygulayamadım; ilgili araç bir şeyi değiştirmedi. İstersen farklı bir yolla yeniden deneyeyim ya da editörden yapabilirsin.",
             "I could not apply that change to the draft; the tool did not change anything. I can try another way, or you can do it in the editor.",
         )
-    reply = _guard_batch_reply(called, ctx.cards, reply)
+    reply = _guard_media_reply(called, ctx.cards, _guard_batch_reply(called, ctx.cards, reply))
     ctx.cards.sort(key=lambda c: {"listing_draft": 1, "brief": 2, "choices": 2}.get(c.get("type"), 0))  # güncel listing kartı(ları) cevabın en altında (sıra korunur)
     assistant = ChatMessage(
         session_id=session.id, role="assistant", content=reply or tr("Bir cevap üretemedim, tekrar dener misin?", "I couldn't produce an answer, could you try again?"),

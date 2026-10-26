@@ -50,6 +50,14 @@ class Reference:
     image_draft_file_id: str | None = None
 
 
+def source_photo(db: Session, shop: Shop, listing_id: int, photo: dict) -> tuple[bytes, str] | None:
+    """Listing fotoğrafının (Etsy'deki ya da henüz yüklenmemiş taslak) baytları ve türü; okunamazsa None."""
+    try:
+        return _reference_bytes(db, shop, listing_id, Reference(image_id=photo.get("listing_image_id"), image_draft_file_id=photo.get("draft_file_id")))
+    except (FileNotFoundError, OSError, ValueError):
+        return None
+
+
 def _reference_bytes(db: Session, shop: Shop, listing_id: int, ref: Reference) -> tuple[bytes, str] | None:
     if ref.image_id is not None:
         return _source_image_bytes(db, shop, listing_id, ref.image_id, ref.image_draft_file_id)

@@ -774,6 +774,14 @@ export type RewriteState = {
   samples: { id: number; title: string; before: BulkBrief; after: BulkBrief; detail: { before: RewriteText; after: RewriteText }; warnings: string[] }[];
   listing_ids: number[]; changed: number; skipped: { reason: string; count: number }[]; estimate: { listings: number; credits: number; needs_confirmation: boolean };
 };
+/** Çoklu medya üretimi (ek resimler + video): maliyet kartı ve ilerleme (backend assistant/media_jobs.py public()). */
+export type MediaState = {
+  job_id: string; status: "quote" | "running" | "done" | "stopped";
+  quote: { per_image: number; per_video: number; images: number; videos: number; credits: number; credits_enabled: boolean; balance: number | null; affordable: boolean };
+  items: { listing_id: number; title: string; images: number; video: boolean; credits: number; skipped: string[]; state: "queued" | "running" | "done" | "failed" | "skipped"; images_done: number; video_done: boolean; errors: string[] }[];
+  note: string; done: number; failed: number; running: number; skipped: number; seconds: number; images_total: number; videos_total: number;
+};
+
 /** Düğmeli onay kartının durumu (backend assistant/actions.py public()). */
 export type ActionState = {
   action_id: string; kind: string; status: "pending" | "done" | "cancelled" | "expired";
@@ -1598,6 +1606,7 @@ export type ChatCard =
   | ({ type: "rewrite_job" } & RewriteState)
   | ({ type: "batch_job" } & BatchState)
   | ({ type: "confirm_action" } & ActionState)
+  | ({ type: "media_job" } & MediaState)
   | { type: "social_pins"; listing_id: number; title: string; pins: { title: string; description: string; hashtags: string[]; board: string }[] }
   | { type: "listing_update"; listing_id: number; title: string; edit_url: string; changes: string[]; tags: string[] }
   | { type: "video_job"; job: string; listing_id: number; credits: number; prompt: string; duration: number; started_at: number; source: "chat" | "listing" }

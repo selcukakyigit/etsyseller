@@ -5,7 +5,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.assistant import actions, batch_drafts, llm, memory, service
+from app.assistant import actions, batch_drafts, llm, media_jobs, memory, service
 from app.auth.models import User
 from app.core import blobstore
 from app.core.byte_range import ranged
@@ -142,6 +142,35 @@ def action_cancel(action_id: str, shop: Shop = Depends(get_owned_shop)):
     action = _action(action_id, shop)
     actions.cancel(action)
     return actions.public(action)
+
+
+def _media_job(job_id: str, shop: Shop) -> media_jobs.Job:
+    job = media_jobs.get(job_id, shop.id)
+    if job is None:
+        raise HTTPException(404, tr("İş bulunamadı (süresi dolmuş ya da sunucu yeniden başlamış olabilir). O ana dek üretilenler taslakta duruyor.", "Job not found (it may have expired or the server restarted). What was generated so far stays in the drafts."))
+    return job
+
+
+@router.get("/media-jobs/{job_id}")
+def media_job(job_id: str, shop: Shop = Depends(get_owned_shop)):
+    return media_jobs.public(_media_job(job_id, shop))
+
+
+@router.post("/media-jobs/{job_id}/start", dependencies=[Depends(require_ai_enabled)])
+def media_job_start(job_id: str, shop: Shop = Depends(get_owned_shop)):
+    """Maliyet kartındaki [Üret]: üretimi (ve kredi harcamasını) kullanıcının tıklaması başlatır, model değil."""
+    job = _media_job(job_id, shop)
+    error = media_jobs.start(job)
+    if error:
+        raise HTTPException(402, error)
+    return media_jobs.public(job)
+
+
+@router.post("/media-jobs/{job_id}/stop")
+def media_job_stop(job_id: str, shop: Shop = Depends(get_owned_shop)):
+    job = _media_job(job_id, shop)
+    media_jobs.stop(job)
+    return media_jobs.public(job)
 
 
 @router.get("/sessions")
