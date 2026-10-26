@@ -77,7 +77,7 @@ function PropertyRow({
   }
 
   return (
-    <div className="rounded-lg border border-neutral-200 p-3 dark:border-neutral-800">
+    <div data-property-id={def.property_id} className="rounded-lg border border-neutral-200 p-3 transition dark:border-neutral-800">
       <div className="mb-2">
         <p className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
           {def.display_name}

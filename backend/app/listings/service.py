@@ -687,7 +687,8 @@ def update_listing_fields(
         row = _fetch_and_cache_one(db, shop, EtsyClient(db, shop), listing_id)
     before = json.loads(row.raw_json)
 
-    data = payload.model_dump(exclude_none=True)
+    # Boş liste Etsy'ye gönderilemez (form alanı düşer, Etsy'de değişmez); yerel önbellek de "boşaltılmış" diye yanlış güncellenmesin.
+    data = {k: v for k, v in payload.model_dump(exclude_none=True).items() if v != []}
     if data:
         client = EtsyClient(db, shop)
         etsy_listings.update_listing(client, listing_id, data)

@@ -787,10 +787,16 @@ export type WorkingCopy = ListingEdit & {
   managed_property_ids: number[];
 };
 
+export type PublishField = { section: string; label: string; property_id: number | null };
+
 export type PublishResult = {
   ok: boolean;
   steps: { name: string; ok: boolean; changed?: boolean; error?: string }[];
   error: string | null;
+  /** Yayın belirli bir alanda takıldıysa: düzenleyicideki bölüm kimliği, alanın adı ve (özellikse) kimliği; ekran "alana git" düğmesi gösterir. */
+  field?: PublishField | null;
+  /** Etsy'nin ham cevabı (teknik); yalnızca küçük bir not olarak gösterilir. */
+  detail?: string;
   edit: ListingEdit | null;
   /** Etsy'de sen kaydettikten sonra değişmiş alanlar; doluysa hiçbir şey yazılmadı. */
   conflicts?: { key: string; label: string }[];

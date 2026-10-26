@@ -57,6 +57,7 @@ export default function ListingEditPage() {
   const job = usePublishJobs().get(listingId);
   const conflict = job?.phase === "error" ? job.conflicts : undefined;
   const publishError = job?.phase === "error" && !job.conflicts ? job.error : undefined;
+  const publishField = job?.phase === "error" ? job.field : undefined;
   const [closed, setClosed] = useState<Record<string, boolean>>({});
   // Odak modu (?focus=photo|price|title_tags|description|text): yalnızca sıradaki adımın alanı görünür, bir turda tek şey değişir.
   const [focus, setFocus] = useState<FocusKey | null>(null);
@@ -805,6 +806,24 @@ export default function ListingEditPage() {
               <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm dark:border-red-900 dark:bg-red-950/40">
                 <p className="mb-1 font-semibold text-red-700 dark:text-red-300">{t("Yayın tamamlanamadı", "Publishing did not finish")}</p>
                 <p className="text-red-700 dark:text-red-300">{publishError}</p>
+                {publishField && (
+                  <button
+                    onClick={() => {
+                      goTo(publishField.section);
+                      // Açılan bölümde ilgili özellik satırına kaydır ve kısa süre vurgula.
+                      setTimeout(() => {
+                        const row = publishField.property_id ? document.querySelector<HTMLElement>(`[data-property-id="${publishField.property_id}"]`) : null;
+                        row?.scrollIntoView({ behavior: "smooth", block: "center" });
+                        row?.classList.add("ring-2", "ring-[#D97757]");
+                        setTimeout(() => row?.classList.remove("ring-2", "ring-[#D97757]"), 3000);
+                      }, 400);
+                    }}
+                    className="mt-2 rounded-full border border-red-300 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950"
+                  >
+                    {t(`«${publishField.label}» alanına git`, `Go to «${publishField.label}»`)}
+                  </button>
+                )}
+                {job?.detail && <p className="mt-2 text-[11px] text-neutral-400 dark:text-neutral-500">{t("Etsy'nin cevabı", "Etsy said")}: {job.detail}</p>}
                 <p className="mt-2 text-xs text-neutral-500">
                   {t("Yerel kaydın korunuyor; sorunu düzeltip tekrar yayınlayınca kalan farklar tamamlanır.", "Your local save is kept; fix the problem and publish again to finish the remaining changes.")}
                 </p>

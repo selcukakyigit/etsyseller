@@ -183,6 +183,9 @@ class EtsyClient:
 # (belge: tags = "A comma-separated list of tag strings"). httpx listeyi tekrarlanan alanlar olarak (tags=a&tags=b…)
 # gönderirse Etsy YALNIZCA SONUNCUYU alır: 13 etiketten 12'si sessizce kaybolur. Bu yüzden listeleri burada birleştiriyoruz.
 COMMA_FIELDS = {"tags", "materials", "style", "image_ids", "production_partner_ids", "value_ids", "values"}
+# Etsy'nin ZORUNLU tuttuğu liste alanları: boş olsa bile alan gönderilir (özellik güncellemede `value_ids`; serbest sayısal değerlerin, ör. ebat, kimliği yoktur).
+# Gönderilmezse Etsy "Missing input parameter: [value_ids]" ile reddeder.
+REQUIRED_LISTS = {"value_ids"}
 
 
 def encode_form(data: dict) -> dict:
@@ -191,7 +194,9 @@ def encode_form(data: dict) -> dict:
         if key in COMMA_FIELDS and isinstance(value, (list, tuple)):
             items = [str(v) for v in value]
             if not items:
-                continue  # boş liste: alan hiç gönderilmez (eski davranış)
+                if key in REQUIRED_LISTS:
+                    out[key] = ""
+                continue  # diğer boş listeler: alan hiç gönderilmez (eski davranış)
             if any("," in i for i in items):
                 out[key] = list(value)  # virgül içeren değer birleştirilemez; nadir, olduğu gibi bırak
                 _log.warning("Etsy form alanı %s virgül içeren değer taşıyor; birleştirilmedi", key)

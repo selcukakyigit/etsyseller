@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { api } from "@/lib/api";
+import { api, PublishField } from "@/lib/api";
 import { tNow } from "@/lib/i18n";
 
 /**
@@ -16,6 +16,9 @@ export type PublishJob = {
   /** Etsy'ye gönderimin başladığı an (ilerleme çubuğu buradan hesaplanır). */
   startedAt: number;
   error?: string;
+  /** Hata belirli bir alandan geldiyse: düzenleyici o alana götüren düğme gösterir. `detail`: Etsy'nin ham cevabı (küçük not). */
+  field?: PublishField;
+  detail?: string;
   warnings?: string[];
   /** Etsy'de sonradan değişmiş alanlar; doluysa hiçbir şey yazılmadı (editör çözümü gösterir). */
   conflicts?: { key: string; label: string }[];
@@ -86,9 +89,11 @@ async function run(shopId: number, listingId: number, queuedAt: number, force: b
       setJob(listingId, { phase: "error", queuedAt, startedAt, conflicts: r.conflicts, error });
       outcome = { ok: false, error };
     } else if (!r.ok) {
-      const failed = r.steps.filter((st) => !st.ok).map((st) => `${st.name}${st.error ? `: ${st.error}` : ""}`);
-      const error = [r.error ?? tNow("Yayın tamamlanamadı", "Publishing did not finish"), ...failed].join(" — ");
-      setJob(listingId, { phase: "error", queuedAt, startedAt, error });
+      // Başarısız adımın hatası genelde r.error ile aynıdır: tekrar etmeden, adım adıyla birlikte tek kez gösterilir.
+      const main = r.error ?? tNow("Yayın tamamlanamadı", "Publishing did not finish");
+      const failed = r.steps.filter((st) => !st.ok && st.error !== main).map((st) => `${st.name}${st.error ? `: ${st.error}` : ""}`);
+      const error = [main, ...failed].join(" — ");
+      setJob(listingId, { phase: "error", queuedAt, startedAt, error, field: r.field ?? undefined, detail: r.detail || undefined });
       outcome = { ok: false, error };
     } else {
       const warnings = r.warnings ?? [];

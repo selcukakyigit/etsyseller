@@ -23,6 +23,7 @@ from app.etsy import videos as etsy_videos
 from app.etsy.client import write_count,  EtsyClient
 from app.listings import changes, image_cache, service
 from app.core import blobstore
+from app.core.i18n import tr
 from app.listings.models import DraftFile, ListingDraft, ListingLocal
 from app.listings.schemas import (
     ImageOrderIn,
@@ -339,6 +340,22 @@ def _err(exc: Exception) -> str:
     return getattr(exc, "message", None) or str(exc) or exc.__class__.__name__
 
 
+def is_cleared(value) -> bool:
+    """Alan boşaltılmış mı (None ya da boş liste/metin)? Etsy'ye boş değer yazılamaz: yazılırsa alan formdan düşer ve Etsy'de hiçbir şey değişmez."""
+    return value is None or value == [] or value == ""
+
+
+class PublishFieldError(Exception):
+    """Yayın, belirli bir alanda başarısız oldu. Kullanıcıya Etsy'nin teknik mesajı yerine alanın adı ve o alana giden bağlantı gösterilir
+    (`field`: düzenleyicideki bölüm, alanın adı ve varsa özellik kimliği); Etsy'nin ham cevabı `detail`de küçük bir not olarak kalır."""
+
+    def __init__(self, message: str, *, section: str, label: str, property_id: int | None = None, detail: str = ""):
+        super().__init__(message)
+        self.message = message
+        self.detail = detail
+        self.field = {"section": section, "label": label, "property_id": property_id}
+
+
 CORE_LABELS = {
     "title": "Başlık", "description": "Açıklama", "tags": "Etiketler", "materials": "Materyaller", "style": "Stil",
     "taxonomy_id": "Kategori", "who_made": "Kim yaptı", "when_made": "Ne zaman yapıldı", "is_supply": "Tedarik ürünü",
@@ -491,7 +508,10 @@ def publish_local(db: Session, shop: Shop, user_id: int, listing_id: int, force:
             _log.info("Yayın %s: %s tamam (değişti=%s)", listing_id, name, write_count() > before)
             return True
         except Exception as exc:  # noqa: BLE001 - adımın hatasını kullanıcıya göster, kalanı durdur
-            steps.append({"name": name, "ok": False, "error": _err(exc)})
+            steps.append({
+                "name": name, "ok": False, "error": _err(exc),
+                **({"field": exc.field, "detail": exc.detail} if isinstance(exc, PublishFieldError) else {}),
+            })
             _log.warning("Yayın %s: %s BAŞARISIZ: %s", listing_id, name, _err(exc))
             return False
 
@@ -500,9 +520,10 @@ def publish_local(db: Session, shop: Shop, user_id: int, listing_id: int, force:
         for k, x in verdict["core"].items():
             if x == "skip":
                 continue
-            if work[k] is None and theirs.get(k) is not None:
-                # Boş değer Etsy'ye gönderilemiyor (belgesiz); sessizce yutmak yerine kullanıcıya bildir.
-                warnings.append(f"{_label(k)} Etsy'den boşaltılamıyor; Etsy'de elle değiştir.")
+            if is_cleared(work[k]):
+                # Boş değer (boş etiket/materyal/stil listesi dahil) Etsy'ye gönderilemiyor; sessizce yutmak yerine kullanıcıya bildir.
+                if not is_cleared(theirs.get(k)):
+                    warnings.append(tr(f"{_label(k)} Etsy'den boşaltılamıyor; Etsy'de elle değiştir.", f"{_label(k)} cannot be cleared through Etsy's API; change it on Etsy."))
                 continue
             changed[k] = work[k]
         # Etsy yalnızca active/inactive yazmaya izin verir (draft, sold_out, expired… salt okunur).
@@ -518,13 +539,20 @@ def publish_local(db: Session, shop: Shop, user_id: int, listing_id: int, force:
             if x == "skip":
                 continue
             w, cur = mine.get(pid), live.get(pid)
-            if w and (w.get("values") or w.get("value_ids")):
-                service.update_listing_property(
-                    db, shop, listing_id, pid,
-                    PropertyUpdateIn(value_ids=w.get("value_ids", []), values=w.get("values", []), scale_id=w.get("scale_id")),
-                )
-            elif cur is not None:
-                service.delete_listing_property(db, shop, listing_id, pid)
+            label = str((w or cur or {}).get("property_name") or pid)
+            try:
+                if w and (w.get("values") or w.get("value_ids")):
+                    service.update_listing_property(
+                        db, shop, listing_id, pid,
+                        PropertyUpdateIn(value_ids=w.get("value_ids", []), values=w.get("values", []), scale_id=w.get("scale_id")),
+                    )
+                elif cur is not None:
+                    service.delete_listing_property(db, shop, listing_id, pid)
+            except Exception as exc:  # noqa: BLE001 - hangi özellikte takıldığını söyle
+                raise PublishFieldError(
+                    tr(f"«{label}» özelliği Etsy'ye yazılamadı. Değerini ve birimini kontrol edip tekrar yayınla.", f"The attribute «{label}» could not be written to Etsy. Check its value and unit, then publish again."),
+                    section="sec-attributes", label=label, property_id=pid, detail=_err(exc),
+                ) from exc
 
     def images():
         if verdict["images"] == "skip":
@@ -635,7 +663,10 @@ def publish_local(db: Session, shop: Shop, user_id: int, listing_id: int, force:
     ]
     for name, fn in pipeline:
         if not step(name, fn):
-            return {"ok": False, "steps": steps, "error": steps[-1]["error"], "edit": None, "warnings": warnings, "conflicts": []}
+            return {
+                "ok": False, "steps": steps, "error": steps[-1]["error"], "edit": None, "warnings": warnings, "conflicts": [],
+                "field": steps[-1].get("field"), "detail": steps[-1].get("detail", ""),
+            }
 
     # Ne değişti, neden (teşhis odağı), AI mi elle mi: ölçüm bu kayda göre yapılır (bkz. insights/impact.py).
     # Etsy'ye yazma bitti; kayıt başarısız olsa bile yayın başarısız sayılmaz (ayrı kayıt noktasında geri alınır).
