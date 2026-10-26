@@ -29,13 +29,15 @@ def world(db, monkeypatch):
     """Sahte listing'ler, bakiye ve üretim: gerçek model, Etsy ve sağlayıcı çalışmaz."""
     shop = _shop(db)
     state = NS(
-        listings={-1: {"title": "Tumbler", "images": 2, "videos": 0}, -2: {"title": "Pillow", "images": 19, "videos": 0}, -3: {"title": "No photo", "images": 0, "videos": 0}},
-        balance=1000, enabled=True, made=[], videos=[], executed=[], image_errors={}, after_image=None, video_error=None,
+        listings={-1: {"title": "Tumbler", "images": 2, "videos": 0}, -2: {"title": "Pillow", "images": 19, "videos": 0}, -3: {"title": "No photo", "images": 0, "videos": 0},
+                  -4: {"title": "Metal art", "images": 1, "videos": 0, "colors": ["Black", "Gold", "White"]}},
+        balance=1000, enabled=True, added={}, made=[], videos=[], executed=[], image_errors={}, after_image=None, video_error=None,
     )
 
     def draft_work(ctx, lid):
         spec = state.listings[lid]
-        return {"title": spec["title"], "images": [{"listing_image_id": 100 + i, "rank": i + 1} for i in range(spec["images"])], "videos": [{} for _ in range(spec["videos"])]}
+        products = [{"property_values": [{"property_name": "Color", "values": [c]}], "offerings": [{}]} for c in spec.get("colors", [])]
+        return {"title": spec["title"], "images": [{"listing_image_id": 100 + i, "rank": i + 1} for i in range(spec["images"] + state.added.get(lid, 0))], "videos": [{} for _ in range(spec["videos"])], "inventory": {"products": products}}
 
     monkeypatch.setattr(tools, "_draft_work", draft_work)
     monkeypatch.setattr(media_jobs, "_prices", lambda seconds, want_video: (PRICES[0], PRICES[1] if want_video else 0))
@@ -45,11 +47,12 @@ def world(db, monkeypatch):
     monkeypatch.setattr(generation, "source_photo", lambda db_, shop_, lid, photo: (b"img", "image/png"))
     monkeypatch.setattr(media_jobs, "WORKERS", 1)
 
-    def make_image(job, ctx, lid, source, shot):
+    def make_image(job, ctx, lid, source, shot, prompt=None):
         if state.image_errors.get(lid):
             return state.image_errors[lid]
         state.balance -= PRICES[0]
-        state.made.append((lid, shot))
+        state.made.append((lid, shot) if prompt is None else (lid, prompt))
+        state.added[lid] = state.added.get(lid, 0) + 1  # eklenen görsel taslakta son sıraya girer
         if state.after_image:
             state.after_image(job)
         return None
@@ -228,3 +231,30 @@ def test_media_words_open_the_tool_group():
     for text in ("şu liste için 10 tane resim üret ve bir de tanıtım videosu", "bütün taslaklara 5 resim ekle", "video üret", "generate 10 images for this listing", "make a promo video"):
         assert "media" in tools.listing_groups(text, None), text
     assert "media" not in tools.listing_groups("başlığı değiştir", None)
+
+
+def test_option_mode_makes_one_image_per_option_and_links_each_to_its_option(world):
+    out, job = _plan(world, listing_id=-4, variation_name="color")
+    q = job.quote
+    assert (q["images"], q["videos"], q["credits"]) == (3, 0, 9) and job.variation == "Color", "seçenek sayısı kadar resim, maliyet kartında"
+    row = media_jobs.public(job)["items"][0]
+    assert row["options"] == ["Black", "Gold", "White"] and media_jobs.public(job)["variation"] == "Color"
+    assert media_jobs.start(job) is None
+    _wait(job, {"done"})
+    prompts = [p for _lid, p in world.made]
+    assert [("Black" in p, "Gold" in p, "White" in p) for p in prompts] == [(True, False, False), (False, True, False), (False, False, True)]
+    assert all("never cropped" in p and "exact product" in p for p in prompts), "ürün aynı ve tamamen görünür"
+    links = [(a["option"], a["photo_number"]) for name, a in world.executed if name == "set_variation_photo"]
+    assert links == [("Black", 2), ("Gold", 3), ("White", 4)], "her görsel eklendiği sırada kendi renk seçeneğine bağlanır (1. fotoğraf özgün)"
+    assert media_jobs.public(job)["images_total"] == 3
+
+
+def test_option_mode_errors_are_readable_and_a_failed_link_is_a_warning_not_a_lost_image(world, monkeypatch):
+    err = media_tools.plan_listing_media(world.ctx, {"listing_id": -1, "variation_name": "Color"})
+    assert "varyasyonu yok" in err["error"], "varyasyonu olmayan listing'e seçenek modu yok"
+    _out, job = _plan(world, listing_id=-4, variation_name="Color")
+    monkeypatch.setattr(tools, "execute", lambda ctx, name, args: world.executed.append((name, args)) or ({"hatalar": ["Etsy tek varyasyona bağlar"]} if name == "set_variation_photo" else {"ok": True}))
+    media_jobs.start(job)
+    _wait(job, {"done"})
+    state = media_jobs.public(job)
+    assert state["images_total"] == 3 and len(state["items"][0]["errors"]) == 3 and "bağlanamadı" in state["items"][0]["errors"][0], "görsel kaybolmaz, bağlama hatası söylenir"

@@ -4,6 +4,7 @@ Akış: plan_listing_media → maliyet kartı ([Üret] [Vazgeç]); araç HİÇB�
 ilerleme aynı kartta, sonuç yerel taslağa eklenir (Etsy'ye gitmez)."""
 from app.assistant import media_jobs
 from app.core.i18n import tr
+from app.listings import inventory_edit
 
 
 def plan_listing_media(ctx, a: dict) -> dict:
@@ -19,16 +20,25 @@ def plan_listing_media(ctx, a: dict) -> dict:
     if len(ids) > media_jobs.MAX_LISTINGS:
         return {"error": f"Bir seferde en fazla {media_jobs.MAX_LISTINGS} listing için medya üretilir ({len(ids)} verildi)."}
     items, unknown = [], []
+    variation = str(a.get("variation_name") or "").strip()
     for lid in ids:
         work, err = tools._work_or_error(ctx, lid)
         if err:
             unknown.append(lid)
             continue
-        items.append({"listing_id": lid, "title": str((work or {}).get("title") or ""), "images": len(work.get("images") or []), "videos": len(work.get("videos") or [])})
+        options: list[str] = []
+        if variation:
+            names = inventory_edit.variation_names(work)
+            real = next((n for n in names if n.lower() == variation.lower()), None)
+            if real is None:
+                return {"error": f"Listing {lid}'de '{variation}' varyasyonu yok (var olanlar: {', '.join(names) or 'hiçbiri'}). Önce varyasyonu kur."}
+            variation = real
+            options = inventory_edit.options(work, real)
+        items.append({"listing_id": lid, "title": str((work or {}).get("title") or ""), "images": len(work.get("images") or []), "videos": len(work.get("videos") or []), "options": options})
     if not items:
         return {"error": "Listing bulunamadı."}
     seconds = int(a.get("video_seconds") or media_jobs.VIDEO_SECONDS[0])
-    job, error = media_jobs.plan(ctx.db, ctx.shop, ctx.user_id, ctx.session_id, items, int(a.get("images_per_listing") or 0), bool(a.get("video")), seconds, str(a.get("instruction") or ""))
+    job, error = media_jobs.plan(ctx.db, ctx.shop, ctx.user_id, ctx.session_id, items, 0 if variation else int(a.get("images_per_listing") or 0), bool(a.get("video")), seconds, str(a.get("instruction") or ""), variation)
     if error:
         return {"error": error}
     state = media_jobs.public(job)
@@ -74,13 +84,14 @@ TOOLS: list[dict] = [
         "name": "plan_listing_media",
         "description": "Bir ya da birden çok listing/taslak için EK RESİM ve/veya ürün VİDEOSU üretimini PLANLAR ve MALİYET KARTI gösterir; kendisi hiçbir şey üretmez, kredi harcamaz. Kullanıcı 'şu listing için 10 resim ve bir tanıtım videosu üret', "
         "'bütün taslaklara 5'er resim ekle', 'video üret' gibi ÇOKLU üretim isterse kullan (tek bir resim istenirse edit_chat_image). Üretim yalnızca kullanıcı karttaki [Üret]'e basınca başlar. Resimler listing'in ilk fotoğrafından, her biri "
-        "farklı bir çekim olarak üretilir (ürün değişmez); video ilk fotoğraftan. Sonuç yerel taslağa eklenir, Etsy'ye gitmez. En çok 15 listing, listing başına en çok 10 resim ve 1 video.",
+        "farklı bir çekim olarak üretilir (ürün değişmez); video ilk fotoğraftan. Sonuç yerel taslağa eklenir, Etsy'ye gitmez. En çok 15 listing, listing başına en çok 10 resim ve 1 video. 'Her renk için bir resim üret ve renge bağla' gibi istekte de BUNU kullan (variation_name='Color'); ayrı edit_chat_image/set_variation_photo çağrıları yapma.",
         "input_schema": {"type": "object", "properties": {
             "listing_ids": {"type": "array", "items": {"type": "integer"}, "maxItems": 15, "description": "Taslak/listing kimlikleri (toplu işin taslakları için batch_listings_status'taki listing_id'ler)"},
             "listing_id": {"type": "integer", "description": "Tek listing için kısayol"},
             "images_per_listing": {"type": "integer", "description": "Listing başına üretilecek ek resim sayısı (0-10)"},
             "video": {"type": "boolean", "description": "Her listing için bir ürün videosu üretilsin mi (kullanıcı istediyse true)"},
             "video_seconds": {"type": "integer", "enum": list(media_jobs.VIDEO_SECONDS), "description": "Video süresi (varsayılan 5)"},
+            "variation_name": {"type": "string", "description": "SEÇENEK MODU ('her renk için bir resim üret ve renge bağla'): varyasyonun adı (ör. Color). Verilirse bu varyasyonun HER seçeneği için bir görsel üretilir (ürün aynı, yalnızca o renk/yüzey) ve otomatik o seçeneğe bağlanır; images_per_listing verme. Etsy fotoğrafı yalnızca TEK varyasyona bağlar"},
             "instruction": {"type": "string", "description": "Kullanıcının resim/video için yönü (ör. 'sıcak oturma odası havası'); yoksa boş"},
         }, "required": []},
     },

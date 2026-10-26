@@ -778,8 +778,8 @@ export type RewriteState = {
 export type MediaState = {
   job_id: string; status: "quote" | "running" | "done" | "stopped";
   quote: { per_image: number; per_video: number; images: number; videos: number; credits: number; credits_enabled: boolean; balance: number | null; affordable: boolean };
-  items: { listing_id: number; title: string; images: number; video: boolean; credits: number; skipped: string[]; state: "queued" | "running" | "done" | "failed" | "skipped"; images_done: number; video_done: boolean; errors: string[] }[];
-  note: string; done: number; failed: number; running: number; skipped: number; seconds: number; images_total: number; videos_total: number;
+  items: { listing_id: number; title: string; images: number; video: boolean; credits: number; skipped: string[]; options?: string[]; state: "queued" | "running" | "done" | "failed" | "skipped"; images_done: number; video_done: boolean; errors: string[] }[];
+  note: string; variation?: string; done: number; failed: number; running: number; skipped: number; seconds: number; images_total: number; videos_total: number;
 };
 
 /** Düğmeli onay kartının durumu (backend assistant/actions.py public()). */

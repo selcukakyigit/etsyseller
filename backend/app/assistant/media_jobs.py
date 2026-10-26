@@ -53,6 +53,14 @@ _PROMPT = (
 )
 
 
+# Seçenek modu ("her renk için bir görsel"): yalnızca seçeneğin adı (renk/yüzey) değişir; ürünün kendisi ve kadraj aynı kalır.
+_OPTION_PROMPT = (
+    "Create a NEW product photo of this exact product in the {variation} option '{option}': change ONLY the product's {variation} to {option} (a realistic {option} finish), "
+    "and keep its shape, proportions, pattern, text and every other detail identical. Show the WHOLE product, fully visible and never cropped at any edge, on a clean neutral studio background. "
+    "No text overlays, no watermarks, no logos or brand names that are not already on the product.{extra}"
+)
+
+
 @dataclass
 class Job:
     shop_id: int
@@ -73,6 +81,7 @@ class Job:
     stop_requested: bool = False
     started: bool = False
     note: str = ""  # "bakiye yetmedi" gibi iş düzeyinde not
+    variation: str = ""  # dolu ise seçenek modu: bu varyasyonun (ör. Color) HER seçeneği için bir görsel üretilir ve seçeneğe bağlanır
     created: float = field(default_factory=time.time)
 
 
@@ -94,15 +103,15 @@ def _prices(seconds: int, want_video: bool) -> tuple[int, int]:
     return per_image, per_video
 
 
-def plan(db, shop: Shop, user_id: int, session_id: int | None, items: list[dict], images_per_listing: int, video: bool, seconds: int, instruction: str) -> tuple[Job | None, str | None]:
-    """Listing'leri ve istenen medyayı doğrular, maliyeti hesaplar, bekleyen (onay kartı) bir iş kurar. `items`: [{"listing_id", "title", "images" (şu an), "videos" (şu an)}]."""
+def plan(db, shop: Shop, user_id: int, session_id: int | None, items: list[dict], images_per_listing: int, video: bool, seconds: int, instruction: str, variation: str = "") -> tuple[Job | None, str | None]:
+    """Listing'leri ve istenen medyayı doğrular, maliyeti hesaplar, bekleyen (onay kartı) bir iş kurar. `items`: [{"listing_id", "title", "images" (şu an), "videos" (şu an), "options" (seçenek modunda varyasyonun seçenekleri)}]."""
     if not items:
         return None, tr("Listing belirtilmedi.", "No listing was given.")
     if len(items) > MAX_LISTINGS:
         return None, tr(f"Bir seferde en fazla {MAX_LISTINGS} listing için medya üretilir.", f"Media can be generated for at most {MAX_LISTINGS} listings at once.")
     if not 0 <= images_per_listing <= MAX_IMAGES_PER_LISTING:
         return None, tr(f"Listing başına en fazla {MAX_IMAGES_PER_LISTING} ek resim üretilir.", f"At most {MAX_IMAGES_PER_LISTING} extra images are generated per listing.")
-    if images_per_listing == 0 and not video:
+    if images_per_listing == 0 and not video and not variation:
         return None, tr("Üretilecek bir şey belirtilmedi (resim sayısı ya da video).", "Nothing to generate was given (image count or video).")
     try:
         per_image, per_video = _prices(seconds, video)
@@ -111,12 +120,15 @@ def plan(db, shop: Shop, user_id: int, session_id: int | None, items: list[dict]
     rows = []
     for it in items:
         slots = max(0, creation.MAX_LISTING_IMAGES - int(it.get("images") or 0))
-        images = min(images_per_listing, slots)
+        options = list(it.get("options") or [])[:MAX_IMAGES_PER_LISTING] if variation else []
+        wanted = len(options) if variation else images_per_listing
+        images = min(wanted, slots)
+        options = options[:images]
         video_ok = video and int(it.get("videos") or 0) < generation.MAX_LISTING_VIDEOS and bool(it.get("images"))  # video bir fotoğraftan üretilir
         rows.append({
             "listing_id": it["listing_id"], "title": str(it.get("title") or "")[:120], "images": images, "video": video_ok,
             "credits": images * per_image + (per_video if video_ok else 0),
-            "skipped": [] + ([tr("Fotoğraf sınırı dolu", "Photo limit reached")] if images < images_per_listing else []) + ([tr("Video eklenemez (fotoğraf yok ya da video sınırı dolu)", "Cannot add a video (no photo or video limit reached)")] if video and not video_ok else []),
+            "options": options, "skipped": [] + ([tr("Fotoğraf sınırı dolu", "Photo limit reached")] if images < wanted else []) + ([tr("Video eklenemez (fotoğraf yok ya da video sınırı dolu)", "Cannot add a video (no photo or video limit reached)")] if video and not video_ok else []),
         })
     total = sum(r["credits"] for r in rows)
     on = credits.enabled()
@@ -130,7 +142,7 @@ def plan(db, shop: Shop, user_id: int, session_id: int | None, items: list[dict]
     with _lock:
         for jid in [k for k, j in _JOBS.items() if now - j.created > JOB_TTL_SECONDS and j.status not in ACTIVE]:
             del _JOBS[jid]
-        job = Job(shop.id, shop.workspace_id, user_id, session_id, rows, images_per_listing, video, seconds, " ".join(str(instruction or "").split())[:300], get_lang(), quote)
+        job = Job(shop.id, shop.workspace_id, user_id, session_id, rows, images_per_listing, video, seconds, " ".join(str(instruction or "").split())[:300], get_lang(), quote, variation=variation)
         job.state = {r["listing_id"]: "queued" for r in rows}
         _JOBS[job.id] = job
     return job, None
@@ -211,7 +223,14 @@ def _produce(job: Job, row: dict, result: dict) -> None:
             if not credits.can_afford(job.workspace_id, job.quote["per_image"]):
                 job.note = tr("Kredi bitti; kalan üretimler durdu.", "Credits ran out; the remaining generations stopped.")
                 return
-            error = _make_image(job, ctx, lid, source, SHOTS[n % len(SHOTS)])
+            option = row["options"][n] if row.get("options") else None
+            error = _make_image(job, ctx, lid, source, SHOTS[n % len(SHOTS)], prompt=_option_prompt(job, option) if option else None)
+            if not error and option:
+                link_error = _link_option(ctx, lid, job.variation, option)
+                result["images"] += 1  # görsel eklendi; bağlanamadıysa uyarı olarak kalır
+                if link_error:
+                    result["errors"].append(link_error)
+                continue
             if error:
                 result["errors"].append(error)
                 if "kota" in error.lower() or "quota" in error.lower():
@@ -233,7 +252,26 @@ def _produce(job: Job, row: dict, result: dict) -> None:
         db.close()
 
 
-def _make_image(job: Job, ctx, lid: int, source: tuple[bytes, str], shot: str) -> str | None:
+def _option_prompt(job: Job, option: str) -> str:
+    extra = f" Direction from the seller: {job.instruction}" if job.instruction else ""
+    return _OPTION_PROMPT.format(variation=job.variation, option=option, extra=extra)
+
+
+def _link_option(ctx, lid: int, variation: str, option: str) -> str | None:
+    """Az önce eklenen (son sıradaki) fotoğrafı varyasyon seçeneğine bağlar. Hata metni ya da None."""
+    from app.assistant import tools
+
+    work = tools._draft_work(ctx, lid)
+    ordered, _ = tools._photo_at(work, 1)
+    out = tools.execute(ctx, "set_variation_photo", {"listing_id": lid, "variation": variation, "option": option, "photo_number": len(ordered)})
+    errors = out.get("hatalar") or ([out["error"]] if out.get("error") else [])
+    if not errors:
+        return None
+    detail = "; ".join(str(e) for e in errors)[:140]
+    return tr(f"{option}: görsel eklendi ama seçeneğe bağlanamadı ({detail}).", f"{option}: the image was added but could not be linked to the option ({detail}).")
+
+
+def _make_image(job: Job, ctx, lid: int, source: tuple[bytes, str], shot: str, prompt: str | None = None) -> str | None:
     """Tek ek resim: üretir ve listing taslağına son sıraya ekler. Hata metni ya da None."""
     from app.ai.image_gen import ImageGenError, guess_extension, regenerate_image
     from app.assistant import tools
@@ -241,7 +279,7 @@ def _make_image(job: Job, ctx, lid: int, source: tuple[bytes, str], shot: str) -
     extra = f" Direction from the seller: {job.instruction}" if job.instruction else ""
     try:
         with metering.bind(metering.Scope(job.workspace_id, job.user_id)):
-            data, mime = regenerate_image(source[0], source[1], _PROMPT.format(shot=shot, extra=extra))
+            data, mime = regenerate_image(source[0], source[1], prompt or _PROMPT.format(shot=shot, extra=extra))
     except (ImageGenError, ValueError, FileNotFoundError) as exc:
         return str(exc)[:160]
     bad, _photo_id = tools._add_photo(ctx, lid, f"ai-media{guess_extension(mime)}", mime, data)
@@ -281,11 +319,11 @@ def public(job: Job) -> dict:
     for r in job.listings:
         res = job.results.get(r["listing_id"], {})
         rows.append({
-            "listing_id": r["listing_id"], "title": r["title"], "images": r["images"], "video": r["video"], "credits": r["credits"], "skipped": r["skipped"],
+            "listing_id": r["listing_id"], "title": r["title"], "images": r["images"], "video": r["video"], "credits": r["credits"], "skipped": r["skipped"], "options": r.get("options", []),
             "state": job.state.get(r["listing_id"], "queued"), "images_done": res.get("images", 0), "video_done": res.get("video", False), "errors": res.get("errors", []),
         })
     states = list(job.state.values())
     return {
-        "job_id": job.id, "status": job.status, "quote": job.quote, "items": rows, "note": job.note, "done": states.count("done"), "failed": states.count("failed"),
+        "job_id": job.id, "status": job.status, "quote": job.quote, "items": rows, "note": job.note, "variation": job.variation, "done": states.count("done"), "failed": states.count("failed"),
         "running": states.count("running"), "skipped": states.count("skipped"), "seconds": job.seconds, "images_total": sum(r["images_done"] for r in rows), "videos_total": sum(1 for r in rows if r["video_done"]),
     }
