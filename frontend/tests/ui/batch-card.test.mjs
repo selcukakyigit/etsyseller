@@ -118,5 +118,15 @@ eq(text().includes("adresten") || text().includes("from link"), true, "adresten 
 eq(text().includes("Tumbler 40 oz") && text().includes("Sayfa okunamadı"), true, "okunan ve okunamayan adresler görünür");
 console.log("6 adresler OK");
 
+// 7) Biten ürünün satırında Önizle düğmesi ve Düzenle bağlantısı var (önizleme modalı tembel yüklenir)
+await act(async () => root4.unmount());
+const root5 = createRoot(el);
+const done = job("done", [item(1, "done", { listing_id: -123, title: "Metal wall art" })]);
+await act(async () => root5.render(h(BatchJobCard, { card: { type: "batch_job", ...done }, shopId: 7 })));
+const previewBtn = [...el.querySelectorAll("button")].find((b) => /Önizle|Preview/.test(b.textContent));
+eq(!!previewBtn, true, "biten ürünün satırında Önizle düğmesi");
+eq(!!el.querySelector('a[href="/listings/-123/edit"]'), true, "Düzenle bağlantısı editöre gider");
+console.log("7 önizle/düzenle OK");
+
 console.log("BATCH KART TESTLERİ GEÇTİ");
 process.exit(0);

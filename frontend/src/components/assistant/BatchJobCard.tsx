@@ -1,13 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import type { BatchEdit, BatchSpec, BatchState, ChatCard } from "@/lib/api";
 import { batchApi } from "@/lib/batchApi";
 import DecimalInput from "@/components/ui/NumberInputs";
 import HelpTip from "@/components/ui/HelpTip";
 import { Spinner } from "@/components/ui/Spinner";
 import { useT } from "@/lib/i18n-client";
+
+// Önizleme modalı (Etsy ürün sayfası görünümü + yayın öncesi kontrol) yalnızca açılınca yüklenir.
+const ListingPreviewModal = lazy(() => import("@/components/listings/ListingPreviewModal"));
 
 type Batch = Extract<ChatCard, { type: "batch_job" }>;
 type Row = BatchState["items"][number];
@@ -162,6 +165,7 @@ export default function BatchJobCard({ card, shopId }: { card: Batch; shopId: nu
   const [edits, setEdits] = useState<Record<number, Partial<BatchSpec>>>({});
   const [gone, setGone] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState<number | null>(null);
   const live = state.status === "analyzing" || state.status === "running";
 
   useEffect(() => {
@@ -246,9 +250,14 @@ export default function BatchJobCard({ card, shopId }: { card: Batch; shopId: nu
                   </span>
                   {i.files.length > 0 && <span className="text-[11px] text-neutral-500 dark:text-neutral-400">📎 {i.files.length}</span>}
                   {i.listing_id && (
-                    <Link href={`/listings/${i.listing_id}/edit`} className="text-[#D97757] hover:underline">
-                      {t("Aç", "Open")}
-                    </Link>
+                    <>
+                      <button type="button" onClick={() => setPreview(i.listing_id)} className="font-medium text-[#D97757] hover:underline">
+                        {t("Önizle", "Preview")}
+                      </button>
+                      <Link href={`/listings/${i.listing_id}/edit`} className="text-[#D97757] hover:underline">
+                        {t("Düzenle", "Edit")}
+                      </Link>
+                    </>
                   )}
                 </div>
                 {i.state === "done" && i.missing.length > 0 && <p className="mt-0.5 text-amber-700 dark:text-amber-400">{i.missing.join(" · ")}</p>}
@@ -269,6 +278,12 @@ export default function BatchJobCard({ card, shopId }: { card: Batch; shopId: nu
             </li>
           ))}
         </ul>
+      )}
+
+      {preview !== null && (
+        <Suspense fallback={null}>
+          <ListingPreviewModal shopId={shopId} listingId={preview} onClose={() => setPreview(null)} />
+        </Suspense>
       )}
 
       <div className="flex flex-wrap items-center justify-end gap-2 border-t border-neutral-100 bg-neutral-50 px-3 py-2 dark:border-neutral-800 dark:bg-neutral-950">
