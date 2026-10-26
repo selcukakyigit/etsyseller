@@ -1180,6 +1180,29 @@ def ask_user(ctx: Ctx, a: dict) -> dict:
 _TITLE_QUESTION = re.compile(r"ba[sş]l[ıi]k|\btitle\b", re.IGNORECASE)
 
 
+_BASIC_COLORS = {"black", "white", "grey", "gray", "gold", "silver", "brown", "red", "blue", "green", "yellow", "orange", "pink", "purple", "beige", "navy", "cream", "copper", "bronze", "rose"}
+_PRODUCT_WORDS = {"metal", "wall", "art", "decor", "decoration", "sign", "panel", "hanging", "steel", "custom", "modern", "home", "piece", "the", "and", "for", "with", "sculpture", "design"}
+
+
+def _title_option_problems(options: list[str], said: str, design: str) -> list[str]:
+    """Başlık önerileri (brief_check): ürünün GÖRÜNEN tasarımını taşımalı; birden çok ölçü/renk seçeneği varken tek ölçü/renk yazılmaz; söylenmemiş özgül malzeme yazılmaz."""
+    problems: list[str] = []
+    low = said.lower()
+    sizes = {" ".join(m.lower().replace("×", "x").split()) for m in re.findall(r"[0-9]+(?:[.][0-9]+)?[ ]*[x×][ ]*[0-9]+", low)}
+    colors = {c for c in _BASIC_COLORS if re.search(rf"(?<![a-z]){c}(?![a-z])", low)} | {en for tr_word, en in quality._TR_COLORS.items() if tr_word in low}
+    design_words = {w for w in re.findall(r"[a-z]+", design.lower()) if len(w) > 3 and w not in _PRODUCT_WORDS}
+    for o in options:
+        words = set(re.findall(r"[a-z]+", o.lower()))
+        if len(sizes) > 1 and re.search(r"[0-9]+[ ]*[x×][ ]*[0-9]+|[0-9]+[ ]*(?:cm|in|inch|mm)(?![a-z])", o.lower().replace("2mm", "").replace("3mm", "")):
+            problems.append(f"'{o}': birden çok ölçü seçeneği var, başlığa tek ölçü yazma")
+        if len(colors) > 1 and (words & _BASIC_COLORS or "finish" in words):
+            problems.append(f"'{o}': birden çok renk seçeneği var, başlığa renk/finish yazma")
+        if design_words and not words & design_words and not any(d[:5] in w for d in design_words for w in words):
+            problems.append(f"'{o}': ürünün görünen tasarımını ({design}) anlatmıyor")
+        problems += [f"'{o}': " + p for p in quality.material_problems(o, said)]
+    return problems
+
+
 def brief_check(ctx: Ctx, a: dict) -> dict:
     """Yeni listing'ten ÖNCE: anlaşılanları ve eksikleri tek kartta gösterir. Kullanıcının cevapları tek mesajda gelir, taslak tek seferde kurulur."""
     understood = [
@@ -1210,6 +1233,12 @@ def brief_check(ctx: Ctx, a: dict) -> dict:
                 return {"error": f"Bu başlık seçeneklerinde kullanıcının söylemediği iddia var (UV400, polarized, waterproof gibi): {claimed}. Yalnızca verilen bilgiyi yaz; iddiayı çıkar ve kartı yeniden çağır."}
             if not plan.lead_options:
                 return {"error": "Kelime planı açılış ifadesi üretemedi; keyword_pool'u ürün adı (query) ve olgularla (facts) yeniden çağır."}
+            design = " ".join(str(a.get("design") or "").split())
+            if not design:
+                return {"error": "Başlık sorusu için design alanı ŞART: ürünün resimde GÖRÜNEN tasarımını 3-8 İngilizce kelimeyle yaz (desen/form/motif) ve başlık önerilerini ona göre kur; sonra kartı yeniden çağır."}
+            weak = _title_option_problems(item["options"], said, design)
+            if weak:
+                return {"error": "Başlık önerileri zayıf: " + "; ".join(weak[:4]) + ". Her öneri: planın açılışıyla başla, ürünün GÖRÜNEN tasarımını (design) ve ortak malzemeyi söyle; birden çok ölçü/renk varsa onları yazma; üç öneri farklı tasarım/kullanım açısı öne çıkarsın. Kartı yeniden çağır."}
             off = [o for o in item["options"] if plan_mod.title_problems(o, plan)]
             if off:
                 return {"error": f"Şu başlık seçenekleri planın açılış ifadelerinden biriyle başlamıyor: {off}. Her seçenek şunlardan biriyle başlasın: {plan.lead_options}; ardından 2-3 nesnel niteleyici, 15 kelimenin altı."}
@@ -3197,7 +3226,7 @@ TOOLS: list[dict] = [
     {"name": "mark_order_shipped", "description": "ONAY GEREKİR. Siparişi Etsy'de kargoya verildi işaretler (alıcıya bildirim gidebilir). confirm=true verilmeden yalnızca ne olacağını özetler.", "input_schema": _obj({"receipt_id": {"type": "integer"}, "confirm": {"type": "boolean"}, "tracking_code": {"type": "string"}, "carrier_name": {"type": "string"}}, ["receipt_id"])},
 ]
 
-TOOLS.append({"name": "brief_check", "description": "YENİ LİSTİNG'TEN ÖNCE (fiyat ya da başka eksik varken): anladıklarını ve eksikleri TEK kartta gösterir; kullanıcı butona basar ya da yazar, cevapları tek mesajda gelir, sonra taslağı TEK seferde kurarsın. Resimden/mesajdan belli olan şeyi sorma. Kartı yalnızca gerçekten eksik varsa çağır.", "input_schema": _obj({"understood": {"type": "array", "description": "Anladıkların: [{label, value}] (ürün, ölçüler, renkler, adet, ölçü birimleri). Kullanıcının dilinde, kısa.", "items": _obj({"label": {"type": "string"}, "value": {"type": "string"}}, ["label", "value"])}, "questions": {"type": "array", "description": "Eksikler, en fazla 4: [{label (kısa soru), options (en çok 4 hazır cevap, boş olabilir), type (price = fiyat | title = 3 başlık önerisi, kullanıcı seçer ya da yazar | text)}]. Kişiselleştirme (yalnızca resimde yazı alanı/isim gibi ipucu varsa ya da belirsizse) 'Var / Yok' seçenekleriyle sorulur.", "items": _obj({"label": {"type": "string"}, "options": {"type": "array", "items": {"type": "string"}}, "type": {"type": "string", "enum": ["price", "title", "text"]}, "plan_question": {"type": "string", "description": "Bu soru kelime planının 'kullaniciya_sorulacaklar' listesinden birini soruyorsa o İngilizce soru (aynen)"}}, ["label"])}}, ["understood", "questions"])})
+TOOLS.append({"name": "brief_check", "description": "YENİ LİSTİNG'TEN ÖNCE (fiyat ya da başka eksik varken): anladıklarını ve eksikleri TEK kartta gösterir; kullanıcı butona basar ya da yazar, cevapları tek mesajda gelir, sonra taslağı TEK seferde kurarsın. Resimden/mesajdan belli olan şeyi sorma. Kartı yalnızca gerçekten eksik varsa çağır.", "input_schema": _obj({"understood": {"type": "array", "description": "Anladıkların: [{label, value}] (ürün, ölçüler, renkler, adet, ölçü birimleri). Kullanıcının dilinde, kısa.", "items": _obj({"label": {"type": "string"}, "value": {"type": "string"}}, ["label", "value"])}, "design": {"type": "string", "description": "Başlık sorusu varsa ŞART: ürünün RESİMDE GÖRÜNEN tasarımı, 3-8 İngilizce kelime (desen/form/motif; ör. 'interlocking bubble cells line art', 'geometric mountain silhouette'). Başlık önerileri bunu taşımalı."}, "questions": {"type": "array", "description": "Eksikler, en fazla 4: [{label (kısa soru), options (en çok 4 hazır cevap, boş olabilir), type (price = fiyat | title = 3 başlık önerisi, kullanıcı seçer ya da yazar | text)}]. Kişiselleştirme (yalnızca resimde yazı alanı/isim gibi ipucu varsa ya da belirsizse) 'Var / Yok' seçenekleriyle sorulur.", "items": _obj({"label": {"type": "string"}, "options": {"type": "array", "items": {"type": "string"}}, "type": {"type": "string", "enum": ["price", "title", "text"]}, "plan_question": {"type": "string", "description": "Bu soru kelime planının 'kullaniciya_sorulacaklar' listesinden birini soruyorsa o İngilizce soru (aynen)"}}, ["label"])}}, ["understood", "questions"])})
 TOOLS.append({"name": "ask_user", "description": "Sohbette DOKUNULABİLİR seçenek kartı gösterir. kind=question: yalnızca gerçekten bilinemeyen bir bilgiyi (fiyat, ürün adı…) ya da geri dönüşü zor bir işin onayını sorarken (ör. 'Evet, yayınla' / 'Vazgeç'); 2-4 kısa seçenek, 'Sen karar ver' sunucu tarafından eklenir. kind=suggestions: cevabın sonundaki sıradaki adım önerileri (2-3 kısa komut: 'Fiyatı ekle', 'Ek görsel üret'). Seçenek metni kullanıcının mesajı olarak gönderilir, bu yüzden tam ve anlaşılır bir istek olsun. Cevap başına en fazla bir kez çağır; aynı metni cevaba da yazma.", "input_schema": _obj({"question": {"type": "string", "description": "Kısa soru ya da başlık (ör. 'Fiyat ne olsun?', 'Sıradaki adım?')"}, "options": {"type": "array", "items": {"type": "string"}, "description": "2-4 kısa seçenek"}, "kind": {"type": "string", "enum": ["question", "suggestions"]}}, ["question", "options"])})
 
 # Kullanıcıya gösterilen ilerleme metinleri ("asistan şu an ne yapıyor").

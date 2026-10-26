@@ -115,6 +115,11 @@ def source_aspect(image_bytes: bytes) -> tuple[str | None, float | None]:
         return None, None
     if 0.67 < ratio < 1.5:
         return None, ratio
+    # Sahne fotoğrafı: ürün çerçevenin bir kısmını kaplar; 2.3:1 ürün için 16:9 yeterince geniştir (21:9 odayı gereksiz panoramik yapar), çok uç oranlarda (>3) ürün oranına gidilir.
+    wide = ratio >= 1
+    limit = 3.0
+    if (ratio if wide else 1 / ratio) <= limit:
+        return ("3:2" if (ratio if wide else 1 / ratio) < 1.7 else "16:9") if wide else ("2:3" if 1 / ratio < 1.7 else "9:16"), ratio
     return min(_ASPECTS, key=lambda k: abs(math.log(_ASPECTS[k] / ratio))), ratio
 
 

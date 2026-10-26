@@ -34,15 +34,15 @@ def test_title_question_without_a_keyword_plan_asks_for_keyword_pool_first():
 
 def test_title_options_must_open_with_the_plans_phrases():
     ctx = _ctx(["engraved thermos", "monogram water bottle"])
-    out = brief_check(ctx, {"understood": UNDERSTOOD, "questions": [{"label": "Başlık seç", "options": ["Engraved Thermos, 750 ml", "Water Bottle Gift", "Monogram Water Bottle, Steel"]}]})
+    out = brief_check(ctx, {"understood": UNDERSTOOD, "design": "engraved thermos monogram bottle", "questions": [{"label": "Başlık seç", "options": ["Engraved Thermos, 750 ml", "Water Bottle Gift", "Monogram Water Bottle, Insulated"]}]})
     assert "Water Bottle Gift" in out["error"] and ctx.cards == []
 
 
 def test_title_question_with_options_becomes_title_card():
     ctx = _ctx(["one", "two", "three"])
-    out = brief_check(ctx, {"understood": UNDERSTOOD, "questions": [
+    out = brief_check(ctx, {"understood": UNDERSTOOD, "design": "thermos", "questions": [
         {"label": "Fiyat?", "type": "price"},
-        {"label": "Başlık seç", "options": ["One", "Two", "Three"]},
+        {"label": "Başlık seç", "options": ["One Thermos", "Two Thermos", "Three Thermos"]},
     ]})
     assert out["ok"]
     types = [q["type"] for q in ctx.cards[0]["questions"]]
@@ -76,3 +76,9 @@ def test_plan_questions_always_get_a_skip_option():
     brief_check(ctx, {"understood": UNDERSTOOD, "questions": [{"label": "Kılıf var mı?", "options": ["Var", "Yok"], "plan_question": "do these come with a case"}]})
     options = ctx.cards[0]["questions"][0]["options"]
     assert options[:2] == ["Var", "Yok"] and len(options) == 3 and "atla" in options[2].lower() or "skip" in options[2].lower()
+
+
+def test_title_question_without_the_visible_design_is_rejected():
+    ctx = _ctx(["one", "two", "three"])
+    out = brief_check(ctx, {"understood": UNDERSTOOD, "questions": [{"label": "Başlık seç", "options": ["One Thermos", "Two Thermos", "Three Thermos"]}]})
+    assert "design" in out["error"] and ctx.cards == []

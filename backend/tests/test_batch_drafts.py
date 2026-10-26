@@ -545,7 +545,19 @@ def test_a_wide_source_photo_keeps_a_wide_scene_and_a_square_one_is_left_to_the_
         Image.new("RGB", (w, h), "gray").save(buf, "PNG")
         return buf.getvalue()
 
-    assert image_gen.source_aspect(png(648, 281))[0] == "21:9", "2.3:1 duvar panosu kareye sığdırılıp kesilmez"
+    assert image_gen.source_aspect(png(648, 281))[0] == "16:9", "2.3:1 duvar panosu kareye sığdırılıp kesilmez, oda da gereksiz panoramik olmaz"
+    assert image_gen.source_aspect(png(1600, 400))[0] == "4:1"
     assert image_gen.source_aspect(png(1000, 1000))[0] is None and image_gen.source_aspect(png(1200, 1000))[0] is None
     assert image_gen.source_aspect(png(300, 900))[0] == "1:4" or image_gen.source_aspect(png(300, 900))[0] == "9:16"
     assert image_gen.source_aspect(b"not an image") == (None, None)
+
+
+def test_title_options_must_show_the_design_and_not_pick_one_size_colour_or_invented_material():
+    said = "2mm metal. 140x49 cm 249 usd, 118x40 cm 159 usd, 99x34 cm 129 usd. renkler black white grey gold brown"
+    design = "interlocking bubble cells line art"
+    bad = tools._title_option_problems(["metal wall art 2mm steel 140x49 cm black finish"], said, design)
+    assert len(bad) >= 3, bad  # tek ölçü, tek renk/finish, steel, tasarım yok
+    assert not tools._title_option_problems(["Abstract Metal Wall Art, Bubble Cells Line Art Decor, 2mm Metal Wall Panel"], said, design)
+    assert tools._title_option_problems(["Metal Wall Decor, Modern Industrial Sign"], said, design), "tasarımı anlatmayan öneri reddedilir"
+    one = tools._title_option_problems(["Metal Wall Art Bubble Line Art 140x49 cm"], "140x49 cm metal", "bubble line art")
+    assert not one, "tek ölçülü üründe ölçü başlıkta serbest"
