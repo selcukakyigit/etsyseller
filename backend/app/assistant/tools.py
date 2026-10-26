@@ -89,6 +89,7 @@ class Ctx:
     draft_rejections: int = 0  # create_listing_draft kalite denetimiyle en fazla bu kadar reddedilir; sonra taslak uyarılarla yine de oluşur (kullanıcı hata döngüsünde kalmasın)
     edit_jobs: dict = field(default_factory=dict)  # aynı turda istenen edit_chat_image'lar: {_edit_key: Future}
     image_jobs: list = field(default_factory=list)  # aynı turda istenen görseller önceden paralel başlatılır: [(prompt, referans kimliği, Future)]
+    unattended: bool = False  # toplu iş (assistant/batch_drafts.py): kullanıcıya soru sorulamaz; fiyat gibi bilinmeyen boş kalır, ön kontrol kartı istenmez
 
 
 def _d(value: str | None, default: dt.date) -> dt.date:
@@ -889,7 +890,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     title = etsy_rules.clean_title(str(a.get("title", "")))[: etsy_rules.TITLE_MAX]
     if not title:
         return {"error": "Başlık gerekli."}
-    if a.get("price") in (None, "", 0) and a.get("listing_type") != "download" and not _brief_shown(ctx):
+    if a.get("price") in (None, "", 0) and a.get("listing_type") != "download" and not ctx.unattended and not _brief_shown(ctx):
         return {"error": "Taslak henüz oluşturulmadı: fiyat belli değil ve kullanıcıya eksikler sorulmadı. ÖNCE brief_check'i çağır (anladıklarını ve eksikleri tek kartta göster: fiyat, kişiselleştirme var mı, eksik ölçü/adet, inç eklensin mi gibi gerçekten bilinmeyenler), sonra kullanıcının cevabını bekle. Kullanıcı kişiselleştirmeyi söylemediyse ekleme."}
     size_variations, unit_assumed = _normalize_sizes(ctx, a.get("variations") or [])
     a = {**a, "variations": size_variations}
@@ -3377,7 +3378,7 @@ LISTING_TOOL_NAMES = frozenset({
     "delete_listing", "generation_options", "analyze_listing_values", "generate_listing_video", "add_video_to_listing", "remove_listing_video", "publish_listing_draft", "deactivate_listing",
     "list_description_templates", "save_description_template", "delete_description_templates", "listing_health_status", "workspace_status", "keyword_pool",
     "research_keywords", "keyword_detail", "upcoming_seasons", "saved_keywords", "save_keywords", "etsy_top_results",
-    "remember_note", "forget_note", "open_support_ticket", "my_support_tickets", "market_research", "suggest_price", "bulk_update_listings", "rewrite_listings", "continue_rewrite", "stop_rewrite", "pinterest_content", "make_pin_image", "add_digital_file", "remove_digital_file", "set_listing_type",
+    "remember_note", "forget_note", "open_support_ticket", "my_support_tickets", "market_research", "suggest_price", "bulk_update_listings", "rewrite_listings", "continue_rewrite", "stop_rewrite", "create_listings_from_images", "stop_batch_listings", "pinterest_content", "make_pin_image", "add_digital_file", "remove_digital_file", "set_listing_type",
 })
 
 
@@ -3390,8 +3391,12 @@ TOOL_GROUPS: dict[str, frozenset[str]] = {
     "digital": frozenset({"add_digital_file", "remove_digital_file", "set_listing_type"}),
     "support": frozenset({"open_support_ticket", "my_support_tickets"}),
     "discover": frozenset({"research_keywords", "keyword_detail", "upcoming_seasons", "saved_keywords", "save_keywords", "etsy_top_results"}),
+    "batch": frozenset({"create_listings_from_images", "stop_batch_listings"}),
 }
 GROUP_WORDS: dict[str, re.Pattern] = {
+    "batch": re.compile(
+        r"ayrı (ayrı )?(listing|liste|ürün)|her (bir )?(resim|foto|görsel|ürün)|farklı (ürün|listing)|(\d+|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on)\s+(farklı\s+|ayrı\s+)?(ürün|listing|liste)|"
+        r"separate listings?|each (image|photo|picture|product)|one listing (per|for each)|different products|(\d+|two|three|four|five|six|seven|eight|nine|ten) (separate |different )?(listings|products)", re.I),
     "market": re.compile(r"piyasa|rakip|trend|popüler|popular|talep|araştır|research|competitor|seo|oluştur|create|yeni listing|taslak", re.I),
     "price": re.compile(r"kaça sat|fiyat öner|marj|fiyatlandır|fiyatı ne|pricing|margin|price suggest", re.I),
     "bulk": re.compile(r"toplu|bütün|tüm |hepsi|bulk|all listings|yeniden yaz|rewrite|rewrite all|holiday|occasion|%|yüzde|zam\b|indirim|artır|arttır|düşür|indir\b|stokları|stoğu", re.I),

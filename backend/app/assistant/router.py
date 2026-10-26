@@ -5,7 +5,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.assistant import llm, memory, service
+from app.assistant import batch_drafts, llm, memory, service
 from app.auth.models import User
 from app.core import blobstore
 from app.core.byte_range import ranged
@@ -90,6 +90,25 @@ def rewrite_job_stop(job_id: str, shop: Shop = Depends(get_owned_shop)):
     job = _rewrite_job(job_id, shop)
     rewrite.stop(job)
     return rewrite.public(job)
+
+
+def _batch_job(job_id: str, shop: Shop) -> batch_drafts.Job:
+    job = batch_drafts.get(job_id, shop.id)
+    if job is None:
+        raise HTTPException(404, tr("İş bulunamadı (süresi dolmuş ya da sunucu yeniden başlamış olabilir). O ana dek oluşan taslaklar yerelde duruyor.", "Job not found (it may have expired or the server restarted). The drafts made so far stay local."))
+    return job
+
+
+@router.get("/batch-jobs/{job_id}")
+def batch_job(job_id: str, shop: Shop = Depends(get_owned_shop)):
+    return batch_drafts.public(_batch_job(job_id, shop))
+
+
+@router.post("/batch-jobs/{job_id}/stop")
+def batch_job_stop(job_id: str, shop: Shop = Depends(get_owned_shop)):
+    job = _batch_job(job_id, shop)
+    batch_drafts.stop(job)
+    return batch_drafts.public(job)
 
 
 @router.get("/sessions")
