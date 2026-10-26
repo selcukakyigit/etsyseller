@@ -43,6 +43,7 @@ function StockGauge({ item, onClick }: { item: PriceItem; onClick?: () => void }
       <span className={`text-[11px] font-medium ${tone.text}`}>
         {qty(item.on_hand, locale)} {unitLabel(item.unit, t)}
         {packs !== null && ` (≈ ${qty(packs, locale)} ${packLabel(item.pack_unit, t)})`}
+        {item.on_hand_metres != null && ` (≈ ${qty(item.on_hand_metres, locale)} m)`}
       </span>
       {item.level === "out" && <span className={badge}>{t("Bitti", "Out")}</span>}
       {item.level === "low" && <span className={badge}>{t("Azaldı", "Low")}</span>}

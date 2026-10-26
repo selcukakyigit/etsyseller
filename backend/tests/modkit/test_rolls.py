@@ -1,0 +1,53 @@
+"""Rulo malzemeler: stok saydığın şeyle (adet/rulo), metre türetilir: bant (rulo boyu), balonlu naylon ve streç (rulo ağırlığı × en × kalınlıktan uzunluk)."""
+import pytest
+
+from app.modkit import materials, pricebook
+from tests.modkit.test_packs import _access, _row
+
+
+def _roll(db, name, price, **fields):
+    return pricebook.create_item(db, _access(), "material", name, "piece", "", price, fields=fields)
+
+
+def test_film_group_defaults_to_counting_rolls_not_metres():
+    assert materials.units_for("film")[0] == "piece"
+    assert "plate_kg" in materials.fields_for("film", "piece") and "roll_length" in materials.fields_for("film", "piece")
+
+
+def test_tape_roll_length_gives_metres_per_roll_and_stock_in_metres(db):
+    tape = _roll(db, "Koli bandı", 80, material="tape", roll_length=100, pack_unit="box", pack_size=80)
+    assert materials.roll_metres(tape) == 100 and materials.per_metre(tape) == pytest.approx(0.01)
+    assert materials.metres_of(tape, 3) == pytest.approx(300)
+    assert _row(db, _access(), tape)["roll_metres"] == 100
+
+
+def test_bubble_wrap_length_is_worked_out_from_weight_width_and_thickness(db):
+    bubble = _roll(db, "Balonlu naylon", 900, material="bubble", plate_kg=14, roll_width=1500, film_um=600)
+    assert materials.roll_metres(bubble) == pytest.approx(14 / (1.5 * 600e-6 * 0.01 * 1000), rel=1e-6)  # ≈ 1556 m
+    assert materials.per_metre(bubble) == pytest.approx(1 / materials.roll_metres(bubble))
+
+
+def test_stretch_roll_by_weight_and_a_written_length_wins(db):
+    stretch = _roll(db, "Streç", 300, material="stretch", plate_kg=2, roll_width=500, film_um=23)
+    assert materials.roll_metres(stretch) == pytest.approx(2 / (0.5 * 23e-6 * 0.92 * 1000), rel=1e-6)  # ≈ 189 m
+    stretch.roll_length = 150
+    assert materials.roll_metres(stretch) == 150, "yazılan rulo boyu hesaplanandan önce gelir"
+
+
+def test_kg_priced_roll_uses_the_pack_weight(db):
+    item = pricebook.create_item(db, _access(), "material", "Streç kg", "kg", "", 100, fields={"material": "stretch", "roll_width": 500, "film_um": 23, "pack_unit": "roll", "pack_size": 2})
+    assert materials.roll_metres(item) == pytest.approx(2 / (0.5 * 23e-6 * 0.92 * 1000), rel=1e-6)
+    assert materials.metres_of(item, 4) == pytest.approx(2 * materials.roll_metres(item))
+
+
+def test_not_enough_information_gives_no_metres(db):
+    bare = _roll(db, "Bant", 10, material="tape")
+    assert materials.roll_metres(bare) is None and materials.metres_of(bare, 5) is None
+
+
+def test_serialized_stock_shows_metres_on_hand(db):
+    a = _access()
+    tape = _roll(db, "Koli bandı", 80, material="tape", roll_length=100)
+    version = pricebook.latest_prices(db, [tape.id])[tape.id]
+    row = pricebook.serialize(tape, version, 1, {tape.id: {"on_hand": 4}})
+    assert row["on_hand_metres"] == 400

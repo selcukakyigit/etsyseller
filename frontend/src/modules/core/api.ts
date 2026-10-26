@@ -73,6 +73,9 @@ export interface PriceItem {
   /** Stok (yalnızca çalışma alanı üyesine gelir; yalnızca malzeme kalemlerinde). Miktarlar kalemin biriminde. */
   track_stock?: boolean;
   min_stock?: number | null;
+  /** Rulo kalemi: bir rulonun uzunluğu (m; yazılmış boy ya da ağırlık × en × kalınlıktan hesaplanan) ve eldeki stoğun metre karşılığı. */
+  roll_metres?: number | null;
+  on_hand_metres?: number | null;
   /** Alış paketi (malzeme kalemi): türü (katalogdaki `packs` anahtarı), paketteki miktar (kalemin biriminde) ve paket fiyatı (birim fiyat × miktar). */
   pack_unit?: string | null;
   pack_size?: number | null;

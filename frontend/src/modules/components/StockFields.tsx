@@ -143,7 +143,11 @@ export default function StockFields({ value, unit, onChange }: { value: StockFor
             {field("thickness_mm", t("Kalınlık (mm)", "Thickness (mm)"), "2")}
             {field("plate_width", t("Plaka eni (mm)", "Plate width (mm)"), "1500")}
             {field("plate_height", t("Plaka boyu (mm)", "Plate length (mm)"), "3000")}
-            {field("plate_kg", t("Plaka ağırlığı (kg)", "Plate weight (kg)"), t("boşsa hesaplanır", "auto if empty"))}
+            {field(
+          "plate_kg",
+          isFilm ? t("Rulo ağırlığı (kg)", "Roll weight (kg)") : t("Plaka ağırlığı (kg)", "Plate weight (kg)"),
+          isFilm ? t("ör. 14", "e.g. 14") : t("boşsa hesaplanır", "auto if empty"),
+        )}
             {field("roll_width", t("Rulo eni (mm)", "Roll width (mm)"), "500")}
             {field("film_um", value.material === "bubble" ? t("Kalınlık (mm)", "Thickness (mm)") : t("Kalınlık (mikron)", "Thickness (micron)"), value.material === "bubble" ? "4" : "23")}
             {field("roll_length", t("Rulo boyu (m)", "Roll length (m)"), "100")}
@@ -152,8 +156,8 @@ export default function StockFields({ value, unit, onChange }: { value: StockFor
             <HelpTip>
               {isFilm
                 ? t(
-                    "İsteğe bağlı. Girilirse paket formüllerinde bu kalemin miktarı metre olarak yazılır; fiyat kg ya da rulo fiyatından hesaplanır.",
-                    "Optional. When filled in, package formulas give this item's quantity in metres; the price is worked out from the kg or roll price.",
+                    "Stok rulo (adet) ya da kg olarak tutulur; paket formüllerinde miktar metre yazılır. Bant gibi boyu belli olan rulo için rulo boyunu yaz; balonlu naylon ve streç için rulo ağırlığı, en ve kalınlığı yaz, uzunluğu sistem hesaplar (kayıttan sonra satırda görünür).",
+                    "Stock is kept in rolls (pieces) or kg; package formulas give the quantity in metres. For a roll with a known length (tape) enter the roll length; for bubble wrap and stretch film enter the roll weight, width and thickness and the length is worked out (shown on the row after saving).",
                   )
                 : isPlate
                   ? t(

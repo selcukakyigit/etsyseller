@@ -114,6 +114,7 @@ export default function StockModal({
             <b>
               {qty(item.on_hand ?? 0, locale)} {itemUnit}
             </b>
+            {item.on_hand_metres != null && ` (≈ ${qty(item.on_hand_metres, locale)} m)`}
           </span>
           {item.avg_cost != null && (
             <span>

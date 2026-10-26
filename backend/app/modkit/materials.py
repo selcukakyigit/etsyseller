@@ -98,7 +98,7 @@ _MASS, _LENGTH, _AREA, _VOLUME = ("kg", "g", "t"), ("mm", "cm", "m"), ("cm2", "m
 _PLATE = ("thickness_mm", "plate_width", "plate_height", "plate_kg")
 GROUP_UNITS: dict[str, tuple[str, ...]] = {
     "sheet": ("sheet", *_MASS, *_AREA, *_VOLUME, *_LENGTH),  # uzunluk: çıta, profil gibi metreyle alınan levha türleri
-    "film": (*_MASS, "piece", *_LENGTH),
+    "film": ("piece", *_MASS, *_LENGTH),  # ilk birim (adet = rulo) yeni kalemin varsayılanıdır: stok saydığın şeyle tutulur, metre türetilir
     "piece": ("piece", "sheet"),
     "bulk": (*_MASS, "piece", *_LENGTH, *_AREA, *_VOLUME),
 }
@@ -116,7 +116,8 @@ def fields_for(group: str | None, unit: str) -> tuple[str, ...]:
     if group == "sheet" and u is not None:
         return _PLATE if u.dimension in ("sheet", "mass") else _PLATE[:3] if u.dimension in ("area", "volume") else ()
     if group == "film" and u is not None:
-        return ("roll_width", "film_um") if u.dimension == "mass" else ("roll_length",) if u.dimension == "piece" else ()
+        # adet (rulo): boyu ya da (boyu yoksa) ağırlık × en × kalınlıktan hesaplanır; kütle: en × kalınlık (rulo ağırlığı paket miktarıdır)
+        return ("roll_width", "film_um") if u.dimension == "mass" else ("roll_length", "roll_width", "film_um", "plate_kg") if u.dimension == "piece" else ()
     return ()
 
 
@@ -191,20 +192,51 @@ def plate_kg(item) -> float | None:
 FILM_DENSITY = {"stretch": 0.92, "bag": 0.92, "bubble": 0.01}  # g/cm³: streç/poşet düz PE film; balonlu naylon hava dolu olduğundan "etkin" yoğunluk (4 mm ≈ 40 g/m²)
 
 
-def per_metre(item) -> float | None:
-    """Rulo kalemlerinde 1 m uzunluğun kalemin BİRİMİ cinsinden karşılığı; çevrilemiyorsa None. Kütle birimli kalem (kg…): rulo eni × film
-    kalınlığı × yoğunluk (streç mikron, balonlu naylon mm kalınlığında; tür başına yoğunluk); adet birimli kalem (bant rulosu): 1 / rulo boyu. Böylece formülde metre yazılır, fiyat kg ya da
-    adetten hesaplanır."""
+def _kg_per_metre(item) -> float | None:
+    """Filmin 1 m'sinin ağırlığı (kg): rulo eni × film kalınlığı × yoğunluk (streç mikron, balonlu naylon mm kalınlığında; tür başına yoğunluk)."""
+    density = FILM_DENSITY.get(item.material or "")
+    if item.roll_width and item.film_um and density:
+        return item.roll_width / 1000 * item.film_um / 1e6 * density * 1000  # m × m × m × g/cm³→kg/m³
+    return None
+
+
+def roll_metres(item) -> float | None:
+    """Bir rulonun (ya da paketin) uzunluğu, metre; bilinemiyorsa None. Adet (rulo) biriminde: yazılmış rulo boyu, yoksa rulo ağırlığı ÷ metre ağırlığı
+    (bant 100 m; balonlu naylon 14 kg × en × kalınlık → uzunluk). Kütle biriminde: paket miktarı (rulo ağırlığı) ÷ metre ağırlığı. Uzunluk biriminde: paket miktarı."""
     unit = units.UNITS.get(item.unit)
     if unit is None or item.kind != "material":
         return None
-    density = FILM_DENSITY.get(item.material or "")
-    if unit.dimension == "mass" and item.roll_width and item.film_um and density:
-        kg = item.roll_width / 1000 * item.film_um / 1e6 * density * 1000  # m × m × m × g/cm³→kg/m³
-        return units.convert(kg, "kg", item.unit)
-    if unit.dimension == "piece" and item.roll_length:
-        return 1 / item.roll_length
+    if unit.dimension == "piece":
+        if item.roll_length:
+            return item.roll_length
+        per_m = _kg_per_metre(item)
+        return item.plate_kg / per_m if item.plate_kg and per_m else None
+    if unit.dimension == "mass" and item.pack_size and (per_m := _kg_per_metre(item)):
+        return units.convert(item.pack_size, item.unit, "kg") / per_m
+    if unit.dimension == "length" and item.pack_size:
+        return units.convert(item.pack_size, item.unit, "m")
     return None
+
+
+def per_metre(item) -> float | None:
+    """Rulo kalemlerinde 1 m uzunluğun kalemin BİRİMİ cinsinden karşılığı; çevrilemiyorsa None. Kütle birimli kalem (kg…): metre ağırlığı
+    (`_kg_per_metre`); adet birimli kalem (rulo): 1 / rulo boyu (`roll_metres`). Böylece formülde metre yazılır, fiyat ve stok kg ya da adetle kalır."""
+    unit = units.UNITS.get(item.unit)
+    if unit is None or item.kind != "material":
+        return None
+    if unit.dimension == "mass":
+        kg = _kg_per_metre(item)
+        return units.convert(kg, "kg", item.unit) if kg else None
+    if unit.dimension == "piece":
+        metres = roll_metres(item)
+        return 1 / metres if metres else None
+    return None
+
+
+def metres_of(item, qty: float) -> float | None:
+    """Kalemin biriminde `qty` miktarının metre karşılığı (stoğun metre cinsinden görünümü); çevrilemiyorsa None."""
+    per = per_metre(item)
+    return qty / per if per else None
 
 
 def stock_prices(item, price: float) -> dict[str, float | None]:

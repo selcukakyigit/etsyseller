@@ -400,6 +400,9 @@ function PriceRow({
       </td>
       <td className={td}>
         <div className="font-medium text-neutral-900 dark:text-neutral-100">{unitPrice(item.price, item.unit, currency, locale, t)}</div>
+        {item.group === "film" && item.roll_metres && !["mm", "cm", "m"].includes(item.unit) ? (
+          <div className="text-[11px] text-neutral-500 dark:text-neutral-400">{t(`1 rulo ≈ ${qty(item.roll_metres, locale)} m`, `1 roll ≈ ${qty(item.roll_metres, locale)} m`)}</div>
+        ) : null}
         {item.pack_price != null && item.pack_size ? (
           <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
             {packLabel(item.pack_unit, t)} ({qty(item.pack_size, locale)} {unitLabel(item.unit, t)}): {money(item.pack_price, currency, locale)}

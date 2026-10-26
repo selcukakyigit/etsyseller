@@ -166,8 +166,9 @@ def serialize(item: PriceItem, version: PriceVersion | None, versions: int = 0, 
             "plate_kg": item.plate_kg, "roll_width": item.roll_width, "film_um": item.film_um, "roll_length": item.roll_length,
             "pack_unit": item.pack_unit, "pack_size": item.pack_size, "pack_price": round(version.price * item.pack_size, 4) if version and item.pack_size else None,
             "group": materials.group_of(materials.spec_of(item)[0]), "missing": materials.missing(item),
-            "by_length": materials.per_metre(item) is not None, "derived": materials.stock_prices(item, version.price) if version else None} if item.kind == "material" else {}),
-        **({"track_stock": item.track_stock, "min_stock": item.min_stock, "entry_units": stock.entry_units(item), **(snap or {}).get(item.id, {})}
+            "by_length": materials.per_metre(item) is not None, "roll_metres": materials.roll_metres(item), "derived": materials.stock_prices(item, version.price) if version else None} if item.kind == "material" else {}),
+        **({"track_stock": item.track_stock, "min_stock": item.min_stock, "entry_units": stock.entry_units(item), **(snap or {}).get(item.id, {}),
+            "on_hand_metres": (round(m, 1) if (m := materials.metres_of(item, (snap or {}).get(item.id, {}).get("on_hand", 0))) is not None else None)}
            if snap is not None and item.kind == "material" else {}),
         "price": version.price if version else None,
         "price_from": version.valid_from.isoformat() + "Z" if version else None,
