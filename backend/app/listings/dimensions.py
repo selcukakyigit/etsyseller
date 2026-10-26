@@ -119,7 +119,7 @@ def scale_for(unit: str, scales: list[dict]) -> dict | None:
 
 def mentioned(option: str, text: str) -> bool:
     """Ölçü seçeneği ("35 x 45 cm") metinde başka yazılışla geçiyor mu ("35x45 cm", '35" x 45"', "35 × 45")? Ölçü değilse False."""
-    d = parse(option)
+    d = parse(re.sub(r"[(][^)]*[)]", "", option).strip()) or parse(option)  # "140 x 49 cm (55 x 19.3 in)": parantezdeki inç karşılığı ana ölçünün yazılışını bozmaz
     if d is None:
         return False
     sep = r"\s*(?:x|×|\*|by)\s*"

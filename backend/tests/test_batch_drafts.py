@@ -576,7 +576,7 @@ def test_a_plain_text_choice_question_becomes_buttons_and_titles_pass_the_draft_
     assert len(ctx3.cards) == 1, "zaten kart varsa eklenmez"
     said = "2mm metal 140x49 cm, 118x40 cm renkler black white"
     assert any("tekrar" in p for p in tools._title_option_problems(["outdoor metal wall art abstract metal silhouette"], said, "abstract silhouette")), "'metal' iki kez: öneri olarak sunulmaz"
-    assert tools.MAX_DRAFT_REJECTIONS == 1
+    assert tools.MAX_DRAFT_REJECTIONS == 0
 
 
 def test_images_already_generated_in_the_chat_are_offered_before_new_ones_are_generated(db):

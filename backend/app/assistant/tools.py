@@ -71,7 +71,7 @@ def _taxonomy() -> dict[int, str]:
     return _taxonomy_cache
 
 
-MAX_DRAFT_REJECTIONS = 1  # model iki başarısız çağrıdan sonra bırakıp kullanıcıya soruyor: ikinci çağrı mutlaka taslağı kurar (kalan sorunlar uyarı olarak kartta)
+MAX_DRAFT_REJECTIONS = 0  # model reddedilince ikinci çağrıyı yapmayıp 'teknik hata' diyor (oturum 50/51): taslak HER ZAMAN kurulur, sorunlar kalite_uyarilari olarak döner ve update_listing ile düzeltilir
 
 
 @dataclass
