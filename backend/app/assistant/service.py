@@ -267,6 +267,19 @@ _DONE_CLAIM = re.compile(
     r"\b(?:güncelledim|ekledim|değiştirdim|yaptım|ayarladım|çıkardım|kaldırdım|artırdım|arttırdım|azalttım|düzelttim|oluşturdum|kısalttım|taşıdım|sildim|uyguladım|yazdım|kaydettim|"
     r"güncellendi|ayarlandı|eklendi|kaydedildi|değiştirildi|yapıldı|kaldırıldı|oluşturuldu|artırıldı|kısaltıldı|uygulandı|düzeltildi|silindi|başarıyla eklendi|"
     r"i(?:'ve)? (?:updated|added|changed|removed|set|created|fixed))\b", re.IGNORECASE)
+_PROGRESS_CLAIM = re.compile(r"(?:oluşturuyorum|hazırlıyorum|kuruyorum|kaydediyorum|creating|building|setting up|preparing)", re.IGNORECASE)
+
+
+def _guard_progress_claim(called: set[str], effective: int, cards: list[dict], reply: str) -> str:
+    """Taslak kurma çağrısı reddedildi/başarısız oldu ve hiçbir taslak kartı yok ama model "oluşturuyorum" diyorsa, yalan ilerleme gösterilmez (oturum 53)."""
+    if effective == 0 and "create_listing_draft" in called and not any(c.get("type") == "listing_draft" for c in cards) and _PROGRESS_CLAIM.search(reply or ""):
+        return tr(
+            "Taslak henüz oluşmadı (araç reddetti). Aynı bilgilerle tekrar denemem için 'tekrar dene' yaz.",
+            "The draft has not been created yet (the tool rejected it). Say 'try again' and I will retry with the same details.",
+        )
+    return reply
+
+
 # Yalnızca kart gösteren araçlar: kullanıcının cevabı beklenir; geçmişe "araç özeti" olarak yazılmaz (model taklit edip cevaba sızdırıyordu).
 _CARD_TOOLS = frozenset({"ask_user", "brief_check"})
 _READ_ONLY_TOOLS = frozenset({
@@ -478,7 +491,7 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
             "Bu değişikliği taslağa uygulayamadım; ilgili araç bir şeyi değiştirmedi. İstersen farklı bir yolla yeniden deneyeyim ya da editörden yapabilirsin.",
             "I could not apply that change to the draft; the tool did not change anything. I can try another way, or you can do it in the editor.",
         )
-    reply = _guard_media_reply(called, ctx.cards, _guard_batch_reply(called, ctx.cards, reply))
+    reply = _guard_progress_claim(called, effective, ctx.cards, _guard_media_reply(called, ctx.cards, _guard_batch_reply(called, ctx.cards, reply)))
     tools.auto_yes_no(ctx, reply)
     ctx.cards.sort(key=lambda c: {"listing_draft": 1, "brief": 2, "choices": 2}.get(c.get("type"), 0))  # güncel listing kartı(ları) cevabın en altında (sıra korunur)
     assistant = ChatMessage(

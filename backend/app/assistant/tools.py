@@ -936,7 +936,8 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     if ctx.separate_products and not ctx.unattended and not ctx.redirected:
         ctx.redirected = True
         return {"error": "Kullanıcı birden çok AYRI listing istiyor gibi (toplu grup açık). Her ürün için create_listing_draft'ı kendin çağırma, başlık seçeneklerini ayrı listing sanma: create_listings_from_images'ı çağır (resimleri ürüne göre grupla, fiyat-resim eşleşmesini note'a, ortak bilgiyi shared'a yaz). Kullanıcı gerçekten TEK listing istiyorsa aynı çağrıyı tekrarla."}
-    if a.get("price") in (None, "", 0) and a.get("listing_type") != "download" and not ctx.unattended and not _brief_shown(ctx):
+    option_prices = any(isinstance(x, dict) and x.get("price") for v in a.get("variations") or [] for x in v.get("values") or [])  # fiyat boyut seçeneklerinde verilmiş olabilir (oturum 53: 249/159/129 görülmeden reddedildi)
+    if a.get("price") in (None, "", 0) and not option_prices and a.get("listing_type") != "download" and not ctx.unattended and not _brief_shown(ctx):
         return {"error": "Taslak henüz oluşturulmadı: fiyat belli değil ve kullanıcıya eksikler sorulmadı. ÖNCE brief_check'i çağır (anladıklarını ve eksikleri tek kartta göster: fiyat, kişiselleştirme var mı, eksik ölçü/adet, inç eklensin mi gibi gerçekten bilinmeyenler), sonra kullanıcının cevabını bekle. Kullanıcı kişiselleştirmeyi söylemediyse ekleme."}
     size_variations, unit_assumed = _normalize_sizes(ctx, a.get("variations") or [])
     a = {**a, "variations": size_variations}
@@ -1232,6 +1233,15 @@ def _title_option_problems(options: list[str], said: str, design: str) -> list[s
     sizes = {" ".join(m.lower().replace("×", "x").split()) for m in re.findall(r"[0-9]+(?:[.][0-9]+)?[ ]*[x×][ ]*[0-9]+", low)}
     colors = {c for c in _BASIC_COLORS if re.search(rf"(?<![a-z]){c}(?![a-z])", low)} | {en for tr_word, en in quality._TR_COLORS.items() if tr_word in low}
     design_words = {w for w in re.findall(r"[a-z]+", design.lower()) if len(w) > 3 and w not in _PRODUCT_WORDS}
+    word_sets = [set(re.findall(r"[a-z]+", o.lower())) for o in options]
+    for i, a_set in enumerate(word_sets):  # üç öneri gerçek alternatif olmalı: yalnızca ilk kelimesi değişen aynı başlık seçenek değildir
+        for b_set in word_sets[i + 1:]:
+            if a_set and b_set and len(a_set & b_set) / len(a_set | b_set) > 0.7:
+                problems.append("öneriler birbirinin neredeyse aynı (yalnızca bir iki kelime farklı); üçü de farklı bir açı öne çıkarsın (farklı motif kelimesi, farklı kullanım ya da stil)")
+                break
+        else:
+            continue
+        break
     for o in options:
         words = set(re.findall(r"[a-z]+", o.lower()))
         if len(sizes) > 1 and re.search(r"[0-9]+[ ]*[x×][ ]*[0-9]+|[0-9]+[ ]*(?:cm|in|inch|mm)(?![a-z])", o.lower().replace("2mm", "").replace("3mm", "")):
