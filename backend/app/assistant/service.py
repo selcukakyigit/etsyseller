@@ -438,7 +438,8 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
 
     last_notes = next((m.tool_notes for m in recent if m.role == "assistant"), None)
     mode = _pick_mode(message, current, last_notes)
-    groups = tools.listing_groups(message, last_notes) if mode == "listing" else frozenset()
+    groups = tools.listing_groups(message, last_notes, chr(10).join(m.content for m in recent[:6] if m.role == "user")) if mode == "listing" else frozenset()
+    ctx.separate_products = "batch" in groups
     try:
         result = llm.run_agent(
             model, prompt.static_rules(mode, groups), dynamic, history, _with_attachments(message, current),

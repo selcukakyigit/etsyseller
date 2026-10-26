@@ -89,6 +89,8 @@ class Ctx:
     draft_rejections: int = 0  # create_listing_draft kalite denetimiyle en fazla bu kadar reddedilir; sonra taslak uyarılarla yine de oluşur (kullanıcı hata döngüsünde kalmasın)
     edit_jobs: dict = field(default_factory=dict)  # aynı turda istenen edit_chat_image'lar: {_edit_key: Future}
     image_jobs: list = field(default_factory=list)  # aynı turda istenen görseller önceden paralel başlatılır: [(prompt, referans kimliği, Future)]
+    separate_products: bool = False  # kullanıcı 'N farklı liste' dedi (toplu grup açık): create_listing_draft bir kez toplu araca yönlendirir
+    redirected: bool = False
     unattended: bool = False  # toplu iş (assistant/batch_drafts.py): kullanıcıya soru sorulamaz; fiyat gibi bilinmeyen boş kalır, ön kontrol kartı istenmez
 
 
@@ -899,6 +901,9 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     title = etsy_rules.clean_title(str(a.get("title", "")))[: etsy_rules.TITLE_MAX]
     if not title:
         return {"error": "Başlık gerekli."}
+    if ctx.separate_products and not ctx.unattended and not ctx.redirected:
+        ctx.redirected = True
+        return {"error": "Kullanıcı birden çok AYRI listing istiyor gibi (toplu grup açık). Her ürün için create_listing_draft'ı kendin çağırma, başlık seçeneklerini ayrı listing sanma: create_listings_from_images'ı çağır (resimleri ürüne göre grupla, fiyat-resim eşleşmesini note'a, ortak bilgiyi shared'a yaz). Kullanıcı gerçekten TEK listing istiyorsa aynı çağrıyı tekrarla."}
     if a.get("price") in (None, "", 0) and a.get("listing_type") != "download" and not ctx.unattended and not _brief_shown(ctx):
         return {"error": "Taslak henüz oluşturulmadı: fiyat belli değil ve kullanıcıya eksikler sorulmadı. ÖNCE brief_check'i çağır (anladıklarını ve eksikleri tek kartta göster: fiyat, kişiselleştirme var mı, eksik ölçü/adet, inç eklensin mi gibi gerçekten bilinmeyenler), sonra kullanıcının cevabını bekle. Kullanıcı kişiselleştirmeyi söylemediyse ekleme."}
     size_variations, unit_assumed = _normalize_sizes(ctx, a.get("variations") or [])
@@ -3437,10 +3442,12 @@ GROUP_WORDS: dict[str, re.Pattern] = {
 _CORE_LISTING_TOOLS = LISTING_TOOL_NAMES - frozenset().union(*TOOL_GROUPS.values())
 
 
-def listing_groups(message: str, last_tool_notes: str | None) -> frozenset[str]:
-    """Listing modunda hangi konu gruplarının gönderileceği: mesaj o konuya değiniyorsa ya da önceki tur o grubun aracını kullandıysa (devam mesajları için)."""
+def listing_groups(message: str, last_tool_notes: str | None, earlier: str = "") -> frozenset[str]:
+    """Listing modunda hangi konu gruplarının gönderileceği: mesaj (ya da kullanıcının yakın önceki mesajları: soru kartına verilen cevap gibi devam mesajları konuyu söylemez) o konuya değiniyorsa
+    ya da önceki tur o grubun aracını kullandıysa."""
     notes = last_tool_notes or ""
-    return frozenset(g for g, pattern in GROUP_WORDS.items() if pattern.search(message) or any(name in notes for name in TOOL_GROUPS[g]))
+    text = f"{earlier} {message}" if earlier else message
+    return frozenset(g for g, pattern in GROUP_WORDS.items() if pattern.search(text) or any(name in notes for name in TOOL_GROUPS[g]))
 
 
 def tools_for(mode: str, groups: frozenset[str] = frozenset()) -> list[dict]:

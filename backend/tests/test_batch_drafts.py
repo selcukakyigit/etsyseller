@@ -459,3 +459,18 @@ def test_the_batch_tool_passes_what_the_user_wrote(db, fakes):
     assert bad.get("error") and "job_id" not in bad
     props = batch_tools.TOOLS[0]["input_schema"]["properties"]["items"]["items"]["properties"]
     assert "links" in props
+
+
+def test_the_batch_group_stays_open_for_the_answer_to_a_question_card():
+    first = "bunlar metal wall art 3 farklı liste olacak, 1 resim 100 dolar"
+    answer = "Her renk için aynı fiyat\nKişiselleştirme yok"
+    assert "batch" not in tools.listing_groups(answer, "brief_check(...)")
+    assert "batch" in tools.listing_groups(answer, "brief_check(...)", earlier=first), "cevap konuyu söylemez; yakın önceki kullanıcı mesajı grubu açık tutar"
+
+
+def test_a_separate_listings_request_redirects_the_first_single_draft_call(db):
+    shop = _shop(db)
+    ctx = tools.Ctx(db=db, shop=shop, user_id=5, today=None, message="3 farklı liste", separate_products=True)
+    first = tools.create_listing_draft(ctx, {"title": "Metal wall art", "price": 100})
+    assert "create_listings_from_images" in first["error"] and ctx.redirected
+    assert "create_listings_from_images" not in str(tools.create_listing_draft(ctx, {"title": "", "price": 100})), "ikinci çağrı yönlendirilmez (kullanıcı gerçekten tek listing istiyorsa)"
