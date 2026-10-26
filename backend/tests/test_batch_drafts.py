@@ -512,3 +512,23 @@ def test_unattended_titles_must_open_with_a_plan_opening_but_a_user_chosen_title
     used.clear()
     tools.create_listing_draft(ctx2, args)
     assert True not in used, "kullanıcı akışında başlığı kullanıcı seçer: ek denetim yok"
+
+
+def test_generation_checks_catch_invented_specific_material_turkish_words_and_broken_none_lines():
+    from app.ai import audit, layout, quality
+
+    said = "2mm metal duvar dekoru, çivi ile monte edilir"
+    assert quality.material_problems("Metal wall art - 2mm steel", said) and not quality.material_problems("Metal wall art - 2mm metal", said)
+    assert not quality.material_problems("Stainless steel bottle", "stainless steel bottle")
+    assert quality.language_problems("Mounting: çivi ile monte edilir")
+    assert not quality.language_problems("Hangs with nails. Café style.")
+    problems = audit.generation_problems("Metal wall art", ["steel wall decor"], "Hangs with nails.", [], said, {}, materials=["2 mm steel"])
+    assert any("steel" in p for p in problems)
+    assert layout.normalize("A.\n\nDETAILS\n• Size: 40 cm\n• Personalization: not available\n• Colors: Black").count("t available") == 0
+
+
+def test_fit_rejects_a_specific_material_the_card_does_not_have():
+    from app.listing_plan import facts as facts_mod, fit
+
+    card = facts_mod.from_listing("Metal wall art", "2mm metal wall decor", materials=["metal"], product="metal wall art")
+    assert (fit.reason("steel wall decor", card) or "").startswith("kartta olmayan özgül malzeme") and fit.reason("metal wall decor", card) is None

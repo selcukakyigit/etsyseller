@@ -65,6 +65,9 @@ def reason(phrase: str, facts: Facts) -> str | None:
     for group, vocab in MATERIALS.items():
         if set(w) & vocab and not known & vocab:
             return f"başka malzeme ({group})"
+    specific = (set(w) & quality.SPECIFIC_MATERIALS) - known
+    if specific:
+        return f"kartta olmayan özgül malzeme ({', '.join(sorted(specific))})"
     missing_aud = (set(w) & AUDIENCES) - known
     if missing_aud:
         return f"kartta olmayan kitle ({', '.join(sorted(missing_aud))})"

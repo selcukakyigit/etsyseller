@@ -383,6 +383,38 @@ def claim_problems(product_description: str, source_text: str | None = None) -> 
     )]
 
 
+# "metal" demiş kullanıcının ürününe "steel" yazılamaz: genel malzeme adı özgül olandan (çelik, pirinç, meşe…) ayrılır; özgül olan kaynakta geçmiyorsa uydurmadır.
+SPECIFIC_MATERIALS = {
+    "steel", "stainless", "iron", "aluminum", "aluminium", "brass", "copper", "bronze", "tin", "zinc", "titanium",
+    "oak", "walnut", "pine", "maple", "birch", "bamboo", "plywood", "mdf", "cherry",
+    "porcelain", "stoneware", "cotton", "linen", "wool", "velvet", "suede", "acrylic", "resin", "silicone",
+}
+_TURKISH_ONLY = re.compile(r"[ğĞıİşŞ]")  # ç, ö, ü başka dillerde de var (marka/yer adları); bu harfler yalnızca Türkçe'dedir
+
+
+def material_problems(text: str, source_text: str | None = None) -> list[str]:
+    """Başlık/etiket/açıklama/malzeme alanında kaynakta olmayan özgül malzeme (kullanıcı yalnızca "metal" dediyse "steel")."""
+    src = html.unescape(source_text or "").lower()
+    found = sorted({w for w in _WORD.findall(text.lower()) if w in SPECIFIC_MATERIALS and not re.search(rf"\b{re.escape(w)}", src)})
+    if not found:
+        return []
+    return [tr(
+        f"Kullanıcının söylemediği özgül malzeme yazılmış ({', '.join(found)}); yalnızca kullanıcının dediği malzemeyi yaz (ör. 'metal'), başlıktan, etiketlerden, açıklamadan ve malzeme alanından çıkar.",
+        f"A specific material the seller did not state was written ({', '.join(found)}); write only the stated material (e.g. 'metal') in the title, tags, description and materials.",
+    )]
+
+
+def language_problems(text: str) -> list[str]:
+    """Etsy metni İngilizce yazılır; kullanıcının Türkçe sözü olduğu gibi kopyalanmışsa (ör. "çivi ile monte edilir") çevrilmeli."""
+    hits = sorted({m.group(0) for line in text.splitlines() if _TURKISH_ONLY.search(line) for m in re.finditer(r"[^\W\d_]*[ğĞıİşŞ][^\W\d_]*", line)})
+    if not hits:
+        return []
+    return [tr(
+        f"Metinde Türkçe sözcükler var ({', '.join(hits[:4])}); başlık, etiket ve açıklamayı İngilizceye çevir.",
+        f"The text contains Turkish words ({', '.join(hits[:4])}); translate the title, tags and description into English.",
+    )]
+
+
 def brand_problems(title: str, tags: list[str], source_text: str | None = None) -> list[str]:
     src = html.unescape(source_text or "").lower()
     names = sorted({m.group(0).lower() for m in PROTECTED_NAMES.finditer(" ".join([title, *tags]))} - {m.group(0).lower() for m in PROTECTED_NAMES.finditer(src)})

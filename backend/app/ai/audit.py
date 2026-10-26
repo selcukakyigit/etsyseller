@@ -109,6 +109,7 @@ _NOT_ENFORCED = {"faq", "layout_headers", "layout_emoji", "facts"}  # "facts": v
 
 def generation_problems(
     title: str, tags: list[str], product_description: str, others: list[dict], source_text: str | None, variations: dict[str, list[str]], digital: bool = False, personalizable: bool = False,
+    materials: list[str] | None = None,
 ) -> list[str]:
     """Yeni yazılan metin için TEK denetim: biçim ve benzersizlik (quality), uydurma (fact), açıklama yapısı. SEO öneri hattı ve sohbet asistanının
     taslak oluşturması aynısını kullanır; sorun varsa model geri bildirimle yeniden dener."""
@@ -116,6 +117,8 @@ def generation_problems(
     problems += quality.fact_problems(title, product_description, source_text or "", variations)
     # Doğrulanmamış iddia (ör. "UV400") başlıkta/etiketlerde de aynı kural: kullanıcı söylemediyse yazılmaz.
     problems += [p.replace("Açıklamada", "Başlık/etiketlerde").replace("The description has", "The title/tags have") for p in quality.claim_problems(f"{title} {' '.join(tags)}", source_text)]
+    everything = f"{title} {' '.join(tags)} {' '.join(materials or [])} {product_description}"
+    problems += quality.material_problems(everything, source_text) + quality.language_problems(everything)
     product = quality.strip_common_paragraphs(product_description, others)
     problems += [text for id, text in structure_issues(product, digital) if id not in _NOT_ENFORCED]
     problems += [text for _id, text in coverage_issues(product_description, product, variations, personalizable)]

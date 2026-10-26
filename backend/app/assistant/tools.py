@@ -918,7 +918,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     if plan is not None:  # etiketleri model değil plan yerleştirir; modelinkiler yalnızca plan 13'e ulaşamazsa tamamlar
         tags_checked = plan_mod.place_tags(plan, tags_checked)
         a = {**a, "tags": tags_checked}
-    problems_pre = audit.generation_problems(title, tags_checked, str(a.get("description") or ""), others, source, draft_variations, a.get("listing_type") == "download", bool(a.get("personalizable")))
+    problems_pre = audit.generation_problems(title, tags_checked, str(a.get("description") or ""), others, source, draft_variations, a.get("listing_type") == "download", bool(a.get("personalizable")), materials=[str(m) for m in a.get("materials") or []])
     if ctx.unattended and plan is not None:  # toplu iş: başlığı seçen kullanıcı ya da brief_check yok; başlık planın (havuz verisinden seçilen) açılışlarından biriyle başlamalı
         free = _draft_plan(ctx, a, title, tags_checked, draft_variations, source, free_title=True)
         problems_pre = [*(plan_mod.title_problems(title, free) if free else []), *problems_pre]

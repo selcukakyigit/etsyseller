@@ -54,7 +54,7 @@ def _split_inline(line: str) -> list[str]:
 
 
 # Olmayan bilgiyi söyleyen satırlar ("Personalization: none", boş QUESTIONS bölümü) açıklamadan çıkarılır.
-_NONE_LINE = re.compile(r"^[ \t]*[•\-*]?[ \t]*(?:Personali[sz]ation|Customi[sz]ation)[ \t]*:[ \t]*(?:none|no|n/a|not available|not personali[sz]able)\.?[ \t]*\n?", re.I | re.M)
+_NONE_LINE = re.compile(r"^[ \t]*[•\-*]?[ \t]*(?:Personali[sz]ation|Customi[sz]ation)[ \t]*:[ \t]*(?:none|not available|not personali[sz]able|no|n/a)(?![A-Za-z])\.?[ \t]*\n?", re.I | re.M)
 _NO_QUESTIONS = re.compile(r"^[ \t]*QUESTIONS[ \t]*\n+(?:[ \t]*[•\-*]?[ \t]*No (?:questions|faq)[^\n]*\n?)+", re.I | re.M)
 
 _META = re.compile(r"^[ \t]*[•\-*]?[ \t]*No [A-Za-z ]{2,30} section (?:added|included)\.?[ \t]*\n?", re.I | re.M)  # modelin kendi notu ("No QUESTIONS section added.") açıklamaya sızmasın
