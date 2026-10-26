@@ -701,6 +701,17 @@ def _tags(raw: list[str]) -> tuple[list[str], list[str]]:
     return out[: etsy_rules.TAG_COUNT], short
 
 
+def _spread_total(work: dict, total: int) -> str | None:
+    """"Toplam N adet": N, kombinasyonlara eşit bölünür (kalan ilk kombinasyonlara birer fazla). Kombinasyon sayısından az ise Etsy'de 0 stoklu seçenek olur: hata."""
+    offerings = [o for p in work["inventory"]["products"] for o in p["offerings"]]
+    if total < len(offerings):
+        return f"Toplam {total} adet {len(offerings)} kombinasyona bölünemez (her birine en az 1 gerekir); kullanıcıya söyle: her kombinasyon için adet mi vermek istiyor?"
+    base, extra = divmod(total, len(offerings))
+    for i, o in enumerate(offerings):
+        o["quantity"] = min(inventory_edit.MAX_QUANTITY, base + (1 if i < extra else 0))
+    return None
+
+
 def _build_inventory(work: dict, price: float, quantity: int, variations: list[dict]) -> str | None:
     cur = work["inventory"]["products"][0]["offerings"][0]["price"]["currency_code"]
 
@@ -944,6 +955,8 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     variations = [] if is_digital else [v for v in (a.get("variations") or []) if len(v.get("values") or []) > 1]  # dijital listing'de varyasyon yok (Etsy)
     dropped_variations = len(a.get("variations") or []) - len(variations)
     err = _build_inventory(work, price, 999 if is_digital else max(1, int(a.get("quantity") or norm_qty)), variations)
+    if not err and a.get("total_quantity") and not is_digital:
+        err = _spread_total(work, int(a["total_quantity"]))
     if err:
         creation_cleanup(ctx, lid)
         return {"error": err}
@@ -3131,7 +3144,8 @@ TOOLS: list[dict] = [
         "dimensions": _obj({"length": {"type": "number"}, "width": {"type": "number"}, "height": {"type": "number"}, "unit": {"type": "string", "enum": ["mm", "cm", "m", "in", "ft"]}}),
         "description_template_id": {"type": "integer", "description": "Kullanılacak hazır açıklama metni. Verilmezse mağazanın VARSAYILAN şablonu kullanılır; 0 = şablon kullanma. Şablon kullanılırken description'a kargo/garanti/iletişim gibi sabit kısımları YAZMA."},
         "use_standard_sections": {"type": "boolean", "description": "Mağazanın sabit açıklama bölümlerini (iletişim, işleme/teslimat, garanti, yasal uyarı) açıklamaya otomatik ekle. Varsayılan true"},
-        "quantity": {"type": "integer", "description": "Stok adedi. Kullanıcı vermediyse BOŞ BIRAK: mağazanın tipik adedi kullanılır"},
+        "quantity": {"type": "integer", "description": "Her varyasyon KOMBİNASYONUNUN stoğu (Etsy stoğu kombinasyon başına tutar; düzenleyicideki 'Stok (tümü)' alanı hepsine aynı adedi yazar). Kullanıcı 'hepsi için / her biri / tümü için N' dediyse N. Vermediyse BOŞ BIRAK: mağazanın tipik adedi kullanılır"},
+        "total_quantity": {"type": "integer", "description": "YALNIZCA kullanıcı 'TOPLAM N adet, kombinasyonlara dağıt' dediyse: N adet tüm kombinasyonlara eşit bölünür (kalan ilk kombinasyonlara). quantity ile birlikte verme"},
         "materials": {"type": "array", "items": {"type": "string"}},
         "variations": {"type": "array", "description": "En fazla 3 varyasyon. Fiyat yalnızca bir varyasyona göre değişebilir. Kullanıcı seçenek başına stok verdiyse (100 cm: 10 adet, 50 cm: 5 adet) her seçeneğe quantity yaz.", "items": _obj({"name": {"type": "string"}, "values": {"type": "array", "items": _obj({"value": {"type": "string"}, "price": {"type": "number", "description": "Bu seçeneğin fiyatı (isteğe bağlı)"}, "quantity": {"type": "integer", "description": "Bu seçeneğin stoğu (isteğe bağlı; yoksa genel quantity)"}}, ["value"])}}, ["name", "values"])},
         "image_ids": {"type": "array", "items": {"type": "string"}, "description": "Sohbete yüklenen resimlerin kimlikleri (sistem mesajındaki listeden)"},

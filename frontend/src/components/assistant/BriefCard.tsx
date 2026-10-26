@@ -27,7 +27,9 @@ export default function BriefCard({ card, onAsk, active }: { card: Brief; onAsk?
       onAsk?.(chosen[0].value);
       return;
     }
-    const lines = chosen.map((c) => `${c.label}: ${c.value}`);
+    // Hazır cevaplı HER soru cevaplandıysa sohbette yalnızca cevaplar görünür (kartla aynı sırada); atlanan soru varsa hangi cevabın hangisi olduğu için "soru: cevap" kalır.
+    const choiceQuestions = card.questions.filter((q) => q.options.length > 0).length;
+    const lines = chosen.length === choiceQuestions ? chosen.map((c) => c.value) : chosen.map((c) => `${c.label}: ${c.value}`);
     // Hem hazır cevap seçildi hem yazıldıysa model hangisinin geçerli olduğunu bilemez ve geri sorar: yazılan açıkça öncelikli işaretlenir.
     if (text.trim()) lines.push(lines.length > 0 ? `${t("Kendi yazdıklarım (seçimlerle çelişirse BUNLAR geçerli)", "What I wrote myself (wins over the choices above if they conflict)")}: ${text.trim()}` : text.trim());
     onAsk?.(lines.join("\n") || t("Sen karar ver", "You decide"));

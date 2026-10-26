@@ -30,7 +30,7 @@ eq(sent[0], "abstract line art bubble metal wall decor gibi", "yalnızca yazı d
 // 2) seçim + yazı: yazılan öncelikli işaretlenir
 await click([...el.querySelectorAll("button")].find((b) => b.textContent === "Metal Wall Art B"));
 await click(create());
-eq(sent[1].startsWith("Başlık seç: Metal Wall Art B\n"), true, "seçim ilk satırda");
+eq(sent[1].startsWith("Metal Wall Art B\n") && !sent[1].includes("Başlık seç"), true, "yalnızca cevap görünür, soru metni yok");
 eq(/BUNLAR geçerli|wins over/.test(sent[1]) && sent[1].endsWith("abstract line art bubble metal wall decor gibi"), true, "yazılan öncelikli işaretli");
 // 3) tek soru + yalnızca seçim: mesaj yalnızca seçilen değer
 await act(async () => root.unmount());
