@@ -430,6 +430,8 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
                 last_error[:] = [str(result["error"])[:700]]
             if name not in _CARD_TOOLS:
                 tool_lines.append(context.summarize_tool_call(name, args, result))
+                if failed and sum(1 for line in tool_lines if line.startswith("  ↳ hata")) < 3:  # reddin tam nedeni (kayıttaki özet 150 karakterde kesiliyordu: 'neden olmadı' sorusu tahminle çözülüyordu)
+                    tool_lines.append("  ↳ hata: " + " ".join(str(result["error"]).split())[:400])
             return result
         finally:
             set_progress(shop.id, request_id, "Reviewing the result" if en else "Sonucu değerlendiriyor", None, ctx.cards)

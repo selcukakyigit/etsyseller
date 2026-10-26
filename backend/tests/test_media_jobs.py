@@ -30,14 +30,21 @@ def world(db, monkeypatch):
     shop = _shop(db)
     state = NS(
         listings={-1: {"title": "Tumbler", "images": 2, "videos": 0}, -2: {"title": "Pillow", "images": 19, "videos": 0}, -3: {"title": "No photo", "images": 0, "videos": 0},
-                  -4: {"title": "Metal art", "images": 1, "videos": 0, "colors": ["Black", "Gold", "White"]}},
+                  -4: {"title": "Metal art", "images": 1, "videos": 0, "colors": ["Black", "Gold", "White"]},
+                  -5: {"title": "Sized art", "images": 1, "videos": 0, "sizes": ["140x49 cm / 55x19 in", "99x34 cm / 39x13 in"]},
+                  -6: {"title": "Linked elsewhere", "images": 3, "videos": 0, "colors": ["Black", "Gold"], "linked": 1}},
         balance=1000, enabled=True, added={}, made=[], videos=[], executed=[], image_errors={}, after_image=None, video_error=None,
     )
 
     def draft_work(ctx, lid):
         spec = state.listings[lid]
-        products = [{"property_values": [{"property_name": "Color", "values": [c]}], "offerings": [{}]} for c in spec.get("colors", [])]
-        return {"title": spec["title"], "images": [{"listing_image_id": 100 + i, "rank": i + 1} for i in range(spec["images"] + state.added.get(lid, 0))], "videos": [{} for _ in range(spec["videos"])], "inventory": {"products": products}}
+        products = [{"property_values": [{"property_id": 1, "property_name": "Color", "values": [c]}], "offerings": [{}]} for c in spec.get("colors", [])]
+        if spec.get("linked"):  # fotoğraflar Size&Scale (property_id 2) varyasyonuna bağlı
+            for prod in products:
+                prod["property_values"].append({"property_id": 2, "property_name": "Size&Scale", "values": ["Large"]})
+        if spec.get("sizes"):
+            products = [{"property_values": [{"property_id": 2, "property_name": "Size&Scale", "values": [z]}], "offerings": [{}]} for z in spec["sizes"]]
+        return {"title": spec["title"], "images": [{"listing_image_id": 100 + i, "rank": i + 1} for i in range(spec["images"] + state.added.get(lid, 0))], "videos": [{} for _ in range(spec["videos"])], "inventory": {"products": products}, "variation_links": {"property_id": 2, "images": {"x": 1}} if spec.get("linked") else {}}
 
     monkeypatch.setattr(tools, "_draft_work", draft_work)
     monkeypatch.setattr(media_jobs, "_prices", lambda seconds, want_video: (PRICES[0], PRICES[1] if want_video else 0))
@@ -258,3 +265,19 @@ def test_option_mode_errors_are_readable_and_a_failed_link_is_a_warning_not_a_lo
     _wait(job, {"done"})
     state = media_jobs.public(job)
     assert state["images_total"] == 3 and len(state["items"][0]["errors"]) == 3 and "bağlanamadı" in state["items"][0]["errors"][0], "görsel kaybolmaz, bağlama hatası söylenir"
+
+
+def test_size_options_get_a_spec_sheet_prompt_with_the_exact_size_text_and_a_linked_variation_is_refused_before_any_credit(world):
+    assert media_jobs.is_size_variation("Size&Scale") and media_jobs.is_size_variation("Boyut") and not media_jobs.is_size_variation("Color")
+    _out, job = _plan(world, listing_id=-5, variation_name="size&scale")
+    assert job.variation == "Size&Scale" and job.quote["images"] == 2 and media_jobs.public(job)["items"][0]["options"] == ["140x49 cm / 55x19 in", "99x34 cm / 39x13 in"]
+    media_jobs.start(job)
+    _wait(job, {"done"})
+    prompts = [p for _lid, p in world.made]
+    assert "'140x49 cm / 55x19 in'" in prompts[0] and "'99x34 cm / 39x13 in'" in prompts[1], "ölçü metni seçenekten harfi harfine"
+    assert all("dimension lines" in p and "never cropped" in p and "change ONLY" not in p for p in prompts), "boyutta renk değiştirme istemi kullanılmaz"
+    links = [(a["option"], a["photo_number"]) for name, a in world.executed if name == "set_variation_photo"]
+    assert links == [("140x49 cm / 55x19 in", 2), ("99x34 cm / 39x13 in", 3)]
+    refused = media_tools.plan_listing_media(world.ctx, {"listing_id": -6, "variation_name": "Color"})
+    assert "TEK varyasyona" in refused["error"] and "Size&Scale" in refused["error"], "fotoğraflar başka varyasyona bağlıysa kredi harcanmadan söylenir"
+    assert world.made == world.made and len(world.made) == 2

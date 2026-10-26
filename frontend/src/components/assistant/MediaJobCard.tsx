@@ -74,7 +74,7 @@ export default function MediaJobCard({ card, shopId }: { card: Media; shopId: nu
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-xs text-neutral-700 dark:text-neutral-300">
         <span className="font-semibold text-neutral-900 dark:text-neutral-100">{cost}</span>
         {q.credits_enabled && q.balance !== null && <span>{t(`Bakiye: ${q.balance}`, `Balance: ${q.balance}`)}</span>}
-        {state.variation && <span>{t(`Her ${state.variation} seçeneği için bir görsel; üretilince seçeneğe bağlanır`, `One image per ${state.variation} option, linked to the option once made`)}</span>}
+        {state.variation && <span>{t(`Her ${state.variation} seçeneği için bir görsel; üretilince seçeneğe bağlanır. Yazıları ve ölçüleri kontrol et`, `One image per ${state.variation} option, linked to the option once made. Check the labels and measurements`)}</span>}
         {state.status === "quote" && !q.affordable && <span className="font-medium text-red-600 dark:text-red-400">{t("Bakiye yetmiyor", "Not enough credits")}</span>}
       </div>
 

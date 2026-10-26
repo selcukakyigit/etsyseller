@@ -61,6 +61,19 @@ _OPTION_PROMPT = (
 )
 
 
+# Ölçü varyasyonu ("Size", "Size&Scale", "Boyut"): görsel ürünün ölçüsünü gösterir; seçeneğin ölçü metni HARFİ HARFİNE yazılır (model rakam uydurmasın).
+_SIZE_WORDS = ("size", "scale", "dimension", "boyut", "ölçü", "olcu")
+_SIZE_PROMPT = (
+    "Create a NEW product photo of this exact product drawn as a clean spec-sheet image that shows its size: add thin dimension lines with small arrowheads along the full width and the full height, "
+    "each with a short, clearly readable label. Use EXACTLY this size text and no other numbers: '{option}'. Keep the product itself, its shape, proportions, pattern and every detail identical, fully visible and never cropped, "
+    "on a clean neutral background with generous margins so the labels fit. No other text, watermarks, logos or brand names.{extra}"
+)
+
+
+def is_size_variation(name: str) -> bool:
+    return any(w in name.lower() for w in _SIZE_WORDS)
+
+
 @dataclass
 class Job:
     shop_id: int
@@ -254,7 +267,8 @@ def _produce(job: Job, row: dict, result: dict) -> None:
 
 def _option_prompt(job: Job, option: str) -> str:
     extra = f" Direction from the seller: {job.instruction}" if job.instruction else ""
-    return _OPTION_PROMPT.format(variation=job.variation, option=option, extra=extra)
+    template = _SIZE_PROMPT if is_size_variation(job.variation) else _OPTION_PROMPT
+    return template.format(variation=job.variation, option=option, extra=extra)
 
 
 def _link_option(ctx, lid: int, variation: str, option: str) -> str | None:
