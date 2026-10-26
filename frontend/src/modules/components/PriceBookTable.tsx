@@ -48,6 +48,7 @@ export default function PriceBookTable({ api, entityId, currency, access }: { ap
   const [history, setHistory] = useState<PriceItem | null>(null);
   const [typesOpen, setTypesOpen] = useState(false);
   const [stockFor, setStockFor] = useState<number | null>(null);
+  const [editFor, setEditFor] = useState<number | null>(null); // stok penceresinden "Kalemi düzenle" ile açılan kalem
   const [confirm, confirmEl] = useConfirm();
   const editable = can(access, "prices.edit");
   const items = data?.items ?? [];
@@ -127,7 +128,8 @@ export default function PriceBookTable({ api, entityId, currency, access }: { ap
                     <tbody>
                       {rows.map((item) => (
                         <PriceRow
-                          key={item.id}
+                          key={`${item.id}-${editFor === item.id}`}
+                          startEditing={editFor === item.id}
                           item={item}
                           currency={currency}
                           api={api}
@@ -167,7 +169,7 @@ export default function PriceBookTable({ api, entityId, currency, access }: { ap
         </label>
       )}
       {stockFor !== null && items.some((i) => i.id === stockFor) && (
-        <StockModal api={api} entityId={entityId} item={items.find((i) => i.id === stockFor)!} currency={currency} onChanged={reload} onClose={() => setStockFor(null)} />
+        <StockModal api={api} entityId={entityId} item={items.find((i) => i.id === stockFor)!} currency={currency} onChanged={reload} onClose={() => setStockFor(null)} onEditItem={() => { setEditFor(stockFor); setStockFor(null); }} />
       )}
       {typesOpen && <MaterialTypesModal api={api} entityId={entityId} onClose={() => setTypesOpen(false)} />}
       {history && <HistoryModal api={api} entityId={entityId} item={history} currency={currency} onClose={() => setHistory(null)} />}
@@ -184,6 +186,7 @@ export default function PriceBookTable({ api, entityId, currency, access }: { ap
 
 function PriceRow({
   item,
+  startEditing,
   currency,
   api,
   entityId,
@@ -199,6 +202,8 @@ function PriceRow({
   onDelete,
 }: {
   item: PriceItem;
+  /** Düzenleme formu açık başlar (stok penceresinden gelindiğinde). */
+  startEditing: boolean;
   currency: string;
   api: EntityApi;
   entityId: number;
@@ -216,7 +221,7 @@ function PriceRow({
   const { t, locale } = useT();
   const catalog = useMaterialCatalog();
   const missingLabels = useMissingLabels();
-  const [edit, setEdit] = useState(false);
+  const [edit, setEdit] = useState(startEditing);
   const [name, setName] = useState(item.name);
   const [spec, setSpec] = useState(item.spec);
   const [unit, setUnit] = useState(item.unit);

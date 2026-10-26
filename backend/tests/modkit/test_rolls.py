@@ -51,3 +51,15 @@ def test_serialized_stock_shows_metres_on_hand(db):
     version = pricebook.latest_prices(db, [tape.id])[tape.id]
     row = pricebook.serialize(tape, version, 1, {tape.id: {"on_hand": 4}})
     assert row["on_hand_metres"] == 400
+
+
+def test_an_unused_metre_tape_can_be_switched_to_counted_rolls_with_a_pack(db):
+    """Eski "m" birimli bant kalemi (işte kullanılmamış): birim adete, rulo boyu ve koli paketiyle tek kayıtta değişir."""
+    a = _access()
+    tape = pricebook.create_item(db, a, "material", "Koli bandı", "m", "", 1, fields={"material": "tape"})
+    pricebook.update_item(db, a, tape, None, None, unit="piece", in_use=False,
+                          fields={"roll_length": 100, "pack_unit": "box", "pack_size": 80})
+    pricebook.set_price(db, a, tape, 80)
+    row = _row(db, a, tape)
+    assert (tape.unit, tape.roll_length, tape.pack_unit, tape.pack_size) == ("piece", 100, "box", 80)
+    assert row["roll_metres"] == 100 and row["pack_price"] == 6400

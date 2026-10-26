@@ -9,7 +9,7 @@ from app.modkit.models import PriceItem
 
 
 def _access():
-    return NS(entity=NS(id=1, workspace_id=1, vat_rate=0, vat_in_cost=False), user=NS(id=1), is_guest=False, is_member=True, require=lambda *a: None, require_member=lambda: None)
+    return NS(entity=NS(id=1, workspace_id=1, vat_rate=0, vat_in_cost=False, currency="TRY"), user=NS(id=1), is_guest=False, is_member=True, require=lambda *a: None, require_member=lambda: None)
 
 
 def _material(db, access, name="Strafor", unit="sheet", price=20, **fields):

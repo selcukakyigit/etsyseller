@@ -27,6 +27,7 @@ export default function StockModal({
   currency,
   onChanged,
   onClose,
+  onEditItem,
 }: {
   api: EntityApi;
   entityId: number;
@@ -34,6 +35,8 @@ export default function StockModal({
   currency: string;
   onChanged: () => void;
   onClose: () => void;
+  /** Pencereyi kapatıp fiyat listesinde kalemin düzenleme formunu açar (birim, rulo boyu ve alış paketi orada yazılır). */
+  onEditItem?: () => void;
 }) {
   const { t, locale } = useT();
   const [tab, setTab] = useState<Tab>("in");
@@ -125,6 +128,19 @@ export default function StockModal({
             </span>
           )}
         </div>
+        {item.group === "film" && ["mm", "cm", "m"].includes(item.unit) && (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+            {t(
+              "Bu kalemin birimi metre; stok metre olarak sayılıyor. Rulo ya da koli olarak saymak için fiyat listesinde kalemi düzenle: birimi “adet” yap, rulo boyunu ve alış paketini yaz.",
+              "This item's unit is metres, so stock is counted in metres. To count rolls or boxes, edit the item in the price list: set the unit to “piece” and enter the roll length and purchase pack.",
+            )}
+            {onEditItem && (
+              <button type="button" onClick={onEditItem} className="ml-2 font-semibold underline">
+                {t("Kalemi düzenle", "Edit the item")}
+              </button>
+            )}
+          </p>
+        )}
         <div className="flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
           {(["in", "count", "history", "settings"] as const).map((k) => (
             <button
