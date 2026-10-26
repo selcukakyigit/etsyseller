@@ -474,3 +474,24 @@ def test_a_separate_listings_request_redirects_the_first_single_draft_call(db):
     first = tools.create_listing_draft(ctx, {"title": "Metal wall art", "price": 100})
     assert "create_listings_from_images" in first["error"] and ctx.redirected
     assert "create_listings_from_images" not in str(tools.create_listing_draft(ctx, {"title": "", "price": 100})), "ikinci çağrı yönlendirilmez (kullanıcı gerçekten tek listing istiyorsa)"
+
+
+def test_category_consensus_gives_one_family_one_category_and_keeps_confident_picks():
+    mk = lambda cid, cats: batch_drafts.Item(1, ["x"], spec={"category_id": cid, "categories": [dict(c) for c in cats]})  # noqa: E731
+    wall = {"taxonomy_id": 1029, "path": "Wall Hangings", "share": 0.5}
+    sign = {"taxonomy_id": 2844, "path": "Signs", "share": 0.2}
+    sculpt = {"taxonomy_id": 129, "path": "Sculpture", "share": 0.2}
+    job = batch_drafts.Job(1, 1, 5, None, [mk(None, [wall, sign]), mk(None, [{**wall, "share": 0.7}, sculpt]), mk(129, [sculpt])], "", "tr", True)
+    batch_drafts._consensus(job)
+    assert [i.spec["category_id"] for i in job.items] == [1029, 1029, 129], "zayıf sinyalli ürünler ortak kategoriyi alır, kendi güçlü kararı olan değişmez"
+    lone = batch_drafts.Job(1, 1, 5, None, [mk(None, [wall])], "", "tr", True)
+    batch_drafts._consensus(lone)
+    assert lone.items[0].spec["category_id"] is None, "tek ürünle ortaklık hesaplanmaz"
+
+
+def test_model_notes_do_not_leak_into_descriptions():
+    from app.ai import layout
+
+    text = "Nice art.\n\nDETAILS\n• Size: 42 cm\n\nNo QUESTIONS section added.\n\nNo personalization is offered. Thanks."
+    out = layout.normalize(text)
+    assert "No QUESTIONS" not in out and "No personalization" not in out and "Thanks." in out

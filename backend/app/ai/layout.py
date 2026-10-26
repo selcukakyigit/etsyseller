@@ -57,10 +57,12 @@ def _split_inline(line: str) -> list[str]:
 _NONE_LINE = re.compile(r"^[ \t]*[•\-*]?[ \t]*(?:Personali[sz]ation|Customi[sz]ation)[ \t]*:[ \t]*(?:none|no|n/a|not available|not personali[sz]able)\.?[ \t]*\n?", re.I | re.M)
 _NO_QUESTIONS = re.compile(r"^[ \t]*QUESTIONS[ \t]*\n+(?:[ \t]*[•\-*]?[ \t]*No (?:questions|faq)[^\n]*\n?)+", re.I | re.M)
 
+_META = re.compile(r"^[ \t]*[•\-*]?[ \t]*No [A-Za-z ]{2,30} section (?:added|included)\.?[ \t]*\n?", re.I | re.M)  # modelin kendi notu ("No QUESTIONS section added.") açıklamaya sızmasın
+_NO_PERSONALIZATION = re.compile(r"[ \t]*No personali[sz]ation is (?:offered|available|included)\.?", re.I)
 
 
 def normalize(text: str) -> str:
-    text = _NO_QUESTIONS.sub("", _NONE_LINE.sub("", text))
+    text = _NO_PERSONALIZATION.sub("", _META.sub("", _NO_QUESTIONS.sub("", _NONE_LINE.sub("", text))))
     raw = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     lines = [ln.rstrip() for src in raw for ln in (_split_inline(src) if src.strip() else [src])]
     out: list[str] = []
