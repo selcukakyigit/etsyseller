@@ -22,7 +22,8 @@ export default function BriefCard({ card, onAsk, active }: { card: Brief; onAsk?
 
   const send = () => {
     const lines = card.questions.flatMap((q, i) => (picked[i] ? [`${q.label}: ${picked[i]}`] : []));
-    if (text.trim()) lines.push(text.trim());
+    // Hem hazır cevap seçildi hem yazıldıysa model hangisinin geçerli olduğunu bilemez ve geri sorar: yazılan açıkça öncelikli işaretlenir.
+    if (text.trim()) lines.push(lines.length > 0 ? `${t("Kendi yazdıklarım (seçimlerle çelişirse BUNLAR geçerli)", "What I wrote myself (wins over the choices above if they conflict)")}: ${text.trim()}` : text.trim());
     onAsk?.(lines.join("\n") || t("Sen karar ver", "You decide"));
   };
 
