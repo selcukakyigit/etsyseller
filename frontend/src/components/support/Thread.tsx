@@ -5,18 +5,24 @@ import { useFormat } from "@/components/admin/ui";
 import { Spinner } from "@/components/ui/Spinner";
 import { useT } from "@/lib/i18n-client";
 import { toast } from "@/lib/toast";
-import type { TicketMessage } from "@/lib/supportApi";
+import { eventText } from "@/components/support/meta";
+import type { TicketEvent, TicketLabelOption, TicketMessage } from "@/lib/supportApi";
 
 /** Talep yazışması. `viewer`: kimin gözüyle bakıldığı; kendi mesajı sağa yaslı, karşı tarafınki solda durur.
- * `openAttachment`: imzalı adresi alır; dosya yeni sekmede açılır (kullanıcı ve yönetici uçları farklıdır). */
+ * `openAttachment`: imzalı adresi alır; dosya yeni sekmede açılır (kullanıcı ve yönetici uçları farklıdır).
+ * `events` (yalnızca yönetici): iş kaydı satırları (atama, durum…) mesajların arasına tarih sırasıyla girer. */
 export default function Thread({
   messages,
   viewer,
   openAttachment,
+  events = [],
+  labels = [],
 }: {
   messages: TicketMessage[];
   viewer: "user" | "admin";
   openAttachment: (id: number) => Promise<{ url: string }>;
+  events?: TicketEvent[];
+  labels?: TicketLabelOption[];
 }) {
   const { t } = useT();
   const f = useFormat();
@@ -39,9 +45,19 @@ export default function Thread({
     }
   }
 
+  const timeline = [...messages.map((m) => ({ at: m.created_at, message: m })), ...events.map((e) => ({ at: e.created_at, event: e }))].sort((a, b) => a.at.localeCompare(b.at));
+
   return (
     <ul className="space-y-3">
-      {messages.map((m) => {
+      {timeline.map((row) => {
+        if ("event" in row) {
+          return (
+            <li key={`e${row.event.id}`} className="text-center text-[11px] text-neutral-400 dark:text-neutral-500">
+              {eventText(t, row.event, labels)} · {f.dateTime(row.at)}
+            </li>
+          );
+        }
+        const m = row.message;
         const mine = m.author === viewer;
         const tone = m.internal
           ? "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950"

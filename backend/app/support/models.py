@@ -29,8 +29,37 @@ class Ticket(Base):
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Bağlamdaki son arayüz hatasının parmak izi (support/fingerprint.py): aynı hatayı bildirenler gruplanır.
     fingerprint: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    # Yönetici tarafı: kime atandı (yönetici kullanıcı), ne kadar acil, nereden açıldı (taxonomy.SOURCES), ilk yönetici yanıtı ne zaman.
+    assignee_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    priority: Mapped[str] = mapped_column(String(10), default="normal", server_default="normal")
+    source: Mapped[str] = mapped_column(String(12), default="web", server_default="web")
+    first_response_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
     messages: Mapped[list["TicketMessage"]] = relationship(back_populates="ticket", cascade="all, delete-orphan", order_by="TicketMessage.id")
+    labels: Mapped[list["TicketLabel"]] = relationship(cascade="all, delete-orphan", lazy="selectin", order_by="TicketLabel.label")
+    events: Mapped[list["TicketEvent"]] = relationship(cascade="all, delete-orphan", order_by="TicketEvent.id")
+
+
+class TicketLabel(Base):
+    """Talebe yönetici tarafından konan konu etiketi (anahtarlar support/taxonomy.py'de). Raporlar etikete göre sayar."""
+
+    __tablename__ = "support_ticket_labels"
+
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("support_tickets.id", ondelete="CASCADE"), primary_key=True)
+    label: Mapped[str] = mapped_column(String(30), primary_key=True, index=True)
+
+
+class TicketEvent(Base):
+    """Talepte olan iş kaydı: açıldı, durum/atama/öncelik/etiket değişti. Yalnızca yöneticilere görünür; "kim ne zaman" burada durur."""
+
+    __tablename__ = "support_ticket_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("support_tickets.id", ondelete="CASCADE"), index=True)
+    actor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    kind: Mapped[str] = mapped_column(String(20))  # created | status | assignee | priority | labels | rating
+    detail: Mapped[str] = mapped_column(String(300), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
 
 class TicketMessage(Base):

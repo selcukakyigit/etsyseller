@@ -9,16 +9,64 @@ export type TicketMessage = { id: number; author: "user" | "admin"; body: string
 export type TicketSummary = { id: number; subject: string; category: TicketCategory; status: TicketStatus; user_unread: boolean; rating: 1 | -1 | null; created_at: string; updated_at: string };
 export type TicketDetail = TicketSummary & { messages: TicketMessage[] };
 
-export type TicketContext = { url?: string; referrer?: string; user_agent?: string; viewport?: string; theme?: string; lang?: string; shop?: string; app_version?: string; errors?: string[] };
-export type AdminTicketUser = { id: number; email: string; name: string | null };
-export type AdminTicketSummary = TicketSummary & { user: AdminTicketUser; admin_unread: boolean };
-export type AdminTicketDetail = TicketDetail & {
-  user: AdminTicketUser;
+export type TicketPriority = "low" | "normal" | "urgent";
+export type TicketSource = "web" | "assistant" | "error";
+export type AdminView = "open" | "mine" | "unassigned" | "unread" | "waiting" | "overdue" | "resolved" | "all";
+
+export type TicketContext = {
+  url?: string;
+  referrer?: string;
+  user_agent?: string;
+  viewport?: string;
+  theme?: string;
+  lang?: string;
+  shop?: string;
+  app_version?: string;
+  errors?: string[];
+  /** Asistandan açılan talepte sohbetin son mesajları. */
+  chat?: string[];
+};
+export type Person = { id: number; email: string; name: string | null };
+export type AdminTicketSummary = TicketSummary & {
+  user: Person;
   admin_unread: boolean;
+  priority: TicketPriority;
+  source: TicketSource;
+  assignee: Person | null;
+  /** Etiket anahtarları (adları `adminTicketsApi.options()` verir). */
+  labels: string[];
+};
+/** Talebin iş kaydı satırı: `detail` türe göre değişir (durum, öncelik, atanan adı, etiket anahtarları, kaynak, puan). */
+export type TicketEvent = { id: number; kind: "created" | "status" | "assignee" | "priority" | "labels" | "rating"; detail: string; actor: string | null; created_at: string };
+export type AdminTicketDetail = AdminTicketSummary & {
+  messages: TicketMessage[];
   context: TicketContext;
   /** Aynı hatayı bildiren diğer talepler ve o hatanın otomatik yakalanma sayısı. */
   similar: { id: number; subject: string; status: TicketStatus }[];
   error_count: number;
+  events: TicketEvent[];
+  suggested_labels: string[];
+  first_response_at: string | null;
+  resolved_at: string | null;
+};
+export type AdminTicketPage = { items: AdminTicketSummary[]; total: number; page: number; pages: number; counts: Record<AdminView, number> };
+export type TicketLabelOption = { key: string; tr: string; en: string };
+export type TicketOptions = { labels: TicketLabelOption[]; staff: Person[]; views: AdminView[]; priorities: TicketPriority[]; overdue_hours: number };
+export type TicketPatch = { status?: TicketStatus; assignee_id?: number | null; priority?: TicketPriority; labels?: string[] };
+export type TicketListQuery = { view: AdminView; q: string; label: string; priority: string; category: string; page: number };
+export type TicketReport = {
+  days: number;
+  created: number;
+  resolved: number;
+  open_now: number;
+  first_response_hours: number | null;
+  resolution_hours: number | null;
+  rating_up: number;
+  rating_down: number;
+  by_category: Record<string, number>;
+  by_source: Record<string, number>;
+  by_label: Record<string, number>;
+  unlabelled: number;
 };
 export type CannedReply = { id: number; title: string; body: string };
 export type ErrorGroupStatus = "open" | "resolved" | "ignored";
@@ -57,11 +105,15 @@ export const supportApi = {
 };
 
 export const adminTicketsApi = {
-  list: (status: "open" | "resolved" | "all", q: string) => apiRequest<AdminTicketSummary[]>(`/api/admin/tickets?${new URLSearchParams({ status, q })}`),
+  list: (q: TicketListQuery) =>
+    apiRequest<AdminTicketPage>(`/api/admin/tickets?${new URLSearchParams({ view: q.view, q: q.q, label: q.label, priority: q.priority, category: q.category, page: String(q.page) })}`),
+  options: () => apiRequest<TicketOptions>("/api/admin/tickets/options"),
+  report: (days: number) => apiRequest<TicketReport>(`/api/admin/tickets/report?days=${days}`),
   get: (id: number) => apiRequest<AdminTicketDetail>(`/api/admin/tickets/${id}`),
   reply: (id: number, body: string, opts: { internal: boolean; resolve: boolean }, files: File[]) =>
     apiUpload<AdminTicketDetail>(`/api/admin/tickets/${id}/messages`, form({ body, internal: opts.internal, resolve: opts.resolve }, files)),
-  setStatus: (id: number, status: TicketStatus) => apiRequest<AdminTicketDetail>(`/api/admin/tickets/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
+  update: (id: number, patch: TicketPatch) => apiRequest<AdminTicketDetail>(`/api/admin/tickets/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  bulk: (ids: number[], changes: TicketPatch) => apiRequest<{ updated: number }>("/api/admin/tickets/bulk", { method: "POST", body: JSON.stringify({ ids, changes }) }),
   resolveGroup: (id: number) => apiRequest<AdminTicketDetail>(`/api/admin/tickets/${id}/resolve-group`, { method: "POST" }),
   attachmentUrl: (id: number) => apiRequest<{ url: string; filename: string }>(`/api/admin/tickets/attachments/${id}/url`),
   canned: () => apiRequest<CannedReply[]>("/api/admin/tickets/canned"),

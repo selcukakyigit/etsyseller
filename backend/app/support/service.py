@@ -17,30 +17,28 @@ from app.core.i18n import tr
 from app.core.attachments import MAX_FILE_BYTES
 from app.emails.renderer import render
 from app.emails.sender import send_email
+from app.support import limits, taxonomy
 from app.support.fingerprint import fingerprint
-from app.support.models import ErrorGroup, Ticket, TicketAttachment, TicketMessage
+from app.support.models import ErrorGroup, Ticket, TicketAttachment, TicketEvent, TicketLabel, TicketMessage
 
 log = logging.getLogger("app.support")
 
 BUCKET = "support-attachments"
 MAX_FILES = 5
-CATEGORIES = {"bug", "question", "feature", "billing", "other"}
-STATUSES = {"open", "waiting_user", "resolved"}
 RETENTION = dt.timedelta(days=365)  # çözülen talepler (ve ekleri) son hareketten 12 ay sonra silinir
-MAX_TICKETS_PER_HOUR = 10
-MAX_MESSAGES_PER_HOUR = 40
 CONTEXT_TEXT_KEYS = ("url", "referrer", "user_agent", "viewport", "theme", "lang", "shop", "app_version")
 MAX_ERRORS = 5
+MAX_CHAT_LINES = 12  # asistandan açılan talepte sohbetin son mesajları (bağlama yazılır; yönetici görür)
 _THREAD = selectinload(Ticket.messages).selectinload(TicketMessage.attachments)
 
 
 # ---- bağlam ve oluşturma
 
 
-def clean_context(raw: str) -> dict:
-    """Tarayıcının gönderdiği bağlamı güvenli ve küçük bir biçime indirir (bilinmeyen alanlar atılır)."""
+def clean_context(raw: str | dict) -> dict:
+    """Bağlamı (tarayıcıdan JSON metni, asistandan sözlük) güvenli ve küçük bir biçime indirir (bilinmeyen alanlar atılır)."""
     try:
-        data = json.loads(raw or "{}")
+        data = raw if isinstance(raw, dict) else json.loads(raw or "{}")
     except ValueError:
         return {}
     if not isinstance(data, dict):
@@ -49,11 +47,15 @@ def clean_context(raw: str) -> dict:
     errors = data.get("errors")
     if isinstance(errors, list):
         out["errors"] = [str(e)[:400] for e in errors[-MAX_ERRORS:]]
+    chat = data.get("chat")
+    if isinstance(chat, list) and chat:
+        out["chat"] = [str(line)[:700] for line in chat[-MAX_CHAT_LINES:]]
     return out
 
 
-def _hour_ago() -> dt.datetime:
-    return dt.datetime.utcnow() - dt.timedelta(hours=1)
+def log_event(db: Session, ticket: Ticket, kind: str, detail: str = "", actor: User | None = None) -> None:
+    """Talebin iş kaydına satır ekler (commit çağıranın)."""
+    db.add(TicketEvent(ticket_id=ticket.id, actor_id=actor.id if actor else None, kind=kind, detail=detail[:300]))
 
 
 def _attach(db: Session, ticket_id: int, msg: TicketMessage, prepared: list[tuple[str, str, bytes]]) -> None:
@@ -74,16 +76,19 @@ def _attach(db: Session, ticket_id: int, msg: TicketMessage, prepared: list[tupl
         raise HTTPException(503, tr("Dosya yüklenemedi. Biraz sonra tekrar dene.", "The file could not be uploaded. Please try again shortly.")) from exc
 
 
-def create_ticket(db: Session, user: User, subject: str, category: str, body: str, context: dict, prepared: list[tuple[str, str, bytes]]) -> Ticket:
-    if (db.scalar(select(func.count(Ticket.id)).where(Ticket.user_id == user.id, Ticket.created_at >= _hour_ago())) or 0) >= MAX_TICKETS_PER_HOUR:
-        raise HTTPException(429, tr("Çok fazla talep açtın. Biraz sonra tekrar dene.", "Too many requests. Please try again later."))
+def create_ticket(
+    db: Session, user: User, subject: str, category: str, body: str, context: dict, prepared: list[tuple[str, str, bytes]], source: str = "web",
+) -> Ticket:
+    """`source`: talebin nereden açıldığı (taxonomy.SOURCES). Ekran ve asistan aynı fonksiyonu, aynı hız sınırlarıyla kullanır."""
+    limits.check_new_ticket(db, user)
     ticket = Ticket(
-        user_id=user.id, subject=subject.strip()[:160], category=category if category in CATEGORIES else "other",
-        context_json=json.dumps(context, ensure_ascii=False),
+        user_id=user.id, subject=subject.strip()[:160], category=category if category in taxonomy.CATEGORIES else "other",
+        source=source if source in taxonomy.SOURCES else "web", context_json=json.dumps(context, ensure_ascii=False),
         fingerprint=fingerprint(context["errors"][-1]) if context.get("errors") else None,
     )
     db.add(ticket)
     db.flush()
+    log_event(db, ticket, "created", ticket.source, user)
     msg = TicketMessage(ticket_id=ticket.id, author_kind="user", body=body.strip())
     db.add(msg)
     db.flush()
@@ -95,11 +100,7 @@ def create_ticket(db: Session, user: User, subject: str, category: str, body: st
 def add_message(db: Session, ticket: Ticket, kind: str, body: str, prepared: list[tuple[str, str, bytes]], internal: bool = False) -> TicketMessage:
     """`kind`: user | admin. Kullanıcı yanıtı talebi yeniden açar; yöneticinin (iç not olmayan) yanıtı kullanıcıya bildirim düşürür."""
     if kind == "user":
-        sent = db.scalar(
-            select(func.count(TicketMessage.id)).where(TicketMessage.ticket_id == ticket.id, TicketMessage.author_kind == "user", TicketMessage.created_at >= _hour_ago())
-        )
-        if (sent or 0) >= MAX_MESSAGES_PER_HOUR:
-            raise HTTPException(429, tr("Çok fazla mesaj gönderdin. Biraz sonra tekrar dene.", "Too many messages. Please try again later."))
+        limits.check_user_message(db, ticket, sum(len(data) for _, _, data in prepared))
     msg = TicketMessage(ticket_id=ticket.id, author_kind=kind, body=body.strip(), internal=internal)
     db.add(msg)
     db.flush()
@@ -110,17 +111,19 @@ def add_message(db: Session, ticket: Ticket, kind: str, body: str, prepared: lis
         if ticket.status != "resolved":
             ticket.status = "waiting_user"
         ticket.user_unread = True
+        ticket.first_response_at = ticket.first_response_at or dt.datetime.utcnow()
     if not internal:
         ticket.updated_at = dt.datetime.utcnow()
     db.commit()
     return msg
 
 
-def set_status(db: Session, ticket: Ticket, status: str) -> None:
-    if status not in STATUSES:
+def set_status(db: Session, ticket: Ticket, status: str, actor: User | None = None) -> None:
+    if status not in taxonomy.STATUSES:
         raise HTTPException(422, tr("Geçersiz durum", "Invalid status"))
     if status == ticket.status:
         return
+    log_event(db, ticket, "status", status, actor)
     ticket.status = status
     ticket.updated_at = dt.datetime.utcnow()
     ticket.resolved_at = dt.datetime.utcnow() if status == "resolved" else None
@@ -134,7 +137,38 @@ def rate(db: Session, ticket: Ticket, rating: int) -> None:
     if ticket.status != "resolved" or rating not in (1, -1):
         raise HTTPException(422, tr("Yalnızca tamamlanan talep puanlanabilir", "Only a completed request can be rated"))
     ticket.rating = rating
+    log_event(db, ticket, "rating", str(rating), None)
     db.commit()
+
+
+def update_ticket(db: Session, ticket: Ticket, actor: User, changes: dict, staff_ids: set[int]) -> bool:
+    """Yönetici değişikliği: `changes` yalnızca gelen alanları taşır (status, assignee_id, priority, labels); her biri iş kaydına yazılır.
+    Talep bu çağrıyla tamamlandıysa True döner (çağıran kullanıcıya bildirim gönderir). `staff_ids`: atanabilecek yöneticiler."""
+    was = ticket.status
+    if "status" in changes:
+        set_status(db, ticket, changes["status"], actor)
+    if "assignee_id" in changes and changes["assignee_id"] != ticket.assignee_id:
+        target = changes["assignee_id"]
+        if target is not None and target not in staff_ids:
+            raise HTTPException(422, tr("Yalnızca yöneticilere atanabilir", "Can only be assigned to an admin"))
+        who = db.get(User, target) if target is not None else None
+        log_event(db, ticket, "assignee", (who.name or who.email) if who else "", actor)
+        ticket.assignee_id = target
+    if "priority" in changes and changes["priority"] != ticket.priority:
+        if changes["priority"] not in taxonomy.PRIORITIES:
+            raise HTTPException(422, tr("Geçersiz öncelik", "Invalid priority"))
+        log_event(db, ticket, "priority", changes["priority"], actor)
+        ticket.priority = changes["priority"]
+    if "labels" in changes:
+        wanted = taxonomy.clean_labels(changes["labels"])
+        have = {l.label for l in ticket.labels}
+        if set(wanted) != have:
+            for row in [l for l in ticket.labels if l.label not in wanted]:
+                ticket.labels.remove(row)
+            ticket.labels.extend(TicketLabel(label=k) for k in wanted if k not in have)
+            log_event(db, ticket, "labels", ",".join(wanted), actor)
+    db.commit()
+    return was != "resolved" and ticket.status == "resolved"
 
 
 def similar(db: Session, ticket: Ticket, limit: int = 20) -> list[Ticket]:
@@ -189,20 +223,6 @@ def unread_count(db: Session, user: User) -> int:
     return int(db.scalar(select(func.count(Ticket.id)).where(Ticket.user_id == user.id, Ticket.user_unread.is_(True))) or 0)
 
 
-def list_for_admin(db: Session, status: str, q: str, limit: int = 200) -> list[dict]:
-    """`status`: open (açık + kullanıcı bekleyen) | resolved | all. Okunmamışlar üstte, sonra en yeni hareket."""
-    stmt = select(Ticket, User).join(User, User.id == Ticket.user_id)
-    if status == "open":
-        stmt = stmt.where(Ticket.status != "resolved")
-    elif status == "resolved":
-        stmt = stmt.where(Ticket.status == "resolved")
-    if q.strip():
-        like = f"%{q.strip().lower()}%"
-        stmt = stmt.where(func.lower(Ticket.subject).like(like) | func.lower(User.email).like(like))
-    rows = db.execute(stmt.order_by(Ticket.admin_unread.desc(), Ticket.updated_at.desc()).limit(limit)).all()
-    return [{**summary_out(t), "user": _user_out(u), "admin_unread": t.admin_unread} for t, u in rows]
-
-
 def open_count(db: Session) -> int:
     """Yanıt bekleyen (yönetici sırası) talepler: Genel bakış kartı için."""
     return int(db.scalar(select(func.count(Ticket.id)).where(Ticket.status == "open")) or 0)
@@ -231,10 +251,6 @@ def attachment_url(att: TicketAttachment) -> dict:
 # ---- biçimlendirme
 
 
-def _user_out(u: User) -> dict:
-    return {"id": u.id, "email": u.email, "name": u.name}
-
-
 def summary_out(t: Ticket) -> dict:
     return {
         "id": t.id, "subject": t.subject, "category": t.category, "status": t.status,
@@ -242,7 +258,7 @@ def summary_out(t: Ticket) -> dict:
     }
 
 
-def _message_out(m: TicketMessage) -> dict:
+def message_out(m: TicketMessage) -> dict:
     return {
         "id": m.id, "author": m.author_kind, "body": m.body, "internal": m.internal, "created_at": iso(m.created_at),
         "attachments": [{"id": a.id, "filename": a.filename, "size": a.size, "content_type": a.content_type} for a in m.attachments],
@@ -250,15 +266,7 @@ def _message_out(m: TicketMessage) -> dict:
 
 
 def user_detail(t: Ticket) -> dict:
-    return {**summary_out(t), "messages": [_message_out(m) for m in t.messages if not m.internal]}
-
-
-def admin_detail(t: Ticket, user: User, others: list[Ticket] | None = None, errors_seen: int = 0) -> dict:
-    return {
-        "similar": [{"id": o.id, "subject": o.subject, "status": o.status} for o in others or []], "error_count": errors_seen,
-        **summary_out(t), "admin_unread": t.admin_unread, "user": _user_out(user), "context": json.loads(t.context_json or "{}"),
-        "messages": [_message_out(m) for m in t.messages],
-    }
+    return {**summary_out(t), "messages": [message_out(m) for m in t.messages if not m.internal]}
 
 
 # ---- e-posta (arka planda; ORM nesnesi değil düz değerler taşınır, oturum kapandıktan sonra da çalışsın)
@@ -269,7 +277,9 @@ def _link(path: str) -> str:
 
 
 def notify_team(ticket_id: int, subject: str, user_email: str, body: str, kind: str) -> None:
-    """Ekibe yeni talep / kullanıcı yanıtı bildirimi (CONTACT_TO adreslerine)."""
+    """Ekibe yeni talep / kullanıcı yanıtı bildirimi (CONTACT_TO adreslerine). Yanıt e-postası talep başına 10 dakikada bir gider."""
+    if kind == "reply" and not limits.allow_team_reply_mail(ticket_id):
+        return
     to = [a.strip() for a in settings.contact_to.split(",") if a.strip()]
     if not to:
         return

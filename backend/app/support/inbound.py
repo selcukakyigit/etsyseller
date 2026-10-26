@@ -56,6 +56,9 @@ async def inbound(request: Request, background: BackgroundTasks, db: Session = D
     owner = db.get(User, ticket.user_id) if ticket else None
     if ticket is None or owner is None or owner.email.lower() != sender:
         return {"ok": True}
-    service.add_message(db, ticket, "user", body, [])
+    try:
+        service.add_message(db, ticket, "user", body, [])
+    except HTTPException:  # hız sınırı: akın eden e-posta sessizce atılır (sağlayıcı yeniden denemesin)
+        return {"ok": True}
     background.add_task(service.notify_team, ticket.id, ticket.subject, owner.email, body, "reply")
     return {"ok": True}

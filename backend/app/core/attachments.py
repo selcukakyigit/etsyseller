@@ -43,22 +43,23 @@ def safe_name(name: str) -> str:
     return (base or "file")[:120]
 
 
+def validate_file(name: str, data: bytes) -> tuple[str, str, bytes]:
+    """(güvenli ad, içerik türü, bayt): tür, boyut ve içeriğin gerçek imzası denetlenir; geçersizse 4xx fırlatır."""
+    fname = safe_name(name or "file")
+    ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+    if ext not in ALLOWED:
+        raise HTTPException(422, f"File type not allowed: {fname}")
+    if len(data) > MAX_FILE_BYTES:
+        raise HTTPException(413, f"{fname} is larger than 10 MB.")
+    ctype, kind = ALLOWED[ext]
+    if not data or not signature_ok(kind, data):
+        raise HTTPException(422, f"File content does not match its type: {fname}")
+    return fname, ctype, data
+
+
 async def read_uploads(files: list[UploadFile], max_files: int) -> list[tuple[str, str, bytes]]:
     """Seçilen dosyaları doğrulayıp (güvenli ad, içerik türü, bayt) listesi döner; geçersizse 4xx fırlatır."""
     files = [f for f in files if f.filename]
     if len(files) > max_files:
         raise HTTPException(422, f"At most {max_files} files.")
-    prepared: list[tuple[str, str, bytes]] = []
-    for f in files:
-        fname = safe_name(f.filename or "file")
-        ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
-        if ext not in ALLOWED:
-            raise HTTPException(422, f"File type not allowed: {fname}")
-        data = await f.read(MAX_FILE_BYTES + 1)
-        if len(data) > MAX_FILE_BYTES:
-            raise HTTPException(413, f"{fname} is larger than 10 MB.")
-        ctype, kind = ALLOWED[ext]
-        if not data or not signature_ok(kind, data):
-            raise HTTPException(422, f"File content does not match its type: {fname}")
-        prepared.append((fname, ctype, data))
-    return prepared
+    return [validate_file(f.filename or "file", await f.read(MAX_FILE_BYTES + 1)) for f in files]

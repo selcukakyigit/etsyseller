@@ -1,16 +1,23 @@
 "use client";
 
-import { ClipboardEvent, DragEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { ClipboardEvent, DragEvent, KeyboardEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Button, inputClass } from "@/components/admin/ui";
 import { useT } from "@/lib/i18n-client";
+import { readPageCache, writePageCache } from "@/lib/pageCache";
 import { toast } from "@/lib/toast";
 
-const MAX_FILES = 5;
+export const MAX_FILES = 5;
 const MAX_BYTES = 10 * 1024 * 1024;
 const ACCEPT = "image/*,.pdf,.txt,.csv,.docx,.xlsx";
 const OK_EXT = /\.(jpe?g|png|gif|webp|pdf|txt|csv|docx|xlsx)$/i;
 
-/** Mesaj kutusu: yazı + ekler. Ekran görüntüsü doğrudan yapıştırılabilir (Ctrl/Cmd+V), sürüklenip bırakılabilir ya da seçilebilir. */
+function sizeText(bytes: number) {
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+/** Mesaj kutusu: yazı + ekler. Ekran görüntüsü doğrudan yapıştırılabilir (Ctrl/Cmd+V), sürüklenip bırakılabilir ya da çoklu seçilebilir
+ * (en fazla 5 dosya, dosya başına 10 MB). Ctrl/Cmd+Enter gönderir. `draftKey`: yazılan metin bu anahtarla saklanır, pencere
+ * kapanıp açılınca ya da sayfa yenilenince kaybolmaz; gönderilince silinir. */
 export default function Composer({
   placeholder,
   submitLabel,
@@ -21,6 +28,7 @@ export default function Composer({
   extra,
   initialBody = "",
   snippets,
+  draftKey,
 }: {
   placeholder: string;
   submitLabel: string;
@@ -34,14 +42,22 @@ export default function Composer({
   initialBody?: string;
   /** Hazır yanıtlar: seçilen metin kutuya eklenir. */
   snippets?: { id: number; title: string; body: string }[];
+  draftKey?: string;
 }) {
   const { t } = useT();
-  const [body, setBody] = useState(initialBody);
+  const [body, setBodyState] = useState(() => (draftKey ? readPageCache<string>(draftKey) : null) ?? initialBody);
   const [files, setFiles] = useState<File[]>([]);
   const [dragging, setDragging] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
   const previews = useMemo(() => files.map((f) => (f.type.startsWith("image/") ? URL.createObjectURL(f) : null)), [files]);
   useEffect(() => () => previews.forEach((u) => u && URL.revokeObjectURL(u)), [previews]);
+  const totalBytes = files.reduce((n, f) => n + f.size, 0);
+  const canSend = body.trim().length >= minLength && !busy;
+
+  function setBody(value: string) {
+    setBodyState(value);
+    if (draftKey) writePageCache(draftKey, value);
+  }
 
   function add(incoming: File[]) {
     const accepted: File[] = [];
@@ -71,9 +87,17 @@ export default function Composer({
   }
 
   async function submit() {
+    if (!canSend) return;
     if (await onSubmit(body.trim(), files)) {
       setBody("");
       setFiles([]);
+    }
+  }
+
+  function onKeyDown(e: KeyboardEvent) {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      void submit();
     }
   }
 
@@ -85,12 +109,18 @@ export default function Composer({
       }}
       onDragLeave={() => setDragging(false)}
       onDrop={onDrop}
-      className={`space-y-2 rounded-lg ${dragging ? "outline-dashed outline-2 outline-[#D97757]" : ""}`}
+      className={`relative space-y-2 rounded-lg ${dragging ? "outline-dashed outline-2 outline-[#D97757]" : ""}`}
     >
+      {dragging && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-white/80 text-sm font-medium text-[#D97757] dark:bg-neutral-900/80">
+          {t("Dosyaları buraya bırak", "Drop the files here")}
+        </div>
+      )}
       <textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
         onPaste={onPaste}
+        onKeyDown={onKeyDown}
         rows={rows}
         maxLength={8000}
         placeholder={placeholder}
@@ -109,7 +139,10 @@ export default function Composer({
               ) : (
                 <span className="flex h-10 w-10 items-center justify-center rounded bg-neutral-100 text-[10px] font-semibold uppercase dark:bg-neutral-800">{f.name.split(".").pop()}</span>
               )}
-              <span className="max-w-[140px] truncate">{f.name}</span>
+              <span className="flex max-w-[140px] flex-col">
+                <span className="truncate">{f.name}</span>
+                <span className="text-[10px] text-neutral-400 dark:text-neutral-500">{sizeText(f.size)}</span>
+              </span>
               <button
                 type="button"
                 aria-label={t("Eki kaldır", "Remove attachment")}
@@ -139,13 +172,17 @@ export default function Composer({
         <Button onClick={() => picker.current?.click()} disabled={busy || files.length >= MAX_FILES}>
           {t("Dosya / ekran görüntüsü ekle", "Attach file / screenshot")}
         </Button>
+        <span className="text-xs tabular-nums text-neutral-400 dark:text-neutral-500">
+          {files.length}/{MAX_FILES}
+          {files.length > 0 && ` · ${sizeText(totalBytes)}`}
+        </span>
         {snippets && snippets.length > 0 && (
           <select
             aria-label={t("Hazır yanıt", "Canned reply")}
             value=""
             onChange={(e) => {
               const s = snippets.find((x) => x.id === Number(e.target.value));
-              if (s) setBody((b) => (b.trim() ? `${b.trimEnd()}\n\n${s.body}` : s.body));
+              if (s) setBody(body.trim() ? `${body.trimEnd()}\n\n${s.body}` : s.body);
             }}
             className={`${inputClass} !w-auto !py-1.5`}
           >
@@ -158,7 +195,7 @@ export default function Composer({
           </select>
         )}
         {extra}
-        <Button tone="primary" busy={busy} disabled={body.trim().length < minLength} onClick={() => void submit()} className="ml-auto">
+        <Button tone="primary" busy={busy} disabled={!canSend} onClick={() => void submit()} className="ml-auto">
           {submitLabel}
         </Button>
       </div>
