@@ -485,7 +485,7 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
             raise
     tools.auto_choices(ctx)
     reply = _strip_app_links(result.text or "")
-    if effective == 0 and _DONE_CLAIM.search(reply) and not (called & _CONFIRM_TOOLS):
+    if effective == 0 and _DONE_CLAIM.search(reply) and not (called & _CONFIRM_TOOLS) and not any(c.get("type") in ("brief", "choices") for c in ctx.cards):  # kart gösterildiyse ("hazırladım") yanlış alarm olmaz
         # Denemelere rağmen hiçbir şey değişmedi ama model "yaptım" diyor: yalan kullanıcıya gösterilmez.
         reply = tr(
             "Bu değişikliği taslağa uygulayamadım; ilgili araç bir şeyi değiştirmedi. İstersen farklı bir yolla yeniden deneyeyim ya da editörden yapabilirsin.",

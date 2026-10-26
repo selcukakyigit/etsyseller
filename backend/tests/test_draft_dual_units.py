@@ -131,3 +131,28 @@ def test_a_rejected_draft_call_cannot_be_reported_as_in_progress():
     assert "henüz oluşmadı" in service._guard_progress_claim({"create_listing_draft"}, 0, [], reply)
     assert service._guard_progress_claim({"create_listing_draft"}, 1, [{"type": "listing_draft"}], reply) == reply, "taslak kartı varsa dokunulmaz"
     assert service._guard_progress_claim({"keyword_pool"}, 0, [], reply) == reply, "taslak çağrısı yoksa dokunulmaz"
+
+
+def test_only_one_brief_card_per_listing_an_answered_card_is_not_followed_by_another(db):
+    import json as _json
+
+    from app.assistant.models import ChatMessage, ChatSession
+
+    shop = Shop(user_id=1, workspace_id=1, etsy_shop_id=1007, etsy_user_id=7, shop_name="S7")
+    db.add(shop); db.commit()
+    session = ChatSession(shop_id=shop.id, user_id=5, title="t")
+    db.add(session); db.commit()
+    card = {"understood": [{"label": "Ürün", "value": "Metal wall decor"}], "questions": [{"label": "Montaj?", "options": ["Var", "Yok"], "type": "text"}]}
+
+    def ctx(**kw):
+        return tools.Ctx(db=db, shop=shop, user_id=5, today=None, session_id=session.id, **kw)
+
+    assert tools.brief_check(ctx(), card).get("ok"), "ilk kart gösterilir"
+    db.add(ChatMessage(session_id=session.id, role="assistant", content="kart", cards_json=_json.dumps([{"type": "brief"}])))
+    db.add(ChatMessage(session_id=session.id, role="user", content="Var"))
+    db.commit()
+    out = tools.brief_check(ctx(), card)
+    assert "create_listing_draft" in out.get("error", ""), "kullanıcı cevapladı: ikinci kart yok, taslak kurulur"
+    db.add(ChatMessage(session_id=session.id, role="assistant", content="taslak", cards_json=_json.dumps([{"type": "listing_draft"}])))
+    db.commit()
+    assert tools.brief_check(ctx(), card).get("ok"), "yeni bir listing için yeni kart serbest"

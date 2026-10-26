@@ -1212,6 +1212,8 @@ def ask_user(ctx: Ctx, a: dict) -> dict:
     if not question or len(options) < 2:
         return {"error": "question ve en az 2 kısa seçenek ver."}
     kind = "suggestions" if a.get("kind") == "suggestions" else "question"
+    if kind == "question" and _brief_answered(ctx):  # ön kontrol kartı cevaplandı: ikinci bir soru kartı döngü açar (oturum 54); taslak kurulur
+        return {"error": "Ön kontrol kartı zaten cevaplandı: soru sorma, yeni kart çıkarma. create_listing_draft'ı ŞİMDİ çağır; bilinmeyeni boş bırak ya da kendin karar ver."}
     if kind == "question":
         options.append(tr("Sen karar ver", "You decide"))  # her soruda "makul olanı seç" kaçışı: onay döngüsüne düşmesin
     ctx.cards[:] = [c for c in ctx.cards if c.get("type") != "choices"]
@@ -1255,8 +1257,27 @@ def _title_option_problems(options: list[str], said: str, design: str) -> list[s
     return problems
 
 
+def _brief_answered(ctx: Ctx) -> bool:
+    """Bu listing için (son taslak kartından sonra) önceki bir turda ön kontrol kartı gösterildi ve kullanıcı cevapladı mı? Bu turdaki kartlar sayılmaz."""
+    if ctx.session_id is None:
+        return False
+    from app.assistant.models import ChatMessage
+
+    rows = ctx.db.scalars(select(ChatMessage.cards_json).where(ChatMessage.session_id == ctx.session_id, ChatMessage.role == "assistant").order_by(ChatMessage.id.desc()).limit(12)).all()
+    for raw in rows:
+        types = {c.get("type") for c in json.loads(raw or "[]")}
+        if "listing_draft" in types:
+            return False
+        if "brief" in types:
+            return True
+    return False
+
+
 def brief_check(ctx: Ctx, a: dict) -> dict:
-    """Yeni listing'ten ÖNCE: anlaşılanları ve eksikleri tek kartta gösterir. Kullanıcının cevapları tek mesajda gelir, taslak tek seferde kurulur."""
+    """Yeni listing'ten ÖNCE: anlaşılanları ve eksikleri tek kartta gösterir. Kullanıcının cevapları tek mesajda gelir, taslak tek seferde kurulur.
+    Bir listing için EN ÇOK BİR kart: cevaplanmış karttan sonra yenisi çıkmaz (her turda yeni soru ekletilip döngüye giriliyordu, oturum 54)."""
+    if _brief_answered(ctx) and not any(c.get("type") == "brief" for c in ctx.cards):
+        return {"error": "Ön kontrol kartı zaten gösterildi ve kullanıcı cevapladı: yeni kart ÇIKARMA, soru sorma. create_listing_draft'ı ŞİMDİ çağır; kullanıcının seçtiği başlığı ve cevapları kullan, cevaplanmayan ya da bilinmeyen şeyi boş bırak ya da kendin karar ver."}
     understood = [
         {"label": " ".join(str(r.get("label") or "").split())[:40], "value": " ".join(str(r.get("value") or "").split())[:200]}
         for r in a.get("understood") or [] if isinstance(r, dict) and str(r.get("value") or "").strip()
