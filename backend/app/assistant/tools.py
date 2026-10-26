@@ -1080,6 +1080,9 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     crops = list(a.get("crop_photos") or [])
     if a.get("crop_first_photo") and not any(int(c.get("photo_number") or 1) == 1 for c in crops):
         crops.insert(0, {"photo_number": 1, "ratio": a["crop_first_photo"]})
+    if crops and not _CROP_ASKED.search(source):  # kırpma yalnızca kullanıcı istediyse: model kendiliğinden "küçük resim için 1:1" diye geniş ürün fotoğrafını keserdi (oturum 52)
+        completion["kirpma_atlandi"] = "Kullanıcı kırpma istemedi; fotoğraflar olduğu gibi kaldı."
+        crops = []
     for spec in crops:  # "birinci resmi 1:1 kırp": taslakla birlikte, resimler eklendikten sonra
         bad = _crop_in_work(ctx, lid, work, int(spec.get("photo_number") or 1), spec)
         if bad:
@@ -1338,6 +1341,9 @@ def auto_yes_no(ctx: Ctx, reply: str) -> None:
     options = [o.strip() for o in m.group(1).split("/") if o.strip()]
     if 2 <= len(options) <= 4:
         ctx.cards.append({"type": "choices", "kind": "question", "question": tr("Seçim", "Choose"), "options": options})
+
+
+_CROP_ASKED = re.compile(r"kırp|crop|kare|square|1:1|thumbnail|küçük resim|[34]:[34]", re.IGNORECASE)
 
 
 def _session_generated_images(ctx: Ctx) -> list[str]:

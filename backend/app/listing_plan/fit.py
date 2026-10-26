@@ -31,6 +31,7 @@ AUDIENCES = {"kids", "kid", "baby", "toddler", "toddlers", "children", "dog", "d
 DIY_QUESTION = {"engrave", "make", "diy", "paint", "build", "sew", "craft", "print"}
 # Kullanım yeri iddiası: "outdoor wall art", "garden metal decor" ürünün dışarıda dayanacağını söyler; kullanıcı söylemediyse etiket/başlık olmaz (ANGLES'ta farklılık açısı olarak kalır).
 OUTDOOR = {"outdoor", "outdoors", "garden", "patio", "yard", "backyard", "lawn", "porch", "fence", "camping", "beach", "pool", "poolside", "balcony", "terrace"}
+_PIECES = re.compile(r"(?<![a-z0-9])(\d+|two|three|four|five|six)[ -]?(panels?|pieces?|pcs|sets?)(?![a-z])", re.IGNORECASE)
 UNVERIFIED = "kartta olmayan kelime: "
 
 # Açılar (farklılık için) ve kartta geçmese de güvenle kullanılabilen genel niteleyiciler: bunların dışında kalan, kartta olmayan bir içerik
@@ -74,6 +75,9 @@ def reason(phrase: str, facts: Facts) -> str | None:
     missing_use = (set(w) & OUTDOOR) - known
     if missing_use:
         return f"kartta olmayan kullanım yeri ({', '.join(sorted(missing_use))})"
+    for m in _PIECES.finditer(low):  # "3 panel wall art": parça sayısı bir iddiadır; "3 farklı boyut" cümlesindeki 3 bunu doğrulamaz
+        if not re.search(rf"(?<![a-z0-9]){re.escape(m.group(1))}[ -]?{m.group(2)}", facts.claim_text):
+            return f"kartta olmayan parça sayısı ({m.group(0)})"
     nums = {x for x in w if x[0].isdigit()}
     if nums and not all(any(n.rstrip("mlozcin") in k for k in known) for n in nums):
         return "kartta olmayan ölçü"
