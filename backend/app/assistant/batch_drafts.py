@@ -80,7 +80,7 @@ _CREATE_NOTE = (
     "ÖZELLİK UYDURMA (fiyat ve adet bir özellik DEĞİLDİR; kapasite/ölçü olarak yazma). Yalnızca BU TEK ürün için, yani aşağıdaki resimlerle, create_listing_draft'ı çağır "
     "(image_ids: bu ürünün TÜM resimleri). Önce gerekirse keyword_pool / similar_listings / shop_defaults; resim/video üretme, yayınlama yok. Açıklamanın ürüne özel kısmı dolu olsun "
     "(alıcının sorularına cevap veren, 80-200 kelime), ama yalnızca bilinen olgularla. Taslak oluşunca tek cümleyle bitir. "
-    "BAŞLIK: ürünün GÖRÜNEN tasarımını/motifini + ürün türünü anlatsın; 'Design A/B', numara, harf gibi yer tutucu YOK; aynı işteki başlıklar farklı motifleri öne çıkarsın (ortak ilk kelimeler olmasın). "
+    "BAŞLIK: önce keyword_pool'u çağır ve başlığı sonucundaki acilis_secenekleri'nden biriyle BAŞLAT (başka açılışlı başlık reddedilir), sonra ürünün GÖRÜNEN tasarımını/motifini + ürün türünü ekle; 'Design A/B', numara, harf gibi yer tutucu YOK; aynı işteki başlıklar farklı motifleri öne çıkarsın (ortak ilk kelimeler olmasın). "
     "Kullanım alanı (outdoor, garden, bedroom…), montaj/donanım, üretim yöntemi (lazer kesim…) yalnızca kullanıcı söylediyse ya da resimde açıkça görünüyorsa yazılır; başlıkta, etikette ve açıklamada uydurma. "
     "Kullanıcı varyasyon istediyse (renk, boyut…) her ürün için AYNI biçimde kur; boyut varyasyonu istendiyse cm değerinin yanına inç de yaz (ör. '42 x 50 cm (16.5 x 19.7 in)'); verilen stok HER varyasyon seçeneği için geçerlidir, bölme."
 )

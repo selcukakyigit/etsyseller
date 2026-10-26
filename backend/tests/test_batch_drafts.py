@@ -495,3 +495,20 @@ def test_model_notes_do_not_leak_into_descriptions():
     text = "Nice art.\n\nDETAILS\n• Size: 42 cm\n\nNo QUESTIONS section added.\n\nNo personalization is offered. Thanks."
     out = layout.normalize(text)
     assert "No QUESTIONS" not in out and "No personalization" not in out and "Thanks." in out
+
+
+def test_unattended_titles_must_open_with_a_plan_opening_but_a_user_chosen_title_is_left_alone(db, monkeypatch):
+    from app.listing_plan.plan import Plan
+
+    shop = _shop(db)
+    free = Plan(version=1, shape="crowded", lead="metal wall art", lead_options=["metal wall art", "abstract metal wall art"], lead_angle=None, tags=[], great_for=[], questions=[], ask=[], sibling_words=[], data={}, rejected=[])
+    used = []
+    monkeypatch.setattr(tools, "_draft_plan", lambda ctx, a, title, tags, variations, source, free_title=False: (used.append(free_title) or free))
+    args = {"title": "Design B wall hanging 50x80 cm", "price": 100, "description": "A metal wall panel.", "tags": ["metal wall decor"], "quantity": 20}
+    ctx = tools.Ctx(db=db, shop=shop, user_id=5, today=None, message="x", unattended=True)
+    out = tools.create_listing_draft(ctx, args)
+    assert "metal wall art" in out.get("error", "") and True in used, "toplu işte başlık planın açılışıyla başlamalı"
+    ctx2 = tools.Ctx(db=db, shop=shop, user_id=5, today=None, message="x", unattended=False)
+    used.clear()
+    tools.create_listing_draft(ctx2, args)
+    assert True not in used, "kullanıcı akışında başlığı kullanıcı seçer: ek denetim yok"

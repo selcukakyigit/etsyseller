@@ -850,17 +850,17 @@ def _latest_message_media(ctx: Ctx) -> tuple[list[str], list[str]]:
     return images, videos
 
 
-def _draft_plan(ctx: Ctx, a: dict, title: str, tags: list[str], variations: dict[str, list[str]], source: str) -> "plan_mod.Plan | None":
+def _draft_plan(ctx: Ctx, a: dict, title: str, tags: list[str], variations: dict[str, list[str]], source: str, free_title: bool = False) -> "plan_mod.Plan | None":
     """Yeni listing'in kelime planı (editördeki AI önerisiyle AYNI işlev). Başlık kullanıcının seçtiği/modelin yazdığıdır (açılış odur); plan
     etiketleri yerleştirir. Aynı turdaki yeniden denemelerde bir kez kurulur. Kurulamazsa None: taslak yine oluşur."""
-    key = f"{ctx.shop.id}:new:{ctx.session_id}:{lead_phrase(title)}"
+    key = f"{ctx.shop.id}:new:{ctx.session_id}:{lead_phrase(title)}" + (":free" if free_title else "")  # free_title: başlığa bağlı olmayan plan (planın kendi açılış önerileri)
     if key in ctx.plan_cache:
         return ctx.plan_cache[key]
     listing = {"title": title, "description": str(a.get("description") or ""), "tags": tags, "materials": list(a.get("materials") or []),
                "taxonomy_id": int(a["taxonomy_id"]) if a.get("taxonomy_id") else None, "personalizable": bool(a.get("personalizable") or a.get("personalization_questions"))}
     try:
         plan = plan_service.for_listing(ctx.db, ctx.shop, listing, key=key, variations=variations, product=a.get("product"), extra_facts=source,
-                                        model_tags=tags, current_title=title, said_only=True)
+                                        model_tags=tags, current_title="" if free_title else title, said_only=True)
     except Exception:  # noqa: BLE001 - plan yardımcıdır; kurulamazsa modelin etiketleri kalır
         log.warning("Kelime planı kurulamadı", exc_info=True)
         plan = None
@@ -919,6 +919,9 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         tags_checked = plan_mod.place_tags(plan, tags_checked)
         a = {**a, "tags": tags_checked}
     problems_pre = audit.generation_problems(title, tags_checked, str(a.get("description") or ""), others, source, draft_variations, a.get("listing_type") == "download", bool(a.get("personalizable")))
+    if ctx.unattended and plan is not None:  # toplu iş: başlığı seçen kullanıcı ya da brief_check yok; başlık planın (havuz verisinden seçilen) açılışlarından biriyle başlamalı
+        free = _draft_plan(ctx, a, title, tags_checked, draft_variations, source, free_title=True)
+        problems_pre = [*(plan_mod.title_problems(title, free) if free else []), *problems_pre]
     quality_warnings: list[str] = []
     if problems_pre:
         if ctx.draft_rejections < MAX_DRAFT_REJECTIONS:

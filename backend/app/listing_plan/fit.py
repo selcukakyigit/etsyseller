@@ -29,6 +29,8 @@ MATERIALS = {
 }
 AUDIENCES = {"kids", "kid", "baby", "toddler", "toddlers", "children", "dog", "dogs", "cat", "cats", "pet", "pets", "teen", "teens"}
 DIY_QUESTION = {"engrave", "make", "diy", "paint", "build", "sew", "craft", "print"}
+# Kullanım yeri iddiası: "outdoor wall art", "garden metal decor" ürünün dışarıda dayanacağını söyler; kullanıcı söylemediyse etiket/başlık olmaz (ANGLES'ta farklılık açısı olarak kalır).
+OUTDOOR = {"outdoor", "outdoors", "garden", "patio", "yard", "backyard", "lawn", "porch", "fence", "camping", "beach", "pool", "poolside", "balcony", "terrace"}
 UNVERIFIED = "kartta olmayan kelime: "
 
 # Açılar (farklılık için) ve kartta geçmese de güvenle kullanılabilen genel niteleyiciler: bunların dışında kalan, kartta olmayan bir içerik
@@ -66,6 +68,9 @@ def reason(phrase: str, facts: Facts) -> str | None:
     missing_aud = (set(w) & AUDIENCES) - known
     if missing_aud:
         return f"kartta olmayan kitle ({', '.join(sorted(missing_aud))})"
+    missing_use = (set(w) & OUTDOOR) - known
+    if missing_use:
+        return f"kartta olmayan kullanım yeri ({', '.join(sorted(missing_use))})"
     nums = {x for x in w if x[0].isdigit()}
     if nums and not all(any(n.rstrip("mlozcin") in k for k in known) for n in nums):
         return "kartta olmayan ölçü"

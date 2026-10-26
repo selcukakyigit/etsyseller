@@ -249,3 +249,12 @@ def test_when_the_pool_has_no_questions_the_ai_is_asked_for_them(monkeypatch):
     sun = facts_mod.from_listing("square sunglasses", "", [], [], {}, product="square sunglasses", extra="kare gözlük", said="kare gözlük")
     p = plan.build([P("retro sunglasses", google_volume=900)] * 1 + [P(f"square sunglasses {i}", google_volume=900) for i in range(25)], sun, key="k", research=([], [], 0), shop=object())
     assert seen["want_questions"] is True and [q["q"] for q in p.ask] == ["do these come with a case"]
+
+
+def test_outdoor_use_phrases_need_the_user_to_have_said_so():
+    wall = facts_mod.from_listing("Metal wall art", "2mm metal panel for indoor walls", materials=["metal"], product="metal wall art")
+    for tag in ("outdoor wall art", "garden metal decor", "patio wall decor", "metal wall decor patio"):
+        assert (fit.reason(tag, wall) or "").startswith("kartta olmayan kullanım yeri"), tag
+    assert fit.reason("metal wall decor", wall) is None
+    said = facts_mod.from_listing("Metal garden sculpture", "weatherproof metal sculpture for the garden", materials=["metal"], product="metal garden sculpture")
+    assert fit.reason("garden metal decor", said) is None, "kullanıcı söylediyse serbest"
