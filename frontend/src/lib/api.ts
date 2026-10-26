@@ -774,6 +774,12 @@ export type RewriteState = {
   samples: { id: number; title: string; before: BulkBrief; after: BulkBrief; detail: { before: RewriteText; after: RewriteText }; warnings: string[] }[];
   listing_ids: number[]; changed: number; skipped: { reason: string; count: number }[]; estimate: { listings: number; credits: number; needs_confirmation: boolean };
 };
+/** Düğmeli onay kartının durumu (backend assistant/actions.py public()). */
+export type ActionState = {
+  action_id: string; kind: string; status: "pending" | "done" | "cancelled" | "expired";
+  items: { listing_id: number; title: string }[]; result: { deleted?: number[]; skipped?: (number | string)[] };
+};
+
 /** Toplu taslak: bir ürünün çözümlemesi (ön kontrolde düzenlenir). Boş ölçü/kapasite ve malzeme taslakta yazılmaz (uydurulmaz); ağırlık tahmindir. */
 export type BatchSpec = {
   name: string; phrase: string; digital: boolean; size: string; material: string; personalizable: boolean; personalization_detail: string;
@@ -1591,6 +1597,7 @@ export type ChatCard =
   | { type: "description_edit"; phrase: string; total: number; others: number; listing_ids: number[]; variants: { line: string; count: number }[] }
   | ({ type: "rewrite_job" } & RewriteState)
   | ({ type: "batch_job" } & BatchState)
+  | ({ type: "confirm_action" } & ActionState)
   | { type: "social_pins"; listing_id: number; title: string; pins: { title: string; description: string; hashtags: string[]; board: string }[] }
   | { type: "listing_update"; listing_id: number; title: string; edit_url: string; changes: string[]; tags: string[] }
   | { type: "video_job"; job: string; listing_id: number; credits: number; prompt: string; duration: number; started_at: number; source: "chat" | "listing" }

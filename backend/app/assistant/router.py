@@ -5,7 +5,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.assistant import batch_drafts, llm, memory, service
+from app.assistant import actions, batch_drafts, llm, memory, service
 from app.auth.models import User
 from app.core import blobstore
 from app.core.byte_range import ranged
@@ -122,6 +122,26 @@ def batch_job_stop(job_id: str, shop: Shop = Depends(get_owned_shop)):
     job = _batch_job(job_id, shop)
     batch_drafts.stop(job)
     return batch_drafts.public(job)
+
+
+def _action(action_id: str, shop: Shop) -> actions.Action:
+    action = actions.get(action_id, shop.id)
+    if action is None:
+        raise HTTPException(404, tr("Onay isteği bulunamadı (süresi dolmuş olabilir).", "Confirmation not found (it may have expired)."))
+    return action
+
+
+@router.post("/actions/{action_id}/confirm")
+def action_confirm(action_id: str, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    """Düğmeli onay: işi (ör. yeni taslakları silme) kullanıcının tıklaması çalıştırır, model değil."""
+    return actions.confirm(db, shop, _action(action_id, shop))
+
+
+@router.post("/actions/{action_id}/cancel")
+def action_cancel(action_id: str, shop: Shop = Depends(get_owned_shop)):
+    action = _action(action_id, shop)
+    actions.cancel(action)
+    return actions.public(action)
 
 
 @router.get("/sessions")

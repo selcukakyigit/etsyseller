@@ -16,7 +16,7 @@ from typing import Any
 
 from sqlalchemy import func, select
 
-from app.assistant import listing_view, prefill
+from app.assistant import actions, listing_view, prefill
 from app.listings import dimensions, etsy_rules, fields, inventory_edit
 from app.ai import catalog, video_gen
 from app.listings import generation
@@ -2772,19 +2772,35 @@ def discard_listing_changes(ctx: Ctx, a: dict) -> dict:
 
 
 def delete_listing(ctx: Ctx, a: dict) -> dict:
-    """Listing'i siler: henüz Etsy'ye gitmemiş yeni taslak yalnızca yerelden; Etsy'deki listing Etsy'den KALICI. confirm gerekir."""
-    from app.etsy.client import EtsyApiError, EtsyAuthError
-
-    lid = int(a["listing_id"])
-    if not a.get("confirm"):
-        text = ("Bu yeni taslak (Etsy'de yok) silinir." if lid < 0 else "Bu listing Etsy'den KALICI olarak silinir ve GERİ ALINAMAZ.")
-        return _confirmation(ctx, lid, text)
+    """Henüz Etsy'ye gitmemiş YENİ taslakları siler (kimliği negatif; tek ya da birden çok). Kendisi SİLMEZ: sohbette [Sil] [Vazgeç] onay kartı üretir; silme kullanıcının
+    düğmeye basmasıyla olur (bkz. assistant/actions.py). Etsy'deki listing'i asla silmez."""
+    raw = a.get("listing_ids") or ([a["listing_id"]] if a.get("listing_id") is not None else [])
     try:
-        bulk.delete_listing(ctx.db, ctx.shop, lid)
-    except (EtsyApiError, EtsyAuthError) as exc:
-        return {"error": str(exc)}
-    ctx.cards.append({"type": "listing_deleted", "listing_id": lid})
-    return {"ok": True, "not": "Listing silindi."}
+        ids = list(dict.fromkeys(int(i) for i in raw))
+    except (TypeError, ValueError):
+        return {"error": "listing_id sayı olmalı."}
+    if not ids:
+        return {"error": "Silinecek taslak belirtilmedi (listing_id ya da listing_ids)."}
+    if len(ids) > actions.MAX_DELETE:
+        return {"error": f"Bir seferde en fazla {actions.MAX_DELETE} taslak silinir."}
+    if any(i >= 0 for i in ids):
+        return {"error": "Etsy'de yayında olan listing'i asistan silmez (geri alınamaz): kullanıcıyı Listing'ler sayfasına yönlendir. Yalnızca henüz Etsy'ye gitmemiş YENİ taslaklar (kimliği negatif) silinebilir."}
+    items, unknown = [], []
+    for lid in ids:
+        work, err = _work_or_error(ctx, lid)
+        if err:
+            unknown.append(lid)
+        else:
+            items.append({"listing_id": lid, "title": str((work or {}).get("title") or "")})
+    if not items:
+        return {"error": "Taslak bulunamadı (zaten silinmiş olabilir)."}
+    action = actions.create(ctx.shop.id, "delete_drafts", {"listing_ids": [i["listing_id"] for i in items]}, items)
+    ctx.cards.append({"type": "confirm_action", **actions.public(action)})
+    return {
+        "onay_bekliyor": True, "taslak_sayisi": len(items), **({"bulunamayan": unknown} if unknown else {}),
+        "not": "Sohbette [Sil] [Vazgeç] onay kartı gösterildi; kullanıcı Sil'e basmadan HİÇBİR ŞEY SİLİNMEZ. 'Sildim' DEME: tek cümleyle onay kartını beklediğini söyle ve aracı tekrar çağırma. "
+        "Kullanıcı sohbetten 'evet' derse bile silme yalnızca karttaki düğmeyle olur, kartı işaret et.",
+    }
 
 
 def personalization_library(ctx: Ctx, a: dict) -> dict:
@@ -3122,7 +3138,7 @@ TOOLS: list[dict] = [
     {"name": "remove_listing_video", "description": "Listing taslağından bir videoyu sıra numarasıyla (1'den başlar) kaldırır. Etsy'deki video yayınlayınca silinir.", "input_schema": _obj({"listing_id": {"type": "integer"}, "video_number": {"type": "integer"}}, ["listing_id", "video_number"])},
     {"name": "copy_listing", "description": "Var olan bir listing'in kopyasını yeni yerel taslak olarak oluşturur (fotoğraflar, varyasyonlar, özellikler dahil). Sonra başlığı/etiketleri ürüne göre değiştir; Etsy'ye gitmez.", "input_schema": _obj({"source_listing_id": {"type": "integer"}}, ["source_listing_id"])},
     {"name": "discard_listing_changes", "description": "ONAY GEREKİR. Etsy'de yayındaki bir listing'deki yayınlanmamış yerel değişiklikleri atar (listing Etsy'deki hâline döner). confirm=true verilmeden yalnızca ne olacağını özetler.", "input_schema": _obj({"listing_id": {"type": "integer"}, "confirm": {"type": "boolean"}}, ["listing_id"])},
-    {"name": "delete_listing", "description": "ONAY GEREKİR. Listing'i siler: Etsy'deki listing Etsy'den KALICI silinir ve GERİ ALINAMAZ; henüz Etsy'ye gitmemiş yeni taslak yalnızca yerelden silinir. confirm=true verilmeden yalnızca ne olacağını özetler.", "input_schema": _obj({"listing_id": {"type": "integer"}, "confirm": {"type": "boolean"}}, ["listing_id"])},
+    {"name": "delete_listing", "description": "Henüz Etsy'ye gitmemiş YENİ TASLAKLARI siler (kimliği negatif; tek ya da birden çok, ör. toplu işin hepsi). Kendisi silmez: sohbette [Sil] [Vazgeç] ONAY KARTI gösterir, silme yalnızca kullanıcı karttaki Sil'e basınca olur. Etsy'de yayındaki listing silinemez (hata döner).", "input_schema": _obj({"listing_id": {"type": "integer"}, "listing_ids": {"type": "array", "items": {"type": "integer"}, "description": "Birden çok taslak (en fazla 50)"}})},
     {"name": "personalization_library", "description": "Mağazanın diğer listing'lerinde daha önce kullanılan kişiselleştirme (Özel seçenekler / 'Recently used') soruları, kullanım sayısına göre. Kullanıcı kişiselleştirme isterse ya da ürün kişiselleştirilebilir görünüyorsa buradan öneri sun.", "input_schema": _obj({})},
     {"name": "generation_options", "description": "Görsel ve video üretimi için seçilebilir modeller, kalite/çözünürlük seçenekleri (1K/2K/4K gibi) ve kredi bedelleri. Kullanıcı kredi/kalite sorarsa ya da üretimden önce seçenek sunarken çağır.", "input_schema": _obj({})},
     {"name": "generate_listing_video", "description": "Bir fotoğraftan ürün videosu üretir (5–15 sn, kredi harcar). photo_number: listing'in o sıradaki fotoğrafı (varsayılan 1) ya da chat_image_id: sohbetteki bir resim (ör. az önce ürettiğin). Model TEK resimden video üretir; 'listedeki 4 resimden video' istenirse tek bir fotoğrafı seç ya da her fotoğraf için ayrı video önerip maliyeti söyle. confirm vermeden yalnızca kredi bedelini döner: kullanıcıya söyle, AÇIKÇA onay al, onaylarsa confirm=true ile tekrar çağır. listing_id verilmezse sohbetteki en son yeni taslak kullanılır.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer"}, "chat_image_id": {"type": "string"}, "prompt": {"type": "string", "description": "Hareket tarifi, İngilizce (ör. 'slow camera move around the product'); verilmezse sakin bir ürün videosu"}, "duration": {"type": "integer", "description": "Saniye, 5 ile 15 arası (varsayılan 5)"}, **_QUALITY_SCHEMA, "confirm": {"type": "boolean"}}, [])},
@@ -3402,7 +3418,7 @@ GROUP_WORDS: dict[str, re.Pattern] = {
     "bulk": re.compile(r"toplu|bütün|tüm |hepsi|bulk|all listings|yeniden yaz|rewrite|rewrite all|holiday|occasion|%|yüzde|zam\b|indirim|artır|arttır|düşür|indir\b|stokları|stoğu", re.I),
     "social": re.compile(r"pinterest|\bpin\b|sosyal|hashtag|instagram|social", re.I),
     "digital": re.compile(r"dijital|digital|printable|indirilebilir|download|şablon|template|\bpdf\b|\bzip\b", re.I),
-    "support": re.compile(r"destek (ekib|talep)|support (request|ticket|team)|ticket|talep (aç|oluştur)|hata bildir|report (a )?(bug|problem|issue)|şik[âa]yet|yetkili|ekibe (yaz|ilet)|talebim|sorun yaşıyorum", re.I),
+    "support": re.compile(r"destek (ekib|talep)|support (request|ticket|team)|\bticket\b|talep (aç|oluştur)|hata bildir|report (a )?(bug|problem|issue)|şik[âa]yet|yetkili|ekibe (yaz|ilet)|talebim|sorun yaşıyorum", re.I),
     "discover": re.compile(r"keşfet|discover|kelime araştır|keyword research|keyword idea|anahtar kelime|kayıtlı kelime|kaydet.*kelime|saved keyword|koleksiyon|collection|mevsim|season|zirve|hangi ay|yaklaşan|upcoming|bu ay|önümüzdeki|rekabet|competition|rakip|kolay mı|etsy.*ilk|ne aran|what.*search|talep|related keyword|ilgili kelime", re.I),
 }
 _CORE_LISTING_TOOLS = LISTING_TOOL_NAMES - frozenset().union(*TOOL_GROUPS.values())

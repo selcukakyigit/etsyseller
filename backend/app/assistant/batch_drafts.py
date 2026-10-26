@@ -49,6 +49,27 @@ ITEM_TOOLS = frozenset({
     "create_listing_draft", "update_listing", "set_listing_fields", "get_listing", "generate_missing_alt_texts", "list_description_templates",
 })
 
+# Toplu işte KULLANILMAYAN listing araçları (bilinçli karar kaydı). Yeni bir listing aracı eklenince ITEM_TOOLS ya da buraya konmalı: tests/test_batch_drafts.py bunu denetler,
+# böylece "normal asistana eklendi ama toplu iş bilmiyor" durumu sessizce oluşmaz.
+BATCH_DENIED = frozenset({
+    # kullanıcıya soru sorar / sohbet kartı üretir
+    "ask_user", "brief_check",
+    # toplu işin kendisi ve toplu işlem araçları
+    "create_listings_from_images", "start_batch_listings", "batch_listings_status", "stop_batch_listings", "bulk_update_listings", "rewrite_listings", "continue_rewrite", "stop_rewrite",
+    # Etsy'ye giden ya da geri dönüşü zor işler (yayınlama, kapatma, silme)
+    "publish_listing_draft", "deactivate_listing", "delete_listing", "discard_listing_changes", "copy_listing",
+    # resim/video üretimi ve düzenleme (karar A: toplu işte üretilmez, kredi harcar)
+    "generate_chat_image", "edit_chat_image", "add_chat_image_to_listing", "regenerate_listing_image", "upscale_listing_photo", "crop_listing_photo", "delete_listing_photo", "move_listing_photo",
+    "set_photo_alt_text", "set_variation_photo", "generate_listing_video", "add_video_to_listing", "remove_listing_video", "generation_options", "make_pin_image", "pinterest_content",
+    # taslak sonrası ince ayar (şimdilik sohbetten tek tek): varyasyon, stok, kişiselleştirme, dijital dosya, tür
+    "edit_inventory", "add_variation_option", "remove_variation_option", "edit_personalization_question", "personalization_library", "add_digital_file", "remove_digital_file", "set_listing_type",
+    # araştırma ve çözümleme (ön kontrol zaten rakipleri tarar; kullanıcıya özel analizler sohbette)
+    "search_listings", "analyze_listing_values", "listing_health_status", "workspace_status", "market_research", "suggest_price", "research_keywords", "keyword_detail", "upcoming_seasons",
+    "saved_keywords", "save_keywords", "etsy_top_results",
+    # şablon yönetimi, hafıza, destek: kullanıcı kararı
+    "save_description_template", "delete_description_templates", "remember_note", "forget_note", "open_support_ticket", "my_support_tickets",
+})
+
 _CREATE_NOTE = (
     "SİSTEM: Bu bir OTOMATİK TOPLU İŞ (ürün {n}/{total}). Kullanıcıya soru soramazsın: ask_user ve brief_check YOK. Bilinmeyeni (fiyat gibi) BOŞ bırak, tahmin etme; "
     "başka şeyleri (başlık, etiket, açıklama) resimlerden ve aşağıdaki onaylı bilgilerden kendin yaz; resimde ya da onaylı bilgide olmayan ölçü, kapasite, malzeme, bakım, gravür/nakış gibi "

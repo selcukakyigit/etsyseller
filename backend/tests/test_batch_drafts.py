@@ -283,3 +283,20 @@ def test_tool_group_opens_for_separate_product_requests():
     assert "batch" not in tools.listing_groups("bu resimlerle bir listing oluştur", None)
     assert service.MODEL_IMAGES_PER_MESSAGE == 4
     assert "batch_listings_status" in service._READ_ONLY_TOOLS
+
+
+def test_batch_start_turn_drops_suggestion_buttons_and_never_claims_ready():
+    """Toplu iş başlayan turda öneri butonları kalkar ve 'hazır' diyen cevap sunucunun cümlesiyle değişir (kod zorlar; model uymasa da)."""
+    batch_card = {"type": "batch_job", "status": "analyzing", "review": True, "total": 3}
+    suggestions = {"type": "choices", "kind": "suggestions", "question": "Ne istersiniz?", "options": ["Taslakları incele"]}
+    question = {"type": "choices", "kind": "question", "question": "Tek ürün mü?", "options": ["Tek ürün"]}
+    cards = [batch_card, suggestions, question]
+    reply = service._guard_batch_reply({"create_listings_from_images"}, cards, "Hazır — 3 ürün için taslak oluşturuluyor. Ne istersiniz next?")
+    assert cards == [batch_card, question], "öneri butonları kalkar, gerçek soru kartı kalır"
+    assert "Hazır" not in reply and "çözümleniyor" in reply and "3 ürün" in reply
+    ok = service._guard_batch_reply({"create_listings_from_images"}, [dict(batch_card)], "3 ürün çözümleniyor; kartı kontrol et.")
+    assert ok == "3 ürün çözümleniyor; kartı kontrol et.", "doğru söyleyen cevap olduğu gibi kalır"
+    running = service._guard_batch_reply({"start_batch_listings"}, [{**batch_card, "status": "running"}], "Taslaklar tamamlandı!")
+    assert "hazırlanıyor" in running and "tamamlandı" not in running
+    cards2 = [suggestions]
+    assert service._guard_batch_reply({"keyword_pool"}, cards2, "Hazır") == "Hazır" and cards2 == [suggestions], "toplu iş başlamadıysa hiçbir şeye dokunulmaz"

@@ -306,6 +306,33 @@ _SUMMARY_LEAD = re.compile(r"^[^\n]{0,60}?(?:—|-)\s*kısa özet\s*(?:\([^)]*\)
 _TOOL_CALL_LINE = re.compile(r"^[ \t]*(?:" + "|".join(re.escape(n) for n in sorted(tools.EXECUTORS, key=len, reverse=True)) + r")\s*\(.*$", re.MULTILINE)
 
 
+# Toplu iş başlatılan turda "hazır / tamamlandı / oluşturuldu" demek yalandır (iş arka planda sürüyor); önerilen sonraki adım butonları da erken olur.
+_BATCH_STARTERS = frozenset({"create_listings_from_images", "start_batch_listings"})
+_READY_CLAIM = re.compile(r"\b(?:hazır|hazırlandı|tamamlandı|oluşturuldu|bitti|ready|done|completed|created|finished)\b", re.IGNORECASE)
+
+
+def _guard_batch_reply(called: set[str], cards: list[dict], reply: str) -> str:
+    """Toplu iş bu turda başladıysa: öneri butonları (ask_user suggestions) kartlardan çıkarılır ve "hazır" diyen cevap sunucunun kendi cümlesiyle değiştirilir.
+    Kural istemde de yazılıdır; model yine de uyarsa kullanıcı yarım bir işi bitmiş sanıp butonlara basmasın diye burada KODLA zorlanır."""
+    if not called & _BATCH_STARTERS:
+        return reply
+    cards[:] = [c for c in cards if not (c.get("type") == "choices" and c.get("kind") == "suggestions")]
+    job = next((c for c in cards if c.get("type") == "batch_job"), None)
+    if job is None or not (_READY_CLAIM.search(reply) or not reply.strip()):
+        return reply
+    if job.get("status") == "analyzing" and job.get("review", True):
+        return tr(
+            f"{job['total']} ürün çözümleniyor. Bitince kartta her ürünün bilgilerini (ad, ölçü/kapasite, malzeme, kişiselleştirme, ağırlık, kategori) kontrol edip \"Taslakları oluştur\"a basabilirsin. "
+            "Hiçbiri Etsy'ye gitmez; fiyatı söylenmeyenler \"Fiyat gir\" eksiğiyle kurulur.",
+            f"Analysing {job['total']} products. When done, check each product's details (name, size/capacity, material, personalization, weight, category) in the card and press \"Create drafts\". "
+            "None goes to Etsy; products without a price are created with a \"Set a price\" gap.",
+        )
+    return tr(
+        f"{job['total']} ürün için taslaklar hazırlanıyor; ilerleme kartta. Bitince taslaklara kartın içinden ulaşabilirsin. Hiçbiri Etsy'ye gitmez; fiyatı söylenmeyenler \"Fiyat gir\" eksiğiyle kurulur.",
+        f"Drafts for {job['total']} products are being prepared; progress is in the card. When done you can open them from the card. None goes to Etsy; products without a price are created with a \"Set a price\" gap.",
+    )
+
+
 def _strip_app_links(text: str) -> str:
     text = _TOOL_CALL_LINE.sub("", text)
     text = _LEAKED_CONTEXT.sub("", _BARE_EDIT_URL.sub("", _EDIT_LINK.sub(r"\1", text))).strip()
@@ -428,6 +455,7 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
             "Bu değişikliği taslağa uygulayamadım; ilgili araç bir şeyi değiştirmedi. İstersen farklı bir yolla yeniden deneyeyim ya da editörden yapabilirsin.",
             "I could not apply that change to the draft; the tool did not change anything. I can try another way, or you can do it in the editor.",
         )
+    reply = _guard_batch_reply(called, ctx.cards, reply)
     ctx.cards.sort(key=lambda c: {"listing_draft": 1, "brief": 2, "choices": 2}.get(c.get("type"), 0))  # güncel listing kartı(ları) cevabın en altında (sıra korunur)
     assistant = ChatMessage(
         session_id=session.id, role="assistant", content=reply or tr("Bir cevap üretemedim, tekrar dener misin?", "I couldn't produce an answer, could you try again?"),
