@@ -6,7 +6,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.i18n import tr
-from app.modkit import activity, materials
+from app.modkit import activity, materials, packs
 from app.modkit.access import EntityAccess
 from app.modkit.models import MaterialType, ModuleEntity, PriceItem, ProductMeasure
 
@@ -48,7 +48,7 @@ def catalog(db: Session, access: EntityAccess) -> dict:
         m = materials.Material(r.name, r.name, r.group, (), r.density, builtin=False)
         materials.remember(key, m)
         custom.append(serialize(key, m, used.get(key, 0)))
-    return {"types": [serialize(k, m) for k, m in materials.MATERIALS.items()] + custom, "groups": materials.catalog_rules()}
+    return {"types": [serialize(k, m) for k, m in materials.MATERIALS.items()] + custom, "groups": materials.catalog_rules(), "packs": packs.catalog()}
 
 
 def check_key(db: Session, workspace_id: int, key: str | None, sheet_only: bool = False) -> None:

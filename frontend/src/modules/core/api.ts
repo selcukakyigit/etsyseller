@@ -73,7 +73,10 @@ export interface PriceItem {
   /** Stok (yalnızca çalışma alanı üyesine gelir; yalnızca malzeme kalemlerinde). Miktarlar kalemin biriminde. */
   track_stock?: boolean;
   min_stock?: number | null;
+  /** Alış paketi (malzeme kalemi): türü (katalogdaki `packs` anahtarı), paketteki miktar (kalemin biriminde) ve paket fiyatı (birim fiyat × miktar). */
+  pack_unit?: string | null;
   pack_size?: number | null;
+  pack_price?: number | null;
   entry_units?: string[];
   on_hand?: number;
   avg_cost?: number | null;
@@ -83,11 +86,10 @@ export interface PriceItem {
 
 export type StockLevel = "ok" | "low" | "out";
 
-/** Stok ayarları (kalem formunda): takip, paket miktarı, en az stok (null = boşalt). */
+/** Stok ayarları: takip ve en az stok (null = boşalt). */
 export interface TrackingPatch {
   track_stock?: boolean;
   min_stock?: number | null;
-  pack_size?: number | null;
 }
 
 export interface StockMovement {
@@ -118,9 +120,16 @@ export interface MaterialTypeInfo {
 
 /** Grup kuralları: bu grupta seçilebilen birimler ve birime göre sorulan alanlar. */
 export type MaterialRules = Record<MaterialGroup, { units: string[]; fields: Record<string, string[]> }>;
+/** Alış paketi türü (paket, rulo, koli…): backend `packs.PACKS`. */
+export interface PackInfo {
+  key: string;
+  tr: string;
+  en: string;
+}
 export interface MaterialCatalog {
   types: MaterialTypeInfo[];
   groups: MaterialRules;
+  packs: PackInfo[];
 }
 
 /** Malzeme kalemi alanları (null = alanı boşalt). */
@@ -133,6 +142,8 @@ export interface StockPatch {
   roll_width?: number | null;
   film_um?: number | null;
   roll_length?: number | null;
+  pack_unit?: string | null;
+  pack_size?: number | null;
 }
 
 export interface PriceVersion {

@@ -2,6 +2,7 @@
 
 import { useT } from "@/lib/i18n-client";
 import { PriceItem } from "../core/api";
+import { packLabel } from "../core/materials";
 import { money, qty, unitLabel } from "../core/units";
 
 type Tone = "green" | "amber" | "red";
@@ -41,7 +42,7 @@ function StockGauge({ item, onClick }: { item: PriceItem; onClick?: () => void }
       </div>
       <span className={`text-[11px] font-medium ${tone.text}`}>
         {qty(item.on_hand, locale)} {unitLabel(item.unit, t)}
-        {packs !== null && ` (≈ ${qty(packs, locale)} ${t("paket", "packs")})`}
+        {packs !== null && ` (≈ ${qty(packs, locale)} ${packLabel(item.pack_unit, t)})`}
       </span>
       {item.level === "out" && <span className={badge}>{t("Bitti", "Out")}</span>}
       {item.level === "low" && <span className={badge}>{t("Azaldı", "Low")}</span>}

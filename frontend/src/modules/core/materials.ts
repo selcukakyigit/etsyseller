@@ -38,6 +38,12 @@ export const materialType = (key: string | null | undefined): MaterialTypeInfo |
 export const materialGroup = (key: string | null | undefined): MaterialGroup | null => materialType(key)?.group ?? null;
 export const isSheetMaterial = (key: string | null | undefined): boolean => materialGroup(key) === "sheet";
 
+/** Alış paketi türünün adı ("Paket", "Rulo"…); tür boşsa ya da katalog yoksa genel "paket". */
+export const packLabel = (key: string | null | undefined, t: (tr: string, en: string) => string): string => {
+  const p = (current?.packs ?? []).find((x) => x.key === (key || "pack"));
+  return p ? t(p.tr, p.en).toLowerCase() : t("paket", "pack");
+};
+
 export const materialLabel = (key: string | null | undefined, t: (tr: string, en: string) => string): string => {
   const m = materialType(key);
   return m ? t(m.tr, m.en) : "";

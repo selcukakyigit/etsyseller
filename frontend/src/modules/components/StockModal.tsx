@@ -10,6 +10,7 @@ import { toast } from "@/lib/toast";
 import { useApiData } from "@/lib/useApiData";
 import { EntityApi, PriceItem, StockMovement } from "../core/api";
 import { errMsg } from "../core/errors";
+import { packLabel } from "../core/materials";
 import { btnLink, btnPrimary, input, label, muted, rowBorder, td, th } from "../core/ui";
 import { currencySymbol, money, qty, unitLabel } from "../core/units";
 
@@ -46,14 +47,13 @@ export default function StockModal({
   const [date, setDate] = useState(today());
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
-  const [pack, setPack] = useState(item.pack_size == null ? "" : String(item.pack_size));
   const [min, setMin] = useState(item.min_stock == null ? "" : String(item.min_stock));
   const { data: hist, reload } = useApiData<{ items: StockMovement[] }>(`modkit-stock-history:${api.base}:${entityId}:${item.id}`, () => api.prices.stockHistory(entityId, item.id));
   const n = Number(amount.replace(",", "."));
   const p = price.trim() === "" ? null : Number(price.replace(",", "."));
   const perEntryUnit = priceMode === "total" && p !== null && n > 0 ? p / n : null;
   const itemUnit = unitLabel(item.unit, t);
-  const entryLabel = (u: string) => (u === "pack" ? t("paket", "pack") : unitLabel(u, t));
+  const entryLabel = (u: string) => (u === "pack" ? packLabel(item.pack_unit, t) : unitLabel(u, t));
 
   async function submit() {
     if (!(Number.isFinite(n) && (tab === "count" ? amount.trim() !== "" && n >= 0 : n > 0))) {
@@ -85,15 +85,14 @@ export default function StockModal({
   }
 
   async function saveSettings() {
-    const pk = pack.trim() === "" ? null : Number(pack.replace(",", "."));
     const mn = min.trim() === "" ? null : Number(min.replace(",", "."));
-    if ((pk !== null && !(Number.isFinite(pk) && pk > 0)) || (mn !== null && !(Number.isFinite(mn) && mn >= 0))) {
-      toast.error(t("Paket miktarı sıfırdan büyük, en az stok sıfır ya da daha büyük bir sayı olmalı.", "Pack size must be above zero and minimum stock zero or more."));
+    if (mn !== null && !(Number.isFinite(mn) && mn >= 0)) {
+      toast.error(t("En az stok sıfır ya da daha büyük bir sayı olmalı.", "Minimum stock must be zero or more."));
       return;
     }
     setBusy(true);
     try {
-      await api.prices.update(entityId, item.id, { pack_size: pk, min_stock: mn });
+      await api.prices.update(entityId, item.id, { min_stock: mn });
       toast.success(t("Stok ayarları kaydedildi", "Stock settings saved"));
       onChanged();
     } catch (e) {
@@ -222,24 +221,13 @@ export default function StockModal({
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block">
                 <span className={label}>
-                  {t("Bir paketteki miktar", "Quantity per pack")} ({itemUnit}){" "}
-                  <HelpTip>
-                    {t(
-                      "Stok miktarı değil. Bir paketin içindeki miktar: strafor paketi 20 adet, streç rulosu 2 kg. Paketle alıyorsan doldur ki alımı “30 paket” diye girebil; paketle almıyorsan boş bırak.",
-                      "Not the stock level. The quantity inside one pack: a styrofoam pack of 20 pieces, a stretch roll of 2 kg. Fill it in if you buy by the pack so you can enter “30 packs”; leave it empty otherwise.",
-                    )}
-                  </HelpTip>
-                </span>
-                <DecimalInput value={pack} onValue={setPack} placeholder={t("paketle almıyorsan boş", "empty if not bought by pack")} className={`${input} w-full`} />
-              </label>
-              <label className="block">
-                <span className={label}>
                   {t("En az stok", "Minimum stock")} ({itemUnit}){" "}
                   <HelpTip>{t("Eldeki miktar bu seviyeye inince kalem kırmızı görünür. Boşsa son alımın %10'u kullanılır.", "The item turns red when the quantity on hand falls to this level. When empty, 10% of the last purchase is used.")}</HelpTip>
                 </span>
                 <DecimalInput value={min} onValue={setMin} placeholder="—" className={`${input} w-full`} />
               </label>
             </div>
+            <p className={muted}>{t("Alış paketi (paket türü ve içindeki miktar) kalem düzenlenirken, fiyat listesinde yazılır.", "The purchase pack (type and quantity inside) is set when editing the item in the price list.")}</p>
             <div className="text-right">
               <button type="button" disabled={busy} onClick={() => void saveSettings()} className={btnPrimary}>
                 {t("Kaydet", "Save")}

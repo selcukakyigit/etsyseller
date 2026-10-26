@@ -20,7 +20,7 @@ from app.modkit.access import EntityAccess
 from app.modkit.models import PriceItem, StockMovement
 
 KINDS = ("opening", "purchase", "use", "adjust")
-TRACKING_FIELDS = ("track_stock", "min_stock", "pack_size")  # kalemin stok ayarları (`clean_tracking`)
+TRACKING_FIELDS = ("track_stock", "min_stock")  # kalemin stok ayarları (`clean_tracking`); paket miktarı kalemin kendi alanıdır (bkz. pricebook.PACK_FIELDS)
 MAX_QTY = 1e9
 EPS = 1e-9
 PACK = "pack"  # giriş birimi: paket (kalemin `pack_size`'ı)
@@ -30,7 +30,7 @@ LOW_SHARE = 0.1  # en az stok girilmemişse: son alımdaki miktarın %10'u altı
 # ------------------------------------------------------------------ kalem ayarları ----
 
 def clean_tracking(access: EntityAccess, kind: str, data: dict) -> dict:
-    """Kalemin stok ayarlarını doğrular (`track_stock`, `min_stock`, `pack_size`); yalnızca verilenler döner, None = boşalt. Yalnızca çalışma alanı
+    """Kalemin stok ayarlarını doğrular (`track_stock`, `min_stock`); yalnızca verilenler döner, None = boşalt. Yalnızca çalışma alanı
     üyesi koyabilir (stok iç bilgidir) ve yalnızca malzeme kalemlerinde anlamlıdır (başka kalemde yok sayılır)."""
     if not data or kind != "material":
         return {}
@@ -38,14 +38,12 @@ def clean_tracking(access: EntityAccess, kind: str, data: dict) -> dict:
     out: dict = {}
     if "track_stock" in data:
         out["track_stock"] = bool(data["track_stock"])
-    for key in ("min_stock", "pack_size"):
-        if key not in data:
-            continue
-        value = data[key]
+    if "min_stock" in data:
+        value = data["min_stock"]
         if value is None:
-            out[key] = None
-        elif (key == "min_stock" and 0 <= float(value) <= MAX_QTY) or (key == "pack_size" and 0 < float(value) <= MAX_QTY):
-            out[key] = round(float(value), 6)
+            out["min_stock"] = None
+        elif 0 <= float(value) <= MAX_QTY:
+            out["min_stock"] = round(float(value), 6)
         else:
             raise HTTPException(422, tr("Geçersiz miktar", "Invalid quantity"))
     return out

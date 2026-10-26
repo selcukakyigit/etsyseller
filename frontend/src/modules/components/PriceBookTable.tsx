@@ -11,11 +11,12 @@ import { useApiData } from "@/lib/useApiData";
 import { EntityAccess, EntityApi, PriceItem, PriceKind, PriceVersion, StockPatch, can, isInternal, isMember } from "../core/api";
 import { errMsg } from "../core/errors";
 import { btnDanger, btnLink, btnOutline, btnPrimary, card, h2, input, label as labelCls, muted, rowBorder, th, td } from "../core/ui";
-import { currencySymbol, money, PERCENT, perUnit, unitLabel, unitPrice } from "../core/units";
+import { currencySymbol, money, PERCENT, perUnit, qty, unitLabel, unitPrice } from "../core/units";
 import DecimalInput from "@/components/ui/NumberInputs";
-import { materialLabel, useMaterialCatalog } from "../core/materials";
+import { materialLabel, packLabel, useMaterialCatalog } from "../core/materials";
 import MaterialTypeSelect from "./MaterialTypeSelect";
 import MaterialTypesModal from "./MaterialTypesModal";
+import PackPriceNote, { usePackPrice } from "./PackPrice";
 import StockFields, { allowedUnits, applyType, emptyStock, missingFields, pruneStock, StockForm, stockOf, stockPayload, useMissingLabels } from "./StockFields";
 import StockLine from "./StockGauge";
 import StockModal from "./StockModal";
@@ -224,6 +225,7 @@ function PriceRow({
   const [from, setFrom] = useState(since);
   const [auto, setAuto] = useState(item.auto_qty !== null ? String(item.auto_qty) : "");
   const [stock, setStock] = useState<StockForm>(() => stockOf(item));
+  const pack = usePackPrice(stock, price, setPrice);
   const [busy, setBusy] = useState(false);
   const ruleAllowed = member && (item.kind === "service" || item.kind === "material");
   const pct = item.unit === PERCENT;
@@ -231,8 +233,9 @@ function PriceRow({
   const kindTag = item.kind === "minimum" ? t("minimum", "minimum") : pct ? t("yüzde", "percent") : item.kind === "fee" ? t("iş başına", "per job") : "";
 
   async function save() {
-    const p = Number(price.replace(",", "."));
-    if (!name.trim() || !Number.isFinite(p) || p < 0) {
+    const typed = Number(price.replace(",", "."));
+    const p = pack.toUnit(typed);
+    if (!name.trim() || !Number.isFinite(typed) || typed < 0) {
       toast.error(t("Ad ve geçerli bir fiyat gir.", "Enter a name and a valid price."));
       return;
     }
@@ -324,10 +327,15 @@ function PriceRow({
                   />
                 </label>
               )}
-              <label className={field}>
-                <span className={labelCls}>{pct ? t("Yüzde (%)", "Percentage (%)") : `${t("Fiyat", "Price")} (${perUnit(currency, unit, t)})`}</span>
-                <DecimalInput value={price} onValue={setPrice} unit={pct ? "%" : currencySymbol(currency, locale)} className={`${input} w-full`} />
-              </label>
+              <div>
+                <label className={field}>
+                  <span className={labelCls}>
+                    {pct ? t("Yüzde (%)", "Percentage (%)") : `${t("Fiyat", "Price")} (${pack.on ? `${currency} / ${packLabel(stock.pack_unit, t)}` : perUnit(currency, unit, t)})`}
+                  </span>
+                  <DecimalInput value={price} onValue={setPrice} unit={pct ? "%" : currencySymbol(currency, locale)} className={`${input} w-full`} />
+                </label>
+                {item.kind === "material" && !pct && <PackPriceNote pack={pack} stock={stock} unit={unit} price={price} currency={currency} />}
+              </div>
               {pct && (
                 <label className={field}>
                   <span className={labelCls}>
@@ -392,6 +400,11 @@ function PriceRow({
       </td>
       <td className={td}>
         <div className="font-medium text-neutral-900 dark:text-neutral-100">{unitPrice(item.price, item.unit, currency, locale, t)}</div>
+        {item.pack_price != null && item.pack_size ? (
+          <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+            {packLabel(item.pack_unit, t)} ({qty(item.pack_size, locale)} {unitLabel(item.unit, t)}): {money(item.pack_price, currency, locale)}
+          </div>
+        ) : null}
         {pct && (
           <div className="text-[11px] text-neutral-400">
             {t("işin tutarının yüzdesi", "of the job amount")}
@@ -497,6 +510,7 @@ function AddRow({
   const [price, setPrice] = useState("");
   const [auto, setAuto] = useState("");
   const [stock, setStock] = useState<StockForm>(emptyStock);
+  const pack = usePackPrice(stock, price, setPrice);
   const [busy, setBusy] = useState(false);
   const fixed = kind === "fee" || kind === "minimum";
 
@@ -511,8 +525,9 @@ function AddRow({
   }
 
   async function add() {
-    const p = Number(price.replace(",", "."));
-    if (!name.trim() || !Number.isFinite(p) || p < 0) {
+    const typed = Number(price.replace(",", "."));
+    const p = pack.toUnit(typed);
+    if (!name.trim() || !Number.isFinite(typed) || typed < 0) {
       toast.error(t("Ad ve geçerli bir fiyat gir.", "Enter a name and a valid price."));
       return;
     }
@@ -625,10 +640,15 @@ function AddRow({
             />
           </label>
         )}
-        <label className="block">
-          <span className={labelCls}>{pct ? t("Yüzde (%)", "Percentage (%)") : `${t("Fiyat", "Price")} (${currency})`}</span>
-          <DecimalInput value={price} onValue={setPrice} unit={pct ? "%" : currencySymbol(currency, locale)} placeholder="0" className={`${input} w-full`} />
-        </label>
+        <div>
+          <label className="block">
+            <span className={labelCls}>
+              {pct ? t("Yüzde (%)", "Percentage (%)") : `${t("Fiyat", "Price")} (${pack.on ? `${currency} / ${packLabel(stock.pack_unit, t)}` : currency})`}
+            </span>
+            <DecimalInput value={price} onValue={setPrice} unit={pct ? "%" : currencySymbol(currency, locale)} placeholder="0" className={`${input} w-full`} />
+          </label>
+          {kind === "material" && !pct && <PackPriceNote pack={pack} stock={stock} unit={unit} price={price} currency={currency} />}
+        </div>
         {pct && (
           <label className="block">
             <span className={labelCls}>

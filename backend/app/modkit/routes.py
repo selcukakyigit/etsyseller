@@ -77,6 +77,8 @@ class PriceItemIn(BaseModel):
     roll_width: float | None = Field(None, gt=0, le=pricebook.MAX_STOCK)
     film_um: float | None = Field(None, gt=0, le=pricebook.MAX_STOCK)
     roll_length: float | None = Field(None, gt=0, le=pricebook.MAX_STOCK)
+    pack_unit: str | None = Field(None, max_length=12)  # alış paketi türü (packs.PACKS) ve paketteki miktar (kalemin biriminde)
+    pack_size: float | None = Field(None, gt=0, le=pricebook.MAX_STOCK)
     min_amount: float | None = Field(None, ge=0, le=pricebook.MAX_PRICE)  # yalnızca yüzdelik ücrette: en az tutar
 
 
@@ -95,7 +97,8 @@ class PriceItemPatch(BaseModel):
     roll_length: float | None = Field(None, gt=0, le=pricebook.MAX_STOCK)
     track_stock: bool | None = None
     min_stock: float | None = Field(None, ge=0, le=stock.MAX_QTY)
-    pack_size: float | None = Field(None, gt=0, le=stock.MAX_QTY)
+    pack_unit: str | None = Field(None, max_length=12)
+    pack_size: float | None = Field(None, gt=0, le=pricebook.MAX_STOCK)
     min_amount: float | None = Field(None, ge=0, le=pricebook.MAX_PRICE)  # yüzdelik ücretin en az tutarı; null = kaldır
     # (malzeme ve stok alanlarında da null gönderilirse alan boşaltılır)
 
@@ -230,7 +233,7 @@ def build_entity_router(module: str, prefix: str, tag: str, item_in_use: Callabl
     def add_price_item(payload: PriceItemIn, a: acc.EntityAccess = Depends(entity_access), db: Session = Depends(get_db)):
         ratelimit.hit("prices.write", f"user:{a.user.id}", 300, 3600)
         item = pricebook.create_item(db, a, payload.kind, payload.name, payload.unit, payload.spec, payload.price, payload.auto_qty,
-                                    payload.model_dump(include=set(pricebook.STOCK_FIELDS), exclude_unset=True), payload.min_amount)
+                                    payload.model_dump(include={*pricebook.STOCK_FIELDS, *pricebook.PACK_FIELDS}, exclude_unset=True), payload.min_amount)
         _notify_guest_change(db, a, "price_item_added", item.name)
         return _item_out(db, a, item)
 
@@ -238,7 +241,7 @@ def build_entity_router(module: str, prefix: str, tag: str, item_in_use: Callabl
     def patch_price_item(item_id: int, payload: PriceItemPatch, a: acc.EntityAccess = Depends(entity_access), db: Session = Depends(get_db)):
         item = pricebook.get_item(db, a, item_id)
         pricebook.update_item(db, a, item, payload.name, payload.spec, payload.auto_qty if "auto_qty" in payload.model_fields_set else pricebook.UNSET,
-                             payload.model_dump(include=set(pricebook.STOCK_FIELDS), exclude_unset=True),
+                             payload.model_dump(include={*pricebook.STOCK_FIELDS, *pricebook.PACK_FIELDS}, exclude_unset=True),
                              payload.unit, bool(payload.unit and payload.unit != item.unit and (item_in_use(db, item.id) or stock.has_movements(db, item.id))),
                              payload.model_dump(include=set(stock.TRACKING_FIELDS), exclude_unset=True),
                              payload.min_amount if "min_amount" in payload.model_fields_set else pricebook.UNSET)

@@ -86,6 +86,8 @@ class PriceItem(EntityOwned, Base):
     track_stock: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     min_stock: Mapped[float | None] = mapped_column(Numeric(18, 6, asdecimal=False), nullable=True)
     pack_size: Mapped[float | None] = mapped_column(Numeric(18, 6, asdecimal=False), nullable=True)
+    # Alış paketinin türü (bkz. packs.py: paket, rulo, koli…); `pack_size` bu paketteki miktardır. Fiyat paket başına girilebilir.
+    pack_unit: Mapped[str | None] = mapped_column(String(12), nullable=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
     archived_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)

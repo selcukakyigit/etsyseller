@@ -9,7 +9,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.i18n import tr
-from app.modkit import activity, material_types, materials, stock, units
+from app.modkit import activity, material_types, materials, packs, stock, units
 from app.modkit.access import EntityAccess
 from app.modkit.models import PriceItem, PriceVersion
 
@@ -21,6 +21,7 @@ PERCENT = "pct"  # yüzdelik sabit ücretin birimi: fiyat sürümündeki sayı y
 MAX_PERCENT = 1000
 UNSET = object()  # güncellemede "bu alana dokunma" (None = kuralı kaldır)
 STOCK_FIELDS = ("material", "thickness_mm", "plate_width", "plate_height", "plate_kg", "roll_width", "film_um", "roll_length")  # yalnızca malzeme kalemleri
+PACK_FIELDS = ("pack_unit", "pack_size")  # alış paketi (bkz. packs.py); yalnızca malzeme kalemleri, tür grubundan bağımsız
 MAX_STOCK = 1e6
 
 
@@ -69,13 +70,15 @@ def _clean_stock(db: Session, access: EntityAccess, kind: str, fields: dict) -> 
     if kind != "material":
         return {}
     out = {}
-    for key in STOCK_FIELDS:
+    for key in (*STOCK_FIELDS, *PACK_FIELDS):
         if key not in fields:
             continue
         value = fields[key]
         if key == "material":
             material_types.check_key(db, access.entity.workspace_id, value)
             out[key] = value or None
+        elif key == "pack_unit":
+            out[key] = packs.check(value)
         elif value is None:
             out[key] = None
         elif 0 < float(value) <= MAX_STOCK:
@@ -161,9 +164,10 @@ def serialize(item: PriceItem, version: PriceVersion | None, versions: int = 0, 
         **({"min_amount": item.min_amount} if item.unit == PERCENT else {}),
         **({"material": item.material, "thickness_mm": item.thickness_mm, "plate_width": item.plate_width, "plate_height": item.plate_height,
             "plate_kg": item.plate_kg, "roll_width": item.roll_width, "film_um": item.film_um, "roll_length": item.roll_length,
+            "pack_unit": item.pack_unit, "pack_size": item.pack_size, "pack_price": round(version.price * item.pack_size, 4) if version and item.pack_size else None,
             "group": materials.group_of(materials.spec_of(item)[0]), "missing": materials.missing(item),
             "by_length": materials.per_metre(item) is not None, "derived": materials.stock_prices(item, version.price) if version else None} if item.kind == "material" else {}),
-        **({"track_stock": item.track_stock, "min_stock": item.min_stock, "pack_size": item.pack_size, "entry_units": stock.entry_units(item), **(snap or {}).get(item.id, {})}
+        **({"track_stock": item.track_stock, "min_stock": item.min_stock, "entry_units": stock.entry_units(item), **(snap or {}).get(item.id, {})}
            if snap is not None and item.kind == "material" else {}),
         "price": version.price if version else None,
         "price_from": version.valid_from.isoformat() + "Z" if version else None,
