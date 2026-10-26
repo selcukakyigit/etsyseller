@@ -117,3 +117,10 @@ def test_http_endpoint(db, etsy_calls):
         assert client.post("/api/shops/1/discover/etsy-top", json={"term": ""}).status_code == 422
     finally:
         main.app.dependency_overrides.clear()
+
+
+def test_summarize_reports_which_categories_the_competitors_sit_in():
+    results = [{**listing(i, 1), "taxonomy_id": 1027 if i < 6 else 129 if i < 8 else 1029} for i in range(10)] + [listing(99, 1)]  # sonuncusunun kategori kimliği yok
+    out = etsy_top.summarize("metal butterfly", {"count": 100, "results": results}, now=NOW)
+    assert out["categories"] == [{"taxonomy_id": 1027, "share": 0.55}, {"taxonomy_id": 129, "share": 0.18}, {"taxonomy_id": 1029, "share": 0.18}]
+    assert etsy_top.summarize("x", {"count": 0, "results": []}, now=NOW)["categories"] == []

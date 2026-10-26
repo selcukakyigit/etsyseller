@@ -1,4 +1,4 @@
-// Toplu taslak kartı: ilerlemeyi yoklar, ürün ürün durumu ve eksikleri gösterir, bitince yoklamayı keser, durdurma isteği gönderir.
+// Toplu taslak kartı: çözümleme yoklanır → düzenlenebilir ön kontrol (yalnızca değişenler gönderilir) → oluşturma ilerlemesi ve sonuç; durdurma.
 import { JSDOM } from "jsdom";
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/assistant", pretendToBeVisual: true });
 const w = dom.window;
@@ -10,58 +10,86 @@ const { default: BatchJobCard } = await import("../../src/components/assistant/B
 
 const eq = (a, b, m) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${m}\n  gelen: ${JSON.stringify(a)}\n  beklenen: ${JSON.stringify(b)}`); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const item = (index, state, extra = {}) => ({ index, images: 2, state, listing_id: null, title: "", missing: [], warnings: [], error: "", ...extra });
+const spec = (extra = {}) => ({
+  name: "Insulated tumbler", phrase: "insulated tumbler", digital: false, size: "", material: "", personalizable: true, personalization_detail: "", weight: 1.5, weight_unit: "lb", weight_estimated: true,
+  unsure: ["size", "personalization_detail"], category_id: 1071, categories: [{ taxonomy_id: 1071, path: "Home & Living > Kitchen & Dining > Drinkware > Travel Mugs", share: 0.6 }, { taxonomy_id: 129, path: "Art & Collectibles > Sculpture > Art Objects", share: 0.2 }], error: "", ...extra,
+});
+const item = (index, state, extra = {}) => ({ index, images: 2, image_id: `img${index}`, analyzed: true, spec: spec(), state, listing_id: null, title: "", missing: [], warnings: [], estimated: [], error: "", ...extra });
 const job = (status, items) => {
   const count = (s) => items.filter((i) => i.state === s).length;
-  return { job_id: "j1", status, total: items.length, done: count("done"), failed: count("failed"), skipped: count("skipped"), running: count("running"), listing_ids: items.filter((i) => i.listing_id).map((i) => i.listing_id), items };
+  return { job_id: "j1", status, review: true, total: items.length, analyzed: items.filter((i) => i.analyzed).length, done: count("done"), failed: count("failed"), skipped: count("skipped"), running: count("running"), listing_ids: items.filter((i) => i.listing_id).map((i) => i.listing_id), items };
 };
 
 const calls = [];
 let script = [];
-globalThis.__api = async (path, init) => { calls.push(`${init?.method ?? "GET"} ${path}`); return script.shift(); };
+globalThis.__api = async (path, init) => { calls.push({ call: `${init?.method ?? "GET"} ${path}`, body: init?.body ? JSON.parse(init.body) : null }); return script.shift(); };
 
 const el = document.createElement("div");
 document.body.appendChild(el);
 const root = createRoot(el);
 const text = () => el.textContent;
+const setValue = async (input, value) => {
+  const proto = input instanceof w.HTMLSelectElement ? w.HTMLSelectElement.prototype : w.HTMLInputElement.prototype;
+  await act(async () => { Object.getOwnPropertyDescriptor(proto, "value").set.call(input, value); input.dispatchEvent(new w.Event(input instanceof w.HTMLSelectElement ? "change" : "input", { bubbles: true })); });
+};
+const button = (label) => [...el.querySelectorAll("button")].find((b) => b.textContent === label);
 
-// 1) Çalışan iş: ilk yoklama bir ürünü hazır getirir; sayfa eksikleri ve bağlantıyı gösterir
-const start = job("running", [item(1, "running"), item(2, "queued"), item(3, "queued")]);
-script = [job("running", [item(1, "done", { listing_id: 501, title: "Metal House Number Sign", missing: ["Fiyat gir."] }), item(2, "running"), item(3, "queued")])];
+// 1) Çözümleme sürerken: ilerleme yoklanır, bitince ön kontrol formu açılır
+const start = job("analyzing", [item(1, "queued", { analyzed: false, spec: {} }), item(2, "queued", { analyzed: false, spec: {} })]);
+script = [
+  job("analyzing", [item(1, "queued"), item(2, "queued", { analyzed: false, spec: {} })]),
+  job("review", [item(1, "queued"), item(2, "queued", { spec: spec({ name: "Butterfly wall art", weight: 4, size: "24x36 in", category_id: null }) })]),
+];
 await act(async () => root.render(h(BatchJobCard, { card: { type: "batch_job", ...start }, shopId: 7 })));
-await act(async () => { await sleep(30); });
-eq(text().includes("Metal House Number Sign"), true, "hazır ürünün başlığı görünmeli");
-eq(text().includes("Fiyat gir."), true, "eksik (fiyat) görünmeli");
-eq(el.querySelector("a[href='/listings/501/edit']") !== null, true, "taslağa bağlantı");
-eq(text().includes("1/3"), true, "ilerleme sayacı");
-eq(calls[0], "GET /api/shops/7/assistant/batch-jobs/j1", "durum uç noktası yoklanır");
-console.log("1 çalışan iş: başlık, eksik, bağlantı OK");
-
-// 2) Sonraki yoklama işi bitirir: durum "Tamamlandı", durdur düğmesi kalkar, yoklama durur
-script = [job("done", [item(1, "done", { listing_id: 501, title: "A" }), item(2, "failed", { error: "Taslak oluşturulamadı." }), item(3, "done", { listing_id: 502, title: "C" })])];
+eq(text().includes("Ürünler çözümleniyor: 1/2"), true, "çözümleme ilerlemesi");
+eq(calls[0].call, "GET /api/shops/7/assistant/batch-jobs/j1", "durum yoklanır");
 await act(async () => { await sleep(2700); });
-eq(text().includes("Tamamlandı: 2 hazır, 1 olmadı"), true, "bitiş özeti");
-eq(text().includes("Taslak oluşturulamadı."), true, "başarısız ürünün nedeni");
-eq([...el.querySelectorAll("button")].some((b) => b.textContent === "Durdur"), false, "biten işte durdur düğmesi yok");
+eq(text().includes("Ön kontrol"), true, "ön kontrol başlığı");
+const inputs = () => [...el.querySelectorAll("input[maxlength='120']")];
+eq(inputs().map((i) => i.value), ["Insulated tumbler", "Butterfly wall art"], "ürün adları düzenlenebilir kutularda");
+const sizes = [...el.querySelectorAll("input[maxlength='80']")].filter((i) => i.placeholder);
+eq(sizes[0].value, "", "bilinmeyen ölçü BOŞ (uydurulmaz)");
+eq(sizes[0].className.includes("border-amber-400"), true, "bilinmeyen ve önemli alan vurgulanır");
+eq(sizes[2].value === "24x36 in" || sizes.some((i) => i.value === "24x36 in"), true, "bilinen ölçü dolu");
+eq(text().includes("tahmini"), true, "tahmini ağırlık işaretli");
+eq(text().includes("Travel Mugs · %60"), true, "kategori seçeneği rakip oranıyla");
+eq([...el.querySelectorAll("img")].map((i) => i.getAttribute("src")), ["/api/shops/7/assistant/images/img1", "/api/shops/7/assistant/images/img2"], "ürün resimleri küçük gösterilir");
+console.log("1 çözümleme → ön kontrol formu OK");
+
+// 2) Düzenleme: yalnızca değişen alanlar gönderilir; oluşturma başlar
+await setValue(sizes[0], "40 oz");
+await setValue(el.querySelectorAll("input[maxlength='200']")[0], "name engraving, 20 characters");
+const category = [...el.querySelectorAll("select")].find((s) => [...s.options].some((o) => o.value === "129"));
+await setValue(category, "129");
+script = [job("running", [item(1, "running"), item(2, "queued")]), job("done", [item(1, "done", { listing_id: 501, title: "Insulated Tumbler With Handle", missing: ["Fiyat gir."], estimated: ["weight"] }), item(2, "done", { listing_id: 502, title: "Butterfly Wall Art" })])];
+await act(async () => button("Taslakları oluştur").dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
+const post = calls.find((c) => c.call.startsWith("POST"));
+eq(post.call, "POST /api/shops/7/assistant/batch-jobs/j1/start", "onay isteği");
+eq(post.body, { items: [{ index: 1, size: "40 oz", personalization_detail: "name engraving, 20 characters", category_id: 129 }] }, "yalnızca kullanıcının değiştirdiği alanlar gider");
+console.log("2 düzenleme ve onay OK");
+
+// 3) Oluşturma sürer, sonra biter: başlık, eksik, tahmini değer, bağlantı; yoklama durur
+await act(async () => { await sleep(2700); });
+eq(text().includes("Tamamlandı: 2 hazır"), true, "bitiş özeti");
+eq(text().includes("Insulated Tumbler With Handle") && text().includes("Fiyat gir."), true, "başlık ve eksik");
+eq(text().includes("Tahmini değer var") && text().includes("ağırlık"), true, "tahmini değer uyarısı");
+eq(el.querySelector("a[href='/listings/501/edit']") !== null, true, "taslağa bağlantı");
 const polled = calls.length;
 await act(async () => { await sleep(2700); });
 eq(calls.length, polled, "bitince yoklama durur");
-console.log("2 bitiş özeti ve yoklamanın durması OK");
+console.log("3 oluşturma ve sonuç OK");
 
-// 3) Durdur: POST /stop gönderilir, yanıt kartı günceller
+// 4) Ön kontrolde vazgeç: iş durdurulur
 await act(async () => root.unmount());
 calls.length = 0;
-const running = job("running", [item(1, "running"), item(2, "queued")]);
-script = [running, job("stopped", [item(1, "done", { listing_id: 9, title: "X" }), item(2, "skipped")])];
+const review = job("review", [item(1, "queued")]);
+script = [job("stopped", [item(1, "skipped")])];
 const root2 = createRoot(el);
-await act(async () => root2.render(h(BatchJobCard, { card: { type: "batch_job", ...running }, shopId: 7 })));
-await act(async () => { await sleep(30); });
-const stopButton = [...el.querySelectorAll("button")].find((b) => b.textContent === "Durdur");
-eq(stopButton !== undefined, true, "çalışan işte durdur düğmesi var");
-await act(async () => stopButton.dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
-eq(calls.at(-1), "POST /api/shops/7/assistant/batch-jobs/j1/stop", "durdurma isteği");
-eq(text().includes("Durduruldu: 1 hazır, 1 atlandı"), true, "durduruldu özeti");
-console.log("3 durdurma OK");
+await act(async () => root2.render(h(BatchJobCard, { card: { type: "batch_job", ...review }, shopId: 7 })));
+await act(async () => button("Vazgeç").dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
+eq(calls.find((c) => c.call.startsWith("POST")).call, "POST /api/shops/7/assistant/batch-jobs/j1/stop", "vazgeç = durdur isteği");
+eq(text().includes("Durduruldu"), true, "durduruldu özeti");
+console.log("4 vazgeç OK");
 
 console.log("BATCH KART TESTLERİ GEÇTİ");
 process.exit(0);

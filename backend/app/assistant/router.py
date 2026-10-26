@@ -104,6 +104,19 @@ def batch_job(job_id: str, shop: Shop = Depends(get_owned_shop)):
     return batch_drafts.public(_batch_job(job_id, shop))
 
 
+class BatchStartIn(BaseModel):
+    """Ön kontrolde kullanıcının düzeltmeleri: [{index, name?, digital?, size?, material?, personalizable?, personalization_detail?, weight?, weight_unit?, category_id?}]."""
+
+    items: list[dict] = Field(default_factory=list, max_length=batch_drafts.MAX_ITEMS)
+
+
+@router.post("/batch-jobs/{job_id}/start")
+def batch_job_start(job_id: str, payload: BatchStartIn, shop: Shop = Depends(get_owned_shop)):
+    job = _batch_job(job_id, shop)
+    batch_drafts.confirm(job, payload.items)
+    return batch_drafts.public(job)
+
+
 @router.post("/batch-jobs/{job_id}/stop")
 def batch_job_stop(job_id: str, shop: Shop = Depends(get_owned_shop)):
     job = _batch_job(job_id, shop)

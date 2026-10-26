@@ -71,6 +71,8 @@ def summarize(term: str, data: dict, now: float | None = None, thumbnails: dict[
         })
     n = len(results)
     proven = sum(1 for f in favorites if f >= PROVEN_FAVORITES)
+    # Rakiplerin hangi kategoride durduğu (yalnızca kimlik ve oran; ilan içeriği saklanmaz): yeni listing kategorisini piyasaya bakarak seçmek için.
+    categories = Counter(int(r["taxonomy_id"]) for r in results if r.get("taxonomy_id"))
     return {
         "term": term, "total": int(data.get("count") or 0), "sample": n, "currency": currency,
         "price": {"p25": _round(_quantile(prices, 0.25), 2), "median": _round(_quantile(prices, 0.5), 2), "p75": _round(_quantile(prices, 0.75), 2)},
@@ -80,6 +82,7 @@ def summarize(term: str, data: dict, now: float | None = None, thumbnails: dict[
         "age_days_median": round(statistics.median(ages)) if ages else None,
         "new_share": _round(sum(1 for a in ages if a < NEW_DAYS) / n, 2) if n else None,
         "top_tags": [{"tag": tag, "count": c} for tag, c in tags.most_common(TOP_TAGS) if c >= 2],
+        "categories": [{"taxonomy_id": tid, "share": round(c / n, 2)} for tid, c in categories.most_common(3)] if n else [],
         "listings": listings,
     }
 

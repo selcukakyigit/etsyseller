@@ -3378,7 +3378,7 @@ LISTING_TOOL_NAMES = frozenset({
     "delete_listing", "generation_options", "analyze_listing_values", "generate_listing_video", "add_video_to_listing", "remove_listing_video", "publish_listing_draft", "deactivate_listing",
     "list_description_templates", "save_description_template", "delete_description_templates", "listing_health_status", "workspace_status", "keyword_pool",
     "research_keywords", "keyword_detail", "upcoming_seasons", "saved_keywords", "save_keywords", "etsy_top_results",
-    "remember_note", "forget_note", "open_support_ticket", "my_support_tickets", "market_research", "suggest_price", "bulk_update_listings", "rewrite_listings", "continue_rewrite", "stop_rewrite", "create_listings_from_images", "stop_batch_listings", "pinterest_content", "make_pin_image", "add_digital_file", "remove_digital_file", "set_listing_type",
+    "remember_note", "forget_note", "open_support_ticket", "my_support_tickets", "market_research", "suggest_price", "bulk_update_listings", "rewrite_listings", "continue_rewrite", "stop_rewrite", "create_listings_from_images", "start_batch_listings", "batch_listings_status", "stop_batch_listings", "pinterest_content", "make_pin_image", "add_digital_file", "remove_digital_file", "set_listing_type",
 })
 
 
@@ -3391,7 +3391,7 @@ TOOL_GROUPS: dict[str, frozenset[str]] = {
     "digital": frozenset({"add_digital_file", "remove_digital_file", "set_listing_type"}),
     "support": frozenset({"open_support_ticket", "my_support_tickets"}),
     "discover": frozenset({"research_keywords", "keyword_detail", "upcoming_seasons", "saved_keywords", "save_keywords", "etsy_top_results"}),
-    "batch": frozenset({"create_listings_from_images", "stop_batch_listings"}),
+    "batch": frozenset({"create_listings_from_images", "start_batch_listings", "batch_listings_status", "stop_batch_listings"}),
 }
 GROUP_WORDS: dict[str, re.Pattern] = {
     "batch": re.compile(

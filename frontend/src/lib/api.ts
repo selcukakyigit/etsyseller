@@ -774,10 +774,23 @@ export type RewriteState = {
   samples: { id: number; title: string; before: BulkBrief; after: BulkBrief; detail: { before: RewriteText; after: RewriteText }; warnings: string[] }[];
   listing_ids: number[]; changed: number; skipped: { reason: string; count: number }[]; estimate: { listings: number; credits: number; needs_confirmation: boolean };
 };
+/** Toplu taslak: bir ürünün çözümlemesi (ön kontrolde düzenlenir). Boş ölçü/kapasite ve malzeme taslakta yazılmaz (uydurulmaz); ağırlık tahmindir. */
+export type BatchSpec = {
+  name: string; phrase: string; digital: boolean; size: string; material: string; personalizable: boolean; personalization_detail: string;
+  weight: number | null; weight_unit: "oz" | "lb" | "g" | "kg"; weight_estimated: boolean; unsure: string[]; category_id: number | null;
+  categories: { taxonomy_id: number; path: string; share: number }[]; error: string;
+};
+/** Ön kontrolde kullanıcının değiştirdiği alanlar (yalnızca değişenler gönderilir). */
+export type BatchEdit = { index: number } & Partial<Pick<BatchSpec, "name" | "digital" | "size" | "material" | "personalizable" | "personalization_detail" | "weight" | "weight_unit" | "category_id">>;
+
 /** Toplu taslak oluşturma işinin durumu (backend assistant/batch_drafts.py public()). */
 export type BatchState = {
-  job_id: string; status: "running" | "done" | "stopped"; total: number; done: number; failed: number; skipped: number; running: number; listing_ids: number[];
-  items: { index: number; images: number; state: "queued" | "running" | "done" | "failed" | "skipped"; listing_id: number | null; title: string; missing: string[]; warnings: string[]; error: string }[];
+  job_id: string; status: "analyzing" | "review" | "running" | "done" | "stopped"; review: boolean; total: number; analyzed: number; done: number; failed: number; skipped: number; running: number;
+  listing_ids: number[];
+  items: {
+    index: number; images: number; image_id: string; analyzed: boolean; spec: Partial<BatchSpec>; state: "queued" | "running" | "done" | "failed" | "skipped"; listing_id: number | null; title: string;
+    missing: string[]; warnings: string[]; estimated: string[]; error: string;
+  }[];
 };
 export type BulkBrief = { title: string; price: [number, number] | null; quantity: [number, number] | null; tags: number };
 
