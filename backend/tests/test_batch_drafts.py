@@ -577,3 +577,18 @@ def test_a_plain_text_choice_question_becomes_buttons_and_titles_pass_the_draft_
     said = "2mm metal 140x49 cm, 118x40 cm renkler black white"
     assert any("tekrar" in p for p in tools._title_option_problems(["outdoor metal wall art abstract metal silhouette"], said, "abstract silhouette")), "'metal' iki kez: öneri olarak sunulmaz"
     assert tools.MAX_DRAFT_REJECTIONS == 1
+
+
+def test_images_already_generated_in_the_chat_are_offered_before_new_ones_are_generated(db):
+    from app.assistant.models import ChatImage, ChatSession
+
+    shop = _shop(db)
+    session = ChatSession(shop_id=shop.id, user_id=5, title="t")
+    db.add(session)
+    db.commit()
+    for name, fid in (("image.png", "src1"), ("ai-generated.jpg", "gen1"), ("ai-generated.jpg", "gen2")):
+        db.add(ChatImage(id=fid, shop_id=shop.id, session_id=session.id, filename=name, content_type="image/jpeg", path=f"/x/{fid}"))
+    db.commit()
+    ctx = tools.Ctx(db=db, shop=shop, user_id=5, today=None, session_id=session.id)
+    assert sorted(tools._session_generated_images(ctx)) == ["gen1", "gen2"], "yüklenen kaynak resim sayılmaz"
+    assert tools._session_generated_images(tools.Ctx(db=db, shop=shop, user_id=5, today=None)) == []

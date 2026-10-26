@@ -1059,6 +1059,10 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     wanted = int(a.get("wanted_image_count") or 0)
     if wanted > attached:
         completion["eksik_resim"] = min(wanted, creation.MAX_LISTING_IMAGES) - attached
+        made = _session_generated_images(ctx)
+        if made:  # kullanıcının istediği görseller bu sohbette zaten üretildiyse yeniden üretilmez (kredi): önce onlar eklenir
+            completion["sohbette_uretilmis_resimler"] = made
+            completion["uretilmis_resim_notu"] = "Bu sohbette üretilmiş görseller var (sohbette_uretilmis_resimler): eksik_resim için YENİ görsel ÜRETME; bu kimlikleri add_chat_image_to_listing ile listing'e ekle, ancak yetmezse kalanı üret."
     crops = list(a.get("crop_photos") or [])
     if a.get("crop_first_photo") and not any(int(c.get("photo_number") or 1) == 1 for c in crops):
         crops.insert(0, {"photo_number": 1, "ratio": a["crop_first_photo"]})
@@ -1320,6 +1324,16 @@ def auto_yes_no(ctx: Ctx, reply: str) -> None:
     options = [o.strip() for o in m.group(1).split("/") if o.strip()]
     if 2 <= len(options) <= 4:
         ctx.cards.append({"type": "choices", "kind": "question", "question": tr("Seçim", "Choose"), "options": options})
+
+
+def _session_generated_images(ctx: Ctx) -> list[str]:
+    """Bu sohbette üretilmiş (yapay zekâ) görsel kimlikleri; kullanıcının yüklediği kaynak resim hariç."""
+    if ctx.session_id is None:
+        return []
+    from app.assistant.models import ChatImage
+
+    rows = ctx.db.scalars(select(ChatImage).where(ChatImage.session_id == ctx.session_id, ChatImage.filename.like("ai-generated%")).order_by(ChatImage.created_at)).all()
+    return [r.id for r in rows][:20]
 
 
 def _pick_template(ctx: Ctx, a: dict):
