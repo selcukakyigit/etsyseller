@@ -74,12 +74,15 @@ def test_the_category_picker_does_not_override_the_shops_established_category(db
     shop = Shop(user_id=1, workspace_id=1, etsy_shop_id=1004, etsy_user_id=7, shop_name="S4")
     db.add(shop); db.commit()
     ctx = tools.Ctx(db=db, shop=shop, user_id=5, today=None)
+    monkeypatch.setattr(tools, "_taxonomy", lambda: {1027: "Home & Living > Home Decor > Wall Decor", 129: "Art & Collectibles > Sculpture > Art Objects", 66: "Art & Collectibles"})
     monkeypatch.setattr(tools.listing_service, "get_top_categories", lambda db_, shop_, limit=50: [{"taxonomy_id": 1027, "count": 146}, {"taxonomy_id": 66, "count": 28}])
-    assert tools._keeps_established_category(ctx, 1027, 129) is True, "146 listing'lik Wall Decor, mağazanın hiç kullanmadığı Sculpture ile değiştirilmez"
-    assert tools._keeps_established_category(ctx, 1027, 66) is False, "seçicinin önerisi de mağazada kullanılıyorsa serbest"
-    assert tools._keeps_established_category(ctx, 129, 1027) is False and tools._keeps_established_category(ctx, None, 129) is False
+    title = "abstract wall decor wave line metal panel geometric wall art"
+    assert tools._keeps_established_category(ctx, 1027, 129, title) is True, "146 listing'lik Wall Decor, başlıkta 'wall decor' geçiyor: Sculpture ile değiştirilmez"
+    assert tools._keeps_established_category(ctx, 1027, 129, "gold pendant necklace handmade") is False, "başlık kategoriyi söylemiyorsa (çok çeşitli mağaza, model yanlış seçtiyse) seçici düzeltir"
+    assert tools._keeps_established_category(ctx, 1027, 66, title) is False, "seçicinin önerisi de mağazada kullanılıyorsa serbest"
+    assert tools._keeps_established_category(ctx, 129, 1027, title) is False and tools._keeps_established_category(ctx, None, 129, title) is False
     monkeypatch.setattr(tools.listing_service, "get_top_categories", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("x")))
-    assert tools._keeps_established_category(ctx, 1027, 129) is False, "mağaza verisi alınamazsa seçici karar verir"
+    assert tools._keeps_established_category(ctx, 1027, 129, title) is False, "mağaza verisi alınamazsa seçici karar verir"
 
 
 def test_uniform_stock_follows_the_price_variation_so_the_editor_rule_holds(db, monkeypatch):
