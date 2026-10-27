@@ -668,44 +668,83 @@ def _keeps_established_category(ctx: Ctx, current: int | None, picked: int, text
     return counts.get(current, 0) >= ESTABLISHED_CATEGORY_LISTINGS and counts.get(picked, 0) == 0
 
 
-SHORT_DESCRIPTION_WORDS = 90  # ürüne özel kısım bundan kısaysa editördeki AI önerisi motoruyla zenginleştirilir
+_TOTAL_STOCK = re.compile(r"toplam(?:[ ]+stok)?[ ]*[:=]?[ ]*([0-9]{1,3})\b|stok(?:u|[a-zçğıöşü]*)?[ ]+toplam[ ]*([0-9]{1,3})\b", re.IGNORECASE)
+_EACH_STOCK = re.compile(r"(?:hepsi|her[ ]*biri|her[ ]*kombinasyon\w*|her[ ]*(?:ürün|renk|boyut)\w*)[ ]*(?:için[ ]*)?(?:stok[ ]*)?[:=]?[ ]*([0-9]{1,3})\b", re.IGNORECASE)
+_LINE_COUNT = re.compile(r"([2-5])[ ]*(?:metin|satır|line|text line)", re.IGNORECASE)
+_MAX_CHARS = re.compile(r"(?:max(?:imum)?\.?[ ]*|en fazla[ ]*|up to[ ]*)([0-9]{1,3})[ ]*(?:karakter|character|harf)|([0-9]{1,3})[ ]*karakter", re.IGNORECASE)
+_PRICE_IN_LABEL = re.compile(r"[ \t\-–—:,|]*[(\[]?[ ]*(?:\$[ ]?[0-9]+(?:[.,][0-9]+)?|[0-9]+(?:[.,][0-9]+)?[ ]?(?:usd|\$|dolar|dollars?))[ ]*[)\]]?[ ]*$", re.IGNORECASE)
+
+
+def _stated_stock(text: str) -> tuple[str, int] | None:
+    """Kullanıcının sözünden stok: "toplam 50" → ("total", 50) = tek stok havuzu; "hepsi/her biri için 30" → ("each", 30). Model parametreyi vermeyi unutursa sunucu uygular (oturum 62: stok 100 kaldı)."""
+    m = _TOTAL_STOCK.search(text)
+    if m:
+        return "total", int(next(g for g in m.groups() if g))
+    m = _EACH_STOCK.search(text)
+    return ("each", int(m.group(1))) if m else None
+
+
+def _stated_text_lines(text: str) -> list[str]:
+    """Kullanıcının saydığı ayrı kişiselleştirme metin alanları: üst/orta/alt metin ya da "3 metin/satır" → alan adları."""
+    low = text.lower()
+    if re.search(r"üst[ ]*(?:metin|satır|yazı)", low) and re.search(r"orta", low) and re.search(r"alt[ ]*(?:metin|satır|yazı)", low):
+        return ["Upper line", "Middle line", "Lower line"]
+    m = _LINE_COUNT.search(low)
+    return [f"Line {i}" for i in range(1, int(m.group(1)) + 1)] if m else []
+
+
+def _clean_variation_labels(variations: list[dict]) -> list[dict]:
+    """Seçenek adındaki fiyat ("L - 120x60 cm - $190") atılır: fiyat alanda durur, alıcı adın içinde görmez."""
+    out = []
+    for v in variations:
+        values = []
+        for x in v.get("values") or []:
+            item = x if isinstance(x, dict) else {"value": x}
+            cleaned = _PRICE_IN_LABEL.sub("", str(item.get("value") or "")).strip()
+            values.append({**item, "value": cleaned or item.get("value")})
+        out.append({**v, "values": values})
+    return out
+
+
 
 
 def _enrich_description(ctx: Ctx, a: dict, title: str, tags: list[str], variations: dict[str, list[str]], source: str, plan, others: list[dict]) -> dict:
-    """Model açıklamayı çok kısa yazdıysa (oturum 59: 33 kelime) editördeki "AI Önerisi Üret" motoru (`seo.generate_seo_suggestion`: kelime planı, biçim ve uydurma denetimi, yeniden deneme)
-    yalnızca AÇIKLAMA için çalışır; sonuç daha uzun ve denetimde daha az sorunluysa kullanılır. Toplu işte (kendi akışı var), dijitalde ve hata durumunda açıklama aynen kalır. Başlık/etiketlere dokunmaz."""
+    """Fiziksel yeni taslakta açıklama: giriş KOMPOZİSYONU ayrı bir yazım çağrısıyla (ai/description_writer.py: alıcıya hitap eden, sıcak, iki paragraf; fotoğrafta görünen tasarımı ve seçenek
+    çeşitliliğini anlatır), DETAILS bölümü ise olgulardan SUNUCUDA kurulur (fiyat/stok/kargo satırı yok, tekrarlar atılır, seçenekler adıyla sayılır). Model yoksa, yazar kurallara uymazsa,
+    toplu işte (kendi akışı var) ve dijitalde açıklama aynen kalır."""
     description = str(a.get("description") or "")
-    if ctx.unattended or a.get("listing_type") == "download" or len(re.findall(r"\w+", description)) >= SHORT_DESCRIPTION_WORDS:
+    if ctx.unattended or a.get("listing_type") == "download":
         return a
-    from app.ai import seo
+    from app.ai import description_writer
 
     reading = _design_reading(ctx)
-    seen = f" Fotoğrafta görünen (görsel modelin okuması): ürün={reading['product']}; tasarım={reading['design']}." if reading else ""
-    try:
-        listing = {"title": title, "tags": tags, "description": description, "materials": [str(m) for m in a.get("materials") or []]}
-        suggestion = seo.generate_seo_suggestion(
-            listing, plan=plan, others=others, variations=variations, fact_source={"title": source, "description": source, "materials": listing["materials"]},
-            diagnosis_brief=(
-                "Yeni listing taslağı: ürüne özel açıklama çok kısa ve kuru. DETAILS bölümünden ÖNCE alıcıya hitap eden SICAK, akıcı iki kısa paragraf (küçük bir kompozisyon, toplam 70-120 kelime) yaz: "
-                "(1) davetkâr bir açılış ('Garaj için size özel bir tabela arıyorsanız…' tarzı, İngilizce), ürün nedir, fotoğrafta görünen tasarım nasıl (şekil, yazı, desen, düzen); "
-                "(2) kişiselleştirme nasıl çalışır (varsa), kaç boyut ve kaç renk seçeneği var ('available in three sizes and four finishes'), hangi malzemeden, nereye yakışır. Madde işareti yok, abartılı övgü yok. "
-                "SORU-CEVAP (QUESTIONS) bölümü yazma: boyut/renk/seçenek soruları DETAILS'in tekrarıdır."
-                " Yalnızca verilen olgular (varyasyonlar, malzeme, kişiselleştirme, kullanıcının sözleri) ve fotoğrafta görünenle yaz; dayanıklılık, dış mekân, hava koşulu, bakım, üretim yöntemi gibi "
-                "kullanıcının söylemediği HİÇBİR iddia ve cevabını bilmediğin soru-cevap yazma." + seen
-            ),
-        )
-    except Exception:  # noqa: BLE001 - model/anahtar yoksa ya da üretilemezse model açıklaması aynen kalır
-        log.warning("Açıklama zenginleştirilemedi", exc_info=True)
+    materials = [str(m) for m in a.get("materials") or []]
+    lines = _stated_text_lines(source) if a.get("personalizable") else []
+    chars = (_MAX_CHARS.search(source) or None) and next((g for g in _MAX_CHARS.search(source).groups() if g), None)
+    personalization = ""
+    if a.get("personalizable"):
+        personalization = (f"{len(lines)} separate text lines ({', '.join(x.lower() for x in lines)})" if lines else "the buyer enters their own text") + (f", up to {chars} characters each" if chars else "")
+    product = str(a.get("product") or title)
+    intro = description_writer.write(
+        product=product, design=(reading or {}).get("design", ""), material=", ".join(materials), sizes=_option_names(variations, ("size", "scale", "boyut")),
+        colors=_option_names(variations, ("color", "colour", "finish", "renk")), personalization=personalization, keywords=[t for t in [lead_phrase(title), *tags[:3]] if t][:4],
+    )
+    if not intro:
         return a
-    better = str(suggestion.get("description") or "").strip()
-    # Motorun çıktısı da taslağın geri kalanıyla aynı sunucu temizliğinden geçer: söylenmemiş iddia, üretim yöntemi, boş bölüm; seçenekler/malzeme adıyla sayılır.
-    better = quality.drop_empty_sections(quality.drop_redundant_qa(quality.add_missing_facts(quality.neutralize_method_claims(quality.strip_claims(better, source), source), variations, listing["materials"])))
-    flag = a.get("listing_type") == "download", bool(a.get("personalizable"))
-    now = audit.generation_problems(title, tags, description, others, source, variations, *flag)
-    after = audit.generation_problems(title, tags, better, others, source, variations, *flag)
-    if better and len(re.findall(r"\w+", better)) > len(re.findall(r"\w+", description)) and len(after) <= len(now):
-        return {**a, "description": better, "aciklama_zenginlestirildi": True}
-    return a
+    details = quality.build_details(description, variations, materials, personalization)
+    qa = quality.drop_redundant_qa(quality.strip_claims(_qa_section(description), source))
+    text = quality.drop_empty_sections("\n\n".join(x for x in (intro, details, qa) if x))
+    return {**a, "description": text, "aciklama_zenginlestirildi": True}
+
+
+def _option_names(variations: dict[str, list[str]], keys: tuple[str, ...]) -> list[str]:
+    return [v for name, values in variations.items() if any(k in name.lower() for k in keys) for v in values]
+
+
+def _qa_section(description: str) -> str:
+    """Modelin yazdığı QUESTIONS bölümü (varsa); yoksa boş."""
+    m = re.search(r"^QUESTIONS\s*$.*", description, re.M | re.S)
+    return m.group(0).strip() if m else ""
 
 
 def _refine_to_used_descendant(ctx: Ctx, current: int | None, title: str) -> tuple[int, str] | None:
@@ -1007,13 +1046,17 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         return {"error": "Kullanıcı birden çok AYRI listing istiyor gibi (toplu grup açık). Her ürün için create_listing_draft'ı kendin çağırma, başlık seçeneklerini ayrı listing sanma: create_listings_from_images'ı çağır (resimleri ürüne göre grupla, fiyat-resim eşleşmesini note'a, ortak bilgiyi shared'a yaz). Kullanıcı gerçekten TEK listing istiyorsa aynı çağrıyı tekrarla."}
     if not ctx.unattended and not _brief_shown(ctx) and not _NO_QUESTIONS.search(ctx.message or ""):
         return {"error": "Yeni listing'ten ÖNCE tek ön kontrol kartı gösterilir (kullanıcı 'sormadan yap' demedikçe): ÖNCE keyword_pool, sonra brief_check'i çağır: anladıklarını, BAŞLIK sorusunu (3 gerçekten farklı öneri; design alanı dolu) ve gerçekten bilinmeyen/belirsiz olanları (fiyat yoksa fiyat, çelişki, montaj gibi plan sorusu) TEK kartta sor. Evet/Hayır sorularını da seçenekli (options) yaz. Kullanıcı cevaplayınca create_listing_draft'ı TEK çağrıda çağır."}
-    size_variations, unit_assumed = _normalize_sizes(ctx, a.get("variations") or [])
+    size_variations, unit_assumed = _normalize_sizes(ctx, _clean_variation_labels(a.get("variations") or []))
     a = {**a, "variations": size_variations}
     a = {**a, "description": layout.normalize(str(a.get("description") or ""))}  # düzen: bölüm başlıkları, tek tip madde işareti, emoji yok (ai/layout.py)
     tags_checked, _short = _tags(a.get("tags") or [])
     others = quality.shop_others(ctx.db, ctx.shop.id)
     draft_variations = {str(v.get("name") or ""): [str(x.get("value") or "") for x in v.get("values") or []] for v in a.get("variations") or []}
     source = _user_facts(ctx, draft_variations)  # kullanıcının söylediği ölçü/renk/malzeme "uydurma" sayılmaz
+    if not a.get("quantity") and not a.get("total_quantity") and not any(isinstance(x, dict) and x.get("quantity") for v in a.get("variations") or [] for x in v.get("values") or []):
+        stated = _stated_stock(source)  # model stok parametresini vermediyse kullanıcının sözünden
+        if stated:
+            a = {**a, "total_quantity" if stated[0] == "total" else "quantity": stated[1]}
     if (a.get("personalizable") or a.get("personalization_questions")) and not _PERSONAL_ASKED.search(source):  # kullanıcı kişiselleştirmeden söz etmediyse model "var" diyemez (oturum 58: 'personalized metal' etiketi)
         a = {**a, "personalizable": False, "personalization_questions": None}
         personal_dropped = True
@@ -1140,6 +1183,11 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     # Kategori özellikleri ve kişiselleştirme taslakla BİRLİKTE yazılır; doğrulama hataları ve eksik zorunlu özellikler sonuçta döner.
     completion: dict = {}
     questions_in = a.get("personalization_questions")
+    stated_lines = _stated_text_lines(source) if a.get("personalizable") else []
+    if stated_lines and len(questions_in or []) < len(stated_lines):  # kullanıcı üst/orta/alt metin dedi: ayrı alanlar (oturum 62: tek "Personalization" alanı kurulmuştu)
+        chars = max(1, min(int(a.get("personalization_max_chars") or int(next((g for g in (_MAX_CHARS.search(source) or re.match("", "")).groups() if g), 50)) or 50), fields.MAX_CHARACTERS))
+        questions_in = [{"question_text": f"{label} (max {chars} characters)", "question_type": "text_input", "required": False, "max_allowed_characters": chars,
+                         "instructions": f"Enter the text for the {label.lower()} (up to {chars} characters)."} for label in stated_lines]
     if not questions_in and a.get("personalizable"):
         chars = max(1, min(int(a.get("personalization_max_chars") or 50), fields.MAX_CHARACTERS))
         questions_in = [{

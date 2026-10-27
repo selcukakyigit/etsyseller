@@ -432,6 +432,31 @@ def drop_redundant_qa(description: str) -> str:
     return "\n".join(line for line in lines if not _REDUNDANT_Q.match(line))
 
 
+_NOT_A_FACT = re.compile(r"\$|\busd\b|\bprices?\b|\bstock\b|\bquantity\b|\bunits\b|\bin stock\b|\bshipping\b", re.I)
+
+
+def build_details(description: str, variations: dict[str, list[str]], materials: list[str] | None, personalization: str = "") -> str:
+    """DETAILS bölümü: modelin yazdığı madde satırlarından fiyat/stok/kargo satırları ve tekrarlar atılır, eksik olgular (seçenekler, malzeme, kişiselleştirme) varyasyonlardan eklenir.
+    Açıklamada fiyat ve stok olmaz: ikisi de değişir ve zaten varyasyonlarda durur. Madde yoksa boş döner."""
+    lines: list[str] = []
+    seen_labels: set[str] = set()
+    for line in description.split("\n"):
+        m = re.match(r"^[ \t]*[•*-][ \t]*([^:\n]{2,40}):[ \t]*(.+)$", line)
+        if not m or _NOT_A_FACT.search(line):
+            continue
+        label = re.sub(r"[^a-z]", "", m.group(1).lower())
+        label = "size" if label.startswith("size") else "color" if label.startswith(("color", "colour")) else label
+        if label in seen_labels:
+            continue
+        seen_labels.add(label)
+        lines.append(f"• {m.group(1).strip()}: {m.group(2).strip()}")
+    body = "\n".join(lines)
+    out = add_missing_facts(("DETAILS\n" + body) if body else "", variations, materials)
+    if personalization and "personali" not in out.lower():
+        out = (out + "\n" if out else "DETAILS\n") + f"• Personalization: {personalization}"
+    return out.strip()
+
+
 def neutralize_method_claims(description: str, source_text: str | None) -> str:
     """Kullanıcının söylemediği üretim yöntemi sözcükleri ("laser-cut", "handmade") açıklamada nötrleştirilir ("cut", "made"): cümle ve açılış korunur, uydurma iddia kalmaz."""
     if _METHOD_STATED.search(html.unescape(source_text or "")):

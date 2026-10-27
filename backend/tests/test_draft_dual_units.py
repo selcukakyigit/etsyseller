@@ -356,26 +356,50 @@ def test_turkish_material_words_count_as_stated_and_the_server_adds_missing_opti
     assert quality.neutralize_method_claims("Laser-cut from 2mm aluminum.", "lazer kesim 2mm") == "Laser-cut from 2mm aluminum.", "kullanıcı söylediyse dokunulmaz"
 
 
-def test_a_short_description_is_enriched_with_the_editor_engine_only_when_it_helps(db, monkeypatch):
-    from app.ai import seo
+def test_the_description_intro_comes_from_the_writer_and_the_details_are_built_on_the_server(db, monkeypatch):
+    from app.ai import description_writer
 
     shop = Shop(user_id=1, workspace_id=1, etsy_shop_id=1012, etsy_user_id=7, shop_name="S12")
     db.add(shop); db.commit()
     ctx = tools.Ctx(db=db, shop=shop, user_id=5, today=None, message="sormadan")
     calls = []
-    rich = "Vintage badge style aluminum garage sign with three personalizable lines.\n\nDETAILS\n• Material: aluminum\n• Sizes: L, M, S\n• Colors: Black, White, Grey, Gold\n• Each line holds up to 25 characters " + "word " * 40
-    monkeypatch.setattr(seo, "generate_seo_suggestion", lambda listing, **kw: calls.append(kw) or {"description": rich})
-    short = {"description": "Vintage badge style garage sign. Available in three sizes."}
-    out = tools._enrich_description(ctx, short, "Garage Sign Vintage Badge", ["garage sign"], {"Size": ["L", "M", "S"]}, "garage sign 2mm", None, [])
-    assert out["description"] == rich.strip() and out.get("aciklama_zenginlestirildi") and calls, "kısa açıklama motorla zenginleşir"
-    long_enough = {"description": "word " * 100}
-    assert tools._enrich_description(ctx, long_enough, "T", [], {}, "", None, []) is long_enough and len(calls) == 1, "yeterince uzunsa çağrılmaz"
+    intro = "If you are looking for a custom garage sign made just for you, this is it. " + "word " * 25 + "\n\nPersonalize it with three lines. " + "word " * 25
+    monkeypatch.setattr(description_writer, "write", lambda **kw: calls.append(kw) or intro.strip())
+    model_text = ("Custom round aluminum garage sign. Total stock: 50 units. Perfect as a plaque.\n\nDETAILS\n• Sizes: L - 120x60 cm - $190, M - 90x40 cm - $160\n• Material: 2mm aluminum\n"
+                  "• Sizes & prices: L ($190)\n• Quantity: total stock 50 (shared across options)\n\nQUESTIONS\n• What sizes are available? — L, M\n• How do I personalize it? — Enter three lines.")
+    variations = {"Size": ["L - 120x60 cm", "M - 90x40 cm"], "Color": ["Black", "White"]}
+    a = {"description": model_text, "product": "garage sign", "personalizable": True, "materials": ["aluminum"]}
+    out = tools._enrich_description(ctx, a, "Garage Sign Round Emblem Aluminum", ["custom garage sign"], variations, "üst metin orta metin alt metin max 25 karakter 2mm", None, [])
+    text = out["description"]
+    assert out.get("aciklama_zenginlestirildi") and text.startswith("If you are looking for a custom garage sign"), text
+    assert "$" not in text and "stock" not in text.lower() and "units" not in text.lower() and "Perfect" not in text, "fiyat, stok ve övgü yok"
+    assert text.count("• Sizes:") == 1 and "• Colors: Black, White" in text and "• Material: 2mm aluminum" in text and "Personalization" in text, text
+    assert "What sizes are available" not in text and "How do I personalize it?" in text, "yalnızca DETAILS'i tekrar etmeyen soru kalır"
+    assert calls and "3 separate text lines" in calls[0]["personalization"] and "25 characters" in calls[0]["personalization"], calls
     unattended = tools.Ctx(db=db, shop=shop, user_id=5, today=None, unattended=True)
-    assert tools._enrich_description(unattended, short, "T", [], {}, "", None, []) is short, "toplu işte çalışmaz"
-    monkeypatch.setattr(seo, "generate_seo_suggestion", lambda listing, **kw: (_ for _ in ()).throw(RuntimeError("model yok")))
-    assert tools._enrich_description(ctx, short, "T", [], {}, "", None, []) is short, "hata olursa açıklama aynen kalır"
-    monkeypatch.setattr(seo, "generate_seo_suggestion", lambda listing, **kw: {"description": "Short."})
-    assert tools._enrich_description(ctx, short, "T", [], {}, "", None, []) is short, "daha kısaysa kullanılmaz"
+    assert tools._enrich_description(unattended, a, "T", [], variations, "", None, []) is a, "toplu işte çalışmaz"
+    monkeypatch.setattr(description_writer, "write", lambda **kw: None)
+    assert tools._enrich_description(ctx, a, "T", [], variations, "", None, []) is a, "yazar kurallara uymazsa açıklama aynen kalır"
+
+
+def test_the_writer_drops_forbidden_sentences_but_keeps_the_good_paragraphs():
+    from app.ai import description_writer as dw
+
+    good = "If you are looking for a custom garage sign, this is it. " + "word " * 20 + "\n\nPerfect for adding a family name. Personalize three lines. " + "word " * 20
+    cleaned = dw.clean(good)
+    assert cleaned and "Perfect" not in cleaned and "Personalize three lines." in cleaned, cleaned
+    assert dw.clean("One paragraph only. " + "word " * 60) is None, "iki paragraf şart"
+    assert dw.clean("Too short.\n\nAlso short.") is None
+    assert dw.clean("It is durable and sturdy. " + "word " * 30 + "\n\nNice. " + "word " * 30) is not None, "yalnızca yasak cümle atılır, kalan yeterliyse kullanılır"
+
+
+def test_user_stock_lines_and_label_prices_are_read_from_the_users_words():
+    msg = "3 metin olarak kişiselleştirilebilir\nüst metin\norta\nalt metin\nher biri max 25 karakter\ngarage tabelası aluminyumdan\nL model - 120x60 - 190 usd\ntoplam stok 50 adet"
+    assert tools._stated_stock(msg) == ("total", 50)
+    assert tools._stated_stock("hepsi için 30 adet stok") == ("each", 30) and tools._stated_stock("her kombinasyon için 20") == ("each", 20) and tools._stated_stock("2mm metal") is None
+    assert tools._stated_text_lines(msg) == ["Upper line", "Middle line", "Lower line"] and tools._stated_text_lines("2 satır") == ["Line 1", "Line 2"]
+    cleaned = tools._clean_variation_labels([{"name": "Size", "values": [{"value": "L - 120x60 cm - $190", "price": 190}, {"value": "M 90x40 (160 usd)"}, {"value": "S - 60x30"}]}])
+    assert [v["value"] for v in cleaned[0]["values"]] == ["L - 120x60 cm", "M 90x40", "S - 60x30"], "seçenek adında fiyat olmaz"
 
 
 def test_enriched_text_is_cleaned_like_the_rest_unstated_outdoor_claims_empty_sections_and_typos_go():
