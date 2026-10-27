@@ -446,8 +446,8 @@ def build_details(description: str, variations: dict[str, list[str]], materials:
             continue
         label = re.sub(r"[^a-z]", "", m.group(1).lower())
         label = "size" if label.startswith("size") else "color" if label.startswith(("color", "colour")) else label
-        if label in seen_labels:
-            continue
+        if label in seen_labels or label in ("size", "color", "material", "materials") or label.startswith("finish"):
+            continue  # seçenekler ve malzeme satırları HER ZAMAN olgulardan yeniden kurulur (modelin "(choose as variation)" gibi dolgusu kalmaz)
         seen_labels.add(label)
         lines.append(f"• {m.group(1).strip()}: {m.group(2).strip()}")
     body = "\n".join(lines)
@@ -455,6 +455,16 @@ def build_details(description: str, variations: dict[str, list[str]], materials:
     if personalization and "personali" not in out.lower():
         out = (out + "\n" if out else "DETAILS\n") + f"• Personalization: {personalization}"
     return out.strip()
+
+
+def personalization_qa(lines: list[str], chars: str | None) -> str:
+    """Kişiselleştirilebilir ürün için olgulardan türetilen TEK soru-cevap (alıcıların en çok sorduğu soru); modelin uydurma cevapları yerine. Alan sayısı/karakter bilinmiyorsa genel ama doğru cevap."""
+    per = f" (up to {chars} characters each)" if chars else ""
+    if lines:
+        answer = f"Enter your text in the {len(lines)} personalization boxes when you order ({', '.join(x.lower() for x in lines)}{'; up to ' + chars + ' characters each' if chars else ''}); leave any box empty if you do not need it."
+    else:
+        answer = f"Enter your text in the personalization box when you order{per}."
+    return f"QUESTIONS\n• How do I personalize it? — {answer}"
 
 
 def neutralize_method_claims(description: str, source_text: str | None) -> str:

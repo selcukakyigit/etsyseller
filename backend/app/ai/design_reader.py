@@ -10,7 +10,9 @@ from app.ai.vision import ask_text, text_model
 _CACHE: dict[tuple, dict | None] = {}
 _PROMPT = (
     "Look at this product photo. Describe ONLY what is visible. Return ONLY JSON: "
-    '{"product": "<what the item is, 2-5 English words>", "design": "<the visible design, motif, pattern or theme, 3-8 English words>"} '
+    '{"product": "<what the item is, 2-5 English words>", "design": "<8-16 English words: the overall shape, the layout, the lettering style and the main decorative elements; NEVER mention colour (the item is sold in several colours)>"} '
+    "Be concrete (for example 'round badge shape with a banner name plate, serif cut-out lettering and a thin border'), not generic ('text in circle shape'). "
+    "If the photo shows sample text such as a name, do NOT copy the words; say only that there is lettering and what it looks like. "
     "Ignore the room and the background. Do not guess size, material or brand."
 )
 
@@ -24,7 +26,7 @@ def read(images: list[tuple[bytes, str]], key: tuple) -> dict | None:
         raw = ask_text(text_model("vision"), _PROMPT, max_tokens=160, images=images)
         match = re.search(r"[{].*[}]", raw, re.S)
         data = json.loads(match.group(0)) if match else {}
-        product, design = " ".join(str(data.get("product") or "").split())[:60], " ".join(str(data.get("design") or "").split())[:100]
+        product, design = " ".join(str(data.get("product") or "").split())[:60], " ".join(str(data.get("design") or "").split())[:160]
         result = {"product": product, "design": design} if design else None
     except Exception:  # noqa: BLE001 - görsel model yok/hata: denetim atlanır
         result = None

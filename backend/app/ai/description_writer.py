@@ -10,14 +10,14 @@ from app.ai.vision import ask_text, text_model
 MIN_WORDS = 45
 MAX_WORDS = 170
 _BANNED = re.compile(
-    r"\$|\busd\b|\bstock\b|\bunits\b|\bshipping\b|\bwarranty\b|\bdurab\w*|\bweather\w*|\boutdoor\w*|\brust\w*|\blong[- ]lasting\b|\bperfect\b|\bbest\b|\bamazing\b|\bstunning\b|\bbeautiful\b|\bhigh[- ]quality\b|\bwelcome\b|\bsturdy\b|\brobust\b|\bpremium\b|\bcherished\b|\bhobb\w*|\bclassic cars?\b|\bgift\w*",
+    r"\$|\busd\b|\bstock\b|\bunits\b|\bshipping\b|\bwarranty\b|\bdurab\w*|\bweather\w*|\boutdoor\w*|\brust\w*|\blong[- ]lasting\b|\bperfect\b|\bbest\b|\bamazing\b|\bstunning\b|\bbeautiful\b|\bhigh[- ]quality\b|\bwelcome\b|\bsturdy\b|\brobust\b|\bpremium\b|\bcherished\b|\bhobb\w*|\bclassic cars?\b|\bgift\w*|\bautomotive\b|\bpassion\w*|\bsophisticat\w*|\bcreativ\w*|\bhands-on\b|\blifestyle\b|\bmasterpiece\b",
     re.IGNORECASE,
 )
 
 _PROMPT = """You write the opening of an Etsy listing description in English.
 
 Write TWO short, flowing paragraphs (together {low}-{high} words), like a friendly seller talking to a buyer. No bullet points, no headings.
-Paragraph 1: an inviting opening that speaks to the buyer (for example "If you are looking for a {product} made just for you, this is it."), then what the item is and how it looks, using the visible design below.
+Paragraph 1: an inviting opening that speaks to the buyer (for example "If you are looking for a {product} made just for you, this is it."), then what the item is and, in one concrete sentence, HOW IT LOOKS using the visible design below (shape, layout, lettering style, finish).
 Paragraph 2: how personalization works (only if stated), how many sizes and colors/finishes there are (say the NUMBER and mention the variety, do not list prices), the material, and where it fits (only uses that follow from the product, e.g. a garage sign goes in a garage or workshop).
 
 Use ONLY these facts. Never invent anything else.
@@ -29,7 +29,7 @@ Use ONLY these facts. Never invent anything else.
 - Personalization: {personalization}
 - Keywords to use naturally (do not stuff): {keywords}
 
-Hard rules: do not invent hobbies, occasions, buyers or life situations (only the places that directly follow from the product type, e.g. a garage sign goes in a garage or workshop); no prices or currency, no stock numbers, no shipping or policy talk, no durability / weather / outdoor / rust / care / warranty claims, no hype words (perfect, best, amazing, stunning, beautiful, high quality), no greeting like "welcome". Do not mention anything not listed above.
+Hard rules: never name a colour for the item in the photo (colours are options listed above); never mention any activity, hobby, passion, interest or lifestyle; do not invent hobbies, occasions, buyers or life situations (only the places that directly follow from the product type, e.g. a garage sign goes in a garage or workshop); no prices or currency, no stock numbers, no shipping or policy talk, no durability / weather / outdoor / rust / care / warranty claims, no hype words (perfect, best, amazing, stunning, beautiful, high quality), no greeting like "welcome". Do not mention anything not listed above.
 Return ONLY the two paragraphs, separated by one blank line."""
 
 

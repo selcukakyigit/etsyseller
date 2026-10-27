@@ -373,7 +373,7 @@ def test_the_description_intro_comes_from_the_writer_and_the_details_are_built_o
     text = out["description"]
     assert out.get("aciklama_zenginlestirildi") and text.startswith("If you are looking for a custom garage sign"), text
     assert "$" not in text and "stock" not in text.lower() and "units" not in text.lower() and "Perfect" not in text, "fiyat, stok ve övgü yok"
-    assert text.count("• Sizes:") == 1 and "• Colors: Black, White" in text and "• Material: 2mm aluminum" in text and "Personalization" in text, text
+    assert text.count("• Sizes:") == 1 and "• Colors: Black, White" in text and "• Material: aluminum" in text and "Personalization" in text, text
     assert "What sizes are available" not in text and "How do I personalize it?" in text, "yalnızca DETAILS'i tekrar etmeyen soru kalır"
     assert calls and "3 separate text lines" in calls[0]["personalization"] and "25 characters" in calls[0]["personalization"], calls
     unattended = tools.Ctx(db=db, shop=shop, user_id=5, today=None, unattended=True)
@@ -443,3 +443,16 @@ def test_redundant_qa_lines_and_the_warm_intro_rule(monkeypatch):
     cleaned = quality.drop_redundant_qa(text)
     assert "What sizes are available" not in cleaned and "Can I choose a color" not in cleaned and "How do I personalize it?" in cleaned, "yalnızca DETAILS'i tekrar edenler silinir"
     assert "SICAK" in standard.prompt_block() and "welcome" in standard.prompt_block(), "içerik standardı sıcak tanıtım paragrafını ister"
+
+
+def test_questions_come_from_the_facts_and_model_filler_in_details_is_rebuilt():
+    from app.ai import quality
+
+    qa = quality.personalization_qa(["Upper line", "Middle line", "Lower line"], "25")
+    assert qa.startswith("QUESTIONS\n• How do I personalize it?") and "3 personalization boxes" in qa and "up to 25 characters each" in qa and "(upper line, middle line, lower line; up to 25" in qa
+    assert "personalization box" in quality.personalization_qa([], None) and "characters" not in quality.personalization_qa([], None)
+    model = "Intro.\n\nDETAILS\n• Colors: Black, White (choose as variation)\n• Sizes & prices: L ($190)\n• Material: 2mm aluminum\n• Mounting: wall screws (not included)\n\nQUESTIONS\n• Can I request a different font? — message us."
+    details = quality.build_details(model, {"Size": ["L", "M"], "Color": ["Black", "White"]}, ["aluminum"], "3 lines")
+    assert "(choose as variation)" not in details and "• Colors: Black, White" in details and "• Sizes: L, M" in details and "• Material: aluminum" in details, details
+    assert "Mounting: wall screws" in details, "başka (olgu olan) maddeler korunur"
+    assert "QUESTIONS" not in details and "$" not in details

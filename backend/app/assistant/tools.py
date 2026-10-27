@@ -732,19 +732,13 @@ def _enrich_description(ctx: Ctx, a: dict, title: str, tags: list[str], variatio
     if not intro:
         return a
     details = quality.build_details(description, variations, materials, personalization)
-    qa = quality.drop_redundant_qa(quality.strip_claims(_qa_section(description), source))
+    qa = quality.personalization_qa(lines, chars) if a.get("personalizable") else ""  # modelin soru-cevabı uydurma cevap içeriyordu ("farklı font için mesaj atın, müsaitliği doğrularız")
     text = quality.drop_empty_sections("\n\n".join(x for x in (intro, details, qa) if x))
     return {**a, "description": text, "aciklama_zenginlestirildi": True}
 
 
 def _option_names(variations: dict[str, list[str]], keys: tuple[str, ...]) -> list[str]:
     return [v for name, values in variations.items() if any(k in name.lower() for k in keys) for v in values]
-
-
-def _qa_section(description: str) -> str:
-    """Modelin yazdığı QUESTIONS bölümü (varsa); yoksa boş."""
-    m = re.search(r"^QUESTIONS\s*$.*", description, re.M | re.S)
-    return m.group(0).strip() if m else ""
 
 
 def _refine_to_used_descendant(ctx: Ctx, current: int | None, title: str) -> tuple[int, str] | None:
