@@ -44,28 +44,3 @@ def test_the_always_on_listing_tool_list_does_not_grow_unchecked():
     assert all(n in BY_NAME for n in tools._CORE_LISTING_TOOLS), "çekirdekte şeması olmayan araç"
     grouped = {n for names in tools.TOOL_GROUPS.values() for n in names}
     assert not grouped & tools._CORE_LISTING_TOOLS, "bir araç hem çekirdekte hem bir grupta"
-
-
-def test_the_creation_phase_sends_only_the_tools_a_new_listing_needs():
-    full = {t["name"] for t in tools.tools_for("listing", frozenset())}
-    create = {t["name"] for t in tools.tools_for("listing", frozenset(), "create")}
-    assert tools.CREATE_PHASE_TOOLS <= tools._CORE_LISTING_TOOLS, "kurulum araçlarının hepsi çekirdekte olmalı"
-    assert create == tools.CREATE_PHASE_TOOLS and len(create) <= len(full) * 0.55, "kurulum aşamasında araç sayısı yaklaşık yarıya iner"
-    assert {"create_listing_draft", "brief_check", "keyword_pool", "update_listing", "set_listing_attributes", "edit_chat_image"} <= create
-    assert not create & {"publish_listing_draft", "delete_listing", "deactivate_listing", "discard_listing_changes", "copy_listing", "delete_description_templates"}, "yıkıcı/yayın araçları kurulumda yok"
-    with_group = {t["name"] for t in tools.tools_for("listing", frozenset({"batch", "media"}), "create")}
-    assert {"create_listings_from_images", "plan_listing_media"} <= with_group, "konu grupları kurulum aşamasında da açılır"
-    assert tools.tools_for("listing", frozenset(), None) == tools.tools_for("listing", frozenset()), "phase verilmezse tam liste"
-
-
-def test_creation_phase_detection():
-    brief = [{"type": "brief"}]
-    draft = [{"type": "listing_draft"}]
-    suggest = [{"type": "choices", "kind": "suggestions", "options": ["a", "b"]}]
-    assert tools.creation_phase("bu yeni bir ürün ve liste oluşturmak istiyorum", False, []) is True
-    assert tools.creation_phase("bu resimden liste yap", True, []) is True, "resim var, taslak yok"
-    assert tools.creation_phase("Var\nAbstract Bubble Cells Metal Wall Decor", False, [brief]) is True, "bekleyen ön kontrol kartının cevabı"
-    assert tools.creation_phase("başlığı kısalt", False, [suggest, draft]) is False, "taslak oluştu: tam liste"
-    assert tools.creation_phase("yeni bir ürün daha ekleyelim", False, [draft]) is True, "taslak varken açıkça yeni liste istenirse"
-    assert tools.creation_phase("kaç taslağım var", False, []) is False, "kurulumla ilgisiz soru: tam liste"
-    assert tools.creation_phase("evet", False, [suggest, brief]) is True, "araya düğme kartı girse de bekleyen kart sayılır"

@@ -3733,34 +3733,9 @@ def listing_groups(message: str, last_tool_notes: str | None, earlier: str = "")
     return frozenset(g for g, pattern in GROUP_WORDS.items() if pattern.search(text) or any(name in notes for name in TOOL_GROUPS[g]))
 
 
-# YENİ LİSTİNG KURULUM aşaması: model her turda (ve her araç turunda) tüm araç şemalarını yeniden okur; 48 çekirdek araç yerine yalnızca kurulum + kurulumdan hemen sonra aynı turda gereken
-# araçlar gönderilir (maliyet ~yarıya iner, yanlış araç seçimi azalır). Yayınlama, silme, kapatma, arama/raporlama, video, fotoğraf düzenleme gibi araçlar yoktur; taslak oluşunca tam liste döner.
-CREATE_PHASE_TOOLS = frozenset({
-    "keyword_pool", "brief_check", "ask_user", "create_listing_draft", "find_category", "shop_defaults", "shop_options", "similar_listings", "list_description_templates",
-    "get_listing", "get_category_attributes", "set_listing_attributes", "autofill_listing_attributes", "set_listing_fields", "update_listing", "edit_inventory",
-    "generate_missing_alt_texts", "set_photo_alt_text", "edit_chat_image", "generate_chat_image", "add_chat_image_to_listing", "crop_listing_photo",
-})
-_CREATE_INTENT = re.compile(
-    r"yeni (?:bir )?(?:ürün|liste|listing|taslak)|(?:liste|listing|taslak)\w*[ ]+(?:oluştur|hazırla|yap|aç|kur)|(?:bu|şu) (?:resim|fotoğraf|görsel)\w* (?:için|ile|den|dan)|resimlerden|"
-    r"create (?:a )?(?:new )?(?:listing|draft)|new (?:listing|product)", re.IGNORECASE)
-
-
-def creation_phase(message: str, has_images: bool, recent_cards: list[list[dict]]) -> bool:
-    """Yeni listing kurulum aşamasında mıyız? `recent_cards`: asistanın son mesajlarının kartları, en yenisi önce. Evet: kullanıcı yeni listing istiyor (söz ya da resimli ve taslak yok) ya da
-    bekleyen bir ön kontrol/başlık kartı var; hayır: son kart bir taslaksa (kurulum bitti) ya da toplu/dijital gibi kendi akışı olan bir iş çalışıyorsa tam liste kullanılır."""
-    for cards in recent_cards:
-        types = {c.get("type") for c in cards}
-        if "listing_draft" in types or "batch_job" in types or "media_job" in types:
-            return bool(_CREATE_INTENT.search(message or ""))  # taslak varken yalnızca açıkça "yeni liste" denirse
-        if "brief" in types or any(_is_title_choice(c) for c in cards):
-            return True
-    return bool(_CREATE_INTENT.search(message or "")) or has_images
-
-
-def tools_for(mode: str, groups: frozenset[str] = frozenset(), phase: str | None = None) -> list[dict]:
-    """Moda göre araç şemaları: "listing" ise çekirdek listing araçları (phase="create" ise yalnızca kurulum araçları) + seçilen konu grupları, aksi halde hepsi."""
+def tools_for(mode: str, groups: frozenset[str] = frozenset()) -> list[dict]:
+    """Moda göre araç şemaları: "listing" ise çekirdek listing araçları + seçilen konu grupları, aksi halde hepsi."""
     if mode != "listing":
         return TOOLS
-    core = (CREATE_PHASE_TOOLS & _CORE_LISTING_TOOLS) if phase == "create" else _CORE_LISTING_TOOLS
-    allowed = core | frozenset().union(*(TOOL_GROUPS[g] for g in groups if g in TOOL_GROUPS))
+    allowed = _CORE_LISTING_TOOLS | frozenset().union(*(TOOL_GROUPS[g] for g in groups if g in TOOL_GROUPS))
     return [t for t in TOOLS if t["name"] in allowed]
