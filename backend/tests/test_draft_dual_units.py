@@ -95,7 +95,7 @@ def test_the_category_picker_does_not_override_the_shops_established_category(db
     assert tools._keeps_established_category(ctx, 1027, 129, title) is False, "mağaza verisi alınamazsa seçici karar verir"
 
 
-def test_uniform_stock_follows_the_price_variation_so_the_editor_rule_holds(db, monkeypatch):
+def test_uniform_stock_is_declared_on_all_variations_so_every_combination_has_its_own_stock(db, monkeypatch):
     shop = Shop(user_id=1, workspace_id=1, etsy_shop_id=1005, etsy_user_id=7, shop_name="S5")
     db.add(shop); db.commit()
     monkeypatch.setattr(tools, "_autofill_in_work", lambda *a, **k: ([], []))
@@ -108,8 +108,9 @@ def test_uniform_stock_follows_the_price_variation_so_the_editor_rule_holds(db, 
     from app.listings import drafts
     inv = json.loads(drafts._local_row(db, shop, out["listing_id"]).data_json)["inventory"]
     size_id = inv["products"][0]["property_values"][0]["property_id"]
-    assert inv["price_on_property"] == [size_id] and inv["quantity_on_property"] == [size_id], "stok eşit: tüm varyasyonlara değil fiyatın bağlı olduğu varyasyona"
-    assert inv["sku_on_property"] == [], "editördeki kural: tek varyasyona ya da tümüne bağlı, ikisi karışmaz"
+    assert inv["price_on_property"] == [size_id], "fiyat boyuta göre"
+    assert len(inv["quantity_on_property"]) == 2, "stok eşit olsa da tüm varyasyonlara bağlı: her kombinasyonun KENDİ stoğu (yalnızca Size'a bağlansa 4 renk tek havuzu paylaşır: Etsy '150 in stock', oturum 60)"
+    assert inv["sku_on_property"] == []
 
 
 def test_a_new_listing_needs_one_brief_card_first_unless_the_user_says_not_to_ask(db, monkeypatch):
