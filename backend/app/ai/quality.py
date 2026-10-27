@@ -389,12 +389,56 @@ SPECIFIC_MATERIALS = {
     "oak", "walnut", "pine", "maple", "birch", "bamboo", "plywood", "mdf", "cherry",
     "porcelain", "stoneware", "cotton", "linen", "wool", "velvet", "suede", "acrylic", "resin", "silicone",
 }
+# Kullanıcı malzemeyi Türkçe yazar ("aluminyumdan"); İngilizce karşılığı "söylenmemiş malzeme" sayılmaz.
+_TR_MATERIALS = {
+    "aluminyum": "aluminum", "alüminyum": "aluminum", "çelik": "steel", "paslanmaz": "stainless", "bakır": "copper", "pirinç": "brass", "demir": "iron", "bronz": "bronze", "titanyum": "titanium",
+    "meşe": "oak", "ceviz": "walnut", "bambu": "bamboo", "çam": "pine", "huş": "birch", "pamuk": "cotton", "keten": "linen", "yün": "wool", "kadife": "velvet", "süet": "suede",
+    "akrilik": "acrylic", "reçine": "resin", "silikon": "silicone", "porselen": "porcelain",
+}
+
+
+def tr_material_words(text: str) -> set[str]:
+    """Metindeki Türkçe malzeme adlarının İngilizce karşılıkları (kaynak kontrolünde 'söylenmiş' sayılır)."""
+    low = html.unescape(text or "").lower()
+    return {en for tr_word, en in _TR_MATERIALS.items() if tr_word in low}
+
+
+_METHOD_CLAIM = re.compile(r"\b(?:laser|cnc|hand)[- ]?(?:cut|crafted|machined)\b|\bhand[- ]?made\b", re.IGNORECASE)
+_METHOD_STATED = re.compile(r"laser|lazer|cnc|hand ?made|handcraft|el yap[ıi]m|el i[sş]i|kesim|kesil", re.IGNORECASE)
+
+
+def neutralize_method_claims(description: str, source_text: str | None) -> str:
+    """Kullanıcının söylemediği üretim yöntemi sözcükleri ("laser-cut", "handmade") açıklamada nötrleştirilir ("cut", "made"): cümle ve açılış korunur, uydurma iddia kalmaz."""
+    if _METHOD_STATED.search(html.unescape(source_text or "")):
+        return description
+    return _METHOD_CLAIM.sub(lambda m: "made" if "made" in m.group(0).lower() else "cut", description)
+
+
+def add_missing_facts(description: str, variations: dict[str, list[str]], materials: list[str] | None = None) -> str:
+    """Açıklama seçenekleri (boyut, renk…) ve malzemeyi adıyla saymıyorsa DETAILS bölümüne sunucu ekler: veri varyasyonlardan ve kullanıcının verdiği alanlardan gelir, uydurma yok.
+    Zaten geçen seçenek tekrar yazılmaz; hiçbiri eksik değilse açıklamaya dokunulmaz."""
+    low = description.lower()
+    lines = []
+    for name, values in variations.items():
+        values = [v for v in values if v]
+        if 2 <= len(values) <= 12 and not any(re.search(rf"(?<![a-z0-9]){re.escape(v.lower())}(?![a-z0-9])", low) for v in values):
+            lines.append(f"• {name.split('(')[0].strip().capitalize()}s: {', '.join(values)}" if name.lower() in ("size", "color", "colour") else f"• {name}: {', '.join(values)}")
+    mats = [m for m in (materials or []) if m and m.lower() not in low]
+    if mats:
+        lines.append(f"• Material: {', '.join(mats)}")
+    if not lines:
+        return description
+    if re.search(r"^DETAILS\s*$", description, re.M):
+        return re.sub(r"^(DETAILS\s*\n)", lambda m: m.group(1) + "\n".join(lines) + "\n", description, count=1, flags=re.M)
+    return description.rstrip() + "\n\nDETAILS\n" + "\n".join(lines)
+
+
 _TURKISH_ONLY = re.compile(r"[ğĞıİşŞ]")  # ç, ö, ü başka dillerde de var (marka/yer adları); bu harfler yalnızca Türkçe'dedir
 
 
 def material_problems(text: str, source_text: str | None = None) -> list[str]:
     """Başlık/etiket/açıklama/malzeme alanında kaynakta olmayan özgül malzeme (kullanıcı yalnızca "metal" dediyse "steel")."""
-    src = html.unescape(source_text or "").lower()
+    src = html.unescape(source_text or "").lower() + " " + " ".join(tr_material_words(source_text or ""))
     found = sorted({w for w in _WORD.findall(text.lower()) if w in SPECIFIC_MATERIALS and not re.search(rf"\b{re.escape(w)}", src)})
     if not found:
         return []
@@ -433,7 +477,7 @@ def autofix_title(title: str, sizes_vary: bool, source_text: str | None) -> tupl
     if sizes_vary and (_SIZE_TOKEN.search(fixed) or _SINGLE_SIZE.search(fixed)):
         fixed = _SINGLE_SIZE.sub(" ", _SIZE_TOKEN.sub(" ", fixed))
         notes.append(tr("başlıktaki ölçüler çıkarıldı (birden çok boyut seçeneği var)", "sizes removed from the title (the listing has several sizes)"))
-    src = html.unescape(source_text or "").lower()
+    src = html.unescape(source_text or "").lower() + " " + " ".join(tr_material_words(source_text or ""))
     for w in sorted({w for w in _WORD.findall(fixed.lower()) if w in SPECIFIC_MATERIALS and not re.search(rf"\b{re.escape(w)}", src)}):
         fixed = re.sub(rf"\b{re.escape(w)}\b", " ", fixed, flags=re.IGNORECASE)
         notes.append(tr(f"söylenmeyen malzeme çıkarıldı ({w})", f"unstated material removed ({w})"))

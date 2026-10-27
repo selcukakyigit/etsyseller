@@ -41,6 +41,16 @@ def test_total_quantity_is_spread_over_the_combinations_and_per_combination_stay
         work = json.loads(drafts._local_row(db, shop, out["listing_id"]).data_json)
         return [o["quantity"] for p in work["inventory"]["products"] for o in p["offerings"]]
 
+    def declared(extra):  # taslakta bildirilen stok bağımlılığı
+        ctx = tools.Ctx(db=db, shop=shop, user_id=5, today=None, message="stok", cards=[{"type": "brief"}])
+        out = tools.create_listing_draft(ctx, {**base, **extra, "title": "Bubble Line Art Metal Wall Hanging Panel"})
+        from app.listings import drafts
+        inv = json.loads(drafts._local_row(db, shop, out["listing_id"]).data_json)["inventory"]
+        return inv["quantity_on_property"], inv["price_on_property"], len(inv["products"][0]["property_values"])
+
+    q_on, p_on, n_props = declared({"total_quantity": 20})
+    assert len(q_on) == n_props == 2, "6 kombinasyona 20: 4,4,3,3,3,3 eşit değil: stok Size ve Color'a göre değişir (bildirim değerlerle tutarlı)"
+    assert stocks({"total_quantity": 18}) == [3] * 6, "tam bölünüyorsa her kombinasyona eşit"
     assert stocks({"quantity": 30}) == [30] * 6, "hepsi için 30: her kombinasyona 30"
     assert stocks({"total_quantity": 20}) == [4, 4, 3, 3, 3, 3], "toplam 20, 6 kombinasyona: kalan ilk ikisine"
     ctx = tools.Ctx(db=db, shop=shop, user_id=5, today=None, message="stok", cards=[{"type": "brief"}])
@@ -301,3 +311,38 @@ def test_only_one_high_demand_unanswered_question_reaches_the_card():
     qs = [{"q": "does it keep drinks hot", "demand": "medium"}, {"q": "do these come with a case", "demand": "high"}, {"q": "is there a warranty", "demand": "high"}, {"q": "is it dishwasher safe", "demand": "low"}]
     asked = unanswered(qs, card)
     assert [q["q"] for q in asked] == ["do these come with a case"], "en çok 1 ve yalnızca talebi yüksek olan"
+
+
+def test_a_title_naming_the_product_type_goes_down_to_the_shops_matching_subcategory(db, monkeypatch):
+    shop = Shop(user_id=1, workspace_id=1, etsy_shop_id=1010, etsy_user_id=7, shop_name="S10")
+    db.add(shop); db.commit()
+    names = {1027: "Home & Living > Home Decor > Wall Decor", 1029: "Home & Living > Home Decor > Wall Decor > Wall Hangings", 2844: "Home & Living > Home Decor > Wall Decor > Wall Hangings > Signs",
+             2845: "Home & Living > Home Decor > Wall Decor > Wall Hangings > Signs > Address Signs", 66: "Art & Collectibles"}
+    monkeypatch.setattr(tools, "_taxonomy", lambda: names)
+    monkeypatch.setattr(tools.listing_service, "get_top_categories", lambda db_, shop_, limit=50: [{"taxonomy_id": 1027, "count": 146}, {"taxonomy_id": 2844, "count": 85}, {"taxonomy_id": 1029, "count": 10}, {"taxonomy_id": 2845, "count": 7}])
+    ctx = tools.Ctx(db=db, shop=shop, user_id=1, today=None)
+    assert tools._refine_to_used_descendant(ctx, 1027, "garage sign vintage badge style nameplate") == (2844, names[2844]), "'sign' başlıkta, 85 listing'lik Signs altında"
+    assert tools._refine_to_used_descendant(ctx, 1027, "tree wall decor framed gnarled silhouette metal art") is None, "başlık alt kategorinin adını söylemiyorsa inilmez"
+    assert tools._refine_to_used_descendant(ctx, 1027, "address sign custom house number") == (2844, names[2844]) or tools._refine_to_used_descendant(ctx, 1027, "address sign custom house number")[0] in (2844,), "Address Signs yalnızca 7 listing: yerleşik değil"
+    assert tools._refine_to_used_descendant(ctx, 66, "garage sign") is None, "başka kolun altında değil"
+    assert tools._refine_to_used_descendant(ctx, None, "garage sign") is None
+
+
+def test_turkish_material_words_count_as_stated_and_the_server_adds_missing_option_lines():
+    from app.ai import quality
+
+    said = "garage tabelası aluminyumdan üretilir 2mm aluminyum"
+    assert not quality.material_problems("Aluminum garage sign", said), "'aluminyum' yazıldı: 'aluminum' söylenmiş sayılır"
+    assert quality.material_problems("Steel garage sign", said), "çelik söylenmedi"
+    assert quality.autofix_title("Garage Sign Aluminum 2mm 120x60 cm", True, said)[0] == "Garage Sign Aluminum 2mm", "ölçü çıkar, söylenen malzeme kalır"
+
+    desc = "Vintage badge style garage sign. Available in three sizes and four colors."
+    variations = {"Size": ["L - 120x60", "M - 90x40", "S - 60x30"], "Color": ["Black", "White", "Grey", "Gold"]}
+    out = quality.add_missing_facts(desc, variations, ["aluminum"])
+    assert out.startswith(desc) and "DETAILS" in out and "• Sizes: L - 120x60, M - 90x40, S - 60x30" in out and "• Colors: Black, White, Grey, Gold" in out and "• Material: aluminum" in out
+    with_details = quality.add_missing_facts("Opening.\n\nDETAILS\n• Weight: 2 kg", variations, [])
+    assert with_details.index("• Sizes:") < with_details.index("• Weight:"), "var olan DETAILS bölümüne eklenir"
+    complete = "Sizes L - 120x60, M - 90x40 and S - 60x30 in Black, White, Grey or Gold, aluminum."
+    assert quality.add_missing_facts(complete, variations, ["aluminum"]) == complete, "zaten sayılmışsa dokunulmaz"
+    assert quality.neutralize_method_claims("Laser-cut from 2mm aluminum, handmade finish.", said) == "cut from 2mm aluminum, made finish."
+    assert quality.neutralize_method_claims("Laser-cut from 2mm aluminum.", "lazer kesim 2mm") == "Laser-cut from 2mm aluminum.", "kullanıcı söylediyse dokunulmaz"

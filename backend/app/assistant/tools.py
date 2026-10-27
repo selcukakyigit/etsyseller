@@ -668,6 +668,30 @@ def _keeps_established_category(ctx: Ctx, current: int | None, picked: int, text
     return counts.get(current, 0) >= ESTABLISHED_CATEGORY_LISTINGS and counts.get(picked, 0) == 0
 
 
+def _refine_to_used_descendant(ctx: Ctx, current: int | None, title: str) -> tuple[int, str] | None:
+    """Seçilen kategorinin ALTINDA, mağazanın en az ESTABLISHED_CATEGORY_LISTINGS listing'iyle kullandığı ve yaprak adı başlıkta aynen geçen bir kategori varsa (ör. "Signs" ↔ "garage sign")
+    ona inilir: daha özgül ve mağaza düzenine uygun. Eşleşme yoksa ya da veri alınamazsa None."""
+    names = _taxonomy()
+    path = names.get(current or 0)
+    if not path:
+        return None
+    try:
+        used = listing_service.get_top_categories(ctx.db, ctx.shop, limit=50)
+    except Exception:  # noqa: BLE001 - mağaza kategorileri alınamazsa seçim aynen kalır
+        return None
+    words = _cat_words(title)
+    best: tuple[int, int, str] | None = None
+    for c in used:
+        tid, cpath = c["taxonomy_id"], names.get(c["taxonomy_id"])
+        count = int(c.get("count") or 0)
+        if not cpath or tid == current or count < ESTABLISHED_CATEGORY_LISTINGS or not cpath.startswith(path + " > "):
+            continue
+        leaf = _cat_words(cpath.rsplit(">", 1)[-1])
+        if leaf and leaf <= words and (best is None or count > best[0]):
+            best = (count, tid, cpath)
+    return (best[1], best[2]) if best else None
+
+
 def _choose_category(ctx: Ctx, title: str, description: str, tags: list[str], materials: list[str], given_id: int | None) -> tuple[int, str] | None:
     """Kategoriyi Etsy'nin kategori ağacında gezinerek seçer (bkz. ai/category.py), seviye seviye aşağı; mağazanın kategorileri yalnızca
     eşitlikte ipucu. Döner: (kimlik, yol) ya da None (seçilemedi: mevcut seçim kalır)."""
@@ -729,7 +753,7 @@ def _spread_total(work: dict, total: int) -> str | None:
     base, extra = divmod(total, len(offerings))
     for i, o in enumerate(offerings):
         o["quantity"] = min(inventory_edit.MAX_QUANTITY, base + (1 if i < extra else 0))
-    return None
+    return inventory_edit.recompute_dependencies(work)  # stok artık kombinasyona göre değişiyor olabilir: quantity_on_property yeniden kurulur (oturum 59: [Size] yazılı kalıyordu)
 
 
 def _build_inventory(work: dict, price: float, quantity: int, variations: list[dict]) -> str | None:
@@ -955,6 +979,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         personal_dropped = False
     title, title_fixes = quality.autofix_title(title, quality.size_options(draft_variations), source)  # bariz başlık hataları (ölçü, söylenmeyen malzeme, 14+ kelime) sunucuda düzelir
     a = {**a, "description": quality.strip_claims(str(a.get("description") or ""), source)}  # kaynakta olmayan "warranty/hardware included" gibi iddialar koddan silinir (SEO önerisiyle aynı kural)
+    a = {**a, "description": quality.add_missing_facts(quality.neutralize_method_claims(str(a.get("description") or ""), source), draft_variations, [str(m) for m in a.get("materials") or []])}  # seçenekler/malzeme adıyla sayılır (sunucu ekler), söylenmemiş "laser-cut" nötrlenir
     plan = _draft_plan(ctx, a, title, tags_checked, draft_variations, source)
     if plan is not None:  # etiketleri model değil plan yerleştirir; modelinkiler yalnızca plan 13'e ulaşamazsa tamamlar
         tags_checked = plan_mod.place_tags(plan, tags_checked)
@@ -1035,6 +1060,10 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     if picked is not None and picked[0] != work.get("taxonomy_id") and not _keeps_established_category(ctx, work.get("taxonomy_id"), picked[0], title):
         work["taxonomy_id"] = picked[0]
         category_note = {"yol": picked[1], "neden": "kategori seçici (ürüne en uygun aday)", "otomatik_secildi": True}
+    refined = _refine_to_used_descendant(ctx, work.get("taxonomy_id"), title)
+    if refined is not None:  # "garage sign" başlıklı ürün: mağazanın 85 listing'lik "Signs" kategorisi varken genel "Wall Decor" yerine o
+        work["taxonomy_id"] = refined[0]
+        category_note = {"yol": refined[1], "neden": "başlıktaki ürün türüyle eşleşen, mağazanın kullandığı daha özgül kategori", "otomatik_secildi": True}
     if is_digital:  # dijital: kargo, iade ve işlem profili yok
         work["shipping_profile_id"] = work["return_policy_id"] = None
     else:

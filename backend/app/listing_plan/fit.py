@@ -59,7 +59,7 @@ def reason(phrase: str, facts: Facts) -> str | None:
     w = [x for x in words(low) if x not in STOP]
     if is_question(low):
         return "kendin-yap sorusu" if words(low)[:2] == ["how", "to"] and set(w) & DIY_QUESTION else None
-    known = facts.known_words
+    known = facts.known_words | quality.tr_material_words(f"{facts.claim_text} {facts.text}")  # "aluminyum" yazıldıysa "aluminum" bilinir
     claims = [m.group(0).lower() for m in quality.RISKY_CLAIMS.finditer(low)]
     if any(c not in facts.claim_text for c in claims):
         return "doğrulanmamış iddia"  # ör. "uv400 sunglasses": kullanıcı söylemediyse etiket de olmaz
