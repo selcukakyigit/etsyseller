@@ -254,7 +254,7 @@ def test_when_the_pool_has_no_questions_the_ai_is_asked_for_them(monkeypatch):
 def test_outdoor_use_phrases_need_the_user_to_have_said_so():
     wall = facts_mod.from_listing("Metal wall art", "2mm metal panel for indoor walls", materials=["metal"], product="metal wall art")
     for tag in ("outdoor wall art", "garden metal decor", "patio wall decor", "metal wall decor patio"):
-        assert (fit.reason(tag, wall) or "").startswith("kartta olmayan kullanım yeri"), tag
+        assert (fit.reason(tag, wall) or "").startswith(("kartta olmayan kullanım yeri", "doğrulanmamış iddia")), tag  # "outdoor" hem kullanım yeri hem iddia
     assert fit.reason("metal wall decor", wall) is None
     said = facts_mod.from_listing("Metal garden sculpture", "weatherproof metal sculpture for the garden", materials=["metal"], product="metal garden sculpture")
     assert fit.reason("garden metal decor", said) is None, "kullanıcı söylediyse serbest"

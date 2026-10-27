@@ -22,7 +22,7 @@ _WORD = re.compile(r"[^\W_]+")  # her dildeki harf ve rakamlar (ä, ß, é, ç, 
 _STOP = {"the", "and", "for", "with", "your", "our", "you", "from", "this", "that", "a", "an", "of", "in", "to", "or", "by", "on", "at", "is", "it"}
 RISKY_CLAIMS = re.compile(
     r"\b(hardware (?:is |are )?(?:included|provided)|(?:included|free) hardware|warranty|lifetime|(?:water|weather|rust|fade|scratch|uv)[- ]?(?:proof|resistant)|certified|fireproof|hypoallergenic|"
-    r"uv ?(?:400|protect\w*|block\w*|filter\w*)|polari[sz]ed|anti[- ]glare|(?:100%|full) protection)\b", re.I
+    r"uv ?(?:400|protect\w*|block\w*|filter\w*)|polari[sz]ed|anti[- ]glare|(?:100%|full) protection|outdoors?|durab\w+|long[- ]lasting)\b", re.I
 )
 
 
@@ -405,6 +405,22 @@ def tr_material_words(text: str) -> set[str]:
 
 _METHOD_CLAIM = re.compile(r"\b(?:laser|cnc|hand)[- ]?(?:cut|crafted|machined)\b|\bhand[- ]?made\b", re.IGNORECASE)
 _METHOD_STATED = re.compile(r"laser|lazer|cnc|hand ?made|handcraft|el yap[ıi]m|el i[sş]i|kesim|kesil", re.IGNORECASE)
+
+
+_HEADER = re.compile(r"[A-Z][A-Z &/-]{2,30}")
+
+
+def drop_empty_sections(description: str) -> str:
+    """İçi boşalmış bölüm başlıkları ("QUESTIONS" altındaki tek madde iddia diye silinince) açıklamadan çıkarılır."""
+    lines = description.split("\n")
+    out: list[str] = []
+    for i, line in enumerate(lines):
+        if _HEADER.fullmatch(line.strip()):
+            nxt = next((x for x in lines[i + 1:] if x.strip()), "")
+            if not nxt or _HEADER.fullmatch(nxt.strip()):
+                continue
+        out.append(line)
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
 
 
 def neutralize_method_claims(description: str, source_text: str | None) -> str:

@@ -668,7 +668,7 @@ def _keeps_established_category(ctx: Ctx, current: int | None, picked: int, text
     return counts.get(current, 0) >= ESTABLISHED_CATEGORY_LISTINGS and counts.get(picked, 0) == 0
 
 
-SHORT_DESCRIPTION_WORDS = 60  # ürüne özel kısım bundan kısaysa editördeki AI önerisi motoruyla zenginleştirilir
+SHORT_DESCRIPTION_WORDS = 90  # ürüne özel kısım bundan kısaysa editördeki AI önerisi motoruyla zenginleştirilir
 
 
 def _enrich_description(ctx: Ctx, a: dict, title: str, tags: list[str], variations: dict[str, list[str]], source: str, plan, others: list[dict]) -> dict:
@@ -679,16 +679,25 @@ def _enrich_description(ctx: Ctx, a: dict, title: str, tags: list[str], variatio
         return a
     from app.ai import seo
 
+    reading = _design_reading(ctx)
+    seen = f" Fotoğrafta görünen (görsel modelin okuması): ürün={reading['product']}; tasarım={reading['design']}." if reading else ""
     try:
         listing = {"title": title, "tags": tags, "description": description, "materials": [str(m) for m in a.get("materials") or []]}
         suggestion = seo.generate_seo_suggestion(
             listing, plan=plan, others=others, variations=variations, fact_source={"title": source, "description": source, "materials": listing["materials"]},
-            diagnosis_brief="Yeni listing taslağı: ürüne özel açıklama çok kısa. Yalnızca verilen olgularla (varyasyonlar, malzeme, kişiselleştirme, kullanıcının sözleri) ve fotoğrafta görünenle zenginleştir; olmayan bilgiyi uydurma.",
+            diagnosis_brief=(
+                "Yeni listing taslağı: ürüne özel açıklama çok kısa ve sıradan. DETAILS bölümünden ÖNCE akıcı, iki kısa paragraf yaz (toplam 70-120 kelime): (1) ürün nedir, görünen tasarımı nasıl "
+                "(şekil, yazı, desen, düzen), nerede/kim için kullanılır; (2) kişiselleştirme nasıl çalışır (varsa), hangi boyut ve renk seçenekleri var, hangi malzemeden. Madde işareti yok, dolgu ve abartı yok."
+                " Yalnızca verilen olgular (varyasyonlar, malzeme, kişiselleştirme, kullanıcının sözleri) ve fotoğrafta görünenle yaz; dayanıklılık, dış mekân, hava koşulu, bakım, üretim yöntemi gibi "
+                "kullanıcının söylemediği HİÇBİR iddia ve cevabını bilmediğin soru-cevap yazma." + seen
+            ),
         )
     except Exception:  # noqa: BLE001 - model/anahtar yoksa ya da üretilemezse model açıklaması aynen kalır
         log.warning("Açıklama zenginleştirilemedi", exc_info=True)
         return a
     better = str(suggestion.get("description") or "").strip()
+    # Motorun çıktısı da taslağın geri kalanıyla aynı sunucu temizliğinden geçer: söylenmemiş iddia, üretim yöntemi, boş bölüm; seçenekler/malzeme adıyla sayılır.
+    better = quality.drop_empty_sections(quality.add_missing_facts(quality.neutralize_method_claims(quality.strip_claims(better, source), source), variations, listing["materials"]))
     flag = a.get("listing_type") == "download", bool(a.get("personalizable"))
     now = audit.generation_problems(title, tags, description, others, source, variations, *flag)
     after = audit.generation_problems(title, tags, better, others, source, variations, *flag)
@@ -1061,7 +1070,9 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     if a.get("who_made") in ("i_did", "someone_else", "collective"):
         work["who_made"] = a["who_made"]
     if a.get("when_made"):
-        work["when_made"] = a["when_made"]
+        wm = str(a["when_made"])  # model "2007_2009" gibi uydurma yıl aralığı yazmasın (oturum 60): yalnızca geçerli değer ve kullanıcı yıl/vintage dediyse eski aralık
+        old_ok = wm in fields.WHEN_MADE and (wm in ("made_to_order", "2020_2026") or _VINTAGE_ASKED.search(source))
+        work["when_made"] = wm if old_ok else ("made_to_order" if a.get("personalizable") else "2020_2026")
     defaults = shop_defaults(ctx, {})
     work["taxonomy_id"] = int(a["taxonomy_id"]) if a.get("taxonomy_id") else None
     category_note = None
@@ -1295,6 +1306,7 @@ def ask_user(ctx: Ctx, a: dict) -> dict:
     return {"ok": True, "not": "Seçenek kartı gösterildi. Aynı soruyu ya da önerileri metinde tekrar yazma; kullanıcının dokunmasını ya da yazmasını bekle."}
 
 
+_VINTAGE_ASKED = re.compile(r"vintage|antika|antique|eski|19[0-9][0-9]|20[01][0-9]|yıl|year", re.IGNORECASE)
 _PERSONAL_ASKED = re.compile(r"kişiselleştir|personali[sz]|özelleştir|isim|ad[ıi] yaz|name|engrav|gravür|monogram|harf|initial|custom", re.IGNORECASE)
 _NO_QUESTIONS = re.compile(r"sormadan|soru sorma|kart (?:çıkarma|gösterme)|hemen oluştur|direkt oluştur|onay(?:lamadan| istemeden)|without asking|don't ask|no questions", re.IGNORECASE)
 _TITLE_QUESTION = re.compile(r"ba[sş]l[ıi]k|\btitle\b", re.IGNORECASE)
@@ -1332,14 +1344,17 @@ def _session_photos(ctx: Ctx) -> tuple[list[tuple[bytes, str]], tuple]:
     return [], ()
 
 
-def _design_mismatch(ctx: Ctx, design: str) -> str | None:
-    """Modelin yazdığı `design`, görsel modelin resimde gördüğüyle (ai/design_reader.py) hiç örtüşmüyorsa düzeltme metni; örtüşüyorsa ya da okuma yoksa None."""
+def _design_reading(ctx: Ctx) -> dict | None:
+    """Sohbetteki son resimli mesajın resmini güçlü görsel modele okutur ({product, design}); resim/model yoksa None (önbellekli)."""
     from app.ai import design_reader
 
     photos, key = _session_photos(ctx)
-    if not photos:
-        return None
-    reading = design_reader.read(photos, key)
+    return design_reader.read(photos, key) if photos else None
+
+
+def _design_mismatch(ctx: Ctx, design: str) -> str | None:
+    """Modelin yazdığı `design`, görsel modelin resimde gördüğüyle (ai/design_reader.py) hiç örtüşmüyorsa düzeltme metni; örtüşüyorsa ya da okuma yoksa None."""
+    reading = _design_reading(ctx)
     if not reading:
         return None
     skip = _PRODUCT_WORDS | _DESIGN_GENERIC

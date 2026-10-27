@@ -361,7 +361,7 @@ def test_a_short_description_is_enriched_with_the_editor_engine_only_when_it_hel
     short = {"description": "Vintage badge style garage sign. Available in three sizes."}
     out = tools._enrich_description(ctx, short, "Garage Sign Vintage Badge", ["garage sign"], {"Size": ["L", "M", "S"]}, "garage sign 2mm", None, [])
     assert out["description"] == rich.strip() and out.get("aciklama_zenginlestirildi") and calls, "kısa açıklama motorla zenginleşir"
-    long_enough = {"description": "word " * 70}
+    long_enough = {"description": "word " * 100}
     assert tools._enrich_description(ctx, long_enough, "T", [], {}, "", None, []) is long_enough and len(calls) == 1, "yeterince uzunsa çağrılmaz"
     unattended = tools.Ctx(db=db, shop=shop, user_id=5, today=None, unattended=True)
     assert tools._enrich_description(unattended, short, "T", [], {}, "", None, []) is short, "toplu işte çalışmaz"
@@ -369,3 +369,36 @@ def test_a_short_description_is_enriched_with_the_editor_engine_only_when_it_hel
     assert tools._enrich_description(ctx, short, "T", [], {}, "", None, []) is short, "hata olursa açıklama aynen kalır"
     monkeypatch.setattr(seo, "generate_seo_suggestion", lambda listing, **kw: {"description": "Short."})
     assert tools._enrich_description(ctx, short, "T", [], {}, "", None, []) is short, "daha kısaysa kullanılmaz"
+
+
+def test_enriched_text_is_cleaned_like_the_rest_unstated_outdoor_claims_empty_sections_and_typos_go():
+    from app.ai import quality
+    from app.listing_plan import facts as facts_mod, fit
+
+    said = "garage tabelası aluminyum 2mm üç satır kişiselleştirme"
+    text = ("Man cave garage sign, cut from 2mm aluminum. Durable for indoor and covered outdoor use when mounted properly.\n\nDETAILS\n• Material: 2mm aluminum\n\n"
+            "QUESTIONS\n• Can this be used outdoors? — Suitable for covered outdoor areas; prolonged direct exposure may affect finish.\n")
+    clean = quality.drop_empty_sections(quality.strip_claims(text, said))
+    assert "outdoor" not in clean.lower() and "durable" not in clean.lower() and "QUESTIONS" not in clean and "DETAILS" in clean and clean.startswith("Man cave garage sign"), clean
+    assert "outdoor" in quality.strip_claims("Great for outdoor use.", "dış mekân outdoor kullanım"), "kullanıcı söylediyse kalır"
+    sign = facts_mod.from_listing("Garage man cave sign", "garage aluminum sign", product="man cave sign", said="garage tabelası aluminyum")
+    assert fit.reason("christmast gift", sign) == "yazım hatası" and fit.reason("custom garage sign", sign) is None
+
+
+def test_a_made_up_when_made_range_is_replaced_by_a_sensible_default(db, monkeypatch):
+    shop = Shop(user_id=1, workspace_id=1, etsy_shop_id=1013, etsy_user_id=7, shop_name="S13")
+    db.add(shop); db.commit()
+    monkeypatch.setattr(tools, "_autofill_in_work", lambda *a, **k: ([], []))
+    monkeypatch.setattr(tools, "_category_defs", lambda tid: [])
+    from app.listings import drafts
+
+    def made(extra, message):
+        ctx = tools.Ctx(db=db, shop=shop, user_id=5, today=None, message=message, cards=[{"type": "brief"}])
+        out = tools.create_listing_draft(ctx, {"title": f"Bubble Line Art Metal Wall Decor Panel {message[:3]}", "product": "metal wall decor", "taxonomy_id": 1029, "price": 100, "quantity": 5,
+                                               "description": "Bubble line art metal wall panel.\n\nDETAILS\n• Material: metal", **extra})
+        return json.loads(drafts._local_row(db, shop, out["listing_id"]).data_json)["when_made"]
+
+    assert made({"when_made": "2007_2009"}, "yeni ürün") == "2020_2026", "uydurma yıl aralığı yerine güncel varsayılan"
+    assert made({"when_made": "2007_2009", "personalizable": True}, "isim yazdırılabilir") == "made_to_order", "kişiselleştirilebilir: siparişe göre"
+    assert made({"when_made": "2007_2009"}, "bu vintage 2008 yapımı") == "2007_2009", "kullanıcı eski yıl dediyse kalır"
+    assert made({"when_made": "made_to_order"}, "yeni ürün") == "made_to_order"

@@ -36,6 +36,7 @@ _PIECES = re.compile(r"(?<![a-z0-9])(\d+|two|three|four|five|six)[ -]?(panels?|p
 OTHER_PRODUCTS = {"shirt", "tshirt", "hoodie", "sweatshirt", "necklace", "ring", "bracelet", "earrings", "candle", "blanket", "pillow", "rug", "lamp", "sticker", "tote", "wallet", "keychain", "ornament", "curtain", "vase", "planter", "coaster"}
 WALL_WORDS = {"wall", "print", "poster", "sign", "plaque", "canvas"}  # "decor" tek başına her ürüne eklenebilir, duvar işi sayılmaz
 WALL_FAMILY = WALL_WORDS | {"wall", "art", "artwork", "sculpture", "panel", "hanging", "decoration", "frame"}
+MISSPELLED = {"christmast", "chrismas", "christams", "xmas", "valentins", "mothes", "fathes"}  # arama verisinde sık geçen yazım hataları: etiket olmaz (oturum 60: "christmast gift")
 UNVERIFIED = "kartta olmayan kelime: "
 
 # Açılar (farklılık için) ve kartta geçmese de güvenle kullanılabilen genel niteleyiciler: bunların dışında kalan, kartta olmayan bir içerik
@@ -59,6 +60,8 @@ def reason(phrase: str, facts: Facts) -> str | None:
     w = [x for x in words(low) if x not in STOP]
     if is_question(low):
         return "kendin-yap sorusu" if words(low)[:2] == ["how", "to"] and set(w) & DIY_QUESTION else None
+    if set(words(low)) & MISSPELLED:
+        return "yazım hatası"
     known = facts.known_words | quality.tr_material_words(f"{facts.claim_text} {facts.text}")  # "aluminyum" yazıldıysa "aluminum" bilinir
     claims = [m.group(0).lower() for m in quality.RISKY_CLAIMS.finditer(low)]
     if any(c not in facts.claim_text for c in claims):
