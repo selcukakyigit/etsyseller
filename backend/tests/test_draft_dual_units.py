@@ -24,7 +24,7 @@ def test_a_size_listing_with_both_units_is_created_on_the_first_call(db, monkeyp
     assert out.get("listing_id") and not out.get("kalite_uyarilari"), out
 
 
-def test_total_quantity_is_spread_over_the_combinations_and_per_combination_stays_the_default(db, monkeypatch):
+def test_total_quantity_is_one_shared_stock_and_per_combination_stays_the_default(db, monkeypatch):
     shop = Shop(user_id=1, workspace_id=1, etsy_shop_id=1002, etsy_user_id=7, shop_name="S2")
     db.add(shop); db.commit()
     monkeypatch.setattr(tools, "_autofill_in_work", lambda *a, **k: ([], []))
@@ -49,12 +49,12 @@ def test_total_quantity_is_spread_over_the_combinations_and_per_combination_stay
         return inv["quantity_on_property"], inv["price_on_property"], len(inv["products"][0]["property_values"])
 
     q_on, p_on, n_props = declared({"total_quantity": 20})
-    assert len(q_on) == n_props == 2, "6 kombinasyona 20: 4,4,3,3,3,3 eşit değil: stok Size ve Color'a göre değişir (bildirim değerlerle tutarlı)"
-    assert stocks({"total_quantity": 18}) == [3] * 6, "tam bölünüyorsa her kombinasyona eşit"
+    assert q_on == [] and n_props == 2, "toplam 20 = TEK stok havuzu: hiçbir varyasyona bağlı değil (Etsy 'Stok (tümü)': 20 in stock), bölünmez"
+    assert stocks({"total_quantity": 20}) == [20] * 6, "her kombinasyon aynı 20'yi paylaşır"
+    assert stocks({"total_quantity": 4}) == [4] * 6, "kombinasyondan az toplam da geçerli (bölme yok)"
     assert stocks({"quantity": 30}) == [30] * 6, "hepsi için 30: her kombinasyona 30"
-    assert stocks({"total_quantity": 20}) == [4, 4, 3, 3, 3, 3], "toplam 20, 6 kombinasyona: kalan ilk ikisine"
-    ctx = tools.Ctx(db=db, shop=shop, user_id=5, today=None, message="stok", cards=[{"type": "brief"}])
-    assert "bölünemez" in tools.create_listing_draft(ctx, {**base, "total_quantity": 4}).get("error", ""), "kombinasyondan az toplam reddedilir"
+    q_each, _p, n = declared({"quantity": 30})
+    assert len(q_each) == n == 2, "'her kombinasyon için 30': stok tüm varyasyonlara bağlı, her kombinasyonun kendi stoğu"
 
 
 def test_the_model_cannot_crop_the_first_photo_on_its_own_and_piece_counts_need_a_source(db, monkeypatch):
@@ -257,22 +257,29 @@ def test_updating_variations_keeps_the_stock_of_matching_combinations(db, monkey
     monkeypatch.setattr(tools, "_autofill_in_work", lambda *a, **k: ([], []))
     monkeypatch.setattr(tools, "_category_defs", lambda tid: [])
     ctx = tools.Ctx(db=db, shop=shop, user_id=5, today=None, message="sormadan oluştur", cards=[])
-    out = tools.create_listing_draft(ctx, {
-        "title": "Bubble Line Art Metal Wall Decor Panel", "product": "metal wall decor", "taxonomy_id": 1029, "price": 100, "total_quantity": 30,
-        "description": "Bubble line art metal wall panel.\n\nDETAILS\n• Sizes: Small; Large\n• Colors: Black; White; Grey; Gold",
-        "variations": [{"name": "Size", "values": [{"value": "Small"}, {"value": "Large"}]}, {"name": "Color", "values": [{"value": c} for c in ("Black", "White", "Grey", "Gold")]}]})
+    colors = [{"name": "Color", "values": [{"value": c} for c in ("Black", "White", "Grey", "Gold")]}]
     from app.listings import drafts
 
-    def stocks():
-        inv = json.loads(drafts._local_row(db, shop, out["listing_id"]).data_json)["inventory"]
-        return [o["quantity"] for p in inv["products"] for o in p["offerings"]]
+    def inventory(lid):
+        return json.loads(drafts._local_row(db, shop, lid).data_json)["inventory"]
 
-    before = stocks()
-    assert sum(before) == 30 and len(set(before)) > 1, before
-    upd = tools.update_listing(ctx, {"listing_id": out["listing_id"], "set_variations": [
-        {"name": "Size", "values": [{"value": 'Small (22")', "price": 119}, {"value": 'Large (41")', "price": 159}]}, {"name": "Color", "values": [{"value": c} for c in ("Black", "White", "Grey", "Gold")]}]})
-    assert upd.get("ok"), upd
-    assert stocks() == before, "fiyat/inç eklenince stok dağılımı ve toplam (30) korunur"
+    def update_sizes(lid):
+        return tools.update_listing(ctx, {"listing_id": lid, "set_variations": [
+            {"name": "Size", "values": [{"value": 'Small (22")', "price": 119}, {"value": 'Large (41")', "price": 159}]}, *colors]})
+
+    base = {"product": "metal wall decor", "taxonomy_id": 1029, "price": 100, "description": "Bubble line art metal wall panel.\n\nDETAILS\n• Sizes: Small; Large\n• Colors: Black; White; Grey; Gold"}
+    # seçenek başına stok (Small 3, Large 7): fiyat/inç eklenince korunur
+    per_option = tools.create_listing_draft(ctx, {**base, "title": "Bubble Line Art Metal Wall Decor Panel", "variations": [{"name": "Size", "values": [{"value": "Small", "quantity": 3}, {"value": "Large", "quantity": 7}]}, *colors]})
+    before = [o["quantity"] for p in inventory(per_option["listing_id"])["products"] for o in p["offerings"]]
+    assert sorted(set(before)) == [3, 7], before
+    assert update_sizes(per_option["listing_id"]).get("ok")
+    assert [o["quantity"] for p in inventory(per_option["listing_id"])["products"] for o in p["offerings"]] == before, "fiyat/inç eklenince seçenek başına stok korunur"
+    # toplam 30 = tek stok havuzu: güncellemeden sonra da havuz kalır (her kombinasyona ayrı 30 olmaz)
+    pool = tools.create_listing_draft(ctx, {**base, "title": "Bubble Line Art Metal Wall Hanging Panel", "total_quantity": 30, "variations": [{"name": "Size", "values": [{"value": "Small"}, {"value": "Large"}]}, *colors]})
+    assert inventory(pool["listing_id"])["quantity_on_property"] == []
+    assert update_sizes(pool["listing_id"]).get("ok")
+    inv_after = inventory(pool["listing_id"])
+    assert inv_after["quantity_on_property"] == [] and {o["quantity"] for p in inv_after["products"] for o in p["offerings"]} == {30}, "tek stok havuzu güncellemeden sonra da korunur"
 
 
 def test_the_design_the_model_wrote_is_checked_against_what_the_vision_model_sees(monkeypatch):
@@ -402,3 +409,13 @@ def test_a_made_up_when_made_range_is_replaced_by_a_sensible_default(db, monkeyp
     assert made({"when_made": "2007_2009", "personalizable": True}, "isim yazdırılabilir") == "made_to_order", "kişiselleştirilebilir: siparişe göre"
     assert made({"when_made": "2007_2009"}, "bu vintage 2008 yapımı") == "2007_2009", "kullanıcı eski yıl dediyse kalır"
     assert made({"when_made": "made_to_order"}, "yeni ürün") == "made_to_order"
+
+
+def test_redundant_qa_lines_and_the_warm_intro_rule(monkeypatch):
+    from app.ai import quality, standard
+
+    text = ("If you are looking for a garage sign made just for you, this is it.\n\nDETAILS\n• Sizes: L, M, S\n\nQUESTIONS\n• What sizes are available? — L, M, S.\n• Can I choose a color? — Yes.\n"
+            "• How do I personalize it? — Enter the three lines when ordering.")
+    cleaned = quality.drop_redundant_qa(text)
+    assert "What sizes are available" not in cleaned and "Can I choose a color" not in cleaned and "How do I personalize it?" in cleaned, "yalnızca DETAILS'i tekrar edenler silinir"
+    assert "SICAK" in standard.prompt_block() and "welcome" in standard.prompt_block(), "içerik standardı sıcak tanıtım paragrafını ister"

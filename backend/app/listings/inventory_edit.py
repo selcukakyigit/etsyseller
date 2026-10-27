@@ -111,9 +111,16 @@ def recompute_dependencies(work: dict) -> str | None:
     if price is None or len(price) > 1:
         return "Fiyat aynı anda yalnızca tek bir varyasyona göre değişebilir (Etsy kuralı); kombinasyon fiyatlarını buna göre ver."
     inv["price_on_property"] = price
-    # Stok her kombinasyonda aynı olsa bile TÜM varyasyonlara bağlı bildirilir: her kombinasyonun KENDİ stoğu olur ("her kombinasyon için 50" = 12 × 50). Yalnızca fiyatın bağlı olduğu
-    # varyasyona bağlamak (kısa süre denendi) her boyutu tek stok havuzuna çevirdi: Etsy "150 in stock" gösterdi, 4 renk aynı havuzu paylaştı (oturum 60).
-    inv["quantity_on_property"] = _depends_on(products, pids, _quantity_of) or pids
+    # Stok bir varyasyona göre değişiyorsa o varyasyona bağlıdır. Her kombinasyonda AYNI ise iki anlam var ve fark bildirimdedir: tüm varyasyonlara bağlı = her kombinasyonun KENDİ stoğu
+    # ("her kombinasyon için 50" = 12 × 50); boş = hiçbirine bağlı değil = TEK stok havuzu, hepsi paylaşır (Etsy'deki "Stok (tümü)", "toplam 50"). Önceki bildirim korunur
+    # (yeni kurulan envanterde `_build_inventory` varsayılanı "her kombinasyon"dur; tek havuz `shared_total` ile bilerek kurulur).
+    dep = _depends_on(products, pids, _quantity_of)
+    if dep:
+        inv["quantity_on_property"] = dep
+    else:
+        prev = inv.get("quantity_on_property")
+        kept = [p for p in prev if p in pids] if isinstance(prev, list) else None
+        inv["quantity_on_property"] = [] if prev == [] else (kept or list(pids))
     skus = {p.get("sku") or "" for p in products}
     inv["sku_on_property"] = pids if len(skus) > 1 else []
     return None

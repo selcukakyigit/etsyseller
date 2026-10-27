@@ -157,7 +157,7 @@ function ReviewRow({ shopId, item, spec, onChange }: { shopId: number; item: Row
             <IntegerInput value={spec.stock == null ? "" : String(spec.stock)} onValue={(v) => onChange({ stock: v === "" ? null : Number(v) })} className={field} />
             <select value={spec.stock_mode ?? "each"} onChange={(e) => onChange({ stock_mode: e.target.value as "each" | "total" })} className={`${field} !w-36`} aria-label={t("Stok nasıl uygulansın", "How the stock applies")}>
               <option value="each">{t("her kombinasyon için", "per combination")}</option>
-              <option value="total">{t("toplam, eşit dağıt", "total, split evenly")}</option>
+              <option value="total">{t("toplam (tek stok, hepsi paylaşır)", "total (one shared stock)")}</option>
             </select>
           </div>
         </div>

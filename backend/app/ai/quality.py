@@ -423,6 +423,15 @@ def drop_empty_sections(description: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
 
 
+_REDUNDANT_Q = re.compile(r"^[ \t]*[•*-][ \t]*(?:what|which|how many)\b[^?\n]*\b(?:sizes?|colou?rs?|options?|finish(?:es)?|available)\b[^?\n]*\?|^[ \t]*[•*-][ \t]*can (?:i|you) (?:choose|pick|select)\b[^?\n]*\?", re.I | re.M)
+
+
+def drop_redundant_qa(description: str) -> str:
+    """QUESTIONS bölümünde yalnızca DETAILS'i tekrar eden soru-cevaplar (hangi boyutlar / renk seçebilir miyim) silinir; yeni bilgi veren sorulara dokunulmaz."""
+    lines = description.split("\n")
+    return "\n".join(line for line in lines if not _REDUNDANT_Q.match(line))
+
+
 def neutralize_method_claims(description: str, source_text: str | None) -> str:
     """Kullanıcının söylemediği üretim yöntemi sözcükleri ("laser-cut", "handmade") açıklamada nötrleştirilir ("cut", "made"): cümle ve açılış korunur, uydurma iddia kalmaz."""
     if _METHOD_STATED.search(html.unescape(source_text or "")):

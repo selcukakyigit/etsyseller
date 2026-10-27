@@ -686,8 +686,10 @@ def _enrich_description(ctx: Ctx, a: dict, title: str, tags: list[str], variatio
         suggestion = seo.generate_seo_suggestion(
             listing, plan=plan, others=others, variations=variations, fact_source={"title": source, "description": source, "materials": listing["materials"]},
             diagnosis_brief=(
-                "Yeni listing taslağı: ürüne özel açıklama çok kısa ve sıradan. DETAILS bölümünden ÖNCE akıcı, iki kısa paragraf yaz (toplam 70-120 kelime): (1) ürün nedir, görünen tasarımı nasıl "
-                "(şekil, yazı, desen, düzen), nerede/kim için kullanılır; (2) kişiselleştirme nasıl çalışır (varsa), hangi boyut ve renk seçenekleri var, hangi malzemeden. Madde işareti yok, dolgu ve abartı yok."
+                "Yeni listing taslağı: ürüne özel açıklama çok kısa ve kuru. DETAILS bölümünden ÖNCE alıcıya hitap eden SICAK, akıcı iki kısa paragraf (küçük bir kompozisyon, toplam 70-120 kelime) yaz: "
+                "(1) davetkâr bir açılış ('Garaj için size özel bir tabela arıyorsanız…' tarzı, İngilizce), ürün nedir, fotoğrafta görünen tasarım nasıl (şekil, yazı, desen, düzen); "
+                "(2) kişiselleştirme nasıl çalışır (varsa), kaç boyut ve kaç renk seçeneği var ('available in three sizes and four finishes'), hangi malzemeden, nereye yakışır. Madde işareti yok, abartılı övgü yok. "
+                "SORU-CEVAP (QUESTIONS) bölümü yazma: boyut/renk/seçenek soruları DETAILS'in tekrarıdır."
                 " Yalnızca verilen olgular (varyasyonlar, malzeme, kişiselleştirme, kullanıcının sözleri) ve fotoğrafta görünenle yaz; dayanıklılık, dış mekân, hava koşulu, bakım, üretim yöntemi gibi "
                 "kullanıcının söylemediği HİÇBİR iddia ve cevabını bilmediğin soru-cevap yazma." + seen
             ),
@@ -697,7 +699,7 @@ def _enrich_description(ctx: Ctx, a: dict, title: str, tags: list[str], variatio
         return a
     better = str(suggestion.get("description") or "").strip()
     # Motorun çıktısı da taslağın geri kalanıyla aynı sunucu temizliğinden geçer: söylenmemiş iddia, üretim yöntemi, boş bölüm; seçenekler/malzeme adıyla sayılır.
-    better = quality.drop_empty_sections(quality.add_missing_facts(quality.neutralize_method_claims(quality.strip_claims(better, source), source), variations, listing["materials"]))
+    better = quality.drop_empty_sections(quality.drop_redundant_qa(quality.add_missing_facts(quality.neutralize_method_claims(quality.strip_claims(better, source), source), variations, listing["materials"])))
     flag = a.get("listing_type") == "download", bool(a.get("personalizable"))
     now = audit.generation_problems(title, tags, description, others, source, variations, *flag)
     after = audit.generation_problems(title, tags, better, others, source, variations, *flag)
@@ -783,15 +785,16 @@ def _tags(raw: list[str]) -> tuple[list[str], list[str]]:
     return out[: etsy_rules.TAG_COUNT], short
 
 
-def _spread_total(work: dict, total: int) -> str | None:
-    """"Toplam N adet": N, kombinasyonlara eşit bölünür (kalan ilk kombinasyonlara birer fazla). Kombinasyon sayısından az ise Etsy'de 0 stoklu seçenek olur: hata."""
-    offerings = [o for p in work["inventory"]["products"] for o in p["offerings"]]
-    if total < len(offerings):
-        return f"Toplam {total} adet {len(offerings)} kombinasyona bölünemez (her birine en az 1 gerekir); kullanıcıya söyle: her kombinasyon için adet mi vermek istiyor?"
-    base, extra = divmod(total, len(offerings))
-    for i, o in enumerate(offerings):
-        o["quantity"] = min(inventory_edit.MAX_QUANTITY, base + (1 if i < extra else 0))
-    return inventory_edit.recompute_dependencies(work)  # stok artık kombinasyona göre değişiyor olabilir: quantity_on_property yeniden kurulur (oturum 59: [Size] yazılı kalıyordu)
+def _shared_total(work: dict, total: int) -> str | None:
+    """"Toplam N adet": TEK stok havuzu: tüm kombinasyonlar aynı N'i paylaşır, hiçbir varyasyona bağlı değildir (Etsy'deki 'Stok (tümü)'; kullanıcı "toplam 50" derken listede tek yere 50 yazılmasını
+    ister). Etsy kartı "50 in stock" gösterir. Eskiden N kombinasyonlara bölünüyordu (4-4-5…): kullanıcının istediği bu değildi (oturum 61)."""
+    if not 1 <= total <= inventory_edit.MAX_QUANTITY:
+        return f"Toplam stok 1-{inventory_edit.MAX_QUANTITY} arasında olmalı."
+    for p in work["inventory"]["products"]:
+        for o in p["offerings"]:
+            o["quantity"] = total
+    work["inventory"]["quantity_on_property"] = []
+    return inventory_edit.recompute_dependencies(work)
 
 
 def _build_inventory(work: dict, price: float, quantity: int, variations: list[dict]) -> str | None:
@@ -836,6 +839,7 @@ def _build_inventory(work: dict, price: float, quantity: int, variations: list[d
         })
     work["inventory"]["products"] = products
     work["inventory"]["price_on_property"] = [varying[0]["id"]] if varying else []
+    work["inventory"]["quantity_on_property"] = [p["id"] for p in props]  # varsayılan: her kombinasyonun kendi stoğu (tek havuz `_shared_total` ile bilerek kurulur)
     return inventory_edit.recompute_dependencies(work)  # stok/SKU hangi varyasyona göre değişiyorsa Etsy kuralına uygun işaretlenir
 
 
@@ -1049,7 +1053,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     dropped_variations = len(a.get("variations") or []) - len(variations)
     err = _build_inventory(work, price, 999 if is_digital else max(1, int(a.get("quantity") or norm_qty)), variations)
     if not err and a.get("total_quantity") and not is_digital:
-        err = _spread_total(work, int(a["total_quantity"]))
+        err = _shared_total(work, int(a["total_quantity"]))
     if err:
         creation_cleanup(ctx, lid)
         return {"error": err}
@@ -1876,6 +1880,7 @@ def _update_variations(ctx: Ctx, lid: int, work: dict, ch: dict, a: dict, variat
     price = float(a["set_price"]) if a.get("set_price") is not None else min((o["price"]["amount"] / o["price"]["divisor"] for o in offers), default=0.0)
     quantity = max(1, int(a.get("quantity") or first.get("quantity") or 1))
     old_stock = {_option_key(p): p["offerings"][0].get("quantity") for p in work["inventory"]["products"] if p.get("offerings")}  # kombinasyon başına eski stok
+    was_shared = len(work["inventory"]["products"]) > 1 and work["inventory"].get("quantity_on_property") == []  # tek stok havuzu ("toplam N") varyasyonlar değişince de havuz kalır
     wanted, _unit_assumed = _normalize_sizes(ctx, [v for v in variations if len(v.get("values") or []) > 1])
     err = _build_inventory(work, price, quantity, wanted)
     if err:
@@ -1886,6 +1891,8 @@ def _update_variations(ctx: Ctx, lid: int, work: dict, ch: dict, a: dict, variat
             kept = old_stock.get(_option_key(p))
             if kept:
                 p["offerings"][0]["quantity"] = int(kept)
+        if was_shared and len({o["quantity"] for p in inv["products"] for o in p["offerings"]}) == 1:
+            inv["quantity_on_property"] = []
         inventory_edit.recompute_dependencies(work)
     inv["readiness_state_on_property"] = []  # stok/SKU bağımlılıkları _build_inventory'de verilerden kuruldu
     if first.get("readiness_state_id"):  # Etsy fiziksel ürünlerde her teklifte işlem profili ister
@@ -3425,7 +3432,7 @@ TOOLS: list[dict] = [
         "description_template_id": {"type": "integer", "description": "Kullanılacak hazır açıklama metni. Verilmezse mağazanın VARSAYILAN şablonu kullanılır; 0 = şablon kullanma. Şablon kullanılırken description'a kargo/garanti/iletişim gibi sabit kısımları YAZMA."},
         "use_standard_sections": {"type": "boolean", "description": "Mağazanın sabit açıklama bölümlerini (iletişim, işleme/teslimat, garanti, yasal uyarı) açıklamaya otomatik ekle. Varsayılan true"},
         "quantity": {"type": "integer", "description": "Her varyasyon KOMBİNASYONUNUN stoğu (Etsy stoğu kombinasyon başına tutar; düzenleyicideki 'Stok (tümü)' alanı hepsine aynı adedi yazar). Kullanıcı 'hepsi için / her biri / tümü için N' dediyse N. Vermediyse BOŞ BIRAK: mağazanın tipik adedi kullanılır"},
-        "total_quantity": {"type": "integer", "description": "YALNIZCA kullanıcı 'TOPLAM N adet, kombinasyonlara dağıt' dediyse: N adet tüm kombinasyonlara eşit bölünür (kalan ilk kombinasyonlara). quantity ile birlikte verme"},
+        "total_quantity": {"type": "integer", "description": "Kullanıcı 'TOPLAM N adet / toplam stok N' dediyse: TEK stok havuzu, tüm renk/boyut seçenekleri aynı N'i paylaşır (Etsy'deki 'Stok (tümü)' alanına N yazılır, bölünmez). 'Hepsi/her biri için N' ise bunu DEĞİL quantity'yi kullan. quantity ile birlikte verme"},
         "materials": {"type": "array", "items": {"type": "string"}},
         "variations": {"type": "array", "description": "En fazla 3 varyasyon. Fiyat yalnızca bir varyasyona göre değişebilir. Kullanıcı seçenek başına stok verdiyse (100 cm: 10 adet, 50 cm: 5 adet) her seçeneğe quantity yaz.", "items": _obj({"name": {"type": "string"}, "values": {"type": "array", "items": _obj({"value": {"type": "string"}, "price": {"type": "number", "description": "Bu seçeneğin fiyatı (isteğe bağlı)"}, "quantity": {"type": "integer", "description": "Bu seçeneğin stoğu (isteğe bağlı; yoksa genel quantity)"}}, ["value"])}}, ["name", "values"])},
         "image_ids": {"type": "array", "items": {"type": "string"}, "description": "Sohbete yüklenen resimlerin kimlikleri (sistem mesajındaki listeden)"},
