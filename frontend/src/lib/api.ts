@@ -793,10 +793,11 @@ export type BatchSpec = {
   name: string; phrase: string; digital: boolean; size: string; material: string; personalizable: boolean; personalization_detail: string;
   weight: number | null; weight_unit: "oz" | "lb" | "g" | "kg"; weight_estimated: boolean; unsure: string[]; category_id: number | null;
   categories: { taxonomy_id: number; path: string; share: number }[]; error: string;
+  design: string; title: string; title_options: string[]; price: number | null; sizes: { label: string; price: number | null }[]; colors: string[]; stock: number | null; stock_mode: "each" | "total";
   from_link: string[]; links: { url: string; purpose: "product_info" | "reference_listing" | "competitor"; title: string; source: string; error: string }[];
 };
 /** Ön kontrolde kullanıcının değiştirdiği alanlar (yalnızca değişenler gönderilir). */
-export type BatchEdit = { index: number } & Partial<Pick<BatchSpec, "name" | "digital" | "size" | "material" | "personalizable" | "personalization_detail" | "weight" | "weight_unit" | "category_id">>;
+export type BatchEdit = { index: number } & Partial<Pick<BatchSpec, "name" | "digital" | "size" | "material" | "personalizable" | "personalization_detail" | "weight" | "weight_unit" | "category_id" | "title" | "price" | "sizes" | "colors" | "stock" | "stock_mode">>;
 
 /** Toplu taslak oluşturma işinin durumu (backend assistant/batch_drafts.py public()). */
 export type BatchState = {

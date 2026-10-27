@@ -128,5 +128,34 @@ eq(!!previewBtn, true, "biten ürünün satırında Önizle düğmesi");
 eq(!!el.querySelector('a[href="/listings/-123/edit"]'), true, "Düzenle bağlantısı editöre gider");
 console.log("7 önizle/düzenle OK");
 
+// 8) Tekli akışla eşit alanlar: başlık önerileri, fiyat, boyut + boyuta göre fiyat, renkler, stok (adet + her kombinasyon/toplam); yalnızca değişenler gider
+await act(async () => root5.unmount());
+calls.length = 0;
+const root6 = createRoot(el);
+const rich = job("review", [item(1, "queued", { spec: spec({
+  title: "Lotus Mandala Circular Cutout Metal Wall Decor", title_options: ["Lotus Mandala Circular Cutout Metal Wall Decor", "Lotus Flower Of Life Hanging Metal Wall Panel", "Another Lotus Cutout Metal Wall Sculpture"],
+  price: null, sizes: [{ label: "L (50 cm)", price: 99 }, { label: "M (30 cm)", price: null }], colors: ["Gold Black", "Silver Black"], stock: 20, stock_mode: "total",
+}) })]);
+await act(async () => root6.render(h(BatchJobCard, { card: { type: "batch_job", ...rich }, shopId: 7 })));
+const titleInput = el.querySelector("input[maxlength='140']");
+eq(titleInput.value, "Lotus Mandala Circular Cutout Metal Wall Decor", "başlık kutusu doludur");
+eq([...el.querySelectorAll("button")].filter((b) => b.textContent.startsWith("Lotus") || b.textContent.startsWith("Another")).length, 3, "3 başlık önerisi düğme");
+await act(async () => [...el.querySelectorAll("button")].find((b) => b.textContent.startsWith("Lotus Flower")).dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
+eq(el.querySelector("input[maxlength='140']").value, "Lotus Flower Of Life Hanging Metal Wall Panel", "öneriye tıklayınca başlık değişir");
+const sizeInputs = [...el.querySelectorAll("input[maxlength='60']")];
+eq(sizeInputs.map((i) => i.value), ["L (50 cm)", "M (30 cm)"], "boyut satırları");
+eq(el.querySelector("input[maxlength='160']").value, "Gold Black, Silver Black", "renkler virgülle");
+eq(el.querySelector("select[aria-label]").value === "total" || [...el.querySelectorAll("select")].some((s) => s.value === "total"), true, "stok kipi: toplam");
+await setValue(sizeInputs[1], "M (30 cm) 12 in");
+await act(async () => button("+ Boyut ekle").dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
+eq(el.querySelectorAll("input[maxlength='60']").length, 3, "boyut eklenir");
+script = Array.from({ length: 4 }, () => job("running", [item(1, "running")]));  // başlatma yanıtı + yoklamalar
+await act(async () => button("Taslakları oluştur").dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
+const post8 = calls.find((c) => c.call.startsWith("POST"));
+eq(Object.keys(post8.body.items[0]).sort(), ["index", "sizes", "title"], "yalnızca değişen alanlar gider");
+eq(post8.body.items[0].title, "Lotus Flower Of Life Hanging Metal Wall Panel", "seçilen başlık");
+eq(post8.body.items[0].sizes.map((z) => z.label), ["L (50 cm)", "M (30 cm) 12 in", ""], "boyutlar (boş satır sunucuda atılır)");
+console.log("8 başlık/fiyat/boyut/renk/stok alanları OK");
+
 console.log("BATCH KART TESTLERİ GEÇTİ");
 process.exit(0);

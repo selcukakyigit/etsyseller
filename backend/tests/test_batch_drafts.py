@@ -608,3 +608,52 @@ def test_options_written_in_the_reply_become_buttons_and_replace_the_generic_nex
     ctx2 = tools.Ctx(db=None, shop=None, user_id=1, today=None, cards=[dict(own)])
     tools.auto_yes_no(ctx2, quoted)
     assert ctx2.cards == [own], "modelin kendi kartına dokunulmaz"
+
+
+# ---------------------------------------------------------------- tekli akışla eşit ön kontrol alanları
+
+def test_analysis_fills_title_price_sizes_colors_and_stock_and_filters_bad_title_suggestions(db, fakes):
+    shop = _shop(db)
+    _images(db, shop, ["a1"])
+    fakes.report = {"a1": {"price": 99, "sizes": [{"label": "L (50 cm)", "price": 99}, {"label": "M (30 cm)", "price": 59}, {"label": "L (50 cm)"}], "colors": ["Gold Black", "Silver Black", "gold black"],
+                           "stock": 20, "stock_mode": "total", "design": "lotus mandala cutout",
+                           "titles": ["Lotus Mandala Circular Cutout Metal Wall Decor", "metal metal wall wall decor decor panel panel", "Lotus Flower Of Life Hanging Metal Wall Panel", "Another Lotus Cutout Metal Wall Sculpture Disc"]}}
+    job = _job(db, shop, [{"image_ids": ["a1"]}], "L 50 cm 99 dolar, M 30 cm 59 dolar")
+    batch_drafts.start(job)
+    _wait(job, {"review"})
+    spec = batch_drafts.public(job)["items"][0]["spec"]
+    assert spec["sizes"] == [{"label": "L (50 cm)", "price": 99.0}, {"label": "M (30 cm)", "price": 59.0}], "tekrar eden boyut atılır, fiyatı olan kalır"
+    assert spec["colors"] == ["Gold Black", "Silver Black"] and spec["stock"] == 20 and spec["stock_mode"] == "total" and spec["price"] == 99.0
+    assert spec["title_options"] == ["Lotus Mandala Circular Cutout Metal Wall Decor", "Lotus Flower Of Life Hanging Metal Wall Panel", "Another Lotus Cutout Metal Wall Sculpture Disc"], "tekrar eden kelimeli başlık elenir, en çok 3"
+    assert spec["title"] == spec["title_options"][0]
+
+
+def test_review_edits_for_the_new_fields_are_sanitised_and_creation_enforces_them(db, fakes):
+    shop = _shop(db)
+    _images(db, shop, ["a1"])
+    fakes.report = {"a1": {"titles": ["Lotus Mandala Circular Cutout Metal Wall Decor"], "price": 40, "stock": 3}}
+    job = _job(db, shop, [{"image_ids": ["a1"]}])
+    batch_drafts.start(job)
+    _wait(job, {"review"})
+    edits = [{"index": 1, "title": "  Lotus   Flower Wall Panel  ", "price": 12.5, "sizes": [{"label": "L", "price": "99"}, {"label": "", "price": 1}, {"label": "M", "price": "abc"}], "colors": "Red, Blue,, red", "stock": "20", "stock_mode": "total"}]
+    assert batch_drafts.confirm(job, edits)
+    _wait(job, {"done"})
+    spec = batch_drafts.public(job)["items"][0]["spec"]
+    assert spec["title"] == "Lotus Flower Wall Panel" and spec["sizes"] == [{"label": "L", "price": 99.0}, {"label": "M", "price": None}] and spec["colors"] == ["Red", "Blue"] and spec["stock"] == 20
+    args = next(a for name, a, _u in fakes.executed if name == "create_listing_draft")
+    assert args["title"] == "Lotus Flower Wall Panel", "kartta onaylanan başlığı model değiştiremez"
+    assert args["variations"] == [{"name": "Size", "values": [{"value": "L", "price": 99.0}, {"value": "M"}]}, {"name": "Color", "values": [{"value": "Red"}, {"value": "Blue"}]}]
+    assert args["price"] == 99.0 and args["total_quantity"] == 20 and "quantity" not in args, "toplam 20: total_quantity, quantity yok"
+    assert "SUNUCUDAN uygulanır" in fakes.create_texts[0] and "Lotus Flower Wall Panel" in fakes.create_texts[0]
+
+
+def test_nothing_is_enforced_when_the_card_has_none_of_the_new_fields(db, fakes):
+    shop = _shop(db)
+    _images(db, shop, ["a1"])
+    job = _job(db, shop, [{"image_ids": ["a1"]}])
+    batch_drafts.start(job)
+    _wait(job, {"review"})
+    batch_drafts.confirm(job, [])
+    _wait(job, {"done"})
+    args = next(a for name, a, _u in fakes.executed if name == "create_listing_draft")
+    assert args["title"] == "Title a1" and "variations" not in args and "total_quantity" not in args, "boş alanlar modele bırakılır"

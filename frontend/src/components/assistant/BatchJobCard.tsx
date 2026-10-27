@@ -4,7 +4,7 @@ import Link from "next/link";
 import { lazy, Suspense, useEffect, useState } from "react";
 import type { BatchEdit, BatchSpec, BatchState, ChatCard } from "@/lib/api";
 import { batchApi } from "@/lib/batchApi";
-import DecimalInput from "@/components/ui/NumberInputs";
+import DecimalInput, { IntegerInput, MoneyInput } from "@/components/ui/NumberInputs";
 import HelpTip from "@/components/ui/HelpTip";
 import { Spinner } from "@/components/ui/Spinner";
 import { useT } from "@/lib/i18n-client";
@@ -61,6 +61,44 @@ function WeightField({ spec, onChange }: { spec: Partial<BatchSpec>; onChange: (
   );
 }
 
+/** Para kutusu: yalnızca rakam (en çok 2 ondalık); boş = girilmemiş. */
+function MoneyField({ value, onChange, className }: { value: number | null | undefined; onChange: (v: number | null) => void; className?: string }) {
+  const [text, setText] = useState<string | null>(null);
+  const current = value ?? null;
+  const shown = text !== null && (text === "" ? null : Number(text.replace(",", "."))) === current ? text : current === null ? "" : String(current);
+  return (
+    <MoneyInput
+      value={shown}
+      onValue={(v) => {
+        setText(v);
+        const n = v === "" ? null : Number(v.replace(",", "."));
+        onChange(n === null || Number.isNaN(n) ? null : n);
+      }}
+      onBlur={() => setText(null)}
+      className={className ?? field}
+    />
+  );
+}
+
+/** Renkler: virgülle yazılır, kaydedilen liste ayrıştırılmış hâlidir (yazarken virgül kaybolmasın diye yerel metin tutulur). */
+function ColorsField({ colors, onChange }: { colors: string[]; onChange: (v: string[]) => void }) {
+  const { t } = useT();
+  const [text, setText] = useState<string | null>(null);
+  return (
+    <input
+      value={text ?? colors.join(", ")}
+      maxLength={160}
+      placeholder={t("Black, White, Gold (virgülle)", "Black, White, Gold (comma separated)")}
+      onChange={(e) => {
+        setText(e.target.value);
+        onChange(e.target.value.split(",").map((x) => x.trim()).filter(Boolean));
+      }}
+      onBlur={() => setText(null)}
+      className={field}
+    />
+  );
+}
+
 /** Ön kontrol satırı: ürünün çözümlenen bilgileri; boş ölçü/kapasite ve malzeme taslakta yazılmaz (uydurulmaz). */
 function ReviewRow({ shopId, item, spec, onChange }: { shopId: number; item: Row; spec: Partial<BatchSpec>; onChange: (patch: Partial<BatchSpec>) => void }) {
   const { t } = useT();
@@ -79,6 +117,85 @@ function ReviewRow({ shopId, item, spec, onChange }: { shopId: number; item: Row
           </span>
           <input value={spec.name ?? ""} maxLength={120} onChange={(e) => onChange({ name: e.target.value })} className={field} />
         </label>
+        <div className="sm:col-span-2">
+          <span className="mb-0.5 block text-[10px] text-neutral-500 dark:text-neutral-400">{t("Başlık", "Title")}</span>
+          <input
+            value={spec.title ?? ""}
+            maxLength={140}
+            placeholder={t("boşsa asistan yazar", "if empty the assistant writes it")}
+            onChange={(e) => onChange({ title: e.target.value })}
+            className={field}
+          />
+          {(spec.title_options ?? []).length > 1 && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {(spec.title_options ?? []).map((o) => (
+                <button
+                  key={o}
+                  type="button"
+                  onClick={() => onChange({ title: o })}
+                  className={`rounded-full border px-2 py-0.5 text-[10px] ${
+                    spec.title === o ? "border-[#D97757] bg-[#D97757] text-white" : "border-neutral-300 text-neutral-600 hover:border-[#D97757] dark:border-neutral-700 dark:text-neutral-300"
+                  }`}
+                >
+                  {clip(o, 56)}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div>
+          <span className="mb-0.5 block text-[10px] text-neutral-500 dark:text-neutral-400">{t("Fiyat", "Price")}</span>
+          <MoneyField
+            value={spec.price}
+            onChange={(v) => onChange({ price: v })}
+            className={`${field} ${spec.price == null && !(spec.sizes ?? []).some((z) => z.price != null) ? warn : ""}`}
+          />
+        </div>
+        <div>
+          <span className="mb-0.5 block text-[10px] text-neutral-500 dark:text-neutral-400">{t("Stok", "Stock")}</span>
+          <div className="flex gap-1">
+            <IntegerInput value={spec.stock == null ? "" : String(spec.stock)} onValue={(v) => onChange({ stock: v === "" ? null : Number(v) })} className={field} />
+            <select value={spec.stock_mode ?? "each"} onChange={(e) => onChange({ stock_mode: e.target.value as "each" | "total" })} className={`${field} !w-36`} aria-label={t("Stok nasıl uygulansın", "How the stock applies")}>
+              <option value="each">{t("her kombinasyon için", "per combination")}</option>
+              <option value="total">{t("toplam, eşit dağıt", "total, split evenly")}</option>
+            </select>
+          </div>
+        </div>
+        <div className="sm:col-span-2">
+          <span className="mb-0.5 flex items-center gap-1 text-[10px] text-neutral-500 dark:text-neutral-400">
+            {t("Boyutlar ve fiyatları", "Sizes and prices")}
+            <HelpTip>
+              {t(
+                "Boyuta göre fiyat verirsen her boyut kendi fiyatıyla açılır; yalnızca tek fiyat varsa yukarıdaki Fiyat kutusunu kullan. Boyutları hem cm hem inç yazabilirsin (ör. 140 x 49 cm (55 x 19 in)).",
+                "If you set a price per size each size gets its own price; with a single price use the Price box above. You can write sizes in both cm and inches (e.g. 140 x 49 cm (55 x 19 in)).",
+              )}
+            </HelpTip>
+          </span>
+          <ul className="space-y-1">
+            {(spec.sizes ?? []).map((z, n) => (
+              <li key={n} className="flex gap-1">
+                <input
+                  value={z.label}
+                  maxLength={60}
+                  placeholder={t("Boyut (ör. L - 50 cm)", "Size (e.g. L - 50 cm)")}
+                  onChange={(e) => onChange({ sizes: (spec.sizes ?? []).map((x, i) => (i === n ? { ...x, label: e.target.value } : x)) })}
+                  className={field}
+                />
+                <MoneyField value={z.price} onChange={(v) => onChange({ sizes: (spec.sizes ?? []).map((x, i) => (i === n ? { ...x, price: v } : x)) })} className={`${field} !w-24`} />
+                <button type="button" aria-label={t("Boyutu kaldır", "Remove size")} onClick={() => onChange({ sizes: (spec.sizes ?? []).filter((_, i) => i !== n) })} className="rounded-lg px-2 text-neutral-500 hover:text-red-600 dark:text-neutral-400">
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+          <button type="button" onClick={() => onChange({ sizes: [...(spec.sizes ?? []), { label: "", price: null }] })} className="mt-1 text-[11px] font-medium text-[#D97757] hover:underline">
+            {t("+ Boyut ekle", "+ Add size")}
+          </button>
+        </div>
+        <div className="sm:col-span-2">
+          <span className="mb-0.5 block text-[10px] text-neutral-500 dark:text-neutral-400">{t("Renkler", "Colors")}</span>
+          <ColorsField colors={spec.colors ?? []} onChange={(v) => onChange({ colors: v })} />
+        </div>
         {item.files.length > 0 && (
           <p className="truncate text-[11px] text-neutral-600 sm:col-span-2 dark:text-neutral-300" title={item.files.join(", ")}>
             📎 {item.files.join(", ")}
