@@ -25,14 +25,20 @@ def text_model(task: str) -> ResolvedModel:
         raise VisionError(str(exc)) from exc
 
 
-def ask_text(model: ResolvedModel, prompt: str, max_tokens: int = 120, task: str = "vision") -> str:
-    """Tek mesajlık kısa metin çağrısı (kategori seçici, kelime fikirleri); sağlayıcıdan bağımsız, ölçülür. Hata = VisionError."""
+def ask_text(model: ResolvedModel, prompt: str, max_tokens: int = 120, task: str = "vision", images: list[tuple[bytes, str]] | None = None) -> str:
+    """Tek mesajlık kısa çağrı (kategori seçici, kelime fikirleri, tasarım okuma); `images`: [(bayt, içerik türü)] verilirse model onlara bakar. Sağlayıcıdan bağımsız, ölçülür. Hata = VisionError."""
+    blobs = []
+    for data, ctype in (images or [])[:3]:
+        d, c = for_llm(data, ctype)
+        blobs.append((c, base64.b64encode(d).decode()))
     try:
         if model.provider == "anthropic":
-            resp = get_anthropic_client().messages.create(model=model.model_id, max_tokens=max_tokens, messages=[{"role": "user", "content": prompt}])
+            content = [{"type": "image", "source": {"type": "base64", "media_type": m, "data": d}} for m, d in blobs] + [{"type": "text", "text": prompt}] if blobs else prompt
+            resp = get_anthropic_client().messages.create(model=model.model_id, max_tokens=max_tokens, messages=[{"role": "user", "content": content}])
             raw = "".join(b.text for b in resp.content if b.type == "text")
         else:
-            resp = get_openai_client().chat.completions.create(model=model.model_id, messages=[{"role": "user", "content": prompt}], **openai_limits(model.model_id, max_tokens))
+            content = [{"type": "text", "text": prompt}] + [{"type": "image_url", "image_url": {"url": f"data:{m};base64,{d}"}} for m, d in blobs] if blobs else prompt
+            resp = get_openai_client().chat.completions.create(model=model.model_id, messages=[{"role": "user", "content": content}], **openai_limits(model.model_id, max_tokens))
             raw = resp.choices[0].message.content or ""
         metering.record_response(task, model, resp)
         return raw

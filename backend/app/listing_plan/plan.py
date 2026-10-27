@@ -85,13 +85,15 @@ _QUESTION_NOISE = {"how", "what", "why", "when", "where", "which", "who", "can",
                    "that", "come", "comes", "with", "there", "have", "has", "get", "long", "much", "many", "need", "buy", "good", "best", "work", "works", "make", "made"}
 
 
-def unanswered(qs: list[dict], facts: Facts, limit: int = 2) -> list[dict]:
+def unanswered(qs: list[dict], facts: Facts, limit: int = 1) -> list[dict]:
     """Cevabı bilinmeyen sorular: sorunun içerik kelimeleri (ürün adı ve soru sözcükleri hariç) kullanıcının sözlerinde/olgularda hiç geçmiyorsa cevap
     bilinmiyor demektir ("do these come with a case?": "case" hiçbir yerde yok). Talebi yüksek olandan başlayarak en fazla `limit` soru."""
     known = facts.known_words | set(words(facts.claim_text))
     rank = {"high": 0, "medium": 1, "low": 2, None: 3}
     out = []
     for q in sorted(qs, key=lambda q: rank.get(q.get("demand"), 3)):
+        if q.get("demand") != "high":  # kart gürültüsü: yalnızca alıcıların çok sorduğu bilinmeyen soru sorulur (oturum 57: 'Does it keep drinks hot?' gibi gereksiz sorular)
+            continue
         content = {w for w in words(q["q"]) if len(w) > 2 and w not in _QUESTION_NOISE and w not in facts.item_words}
         if content and not content & known:
             out.append(q)

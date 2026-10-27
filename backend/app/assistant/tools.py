@@ -1243,6 +1243,53 @@ _BASIC_COLORS = {"black", "white", "grey", "gray", "gold", "silver", "brown", "r
 _PRODUCT_WORDS = {"metal", "wall", "art", "decor", "decoration", "sign", "panel", "hanging", "steel", "custom", "modern", "home", "piece", "the", "and", "for", "with", "sculpture", "design"}
 
 
+_DESIGN_GENERIC = {"line", "lines", "pattern", "motif", "style", "shape", "shapes", "abstract", "modern", "artwork", "minimalist", "geometric", "organic", "continuous", "theme", "themed", "silhouette"}  # tek başına tasarımı ayırt etmez
+
+
+def _session_photos(ctx: Ctx) -> tuple[list[tuple[bytes, str]], tuple]:
+    """Sohbetteki son resimli kullanıcı mesajının resimleri (en çok 2) ve önbellek anahtarı; ([], ()) resim yoksa."""
+    if ctx.session_id is None:
+        return [], ()
+    from app.assistant import service
+    from app.assistant.models import ChatMessage
+    from app.core import blobstore
+
+    rows = ctx.db.scalars(select(ChatMessage.image_ids_json).where(ChatMessage.session_id == ctx.session_id, ChatMessage.role == "user").order_by(ChatMessage.id.desc()).limit(6)).all()
+    for raw in rows:
+        ids = [i for i in json.loads(raw or "[]")][:2]
+        photos, used = [], []
+        for iid in ids:
+            img = service.get_image(ctx.db, ctx.shop, iid)
+            if img is not None and img.path and img.content_type in service.IMAGE_TYPES:
+                try:
+                    photos.append((blobstore.read(img.path), img.content_type))
+                    used.append(iid)
+                except Exception:  # noqa: BLE001 - dosya okunamazsa o resim atlanır
+                    continue
+        if photos:
+            return photos, tuple(used)
+    return [], ()
+
+
+def _design_mismatch(ctx: Ctx, design: str) -> str | None:
+    """Modelin yazdığı `design`, görsel modelin resimde gördüğüyle (ai/design_reader.py) hiç örtüşmüyorsa düzeltme metni; örtüşüyorsa ya da okuma yoksa None."""
+    from app.ai import design_reader
+
+    photos, key = _session_photos(ctx)
+    if not photos:
+        return None
+    reading = design_reader.read(photos, key)
+    if not reading:
+        return None
+    skip = _PRODUCT_WORDS | _DESIGN_GENERIC
+    seen = {w for w in re.findall(r"[a-z]+", f"{reading['design']} {reading['product']}".lower()) if len(w) > 3 and w not in skip}
+    wrote = {w for w in re.findall(r"[a-z]+", design.lower()) if len(w) > 3 and w not in skip}
+    if not seen or any(a[:5] == b[:5] for a in seen for b in wrote):
+        return None
+    return (f"design alanı resimde görünenle uyuşmuyor: görsel model resimde '{reading['design']}' (ürün: {reading['product']}) görüyor, sen '{design}' yazdın. "
+            "design'ı resimde GÖRÜNENE göre yeniden yaz, 3 başlık önerisini de o motifle kur ve kartı yeniden çağır.")
+
+
 def _title_option_problems(options: list[str], said: str, design: str) -> list[str]:
     """Başlık önerileri (brief_check): ürünün GÖRÜNEN tasarımını taşımalı; birden çok ölçü/renk seçeneği varken tek ölçü/renk yazılmaz; söylenmemiş özgül malzeme yazılmaz."""
     problems: list[str] = []
@@ -1326,6 +1373,9 @@ def brief_check(ctx: Ctx, a: dict) -> dict:
             design = " ".join(str(a.get("design") or "").split())
             if not design:
                 return {"error": "Başlık sorusu için design alanı ŞART: ürünün resimde GÖRÜNEN tasarımını 3-8 İngilizce kelimeyle yaz (desen/form/motif) ve başlık önerilerini ona göre kur; sonra kartı yeniden çağır."}
+            seen = _design_mismatch(ctx, design)
+            if seen:
+                return {"error": seen}
             weak = _title_option_problems(item["options"], said, design)
             if weak:
                 return {"error": "Başlık önerileri zayıf: " + "; ".join(weak[:4]) + ". Her öneri: planın açılışıyla başla ve nesneyi temasıyla birlikte anlat (ör. 'flower themed mug', 'tulip motif carafe'): ürünün GÖRÜNEN tasarımını (design) ve ortak malzemeyi söyle; birden çok ölçü/renk varsa onları yazma; üç öneri farklı tasarım/kullanım açısı öne çıkarsın. Kartı yeniden çağır."}

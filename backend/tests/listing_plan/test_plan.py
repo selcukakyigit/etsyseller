@@ -248,7 +248,7 @@ def test_when_the_pool_has_no_questions_the_ai_is_asked_for_them(monkeypatch):
     monkeypatch.setattr(plan.sources, "queue_measurement", lambda shop, phrases: 0)
     sun = facts_mod.from_listing("square sunglasses", "", [], [], {}, product="square sunglasses", extra="kare gözlük", said="kare gözlük")
     p = plan.build([P("retro sunglasses", google_volume=900)] * 1 + [P(f"square sunglasses {i}", google_volume=900) for i in range(25)], sun, key="k", research=([], [], 0), shop=object())
-    assert seen["want_questions"] is True and [q["q"] for q in p.ask] == ["do these come with a case"]
+    assert seen["want_questions"] is True and p.ask == [], "talep ölçümü olmayan (yapay zekâ tahmini) soru kartta sorulmaz: kart gürültüsü"
 
 
 def test_outdoor_use_phrases_need_the_user_to_have_said_so():

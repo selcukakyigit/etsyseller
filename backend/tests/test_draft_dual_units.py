@@ -262,3 +262,42 @@ def test_updating_variations_keeps_the_stock_of_matching_combinations(db, monkey
         {"name": "Size", "values": [{"value": 'Small (22")', "price": 119}, {"value": 'Large (41")', "price": 159}]}, {"name": "Color", "values": [{"value": c} for c in ("Black", "White", "Grey", "Gold")]}]})
     assert upd.get("ok"), upd
     assert stocks() == before, "fiyat/inç eklenince stok dağılımı ve toplam (30) korunur"
+
+
+def test_the_design_the_model_wrote_is_checked_against_what_the_vision_model_sees(monkeypatch):
+    from app.ai import design_reader
+
+    ctx = tools.Ctx(db=None, shop=None, user_id=1, today=None)
+    monkeypatch.setattr(tools, "_session_photos", lambda c: ([(b"x", "image/png")], ("img1",)))
+    monkeypatch.setattr(design_reader, "read", lambda photos, key: {"product": "metal wall art panel", "design": "organic interconnected bubble cells line art"})
+    bad = tools._design_mismatch(ctx, "industrial silhouette geometric line art")
+    assert bad and "bubble cells" in bad and "industrial silhouette" in bad, "resimdeki motifle uyuşmuyor: görsel modelin okuması modele söylenir"
+    assert tools._design_mismatch(ctx, "interconnected bubble cells in continuous line") is None, "örtüşüyor"
+    monkeypatch.setattr(design_reader, "read", lambda photos, key: None)
+    assert tools._design_mismatch(ctx, "anything at all") is None, "okuma yoksa denetim atlanır"
+    monkeypatch.setattr(tools, "_session_photos", lambda c: ([], ()))
+    assert tools._design_mismatch(ctx, "anything at all") is None, "resim yoksa denetim atlanır"
+
+
+def test_the_vision_reading_is_cached_per_image_and_fails_quietly(monkeypatch):
+    from app.ai import design_reader
+
+    calls = []
+    monkeypatch.setattr(design_reader, "text_model", lambda task: object())
+    monkeypatch.setattr(design_reader, "ask_text", lambda model, prompt, max_tokens=120, task="vision", images=None: calls.append(1) or '{"product": "metal wall art", "design": "bubble cells line art"}')
+    design_reader._CACHE.clear()
+    assert design_reader.read([(b"x", "image/png")], ("a",)) == {"product": "metal wall art", "design": "bubble cells line art"}
+    design_reader.read([(b"x", "image/png")], ("a",))
+    assert len(calls) == 1, "aynı resim için tek çağrı"
+    monkeypatch.setattr(design_reader, "ask_text", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("model yok")))
+    assert design_reader.read([(b"y", "image/png")], ("b",)) is None
+
+
+def test_only_one_high_demand_unanswered_question_reaches_the_card():
+    from app.listing_plan import facts as facts_mod
+    from app.listing_plan.plan import unanswered
+
+    card = facts_mod.from_listing("Gym water bottle", "750 ml stainless", product="gym water bottle", said="750ml matte")
+    qs = [{"q": "does it keep drinks hot", "demand": "medium"}, {"q": "do these come with a case", "demand": "high"}, {"q": "is there a warranty", "demand": "high"}, {"q": "is it dishwasher safe", "demand": "low"}]
+    asked = unanswered(qs, card)
+    assert [q["q"] for q in asked] == ["do these come with a case"], "en çok 1 ve yalnızca talebi yüksek olan"
