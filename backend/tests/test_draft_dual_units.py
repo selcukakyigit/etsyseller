@@ -212,3 +212,53 @@ def test_the_selected_title_wins_personalization_needs_the_users_word_and_junk_i
     from app.listings import drafts
     work = _json.loads(drafts._local_row(db, shop, out["listing_id"]).data_json)
     assert work["title"] == options[1], "kullanıcının seçtiği başlık, modelin yazdığı değil"
+
+
+def test_free_form_questions_get_model_suggested_buttons_and_open_questions_do_not(monkeypatch):
+    from app.ai import choices
+
+    monkeypatch.setattr(choices, "text_model", lambda task: object())
+    answers = {"fmt": '{"options": ["Parantez içinde", "Ondalıklı"]}', "num": '{"options": []}', "long": '{"options": ["' + "x" * 60 + '", "b"]}', "bad": "not json"}
+    state = {"key": "fmt"}
+    monkeypatch.setattr(choices, "ask_text", lambda model, prompt, max_tokens=120, task="vision": answers[state["key"]])
+    q = "İnçleri nasıl ekleyeyim: yuvarlanmış parantez içinde mı yoksa ondalıklı mı?"
+    assert choices.suggest(q) == ["Parantez içinde", "Ondalıklı"]
+    for key in ("num", "long", "bad"):
+        state["key"] = key
+        assert choices.suggest(q) == [], key
+    assert choices.suggest("Taslak hazır.") == [], "soru işareti yoksa model çağrılmaz"
+    monkeypatch.setattr(choices, "text_model", lambda task: (_ for _ in ()).throw(RuntimeError("anahtar yok")))
+    assert choices.suggest(q) == [], "model yoksa düğmesiz devam"
+
+    state["key"] = "fmt"
+    monkeypatch.setattr(choices, "text_model", lambda task: object())
+    ctx = tools.Ctx(db=None, shop=None, user_id=1, today=None)
+    tools.auto_yes_no(ctx, q)
+    assert ctx.cards and ctx.cards[0]["options"] == ["Parantez içinde", "Ondalıklı"], "serbest cümleli soru düğme olur"
+    ctx2 = tools.Ctx(db=None, shop=None, user_id=1, today=None, cards=[{"type": "choices", "kind": "question", "options": ["A", "B"], "question": "Q"}])
+    tools.auto_yes_no(ctx2, q)
+    assert ctx2.cards[0]["options"] == ["A", "B"] and len(ctx2.cards) == 1, "modelin kendi kartına dokunulmaz"
+
+
+def test_updating_variations_keeps_the_stock_of_matching_combinations(db, monkeypatch):
+    shop = Shop(user_id=1, workspace_id=1, etsy_shop_id=1009, etsy_user_id=7, shop_name="S9")
+    db.add(shop); db.commit()
+    monkeypatch.setattr(tools, "_autofill_in_work", lambda *a, **k: ([], []))
+    monkeypatch.setattr(tools, "_category_defs", lambda tid: [])
+    ctx = tools.Ctx(db=db, shop=shop, user_id=5, today=None, message="sormadan oluştur", cards=[])
+    out = tools.create_listing_draft(ctx, {
+        "title": "Bubble Line Art Metal Wall Decor Panel", "product": "metal wall decor", "taxonomy_id": 1029, "price": 100, "total_quantity": 30,
+        "description": "Bubble line art metal wall panel.\n\nDETAILS\n• Sizes: Small; Large\n• Colors: Black; White; Grey; Gold",
+        "variations": [{"name": "Size", "values": [{"value": "Small"}, {"value": "Large"}]}, {"name": "Color", "values": [{"value": c} for c in ("Black", "White", "Grey", "Gold")]}]})
+    from app.listings import drafts
+
+    def stocks():
+        inv = json.loads(drafts._local_row(db, shop, out["listing_id"]).data_json)["inventory"]
+        return [o["quantity"] for p in inv["products"] for o in p["offerings"]]
+
+    before = stocks()
+    assert sum(before) == 30 and len(set(before)) > 1, before
+    upd = tools.update_listing(ctx, {"listing_id": out["listing_id"], "set_variations": [
+        {"name": "Size", "values": [{"value": 'Small (22")', "price": 119}, {"value": 'Large (41")', "price": 159}]}, {"name": "Color", "values": [{"value": c} for c in ("Black", "White", "Grey", "Gold")]}]})
+    assert upd.get("ok"), upd
+    assert stocks() == before, "fiyat/inç eklenince stok dağılımı ve toplam (30) korunur"

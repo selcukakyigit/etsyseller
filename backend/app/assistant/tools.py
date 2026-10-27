@@ -1444,8 +1444,14 @@ def reply_options(reply: str) -> list[str]:
 def auto_yes_no(ctx: Ctx, reply: str) -> None:
     """Model soruyu düz metin olarak sordu ("... (Evet / Hayır)", 'Seçenekler: "A", "B"') ve kart sunmadıysa seçenekleri düğme yapar; sistemin kendi ürettiği genel "Sıradaki adım?"
     düğmeleri varsa (modelin yazdığı seçeneklerle alakasız) onların yerine geçer. Kullanıcı "evet" yazmak zorunda kalmasın."""
+    if any(c.get("type") == "brief" for c in ctx.cards):
+        return
     options = reply_options(reply)
-    if not options or any(c.get("type") == "brief" for c in ctx.cards):
+    if not options and (reply or "").rstrip().endswith("?") and len(reply) <= 900 and not any(c.get("type") == "choices" and not c.get("auto") for c in ctx.cards):
+        from app.ai import choices  # serbest cümleli soru ("A mı yoksa B mi?"): küçük model 2-4 seçenek çıkarır, çıkaramazsa düğme yok
+
+        options = choices.suggest(reply)
+    if not options:
         return
     existing = [c for c in ctx.cards if c.get("type") == "choices"]
     if existing and not all(c.get("auto") for c in existing):
@@ -1720,6 +1726,11 @@ def _standardize(work: dict) -> list[str]:
         return []
 
 
+def _option_key(product: dict) -> frozenset:
+    """Kombinasyonun seçenek anahtarı: değerler küçük harf, parantez içi (inç karşılığı) ve noktalama atılmış ('56 cm (22")' = '56 cm')."""
+    return frozenset(re.sub(r"[^a-z0-9]+", "", re.sub(r"[(][^)]*[)]", "", str(v).lower())) for pv in product.get("property_values", []) for v in pv.get("values", []))
+
+
 def _update_variations(ctx: Ctx, lid: int, work: dict, ch: dict, a: dict, variations: list[dict]) -> dict:
     """Aynı listing'in (yerel taslak ya da Etsy'deki listing) varyasyonlarını baştan kurar; YENİ taslak açmaz.
     Fiyat verilmediyse mevcut en düşük fiyat, stok ve işlem profili mevcut listing'den korunur."""
@@ -1738,11 +1749,18 @@ def _update_variations(ctx: Ctx, lid: int, work: dict, ch: dict, a: dict, variat
     first = offers[0] if offers else {}
     price = float(a["set_price"]) if a.get("set_price") is not None else min((o["price"]["amount"] / o["price"]["divisor"] for o in offers), default=0.0)
     quantity = max(1, int(a.get("quantity") or first.get("quantity") or 1))
+    old_stock = {_option_key(p): p["offerings"][0].get("quantity") for p in work["inventory"]["products"] if p.get("offerings")}  # kombinasyon başına eski stok
     wanted, _unit_assumed = _normalize_sizes(ctx, [v for v in variations if len(v.get("values") or []) > 1])
     err = _build_inventory(work, price, quantity, wanted)
     if err:
         return {"error": err}
     inv = work["inventory"]
+    if not a.get("quantity"):  # kullanıcı stok değiştirmek istemedi: aynı kombinasyonların stoğu (seçenek eşleşmesiyle) korunur; yoksa ilk kombinasyonun adedi herkese yazılır ve toplam bozulurdu
+        for p in inv["products"]:
+            kept = old_stock.get(_option_key(p))
+            if kept:
+                p["offerings"][0]["quantity"] = int(kept)
+        inventory_edit.recompute_dependencies(work)
     inv["readiness_state_on_property"] = []  # stok/SKU bağımlılıkları _build_inventory'de verilerden kuruldu
     if first.get("readiness_state_id"):  # Etsy fiziksel ürünlerde her teklifte işlem profili ister
         for p in inv["products"]:
