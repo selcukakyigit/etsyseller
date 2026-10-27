@@ -668,6 +668,35 @@ def _keeps_established_category(ctx: Ctx, current: int | None, picked: int, text
     return counts.get(current, 0) >= ESTABLISHED_CATEGORY_LISTINGS and counts.get(picked, 0) == 0
 
 
+SHORT_DESCRIPTION_WORDS = 60  # ürüne özel kısım bundan kısaysa editördeki AI önerisi motoruyla zenginleştirilir
+
+
+def _enrich_description(ctx: Ctx, a: dict, title: str, tags: list[str], variations: dict[str, list[str]], source: str, plan, others: list[dict]) -> dict:
+    """Model açıklamayı çok kısa yazdıysa (oturum 59: 33 kelime) editördeki "AI Önerisi Üret" motoru (`seo.generate_seo_suggestion`: kelime planı, biçim ve uydurma denetimi, yeniden deneme)
+    yalnızca AÇIKLAMA için çalışır; sonuç daha uzun ve denetimde daha az sorunluysa kullanılır. Toplu işte (kendi akışı var), dijitalde ve hata durumunda açıklama aynen kalır. Başlık/etiketlere dokunmaz."""
+    description = str(a.get("description") or "")
+    if ctx.unattended or a.get("listing_type") == "download" or len(re.findall(r"\w+", description)) >= SHORT_DESCRIPTION_WORDS:
+        return a
+    from app.ai import seo
+
+    try:
+        listing = {"title": title, "tags": tags, "description": description, "materials": [str(m) for m in a.get("materials") or []]}
+        suggestion = seo.generate_seo_suggestion(
+            listing, plan=plan, others=others, variations=variations, fact_source={"title": source, "description": source, "materials": listing["materials"]},
+            diagnosis_brief="Yeni listing taslağı: ürüne özel açıklama çok kısa. Yalnızca verilen olgularla (varyasyonlar, malzeme, kişiselleştirme, kullanıcının sözleri) ve fotoğrafta görünenle zenginleştir; olmayan bilgiyi uydurma.",
+        )
+    except Exception:  # noqa: BLE001 - model/anahtar yoksa ya da üretilemezse model açıklaması aynen kalır
+        log.warning("Açıklama zenginleştirilemedi", exc_info=True)
+        return a
+    better = str(suggestion.get("description") or "").strip()
+    flag = a.get("listing_type") == "download", bool(a.get("personalizable"))
+    now = audit.generation_problems(title, tags, description, others, source, variations, *flag)
+    after = audit.generation_problems(title, tags, better, others, source, variations, *flag)
+    if better and len(re.findall(r"\w+", better)) > len(re.findall(r"\w+", description)) and len(after) <= len(now):
+        return {**a, "description": better, "aciklama_zenginlestirildi": True}
+    return a
+
+
 def _refine_to_used_descendant(ctx: Ctx, current: int | None, title: str) -> tuple[int, str] | None:
     """Seçilen kategorinin ALTINDA, mağazanın en az ESTABLISHED_CATEGORY_LISTINGS listing'iyle kullandığı ve yaprak adı başlıkta aynen geçen bir kategori varsa (ör. "Signs" ↔ "garage sign")
     ona inilir: daha özgül ve mağaza düzenine uygun. Eşleşme yoksa ya da veri alınamazsa None."""
@@ -984,6 +1013,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     if plan is not None:  # etiketleri model değil plan yerleştirir; modelinkiler yalnızca plan 13'e ulaşamazsa tamamlar
         tags_checked = plan_mod.place_tags(plan, tags_checked)
         a = {**a, "tags": tags_checked}
+    a = _enrich_description(ctx, a, title, tags_checked, draft_variations, source, plan, others)
     problems_pre = audit.generation_problems(title, tags_checked, str(a.get("description") or ""), others, source, draft_variations, a.get("listing_type") == "download", bool(a.get("personalizable")), materials=[str(m) for m in a.get("materials") or []])
     if ctx.unattended and plan is not None:  # toplu iş: başlığı seçen kullanıcı ya da brief_check yok; başlık planın (havuz verisinden seçilen) açılışlarından biriyle başlamalı
         free = _draft_plan(ctx, a, title, tags_checked, draft_variations, source, free_title=True)
@@ -1170,6 +1200,8 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
             videos_attached += 1
     completion["eklenen_video"] = videos_attached
     completion["standart_varyasyona_cevrilen"] = _standardize(work)
+    if a.get("aciklama_zenginlestirildi"):
+        completion["aciklama_notu"] = "Açıklama kısa kaldığı için editördeki AI önerisi motoruyla zenginleştirildi; özette tek cümleyle söyle, yeniden yazmaya çalışma."
     if personal_dropped:
         completion["kisisellestirme_kaldirildi"] = "Kullanıcı kişiselleştirmeden söz etmedi; kişiselleştirme eklenmedi (ürün kişiselleştirilebilirse kullanıcı söyleyecek)."
     if title_fixes:

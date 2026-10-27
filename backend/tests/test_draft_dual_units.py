@@ -346,3 +346,25 @@ def test_turkish_material_words_count_as_stated_and_the_server_adds_missing_opti
     assert quality.add_missing_facts(complete, variations, ["aluminum"]) == complete, "zaten sayılmışsa dokunulmaz"
     assert quality.neutralize_method_claims("Laser-cut from 2mm aluminum, handmade finish.", said) == "cut from 2mm aluminum, made finish."
     assert quality.neutralize_method_claims("Laser-cut from 2mm aluminum.", "lazer kesim 2mm") == "Laser-cut from 2mm aluminum.", "kullanıcı söylediyse dokunulmaz"
+
+
+def test_a_short_description_is_enriched_with_the_editor_engine_only_when_it_helps(db, monkeypatch):
+    from app.ai import seo
+
+    shop = Shop(user_id=1, workspace_id=1, etsy_shop_id=1012, etsy_user_id=7, shop_name="S12")
+    db.add(shop); db.commit()
+    ctx = tools.Ctx(db=db, shop=shop, user_id=5, today=None, message="sormadan")
+    calls = []
+    rich = "Vintage badge style aluminum garage sign with three personalizable lines.\n\nDETAILS\n• Material: aluminum\n• Sizes: L, M, S\n• Colors: Black, White, Grey, Gold\n• Each line holds up to 25 characters " + "word " * 40
+    monkeypatch.setattr(seo, "generate_seo_suggestion", lambda listing, **kw: calls.append(kw) or {"description": rich})
+    short = {"description": "Vintage badge style garage sign. Available in three sizes."}
+    out = tools._enrich_description(ctx, short, "Garage Sign Vintage Badge", ["garage sign"], {"Size": ["L", "M", "S"]}, "garage sign 2mm", None, [])
+    assert out["description"] == rich.strip() and out.get("aciklama_zenginlestirildi") and calls, "kısa açıklama motorla zenginleşir"
+    long_enough = {"description": "word " * 70}
+    assert tools._enrich_description(ctx, long_enough, "T", [], {}, "", None, []) is long_enough and len(calls) == 1, "yeterince uzunsa çağrılmaz"
+    unattended = tools.Ctx(db=db, shop=shop, user_id=5, today=None, unattended=True)
+    assert tools._enrich_description(unattended, short, "T", [], {}, "", None, []) is short, "toplu işte çalışmaz"
+    monkeypatch.setattr(seo, "generate_seo_suggestion", lambda listing, **kw: (_ for _ in ()).throw(RuntimeError("model yok")))
+    assert tools._enrich_description(ctx, short, "T", [], {}, "", None, []) is short, "hata olursa açıklama aynen kalır"
+    monkeypatch.setattr(seo, "generate_seo_suggestion", lambda listing, **kw: {"description": "Short."})
+    assert tools._enrich_description(ctx, short, "T", [], {}, "", None, []) is short, "daha kısaysa kullanılmaz"
