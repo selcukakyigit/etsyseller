@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 import { api, PublishField, PublishIssue } from "@/lib/api";
 import { tNow } from "@/lib/i18n";
+import { publishedId } from "@/lib/publishId";
 
 /**
  * Arka planda süren "Etsy'de yayınla" işleri. Modül düzeyinde durduğu için kullanıcı sayfa değiştirse de (uygulama
@@ -81,26 +82,30 @@ async function run(shopId: number, listingId: number, queuedAt: number, force: b
   const startedAt = Date.now();
   setJob(listingId, { phase: "running", queuedAt, startedAt });
   let outcome: PublishOutcome;
+  let jobId = listingId;
   try {
     const r = await api.listings.publishLocal(shopId, listingId, force);
+    // Yeni listing Etsy'de oluştuysa kart artık gerçek kimlikte: ilerleme/hata/bitti durumu oraya taşınır (eski kimlikte kalırsa kart kaybolur, hata görünmez).
+    jobId = publishedId(listingId, r);
+    if (jobId !== listingId) setJob(listingId, null);
     if (r.conflicts && r.conflicts.length > 0) {
       const error = tNow(
         `Etsy'de sonradan değişmiş alanlar var (${r.conflicts.map((c) => c.label).join(", ")}); hiçbir şey yazılmadı. Düzenleyiciden açıp çöz.`,
         `Some fields changed on Etsy in the meantime (${r.conflicts.map((c) => c.label).join(", ")}); nothing was written. Open the editor to resolve it.`,
       );
-      setJob(listingId, { phase: "error", queuedAt, startedAt, conflicts: r.conflicts, error });
+      setJob(jobId, { phase: "error", queuedAt, startedAt, conflicts: r.conflicts, error });
       outcome = { ok: false, error };
     } else if (!r.ok) {
       // Başarısız adımın hatası genelde r.error ile aynıdır: tekrar etmeden, adım adıyla birlikte tek kez gösterilir.
       const main = r.error ?? tNow("Yayın tamamlanamadı", "Publishing did not finish");
       const failed = r.steps.filter((st) => !st.ok && st.error !== main).map((st) => `${st.name}${st.error ? `: ${st.error}` : ""}`);
       const error = [main, ...failed].join(" — ");
-      setJob(listingId, { phase: "error", queuedAt, startedAt, error, field: r.field ?? undefined, issues: r.issues, detail: r.detail || undefined });
+      setJob(jobId, { phase: "error", queuedAt, startedAt, error, field: r.field ?? undefined, issues: r.issues, detail: r.detail || undefined });
       outcome = { ok: false, error };
     } else {
       const warnings = r.warnings ?? [];
-      setJob(listingId, { phase: "done", queuedAt, startedAt, warnings });
-      if (warnings.length === 0) setTimeout(() => dismissPublishJob(listingId), 1500);
+      setJob(jobId, { phase: "done", queuedAt, startedAt, warnings });
+      if (warnings.length === 0) setTimeout(() => dismissPublishJob(jobId), 1500);
       outcome = { ok: true, warnings, updated: r.steps.filter((st) => st.changed).map((st) => st.name) };
     }
   } catch (e) {
@@ -108,6 +113,6 @@ async function run(shopId: number, listingId: number, queuedAt: number, force: b
     setJob(listingId, { phase: "error", queuedAt, startedAt, error });
     outcome = { ok: false, error };
   }
-  finished.forEach((cb) => cb(listingId, outcome.ok));
+  finished.forEach((cb) => cb(jobId, outcome.ok));
   return outcome;
 }

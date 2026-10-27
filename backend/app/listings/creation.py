@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.i18n import tr
 from app.etsy.client import EtsyClient
 from app.listings import bulk, digital, drafts, etsy_rules, image_cache, service
 from app.listings.models import DraftFile, ListingCache, ListingLocal
@@ -153,7 +154,7 @@ def edit_from_local(db: Session, shop: Shop, listing_id: int):
 
     local = drafts._local_row(db, shop, listing_id)
     if local is None:
-        raise ValueError("Yeni listing bulunamadı.")
+        raise ValueError(tr("Bu yerel taslak artık yok: Etsy'ye yayınlanmış olabilir (Listing'ler sayfasında 'Taslak' durumunda görünür) ya da silinmiş olabilir.", "This local draft no longer exists: it may have been published to Etsy (it shows as a 'Draft' on the Listings page) or deleted."))
     work = json.loads(local.data_json)
     return ListingEditOut(**{k: work[k] for k in ListingEditOut.model_fields if k in work})
 
@@ -204,7 +205,7 @@ def _price(o: dict) -> float:
 def publish_new(db: Session, shop: Shop, user_id: int, temp_id: int, force: bool = False) -> dict:
     local = drafts._local_row(db, shop, temp_id)
     if local is None:
-        return {"ok": False, "steps": [], "error": "Yeni listing bulunamadı.", "edit": None, "conflicts": [], "warnings": []}
+        return {"ok": False, "steps": [], "error": tr("Bu yerel taslak artık yok: Etsy'ye yayınlanmış olabilir (Listing'ler sayfasında 'Taslak' durumunda görünür) ya da silinmiş olabilir.", "This local draft no longer exists: it may have been published to Etsy (it shows as a 'Draft' on the Listings page) or deleted."), "edit": None, "conflicts": [], "warnings": []}
     work: dict = json.loads(local.data_json)
     activate = work.get("state") == "active"
 
