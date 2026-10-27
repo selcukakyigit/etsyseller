@@ -453,13 +453,14 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
 
     last_notes = next((m.tool_notes for m in recent if m.role == "assistant"), None)
     mode = _pick_mode(message, current, last_notes)
+    phase = "create" if mode == "listing" and tools.creation_phase(message, any(i.content_type in IMAGE_TYPES for i in current), [json.loads(m.cards_json or "[]") for m in recent if m.role == "assistant"][:12]) else None
     groups = tools.listing_groups(message, last_notes, chr(10).join(m.content for m in recent[:6] if m.role == "user")) if mode == "listing" else frozenset()
     ctx.separate_products = "batch" in groups
     try:
         result = llm.run_agent(
             model, prompt.static_rules(mode, groups), dynamic, history, _with_attachments(message, current),
             [{"path": i.path, "content_type": i.content_type} for i in current if i.content_type in IMAGE_TYPES][:MODEL_IMAGES_PER_MESSAGE],
-            tools.tools_for(mode, groups), run_tool,
+            tools.tools_for(mode, groups, phase), run_tool,
         )
     except llm.AssistantError:
         db.delete(user_msg)  # başarısız istek geçmişe yazılmasın
@@ -476,7 +477,7 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
             result = llm.run_agent(
                 model, prompt.static_rules(mode, groups), dynamic, history, _with_attachments(message, current) + _STALL_NOTE + (f"\n[Son araç hatası, bunu düzelt: {last_error[0]}]" if failed and last_error else ""),
                 [{"path": i.path, "content_type": i.content_type} for i in current if i.content_type in IMAGE_TYPES][:MODEL_IMAGES_PER_MESSAGE],
-                tools.tools_for(mode, groups), run_tool,
+                tools.tools_for(mode, groups, phase), run_tool,
             )
         except llm.AssistantError:
             db.delete(user_msg)
