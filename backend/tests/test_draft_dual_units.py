@@ -176,3 +176,39 @@ def test_only_one_brief_card_per_listing_an_answered_card_is_not_followed_by_ano
     db.add(ChatMessage(session_id=session.id, role="assistant", content="taslak", cards_json=_json.dumps([{"type": "listing_draft"}])))
     db.commit()
     assert tools.brief_check(ctx(), card).get("ok"), "yeni bir listing için yeni kart serbest"
+
+
+def test_a_wall_phrase_is_not_a_tag_for_a_bottle_and_wall_art_phrases_stay_valid():
+    from app.listing_plan import facts as facts_mod, fit
+
+    bottle = facts_mod.from_listing("Gym water bottle", "750 ml stainless", product="gym water bottle", said="750ml matte termos")
+    assert (fit.reason("gym wall decor", bottle) or "").startswith("başka ürün türü"), "su şişesine duvar dekoru etiketi olmaz (oturum 57)"
+    assert fit.reason("750 ml bottle", bottle) is None and fit.reason("gym water bottle", bottle) is None
+    wall = facts_mod.from_listing("Metal wall art", "metal panel", product="metal wall art", said="2mm metal duvar")
+    assert fit.reason("metal wall decor", wall) is None
+    assert (fit.reason("gold necklace", wall) or "").startswith("başka ürün türü")
+
+
+def test_the_selected_title_wins_personalization_needs_the_users_word_and_junk_is_stripped(db, monkeypatch):
+    import json as _json
+
+    from app.ai import layout
+    from app.assistant.models import ChatMessage, ChatSession
+
+    assert "answered" not in layout.normalize("Nice.\n\nDETAILS\n• Size: 40 cm\n\nQUESTIONS\n(Answered: skipped by seller)\n\nThanks.").lower()
+    shop = Shop(user_id=1, workspace_id=1, etsy_shop_id=1008, etsy_user_id=7, shop_name="S8")
+    db.add(shop); db.commit()
+    session = ChatSession(shop_id=shop.id, user_id=5, title="t")
+    db.add(session); db.commit()
+    options = ["Lotus Motif Circular Cutout Metal Wall Decor", "Lotus Mandala Hanging Metal Wall Artwork", "Abstract Lotus Cutout Metal Wall Panel"]
+    db.add(ChatMessage(session_id=session.id, role="assistant", content="kart", cards_json=_json.dumps([{"type": "brief", "questions": [{"label": "Başlık", "type": "title", "options": options}]}])))
+    db.commit()
+    monkeypatch.setattr(tools, "_autofill_in_work", lambda *a, **k: ([], []))
+    monkeypatch.setattr(tools, "_category_defs", lambda tid: [])
+    args = {"title": "Totally Different Model Title Metal Wall Decor", "product": "metal wall decor", "taxonomy_id": 1029, "price": 59, "quantity": 5, "personalizable": True,
+            "description": "Lotus cutout metal wall panel.\n\nDETAILS\n• Material: metal"}
+    out = tools.create_listing_draft(tools.Ctx(db=db, shop=shop, user_id=5, today=None, session_id=session.id, message="Toplam 20\n" + options[1] + "\nVar"), args)
+    assert out.get("listing_id") and out.get("kisisellestirme_kaldirildi"), "kişiselleştirmeden söz edilmedi: eklenmedi"
+    from app.listings import drafts
+    work = _json.loads(drafts._local_row(db, shop, out["listing_id"]).data_json)
+    assert work["title"] == options[1], "kullanıcının seçtiği başlık, modelin yazdığı değil"

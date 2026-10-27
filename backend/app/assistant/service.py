@@ -493,6 +493,7 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
         )
     reply = _guard_progress_claim(called, effective, ctx.cards, _guard_media_reply(called, ctx.cards, _guard_batch_reply(called, ctx.cards, reply)))
     tools.auto_yes_no(ctx, reply)
+    tools.ensure_listing_card(ctx, message)
     ctx.cards.sort(key=lambda c: {"listing_draft": 1, "brief": 2, "choices": 2}.get(c.get("type"), 0))  # güncel listing kartı(ları) cevabın en altında (sıra korunur)
     assistant = ChatMessage(
         session_id=session.id, role="assistant", content=reply or tr("Bir cevap üretemedim, tekrar dener misin?", "I couldn't produce an answer, could you try again?"),

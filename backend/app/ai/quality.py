@@ -422,6 +422,7 @@ def language_problems(text: str) -> list[str]:
 
 
 _SIZE_TOKEN = re.compile(r"[0-9]+(?:[.,][0-9]+)?[ ]*[x×][ ]*[0-9]+(?:[.,][0-9]+)?(?:[ ]*[x×][ ]*[0-9]+(?:[.,][0-9]+)?)?[ ]*(?:cm|mm|inches|inch|in|ft|m|\")?(?:[ ]*[(][^)]*[)])?", re.IGNORECASE)
+_SINGLE_SIZE = re.compile(r"(?<![A-Za-z0-9])[0-9]+(?:[.,][0-9]+)?[ ]*(?:cm|inches|inch|in|ft)(?![A-Za-z])", re.IGNORECASE)  # "50 cm" (2mm kalınlık sayılmaz: mm yok)
 _SEPARATORS = r"[•|–—:;,/-]"
 
 
@@ -429,8 +430,8 @@ def autofix_title(title: str, sizes_vary: bool, source_text: str | None) -> tupl
     """Başlıktaki BARİZ ve güvenle düzeltilebilir hatalar sunucuda düzeltilir (modelin düzeltmesine bırakılırsa yapmıyordu; oturum 55): birden çok ölçü seçeneği varken ölçü, kaynakta olmayan özgül
     malzeme, 14 kelimeyi aşan kuyruk. Döner: (başlık, yapılanların listesi). Sonuç çok kısalırsa özgün başlık korunur (denetim yine uyarır)."""
     fixed, notes = title, []
-    if sizes_vary and _SIZE_TOKEN.search(fixed):
-        fixed = _SIZE_TOKEN.sub(" ", fixed)
+    if sizes_vary and (_SIZE_TOKEN.search(fixed) or _SINGLE_SIZE.search(fixed)):
+        fixed = _SINGLE_SIZE.sub(" ", _SIZE_TOKEN.sub(" ", fixed))
         notes.append(tr("başlıktaki ölçüler çıkarıldı (birden çok boyut seçeneği var)", "sizes removed from the title (the listing has several sizes)"))
     src = html.unescape(source_text or "").lower()
     for w in sorted({w for w in _WORD.findall(fixed.lower()) if w in SPECIFIC_MATERIALS and not re.search(rf"\b{re.escape(w)}", src)}):

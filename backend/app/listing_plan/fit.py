@@ -32,6 +32,10 @@ DIY_QUESTION = {"engrave", "make", "diy", "paint", "build", "sew", "craft", "pri
 # Kullanım yeri iddiası: "outdoor wall art", "garden metal decor" ürünün dışarıda dayanacağını söyler; kullanıcı söylemediyse etiket/başlık olmaz (ANGLES'ta farklılık açısı olarak kalır).
 OUTDOOR = {"outdoor", "outdoors", "garden", "patio", "yard", "backyard", "lawn", "porch", "fence", "camping", "beach", "pool", "poolside", "balcony", "terrace"}
 _PIECES = re.compile(r"(?<![a-z0-9])(\d+|two|three|four|five|six)[ -]?(panels?|pieces?|pcs|sets?)(?![a-z])", re.IGNORECASE)
+# Başka ürün türünü söyleyen kelimeler: "gym wall decor" bir su şişesi için etiket olamaz. Duvar işi kelimeleri (wall, print, poster, sign…) kartta hiç duvar işi kelimesi yoksa başka ürün türü sayılır.
+OTHER_PRODUCTS = {"shirt", "tshirt", "hoodie", "sweatshirt", "necklace", "ring", "bracelet", "earrings", "candle", "blanket", "pillow", "rug", "lamp", "sticker", "tote", "wallet", "keychain", "ornament", "curtain", "vase", "planter", "coaster"}
+WALL_WORDS = {"wall", "print", "poster", "sign", "plaque", "canvas"}  # "decor" tek başına her ürüne eklenebilir, duvar işi sayılmaz
+WALL_FAMILY = WALL_WORDS | {"wall", "art", "artwork", "sculpture", "panel", "hanging", "decoration", "frame"}
 UNVERIFIED = "kartta olmayan kelime: "
 
 # Açılar (farklılık için) ve kartta geçmese de güvenle kullanılabilen genel niteleyiciler: bunların dışında kalan, kartta olmayan bir içerik
@@ -72,6 +76,11 @@ def reason(phrase: str, facts: Facts) -> str | None:
     missing_aud = (set(w) & AUDIENCES) - known
     if missing_aud:
         return f"kartta olmayan kitle ({', '.join(sorted(missing_aud))})"
+    other = (set(w) & OTHER_PRODUCTS) - known
+    if not (known & WALL_FAMILY):
+        other |= (set(w) & WALL_WORDS) - known
+    if other:
+        return f"başka ürün türü ({', '.join(sorted(other))})"
     missing_use = (set(w) & OUTDOOR) - known
     if missing_use:
         return f"kartta olmayan kullanım yeri ({', '.join(sorted(missing_use))})"

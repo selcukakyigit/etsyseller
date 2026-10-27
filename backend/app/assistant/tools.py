@@ -931,6 +931,9 @@ def _user_facts(ctx: Ctx, variations: dict[str, list[str]]) -> str:
 
 def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     title = etsy_rules.clean_title(str(a.get("title", "")))[: etsy_rules.TITLE_MAX]
+    picked_title = _chosen_title(ctx)
+    if picked_title:  # kullanıcı karttan bir öneri seçti: model başlığı değiştirmiş olsa da seçilen kullanılır (oturum 58)
+        title = etsy_rules.clean_title(picked_title)[: etsy_rules.TITLE_MAX]
     if not title:
         return {"error": "Başlık gerekli."}
     if ctx.separate_products and not ctx.unattended and not ctx.redirected:
@@ -945,6 +948,11 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     others = quality.shop_others(ctx.db, ctx.shop.id)
     draft_variations = {str(v.get("name") or ""): [str(x.get("value") or "") for x in v.get("values") or []] for v in a.get("variations") or []}
     source = _user_facts(ctx, draft_variations)  # kullanıcının söylediği ölçü/renk/malzeme "uydurma" sayılmaz
+    if (a.get("personalizable") or a.get("personalization_questions")) and not _PERSONAL_ASKED.search(source):  # kullanıcı kişiselleştirmeden söz etmediyse model "var" diyemez (oturum 58: 'personalized metal' etiketi)
+        a = {**a, "personalizable": False, "personalization_questions": None}
+        personal_dropped = True
+    else:
+        personal_dropped = False
     title, title_fixes = quality.autofix_title(title, quality.size_options(draft_variations), source)  # bariz başlık hataları (ölçü, söylenmeyen malzeme, 14+ kelime) sunucuda düzelir
     a = {**a, "description": quality.strip_claims(str(a.get("description") or ""), source)}  # kaynakta olmayan "warranty/hardware included" gibi iddialar koddan silinir (SEO önerisiyle aynı kural)
     plan = _draft_plan(ctx, a, title, tags_checked, draft_variations, source)
@@ -962,7 +970,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
             return {"error": "Taslak henüz oluşturulmadı. Kullanıcıya SORMA, onay isteme: şunları kendin düzelt ve create_listing_draft'ı HEMEN tekrar çağır (mağazanın diğer listing'lerinin kopyası olmamalı): " + " ".join(problems_pre)}
         quality_warnings = problems_pre  # düzeltme hakkı doldu: taslak yine oluşur, kalanlar update_listing ile düzeltilir
     _, norm_qty = _shop_norms(ctx)
-    qty_assumed = not a.get("quantity")
+    qty_assumed = not a.get("quantity") and not a.get("total_quantity") and not any(isinstance(x, dict) and x.get("quantity") for v in a.get("variations") or [] for x in v.get("values") or [])
     # Fiyat yalnızca kullanıcının söylediği değerdir: verilmediyse 0 kalır ve taslak "Fiyat gir." ile yayına hazır sayılmaz.
     price_missing = not a.get("price") and not any(isinstance(x, dict) and x.get("price") for v in a.get("variations") or [] for x in v.get("values") or [])  # seçenek başına fiyat da fiyattır
     price = float(a["price"]) if a.get("price") else 0.0
@@ -1024,7 +1032,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         picked = _choose_category(ctx, title, str(a.get("description") or ""), tags, [str(m) for m in a.get("materials") or []], work.get("taxonomy_id"))
     except Exception:  # noqa: BLE001 - seçici çalışmazsa (anahtar/ağ) mevcut seçim kalır
         picked = None
-    if picked is not None and picked[0] != work.get("taxonomy_id") and not _keeps_established_category(ctx, work.get("taxonomy_id"), picked[0], " ".join([title, *tags])):
+    if picked is not None and picked[0] != work.get("taxonomy_id") and not _keeps_established_category(ctx, work.get("taxonomy_id"), picked[0], title):
         work["taxonomy_id"] = picked[0]
         category_note = {"yol": picked[1], "neden": "kategori seçici (ürüne en uygun aday)", "otomatik_secildi": True}
     if is_digital:  # dijital: kargo, iade ve işlem profili yok
@@ -1133,6 +1141,8 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
             videos_attached += 1
     completion["eklenen_video"] = videos_attached
     completion["standart_varyasyona_cevrilen"] = _standardize(work)
+    if personal_dropped:
+        completion["kisisellestirme_kaldirildi"] = "Kullanıcı kişiselleştirmeden söz etmedi; kişiselleştirme eklenmedi (ürün kişiselleştirilebilirse kullanıcı söyleyecek)."
     if title_fixes:
         completion["baslik_otomatik_duzeltildi"] = title_fixes
         completion["baslik_notu"] = "Başlıktaki bariz hatalar sunucuda düzeltildi (baslik_otomatik_duzeltildi); özette tek cümleyle söyle, yeniden düzeltmeye çalışma."
@@ -1217,13 +1227,14 @@ def ask_user(ctx: Ctx, a: dict) -> dict:
     kind = "suggestions" if a.get("kind") == "suggestions" else "question"
     if kind == "question" and _brief_answered(ctx):  # ön kontrol kartı cevaplandı: ikinci bir soru kartı döngü açar (oturum 54); taslak kurulur
         return {"error": "Ön kontrol kartı zaten cevaplandı: soru sorma, yeni kart çıkarma. create_listing_draft'ı ŞİMDİ çağır; bilinmeyeni boş bırak ya da kendin karar ver."}
-    if kind == "question":
+    if kind == "question" and not any(o.lower() in ("sen karar ver", "you decide") for o in options):
         options.append(tr("Sen karar ver", "You decide"))  # her soruda "makul olanı seç" kaçışı: onay döngüsüne düşmesin
     ctx.cards[:] = [c for c in ctx.cards if c.get("type") != "choices"]
     ctx.cards.append({"type": "choices", "kind": kind, "question": question, "options": options})
     return {"ok": True, "not": "Seçenek kartı gösterildi. Aynı soruyu ya da önerileri metinde tekrar yazma; kullanıcının dokunmasını ya da yazmasını bekle."}
 
 
+_PERSONAL_ASKED = re.compile(r"kişiselleştir|personali[sz]|özelleştir|isim|ad[ıi] yaz|name|engrav|gravür|monogram|harf|initial|custom", re.IGNORECASE)
 _NO_QUESTIONS = re.compile(r"sormadan|soru sorma|kart (?:çıkarma|gösterme)|hemen oluştur|direkt oluştur|onay(?:lamadan| istemeden)|without asking|don't ask|no questions", re.IGNORECASE)
 _TITLE_QUESTION = re.compile(r"ba[sş]l[ıi]k|\btitle\b", re.IGNORECASE)
 
@@ -1296,6 +1307,8 @@ def brief_check(ctx: Ctx, a: dict) -> dict:
             "type": q.get("type") if q.get("type") in ("price", "title") else "text",
             "plan_question": " ".join(str(q.get("plan_question") or "").lower().split()).rstrip("?")[:140],
         }
+        if any(re.search(r"(?<![A-Za-z])N(?![A-Za-z])", o) for o in item["options"]):  # "Her kombinasyon için N adet": yer tutucu seçenek olmaz (oturum 56: kullanıcı 'Toplam N adet' seçti)
+            return {"error": "Seçeneklerde 'N' yer tutucusu var; somut sayıyla yaz (ör. 'Her kombinasyon için 30', 'Toplam 30, eşit dağıt') ya da sayıyı kullanıcıdan öğrenmek için seçeneksiz bir soru sor."}
         if item["type"] == "text" and _TITLE_QUESTION.search(item["label"]):
             item["type"] = "title"  # model tipi unuttuysa da başlık sorusu başlık kartı olarak çizilir
         if item["type"] == "title" and len(item["options"]) < 3:
@@ -1342,9 +1355,35 @@ def brief_check(ctx: Ctx, a: dict) -> dict:
     return {"ok": True, "not": "Kart gösterildi. Cevaba soruları ya da anlaşılanları tekrar yazma; yalnızca tek kısa bir cümle yaz. Kullanıcının cevabını bekle; cevap gelince create_listing_draft'ı TEK çağrıda çağır."}
 
 
+def _is_title_choice(card: dict) -> bool:
+    """ask_user ile gelen başlık seçenekleri kartı (en az 3 seçenek): ön kontrol kartıyla aynı işi yaptığı için ayrıca brief_check istenmez."""
+    return card.get("type") == "choices" and card.get("kind") == "question" and len(card.get("options") or []) >= 3 and bool(_TITLE_QUESTION.search(str(card.get("question") or "")))
+
+
+def _chosen_title(ctx: Ctx) -> str | None:
+    """Kullanıcı kartta hazır başlık önerilerinden birini seçtiyse (mesajında o satır aynen var) o başlık; kendi başlığını yazdıysa ya da seçim yoksa None. Model seçilen başlığı değiştiremez."""
+    if ctx.session_id is None or not ctx.message:
+        return None
+    from app.assistant.models import ChatMessage
+
+    lines = {" ".join(line.lower().split()) for line in ctx.message.splitlines() if line.strip()}
+    rows = ctx.db.scalars(select(ChatMessage.cards_json).where(ChatMessage.session_id == ctx.session_id, ChatMessage.role == "assistant").order_by(ChatMessage.id.desc()).limit(12)).all()
+    for raw in rows:
+        cards = json.loads(raw or "[]")
+        if any(c.get("type") == "listing_draft" for c in cards):
+            return None
+        for c in cards:
+            groups = [q.get("options") or [] for q in c.get("questions") or [] if q.get("type") == "title"] if c.get("type") == "brief" else ([c.get("options") or []] if _is_title_choice(c) else [])
+            for options in groups:
+                for option in options:
+                    if " ".join(str(option).lower().split()) in lines:
+                        return str(option)
+    return None
+
+
 def _brief_shown(ctx: Ctx) -> bool:
     """Bu sohbette, son taslak kartından sonra bir ön kontrol kartı gösterildi mi (ya da bu turda gösteriliyor mu)?"""
-    if any(c.get("type") == "brief" for c in ctx.cards):
+    if any(c.get("type") == "brief" or _is_title_choice(c) for c in ctx.cards):
         return True
     if ctx.session_id is None:
         return False
@@ -1352,10 +1391,11 @@ def _brief_shown(ctx: Ctx) -> bool:
 
     rows = ctx.db.scalars(select(ChatMessage.cards_json).where(ChatMessage.session_id == ctx.session_id, ChatMessage.role == "assistant").order_by(ChatMessage.id.desc()).limit(12)).all()
     for raw in rows:
-        types = {c.get("type") for c in json.loads(raw or "[]")}
+        cards = json.loads(raw or "[]")
+        types = {c.get("type") for c in cards}
         if "listing_draft" in types:
             return False
-        if "brief" in types:
+        if "brief" in types or any(_is_title_choice(c) for c in cards):
             return True
     return False
 
@@ -1425,6 +1465,25 @@ def _session_generated_images(ctx: Ctx) -> list[str]:
 
     rows = ctx.db.scalars(select(ChatImage).where(ChatImage.session_id == ctx.session_id, ChatImage.filename.like("ai-generated%")).order_by(ChatImage.created_at)).all()
     return [r.id for r in rows][:20]
+
+
+_PREVIEW_ASKED = re.compile(r"önizle|önizleme|preview|taslağı (?:göster|getir)|göremiyorum|show (?:me )?the (?:draft|listing)", re.IGNORECASE)
+
+
+def ensure_listing_card(ctx: Ctx, message: str) -> None:
+    """Kullanıcı önizleme/taslağı görmek istiyor ama bu yanıtta listing kartı (Önizle ve Düzenle düğmeleriyle) yok: sohbetteki son taslağın kartı eklenir."""
+    if not _PREVIEW_ASKED.search(message or "") or any(c.get("type") == "listing_draft" for c in ctx.cards) or ctx.session_id is None:
+        return
+    from app.assistant.models import ChatMessage
+
+    rows = ctx.db.scalars(select(ChatMessage.cards_json).where(ChatMessage.session_id == ctx.session_id, ChatMessage.role == "assistant").order_by(ChatMessage.id.desc()).limit(20)).all()
+    for raw in rows:
+        for c in json.loads(raw or "[]"):
+            if c.get("type") == "listing_draft" and c.get("listing_id") is not None:
+                work = _current_work(ctx, int(c["listing_id"]))
+                if work is not None:
+                    _show_listing(ctx, int(c["listing_id"]), work)
+                return
 
 
 def _pick_template(ctx: Ctx, a: dict):
@@ -3272,8 +3331,8 @@ TOOLS: list[dict] = [
     {"name": "upscale_listing_photo", "description": "Listing fotoğrafını YALNIZCA yüksek çözünürlüğe (2K ya da 4K) çıkarır: içerik, kadraj, yazı ve renkler değişmez (düzenleyicideki 'Yükselt' ile aynı). photo_number verilmezse listing'in TÜM fotoğrafları. Kredi harcar (generation_options.yukseltme: fotoğraf başına kredi); kullanıcı açıkça '2K/4K yap, çözünürlüğü artır, netleştir' dediyse onay sorma, hemen yap ve kaç kredi harcandığını söyle. Yeni sürüm fotoğrafın yerine geçer, alt metin korunur; yalnızca taslağa yazar.", "input_schema": _obj({"listing_id": {"type": "integer"}, "photo_number": {"type": "integer", "description": "1'den başlayan sıra; yoksa tüm fotoğraflar"}, "size": {"type": "string", "enum": ["2K", "4K"]}}, ["size"])},
     {"name": "get_category_attributes", "description": "Listing'in kategorisinin özelliklerini (renk, malzeme, kullanım yeri, ölçü…) verir: hangileri ZORUNLU, izin verilen değerler, birimler ve şu anki seçimler. Özellik yazmadan ve kategori değişince çağır; kullanıcının söylediklerinden (ör. 'metal') ve varyasyon renklerinden uygun olanları set_listing_attributes ile kendin doldur, yalnızca bilmediğin ZORUNLU olanları kullanıcıya sor.", "input_schema": _obj({"listing_id": {"type": "integer"}}, ["listing_id"])},
     {"name": "autofill_listing_attributes", "description": "Listing'in BOŞ kategori özelliklerini (malzeme, kullanım yeri, tatil, yön, çerçeve, el yapımı vb.) ürüne, fotoğraflara ve varyasyonlara bakarak otomatik doldurur; yalnızca Etsy'nin izin verdiği değerleri yazar, varyasyonla karşılanan renk/boyutu atlar. 'Özellikleri doldur', 'eksik alanları tamamla' isteklerinde bunu çağır; özellikleri tek tek sen yazma. Yeni taslakta zaten otomatik yapılır.", "input_schema": _obj({"listing_id": {"type": "integer"}}, [])},
-    {"name": "set_listing_attributes", "description": "Kategori özelliklerini izin verilen değerlere göre yazar (yerel taslak). attributes: [{name: 'Primary color', values: ['Black']}, {name: 'Width', values: ['30'], unit: 'cm'}]. İzin verilen listede olmayan değer yazılmaz ve hata olarak döner (uydurma). Boş values özelliği kaldırır. Önce get_category_attributes'e bak.", "input_schema": _obj({"listing_id": {"type": "integer"}, "attributes": {"type": "array", "items": _obj({"name": {"type": "string"}, "values": {"type": "array", "items": {"type": "string"}}, "unit": {"type": "string", "description": "Yalnızca ölçü özelliklerinde (cm, in…)"}}, ["name"])}}, ["listing_id", "attributes"])},
-    {"name": "set_listing_fields", "description": "Listing taslağının şu alanlarını doğrulayarak yazar: malzemeler, stil, kategori (taxonomy_id; find_category'den), kim yaptı / ne zaman yapıldı, tedarik ürünü mü, vergilendirme, ağırlık ve boyutlar (birimleriyle), SKU (varyasyonsuz listing) ve kişiselleştirme soruları. Yalnızca yerel taslak; Etsy'ye gitmez. Sonuçtaki hatalar yazılmamıştır: kullanıcıya olduğu gibi söyle.", "input_schema": _obj({
+    {"name": "set_listing_attributes", "description": "Kategori özelliklerini izin verilen değerlere göre yazar (yerel taslak); ürünün Depth/Width/Height gibi ölçü NİTELİKLERİ de buradan (ör. Depth 2 cm), kargo boyutu için set_listing_fields. attributes: [{name: 'Primary color', values: ['Black']}, {name: 'Width', values: ['30'], unit: 'cm'}]. İzin verilen listede olmayan değer yazılmaz ve hata olarak döner (uydurma). Boş values özelliği kaldırır. Önce get_category_attributes'e bak.", "input_schema": _obj({"listing_id": {"type": "integer"}, "attributes": {"type": "array", "items": _obj({"name": {"type": "string"}, "values": {"type": "array", "items": {"type": "string"}}, "unit": {"type": "string", "description": "Yalnızca ölçü özelliklerinde (cm, in…)"}}, ["name"])}}, ["listing_id", "attributes"])},
+    {"name": "set_listing_fields", "description": "Listing taslağının şu alanlarını doğrulayarak yazar: malzemeler, stil, kategori (taxonomy_id; find_category'den), kim yaptı / ne zaman yapıldı, tedarik ürünü mü, vergilendirme, ağırlık ve KARGO boyutları (item uzunluk/genişlik/yükseklik, birimleriyle; ürünün 'Depth/Width/Height' NİTELİKLERİ için set_listing_attributes), SKU (varyasyonsuz listing) ve kişiselleştirme soruları. Yalnızca yerel taslak; Etsy'ye gitmez. Sonuçtaki hatalar yazılmamıştır: kullanıcıya olduğu gibi söyle.", "input_schema": _obj({
         "listing_id": {"type": "integer"},
         "materials": {"type": "array", "items": {"type": "string"}, "description": "En fazla 13; yalnızca harf, rakam, boşluk"},
         "style": {"type": "array", "items": {"type": "string"}, "description": "En fazla 2, her biri en fazla 45 karakter"},
