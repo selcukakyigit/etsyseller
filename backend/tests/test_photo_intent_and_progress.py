@@ -57,3 +57,47 @@ def test_features_land_in_the_details_section():
     assert "• Features: back-mounted; mounting hardware included" in out
     again = quality.build_details("DETAILS\n• Mounting: back-mounted", {}, [], "", ["back-mounted"])
     assert again.count("back-mounted") == 1, "zaten yazılan olgu tekrarlanmaz"
+
+
+def test_sizes_the_user_wants_proportioned_are_computed_on_the_server():
+    from app.listings import dimensions
+
+    out = dimensions.fill_missing_sizes(["S", "M - 103x67 cm (40.6 x 26.4 in)", "XL - 123x79 cm (48.4 x 31.1 in)", "XXL - proportioned to given sizes"])
+    assert out[0] == "S - 83x55 cm (32.7 x 21.7 in)" and out[3] == "XXL - 143x91 cm (56.3 x 35.8 in)", out
+    assert out[1:3] == ["M - 103x67 cm (40.6 x 26.4 in)", "XL - 123x79 cm (48.4 x 31.1 in)"]
+    assert dimensions.fill_missing_sizes(["Small", "Large"]) == ["Small", "Large"], "ölçüsüz adlara dokunulmaz"
+    assert dimensions.fill_missing_sizes(["S", "M - 50x40 cm"]) == ["S", "M - 50x40 cm"], "tek ölçülü: hesaplanamaz"
+    assert dimensions.fill_missing_sizes(["XL - 100x50 cm", "M - 120x60 cm", "S - 90x40 cm"]) == ["XL - 100x50 cm", "M - 120x60 cm", "S - 90x40 cm"], "ölçülerin hepsi belliyse değişmez"
+
+
+def test_a_specific_material_the_user_never_said_is_dropped(db, monkeypatch):
+    import json
+
+    from app.listings import drafts
+    from app.shops.models import Shop
+
+    shop = Shop(user_id=1, workspace_id=1, etsy_shop_id=1014, etsy_user_id=7, shop_name="S14")
+    db.add(shop); db.commit()
+    monkeypatch.setattr(tools, "_autofill_in_work", lambda *a, **k: ([], []))
+    monkeypatch.setattr(tools, "_category_defs", lambda tid: [])
+    ctx = tools.Ctx(db=db, shop=shop, user_id=5, today=None, message="metal isim tabelası", cards=[{"type": "brief"}])
+    out = tools.create_listing_draft(ctx, {"title": "Metal Name Plaque Rectangular Sign", "product": "metal sign", "taxonomy_id": 1029, "price": 50, "quantity": 5, "materials": ["metal", "steel"],
+                                           "description": "Metal name plaque.\n\nDETAILS\n• Material: metal"})
+    assert json.loads(drafts._local_row(db, shop, out["listing_id"]).data_json)["materials"] == ["metal"], "söylenmeyen 'steel' atılır"
+
+
+def test_size_labels_fit_etsys_20_character_limit_with_both_units():
+    from app.listings import dimensions
+
+    filled = dimensions.fill_missing_sizes(["S", "M - 103x67 cm (40.6 x 26.4 in)", "XL - 123x79 cm (48.4 x 31.1 in)", "XXL - proportioned"])
+    short = dimensions.compact_sizes(filled)
+    assert short == ["S 83x55cm/33x22in", "M 103x67cm/41x26in", "XL 123x79cm/48x31in", "XXL 143x91cm/56x36in"] and all(len(x) <= 20 for x in short)
+    assert dimensions.compact_sizes(["140 × 50 cm (55 × 19.7 in)", "120 × 35 cm (47.2 × 13.8 in)"]) == ["140x50cm/55.1x19.7in", "120x35cm/47.2x13.8in"]
+    assert dimensions.compact_sizes(["Small", "Large"]) == ["Small", "Large"] and dimensions.compact_sizes(["S 10x5 cm"]) == ["S 10x5 cm"], "sığanlara dokunulmaz"
+
+
+def test_a_long_option_name_is_refused_for_the_model_to_shorten():
+    from app.listings import inventory_edit
+
+    err, msg = inventory_edit.add_option({"inventory": {"products": [{"property_values": [{"property_name": "Size", "values": ["S"]}], "offerings": [{}]}]}}, "Size", "S - proportioned to given sizes (inches added in description)")
+    assert err == 0 and "20" in (msg or "")

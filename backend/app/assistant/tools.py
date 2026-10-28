@@ -736,7 +736,7 @@ def _enrich_description(ctx: Ctx, a: dict, title: str, tags: list[str], variatio
         personalization = (f"{len(lines)} separate text lines ({', '.join(x.lower() for x in lines)})" if lines else "the buyer enters their own text") + (f", up to {chars} characters each" if chars else "")
     product = str(a.get("product") or title)
     intro = description_writer.write(
-        product=product, design=(reading or {}).get("design", ""), material=", ".join(materials), sizes=_option_names(variations, ("size", "scale", "boyut")),
+        product=product, design=_card_design(ctx) or (reading or {}).get("design", ""), material=", ".join(materials), sizes=_option_names(variations, ("size", "scale", "boyut")),
         colors=_option_names(variations, ("color", "colour", "finish", "renk")), personalization=personalization, keywords=[t for t in [lead_phrase(title), *tags[:3]] if t][:4], features=features,
     )
     if not intro:
@@ -852,6 +852,9 @@ def _build_inventory(work: dict, price: float, quantity: int, variations: list[d
         return None
     if len(variations) > 3:
         return "En fazla 3 varyasyon tanımlanabilir."
+    too_long = [str(x.get("value") if isinstance(x, dict) else x) for v in variations for x in v.get("values") or [] if len(str(x.get("value") if isinstance(x, dict) else x)) > dimensions.MAX_OPTION_CHARS]
+    if too_long:  # Etsy seçenek adını 20 karakterle sınırlar; taslak kurulur ama yayında reddedilirdi (oturum 66: 60 karakterlik "proportioned to given sizes…" etiketi)
+        return f"Seçenek adı en çok {dimensions.MAX_OPTION_CHARS} karakter olabilir: {too_long[:3]}. Kısalt (ölçüyü ve birimi yaz, açıklama ekleme) ve yeniden çağır."
     props = []
     for i, v in enumerate(variations):
         vals = [x if isinstance(x, dict) else {"value": x} for x in v.get("values", [])]
@@ -1019,13 +1022,15 @@ def _normalize_sizes(ctx: Ctx, variations: list[dict]) -> tuple[list[dict], list
         vals = [x if isinstance(x, dict) else {"value": x} for x in v.get("values") or []]
         labels = [str(x.get("value", "")) for x in vals]
         if dimensions.parse_all(labels) is None:
-            out.append(v)
+            short = dimensions.compact_sizes(labels)  # "S - 83x55 cm (32.7 x 21.7 in)": cm ve inç birlikte yazılmış etiketler Etsy'nin 20 karakter sınırına indirilir
+            out.append({**v, "values": [{**x, "value": n} for x, n in zip(vals, short)]} if short != labels else v)
             continue
         if unit is None:
             unit = prefill.size_unit(ctx.db, ctx.shop, creation._shop_currency(ctx.db, ctx.shop))
         new, guess = dimensions.normalize_options(labels, unit)
         if guess:
             assumed.append(guess)
+        new = dimensions.compact_sizes(new)
         out.append({**v, "values": [{**x, "value": n} for x, n in zip(vals, new)]})
     return out, sorted(set(assumed))
 
@@ -1050,7 +1055,12 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         return {"error": "Kullanıcı birden çok AYRI listing istiyor gibi (toplu grup açık). Her ürün için create_listing_draft'ı kendin çağırma, başlık seçeneklerini ayrı listing sanma: create_listings_from_images'ı çağır (resimleri ürüne göre grupla, fiyat-resim eşleşmesini note'a, ortak bilgiyi shared'a yaz). Kullanıcı gerçekten TEK listing istiyorsa aynı çağrıyı tekrarla."}
     if not ctx.unattended and not _brief_shown(ctx) and not _NO_QUESTIONS.search(ctx.message or ""):
         return {"error": "Yeni listing'ten ÖNCE tek ön kontrol kartı gösterilir (kullanıcı 'sormadan yap' demedikçe): ÖNCE keyword_pool, sonra brief_check'i çağır: anladıklarını, BAŞLIK sorusunu (3 gerçekten farklı öneri; design alanı dolu) ve gerçekten bilinmeyen/belirsiz olanları (fiyat yoksa fiyat, çelişki, montaj gibi plan sorusu) TEK kartta sor. Evet/Hayır sorularını da seçenekli (options) yaz. Kullanıcı cevaplayınca create_listing_draft'ı TEK çağrıda çağır."}
-    size_variations, unit_assumed = _normalize_sizes(ctx, _clean_variation_labels(a.get("variations") or []))
+    cleaned = _clean_variation_labels(a.get("variations") or [])
+    for v in cleaned:  # "S ve XXL'i verdiğim ölçülere göre orantıla": model etiket yerine "proportioned…" yazar; ölçüleri sunucu hesaplar (oturum 66)
+        vals = [x if isinstance(x, dict) else {"value": x} for x in v.get("values") or []]
+        filled = dimensions.fill_missing_sizes([str(x.get("value", "")) for x in vals])
+        v["values"] = [{**x, "value": f} for x, f in zip(vals, filled)]
+    size_variations, unit_assumed = _normalize_sizes(ctx, cleaned)
     a = {**a, "variations": size_variations}
     a = {**a, "description": layout.normalize(str(a.get("description") or ""))}  # düzen: bölüm başlıkları, tek tip madde işareti, emoji yok (ai/layout.py)
     tags_checked, _short = _tags(a.get("tags") or [])
@@ -1117,7 +1127,10 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     unit = str(dims.get("unit") or "cm").lower()
     if any(dims.get(k) for k in ("length", "width", "height")) and unit in ("mm", "cm", "m", "in", "ft"):
         work.update({"item_length": dims.get("length"), "item_width": dims.get("width"), "item_height": dims.get("height"), "item_dimensions_unit": unit})
-    work.update({"title": title, "description": description, "tags": tags, "materials": [str(m).strip() for m in (a.get("materials") or []) if str(m).strip()][:13]})
+    said_words = {w for w in re.findall(r"[a-z]+", source.lower())} | quality.tr_material_words(source)
+    mats = [str(m).strip() for m in (a.get("materials") or []) if str(m).strip()]
+    stated = [m for m in mats if not ({w.lower() for w in re.findall(r"[A-Za-z]+", m)} & quality.SPECIFIC_MATERIALS) or {w.lower() for w in re.findall(r"[A-Za-z]+", m)} & said_words]
+    work.update({"title": title, "description": description, "tags": tags, "materials": (stated or mats)[:13]})  # "metal" diyen kullanıcının ürününe "steel" yazılmaz (söylenmemiş özgül malzeme atılır)
     if a.get("who_made") in ("i_did", "someone_else", "collective"):
         work["who_made"] = a["who_made"]
     # "Ne zaman yapıldı" mağaza alışkanlığından DEĞİL kuraldan gelir: kullanıcı yıl/vintage dediyse o aralık, kişiselleştirilebilirse sipariş üzerine, aksi halde güncel dönem
@@ -1546,7 +1559,8 @@ def brief_check(ctx: Ctx, a: dict) -> dict:
     if not questions:
         return {"error": "Eksik yoksa kart gösterme: create_listing_draft'ı hemen çağır."}
     ctx.cards[:] = [c for c in ctx.cards if c.get("type") not in ("brief", "choices")]
-    ctx.cards.append({"type": "brief", "understood": understood, "questions": questions})
+    design_text = " ".join(str(a.get("design") or "").split())[:120]
+    ctx.cards.append({"type": "brief", "understood": understood, "questions": questions, **({"design": design_text} if design_text else {})})
     return {"ok": True, "not": "Kart gösterildi. Cevaba soruları ya da anlaşılanları tekrar yazma; yalnızca tek kısa bir cümle yaz. Kullanıcının cevabını bekle; cevap gelince create_listing_draft'ı TEK çağrıda çağır."}
 
 
@@ -1574,6 +1588,23 @@ def _chosen_title(ctx: Ctx) -> str | None:
                     if " ".join(str(option).lower().split()) in lines:
                         return str(option)
     return None
+
+
+def _card_design(ctx: Ctx) -> str:
+    """Kullanıcının gördüğü ön kontrol kartının tasarım cümlesi (başlık önerileri bundan kuruldu): açıklama aynı tasarımı anlatsın, görsel modelin ayrı okumasıyla çelişmesin (oturum 66)."""
+    if ctx.session_id is None:
+        return ""
+    from app.assistant.models import ChatMessage
+
+    rows = ctx.db.scalars(select(ChatMessage.cards_json).where(ChatMessage.session_id == ctx.session_id, ChatMessage.role == "assistant").order_by(ChatMessage.id.desc()).limit(12)).all()
+    for raw in rows:
+        cards = json.loads(raw or "[]")
+        if any(c.get("type") == "listing_draft" for c in cards):
+            return ""
+        for c in cards:
+            if c.get("type") == "brief" and c.get("design"):
+                return str(c["design"])
+    return ""
 
 
 def _brief_shown(ctx: Ctx) -> bool:

@@ -11,6 +11,7 @@ from app.listings import dimensions
 
 
 MAX_QUANTITY = 999
+MAX_OPTION_CHARS = 20  # Etsy varyasyon seçenek adı sınırı
 
 
 def _norm(text) -> str:
@@ -260,6 +261,8 @@ def add_option(work: dict, name: str, option: str, price=None, quantity=None, co
     products = _products(work)
     if not products or not products[0].get("property_values"):
         return 0, "Listing'de varyasyon yok; varyasyon kurmak için update_listing'in set_variations alanını kullan."
+    if len(option) > MAX_OPTION_CHARS:
+        return 0, f"Seçenek adı en çok {MAX_OPTION_CHARS} karakter olabilir (Etsy sınırı): '{option[:30]}…' {len(option)} karakter."
     bad = _where_error(work, {name: copy_from} if copy_from else {})
     if bad:
         return 0, bad

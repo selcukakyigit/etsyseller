@@ -138,3 +138,85 @@ def depth_from_text(text: str) -> tuple[float, str] | None:
     num, unit = (m.group(1), m.group(2)) if m.group(1) else (m.group(3), m.group(4))
     code = _UNITS.get(unit.lower())
     return (float(num.replace(",", ".")), code) if code else None
+
+
+_NAME_ONLY = re.compile(r"^\s*([A-Za-z0-9]{1,5})\b\s*[-–:]?\s*(.*)$")
+
+
+def fill_missing_sizes(labels: list[str]) -> list[str]:
+    """Kullanıcı yalnızca bazı boyutları verip ötekilerini "orantıla" dediğinde (ör. M ve XL belli, S ve XXL istenen): ölçüsü olmayan seçenekler, ölçüsü belli olanların
+    SIRALARINDAKİ eşit artıştan hesaplanır (S = M - (XL - M), XXL = XL + (XL - M)). En az iki ölçülü seçenek, aynı birim, tek yönlü artış şart; yoksa etiketler aynen döner.
+    Etiket biçimi ölçülülerinkiyle aynı olur: "S - 83x55 cm (32.7 x 21.7 in)"."""
+    known: dict[int, tuple[str, Dims, bool]] = {}
+    missing: list[tuple[int, str]] = []
+    for i, label in enumerate(labels):
+        m = _NAME_ONLY.match(str(label))
+        if not m:
+            return labels
+        name, rest = m.group(1), m.group(2)
+        core = re.sub(r"\s*\([^)]*\)\s*$", "", rest).strip()
+        if re.search(r"\d", core):
+            dims = parse(core)
+            if dims is None or len(dims.values) != 2 or dims.unit not in ("cm", "mm"):
+                return labels
+            known[i] = (name, dims, "(" in rest and bool(re.search(r"\bin\b", rest)))
+        elif not re.search(r"\d", rest):
+            missing.append((i, name))
+        else:
+            return labels
+    if len(known) < 2 or not missing or len({k[1].unit for k in known.values()}) != 1:
+        return labels
+    idx = sorted(known)
+    (i1, (_n1, d1, _w1)), (i2, (_n2, d2, _w2)) = (idx[0], known[idx[0]]), (idx[-1], known[idx[-1]])
+    step = [(b - a) / (i2 - i1) for a, b in zip(d1.values, d2.values)]
+    if not all(x > 0 for x in step) and not all(x < 0 for x in step):
+        return labels
+    unit, with_in = d1.unit, any(k[2] for k in known.values())
+    out = list(labels)
+    for i, name in missing:
+        values = [round(a + (i - i1) * st, 1) for a, st in zip(d1.values, step)]
+        if any(v <= 0 for v in values):
+            return labels
+        text = f"{name} - " + " x ".join(f"{v:g}" for v in values).replace(" x ", "x") + f" {unit}"
+        if with_in and unit == "cm":
+            text += f" ({values[0] / 2.54:.1f} x {values[1] / 2.54:.1f} in)"
+        out[i] = text
+    return out
+
+
+MAX_OPTION_CHARS = 20  # Etsy varyasyon seçenek adı sınırı (düzenleyicideki "seçenek ekle" kutusu)
+_NAMED_CM = re.compile(r"^\s*(?:([A-Za-z][A-Za-z0-9]{0,3}|[2-5]XL)\s*[-–:]?\s*)?(\d+(?:[.,]\d+)?)\s*[x×X]\s*(\d+(?:[.,]\d+)?)\s*cm")
+
+
+def compact_sizes(labels: list[str]) -> list[str]:
+    """20 karakteri aşan cm ölçü etiketlerini ("S - 83x55 cm (32.7 x 21.7 in)") sığacak en zengin biçime indirir: tüm seçenekler AYNI biçimi kullanır, cm ve inç birlikte kalır
+    ("S 83x55cm/33x22in"); hiçbiri sığmazsa inç atılır. Hepsi sığıyorsa ya da cm ölçüsü olmayan etiket varsa aynen döner."""
+    if all(len(x) <= MAX_OPTION_CHARS for x in labels):
+        return labels
+    parsed = []
+    for label in labels:
+        m = _NAMED_CM.match(str(label))
+        if not m:
+            return labels
+        parsed.append((m.group(1) or "", float(m.group(2).replace(",", ".")), float(m.group(3).replace(",", "."))))
+
+    def build(kind: int) -> list[str]:
+        out = []
+        for name, w, h in parsed:
+            head = f"{name} " if name else ""
+            iw, ih = w / 2.54, h / 2.54
+            if kind == 0:
+                out.append(f"{head}{w:g}x{h:g}cm/{iw:.1f}x{ih:.1f}in")
+            elif kind == 1:
+                out.append(f"{head}{w:g}x{h:g}cm/{iw:.0f}x{ih:.0f}in")
+            elif kind == 2:
+                out.append(f"{head}{w:g}x{h:g}cm/{iw:.0f}x{ih:.0f}")
+            else:
+                out.append(f"{head}{w:g}x{h:g} cm")
+        return out
+
+    for kind in range(4):
+        candidate = build(kind)
+        if all(len(x) <= MAX_OPTION_CHARS for x in candidate):
+            return candidate
+    return labels
