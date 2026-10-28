@@ -849,7 +849,7 @@ def _tags(raw: list[str]) -> tuple[list[str], list[str]]:
     out, short, seen = [], [], set()
     for t in raw:
         t = etsy_rules.clean_tag(t)  # Etsy'nin kabul etmediği karakterler çıkar
-        if not t:
+        if not t or quality.junk_tag(t):  # ölçü/'size' içeren ya da edatla biten etiket hakkı boşa harcar
             continue
         if len(t) > etsy_rules.TAG_MAX_LEN:
             t = t[: etsy_rules.TAG_MAX_LEN].rsplit(" ", 1)[0] if " " in t[: etsy_rules.TAG_MAX_LEN] else t[: etsy_rules.TAG_MAX_LEN]

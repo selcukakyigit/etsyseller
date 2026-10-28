@@ -293,12 +293,12 @@ def build(
 
 def place_tags(plan: Plan, written: list[str]) -> list[str]:
     """Son etiketler: planınkiler; plan 13'e ulaşamadıysa modelin yazdıklarından (uygunluk denetiminden geçmiş, tekrar etmeyen) tamamlanır."""
-    out = [t["tag"] for t in plan.tags]
+    out = [t["tag"] for t in plan.tags if not quality.junk_tag(t["tag"])]
     for t in written:
         if len(out) >= standard.TAG_COUNT:
             break
         low = " ".join(t.lower().split())
-        if low and low not in out and len(low) <= standard.TAG_MAX_LEN:
+        if low and low not in out and len(low) <= standard.TAG_MAX_LEN and not quality.junk_tag(low):
             out.append(low)
     return out[: standard.TAG_COUNT]
 

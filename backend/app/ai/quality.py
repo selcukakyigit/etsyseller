@@ -473,6 +473,16 @@ def personalization_qa(lines: list[str], chars: str | None, upload: bool = False
     return f"QUESTIONS\n• How do I personalize it? — {answer}"
 
 
+_TAG_TRAILING = {"for", "with", "and", "of", "in", "the", "a", "to", "or"}
+
+
+def junk_tag(tag: str) -> bool:
+    """Etiket hakkını boşa harcayan etiket: ölçü/"size" içeren ("eu size card", "40x60 cm sign"), edatla biten yarım ifade. Plan ve model etiketleri bundan geçer (oturum 67)."""
+    low = " ".join(str(tag).lower().split())
+    words = low.split()
+    return bool(not words or re.search(r"(?<![a-z])sizes?(?![a-z])", low) or re.search(r"[0-9]+\s*(?:x|×)\s*[0-9]+", low) or words[-1] in _TAG_TRAILING)
+
+
 def neutralize_method_claims(description: str, source_text: str | None) -> str:
     """Kullanıcının söylemediği üretim yöntemi sözcükleri ("laser-cut", "handmade") açıklamada nötrleştirilir ("cut", "made"): cümle ve açılış korunur, uydurma iddia kalmaz."""
     if _METHOD_STATED.search(html.unescape(source_text or "")):

@@ -164,3 +164,18 @@ def test_an_upload_field_is_not_counted_as_a_text_line_in_the_description(db, mo
     out = tools._enrich_description(ctx, a, "Metal Card", [], {}, "kişiselleştirme", None, [])
     assert "2 separate text lines" in seen["personalization"] and "upload a logo" in seen["personalization"] and "characters each" not in seen["personalization"], seen
     assert "2 personalization boxes" in out["description"] and "upload your logo" in out["description"], out["description"]
+
+
+def test_junk_tags_are_dropped_and_the_score_flags_lost_prices():
+    from app.ai import listing_score, quality
+
+    assert quality.junk_tag("eu size card") and quality.junk_tag("40x60 cm sign") and quality.junk_tag("metal sign for") and not quality.junk_tag("metal business card")
+    tags_out, _ = tools._tags(["metal business card", "eu size card", "custom card for", "engraved metal card"])
+    assert tags_out == ["metal business card", "engraved metal card"]
+
+    work = {"title": "Metal Business Card Engraved Logo", "materials": ["metal"], "tags": ["metal business card"] * 2, "description": "x", "inventory": {"products": [{"property_values": [{"values": ["EU size"]}], "offerings": [{"quantity": 50, "price": {"amount": 0, "divisor": 100}}]}], "quantity_on_property": []}}
+    result = listing_score.score(work, "100 adet - 330 dolar\ntoplam stok 50 adet", rounds=9)
+    assert result["toplam"] <= 6.0 and any("fiyat" in m for m in result["kritik"]), result
+    good = {**work, "inventory": {"products": [{"property_values": [{"values": ["100 pcs"]}], "offerings": [{"quantity": 50, "price": {"amount": 33000, "divisor": 100}}]}], "quantity_on_property": []}}
+    assert listing_score.fidelity(good, "100 adet - 330 dolar\ntoplam stok 50 adet")[0] == 10.0
+    assert listing_score.efficiency(4)[0] == 10.0 and listing_score.efficiency(9)[0] == 6.5
