@@ -171,19 +171,16 @@ export default function ChatPanel({
   // Bir adım uzun sürerse gösterilen bekleme cümleleri: rastgele seçilir, art arda aynısı gelmez; "sabırlı ol" demez, işi şakayla anlatır.
   const lastWait = useRef(-1);
   const patienceLine = useCallback(() => {
+    // Bu cümleler her türlü beklemede çıkar (finans, sipariş, listing): belirli bir işi yapmış gibi konuşmaz.
     const lines = [
-      t("Kelimeleri tek tek tartıyorum", "Weighing the words one by one"),
-      t("Başlığı üç kere okudum, hâlâ hoşuma gidiyor", "Read the title three times, still liking it"),
-      t("Virgülleri yerlerine oturtuyorum", "Seating the commas in their places"),
-      t("Fotoğraftaki detayları saydım, hiçbiri kaçmadı", "Counted every detail in the photo, none escaped"),
-      t("Alıcının aklından geçenleri tahmin ediyorum", "Guessing what is on the buyer's mind"),
-      t("Etiketlerin arasında yürüyüşe çıktım", "Out for a stroll among the tags"),
-      t("Açıklamayı sesli okuyorum, kulağa hoş geliyor", "Reading the description aloud, sounds good"),
-      t("Kategori rafları arasında doğru yeri arıyorum", "Searching the category shelves for the right spot"),
-      t("Bir yandan da rakiplerin ne yazdığına göz atıyorum", "Peeking at what competitors wrote, meanwhile"),
-      t("Fiyat tablosunu hizalıyorum, düzgün olsun", "Lining up the price table nice and straight"),
-      t("Bu iş biraz titizlik istiyor, titizim", "This job asks for care, and I am careful"),
-      t("Kahve molası vermedim, sayılır", "No coffee break so far, for the record"),
+      t("Üzerinde çalışıyorum, boş durmuyorum", "Working on it, not sitting idle"),
+      t("Detayları tek tek kontrol ediyorum", "Checking the details one by one"),
+      t("Sayıları yan yana koyup tartıyorum", "Laying the numbers side by side"),
+      t("Biraz titiz bir iş, o yüzden uzuyor", "A fussy job, which is why it takes a moment"),
+      t("Cevabı toparlıyorum, az kaldı", "Pulling the answer together, nearly there"),
+      t("Her şeyi iki kez bakıyorum, kolay hata yapılmasın", "Looking everything over twice so nothing slips"),
+      t("Sıra son kontrole geldi", "Getting to the final check"),
+      t("Düzgün olsun diye acele etmiyorum", "Not rushing, so it comes out right"),
     ];
     let i = Math.floor(Math.random() * lines.length);
     if (i === lastWait.current) i = (i + 1) % lines.length;

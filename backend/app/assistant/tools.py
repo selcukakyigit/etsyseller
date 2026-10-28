@@ -84,7 +84,7 @@ class Ctx:
     message: str = ""  # kullanıcının bu mesajı (yapıştırılan fatura metni gibi, modele yeniden yazdırmadan okumak için)
     cards: list[dict] = field(default_factory=list)
     session_id: int | None = None  # sohbet oturumu: üretilen resimler bu oturuma kaydedilir
-    brief_soft: int = 0  # brief_check'in "yumuşak" (kalite) retleri bir kez söylenir; sonra kart geçer (oturum 65: aynı kart 3-5 kez reddedilip 16 tur harcandı)
+    brief_soft: int = 0  # brief_check kalite retlerinin söylenme sayısı (en çok 2; oturum 65: aynı kart 3-5 kez reddedilip 16 tur harcandı)
     ask_checked: bool = False  # brief_check planın cevabı bilinmeyen sorularını eklemeyi bir kez hatırlatır
     plan: Any = None  # bu turda keyword_pool'un kurduğu kelime planı (brief_check başlık seçeneklerini buna göre denetler)
     plan_cache: dict = field(default_factory=dict)  # create_listing_draft yeniden denemelerinde plan bir kez kurulur: {anahtar: Plan}
@@ -1469,11 +1469,12 @@ def _brief_answered(ctx: Ctx) -> bool:
 
 
 def _soft_reject(ctx: Ctx) -> bool:
-    """Kalite retleri (zayıf/benzer başlık, plan açılışı, tasarım uyuşmazlığı) bir turda EN ÇOK BİR kez söylenir: True = şimdi reddet. Sonrası geçer; başlık taslak
-    denetiminde zaten düzeltilir (autofix_title), kullanıcı ise kartı hemen görür."""
-    if getattr(ctx, "brief_soft", 0) >= 1:
+    """Kalite retleri bir turda EN ÇOK İKİ kez söylenir (hepsi için ortak hak): True = şimdi reddet. Sıra önem sırasıdır (önce planın açılış ifadesi, sonra zayıf/benzer başlık,
+    sonra tasarım uyuşmazlığı). Sonrası geçer; başlık taslak denetiminde yine düzeltilir (autofix_title). Oturum 65: aynı kart 3-5 kez reddedilip 16 tur harcandı."""
+    used = getattr(ctx, "brief_soft", 0)
+    if used >= 2:
         return False
-    ctx.brief_soft = getattr(ctx, "brief_soft", 0) + 1
+    ctx.brief_soft = used + 1
     return True
 
 
@@ -1517,15 +1518,15 @@ def brief_check(ctx: Ctx, a: dict) -> dict:
                 design = " ".join(str((_design_reading(ctx) or {}).get("design") or "").split())
             if not design:
                 return {"error": "Başlık sorusu için design alanı ŞART: ürünün resimde GÖRÜNEN tasarımını 3-8 İngilizce kelimeyle yaz (desen/form/motif) ve başlık önerilerini ona göre kur; sonra kartı yeniden çağır."}
-            seen = _design_mismatch(ctx, design)
-            if seen and _soft_reject(ctx):
-                return {"error": seen}
-            weak = _title_option_problems(item["options"], said, design)
-            if weak and _soft_reject(ctx):
-                return {"error": "Başlık önerileri zayıf: " + "; ".join(weak[:4]) + ". Her öneri: planın açılışıyla başla ve nesneyi temasıyla birlikte anlat (ör. 'flower themed mug', 'tulip motif carafe'): ürünün GÖRÜNEN tasarımını (design) ve ortak malzemeyi söyle; birden çok ölçü/renk varsa onları yazma; üç öneri farklı tasarım/kullanım açısı öne çıkarsın. Kartı yeniden çağır."}
             off = [o for o in item["options"] if plan_mod.title_problems(o, plan)]
             if off and _soft_reject(ctx):
                 return {"error": f"Şu başlık seçenekleri planın açılış ifadelerinden biriyle başlamıyor: {off}. Her seçenek şunlardan biriyle başlasın: {plan.lead_options}; ardından 2-3 nesnel niteleyici, 15 kelimenin altı."}
+            weak = _title_option_problems(item["options"], said, design)
+            if weak and _soft_reject(ctx):
+                return {"error": "Başlık önerileri zayıf: " + "; ".join(weak[:4]) + ". Her öneri: planın açılışıyla başla ve nesneyi temasıyla birlikte anlat (ör. 'flower themed mug', 'tulip motif carafe'): ürünün GÖRÜNEN tasarımını (design) ve ortak malzemeyi söyle; birden çok ölçü/renk varsa onları yazma; üç öneri farklı tasarım/kullanım açısı öne çıkarsın. Kartı yeniden çağır."}
+            seen = _design_mismatch(ctx, design)
+            if seen and _soft_reject(ctx):
+                return {"error": seen}
         if item["type"] == "price":
             item["unit"] = "$"
         questions.append(item)

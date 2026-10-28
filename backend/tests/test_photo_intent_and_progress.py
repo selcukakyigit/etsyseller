@@ -29,8 +29,9 @@ def test_soft_title_rejections_are_said_once_then_the_card_passes():
     args = {"understood": UNDERSTOOD, "design": "round badge serif lettering", "questions": [{"label": "Başlık seç", "options": ["Garage Sign Round", "Garage Sign Badge", "Garage Sign Plate"]}]}
     first = brief_check(ctx, args)
     assert "error" in first and ctx.cards == []
-    second = brief_check(ctx, args)
-    assert second.get("ok") and ctx.cards and ctx.cards[0]["type"] == "brief", "ikinci çağrıda kalite retleri tekrarlanmaz (16 turluk döngü)"
+    assert "error" in brief_check(ctx, args), "kalite retleri en çok iki kez söylenir"
+    third = brief_check(ctx, args)
+    assert third.get("ok") and ctx.cards and ctx.cards[0]["type"] == "brief", "üçüncü çağrıda kalite retleri tekrarlanmaz (16 turluk döngü)"
 
 
 def test_the_stated_number_of_text_fields_is_read_from_words_too():
