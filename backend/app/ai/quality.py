@@ -435,7 +435,7 @@ def drop_redundant_qa(description: str) -> str:
 _NOT_A_FACT = re.compile(r"\$|\busd\b|\bprices?\b|\bstock\b|\bquantity\b|\bunits\b|\bin stock\b|\bshipping\b", re.I)
 
 
-def build_details(description: str, variations: dict[str, list[str]], materials: list[str] | None, personalization: str = "") -> str:
+def build_details(description: str, variations: dict[str, list[str]], materials: list[str] | None, personalization: str = "", features: list[str] | None = None) -> str:
     """DETAILS bölümü: modelin yazdığı madde satırlarından fiyat/stok/kargo satırları ve tekrarlar atılır, eksik olgular (seçenekler, malzeme, kişiselleştirme) varyasyonlardan eklenir.
     Açıklamada fiyat ve stok olmaz: ikisi de değişir ve zaten varyasyonlarda durur. Madde yoksa boş döner."""
     lines: list[str] = []
@@ -454,6 +454,9 @@ def build_details(description: str, variations: dict[str, list[str]], materials:
     out = add_missing_facts(("DETAILS\n" + body) if body else "", variations, materials)
     if personalization and "personali" not in out.lower():
         out = (out + "\n" if out else "DETAILS\n") + f"• Personalization: {personalization}"
+    missing = [f for f in features or [] if f.lower() not in out.lower()]
+    if missing:  # kullanıcının söylediği diğer olgular (montaj şekli, aparat…) mutlaka DETAILS'te görünür
+        out = (out + "\n" if out else "DETAILS\n") + "• Features: " + "; ".join(missing)
     return out.strip()
 
 

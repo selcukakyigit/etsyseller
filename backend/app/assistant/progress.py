@@ -4,6 +4,7 @@ Tek satırlık `TOOL_LABELS` yerine, gerçekten birkaç aşaması olan araçlar 
 hızla sırayla gösterir. Metinler aracın gerçekten yaptığı işi anlatır (uydurma adım yok). Her adım (Türkçe, İngilizce) çiftidir."""
 import html
 import json
+import random
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -44,18 +45,6 @@ _TITLED: dict[str, list[tuple[str, str]]] = {
 }
 
 _PLAIN: dict[str, list[tuple[str, str]]] = {
-    "create_listing_draft": [
-        ("Ürün bilgilerini topluyor", "Gathering the product details"),
-        ("Başlık, etiket ve açıklamayı kontrol ediyor", "Checking the title, tags and description"),
-        ("Diğer listing'lerinle çakışıp çakışmadığına bakıyor", "Checking it does not clash with your other listings"),
-        ("Uygun kategoriyi seçiyor", "Choosing a fitting category"),
-        ("Taslağı kaydediyor", "Saving the draft"),
-    ],
-    "keyword_pool": [
-        ("Satış getiren listing'lerinin etiketlerine bakıyor", "Looking at the tags of your best sellers"),
-        ("Rakiplerin kullandığı ifadeleri topluyor", "Collecting phrases competitors use"),
-        ("İfadeleri aramaya uygunluğuna göre sıralıyor", "Ranking the phrases by how well they fit searches"),
-    ],
     "similar_listings": [
         ("Mağazandaki benzer ürünleri arıyor", "Looking for similar products in your shop"),
         ("Fiyat, etiket ve başlık üslubunu karşılaştırıyor", "Comparing price, tags and title style"),
@@ -73,6 +62,41 @@ _PLAIN: dict[str, list[tuple[str, str]]] = {
         ("Hangilerinin zorunlu olduğuna bakıyor", "Checking which ones are required"),
     ],
 }
+
+
+# Yeni listing akışının adımları: her adım için birkaç söyleyiş, her seferinde rastgele biri seçilir (hep aynı cümleyi görmek sıkıyor). Teknik terim yok; hafif şakacı,
+# ama aracın gerçekten yaptığı işi anlatır. [adım][söyleyiş] = (Türkçe, İngilizce)
+_VARIED: dict[str, list[list[tuple[str, str]]]] = {
+    "brief_check": [
+        [("Fotoğrafa dikkatle bakıyor", "Taking a good look at the photo"), ("Fotoğrafı büyüteçle inceliyor", "Studying the photo with a magnifying glass"), ("Ürünün neye benzediğini çözüyor", "Working out what the product looks like")],
+        [("Eksik bilgileri not alıyor", "Noting what is still missing"), ("Neyi sorması gerektiğini tartıyor", "Weighing what it should ask you"), ("Gözden kaçan bir şey var mı diye bakıyor", "Checking nothing slipped through")],
+        [("Başlık fikirleri kafasında dönüyor", "Title ideas are spinning around"), ("Aranacak kelimeleri yan yana diziyor", "Lining up the words people search for"), ("Üç farklı başlık için kolları sıvıyor", "Rolling up sleeves for three different titles")],
+    ],
+    "create_listing_draft": [
+        [("Verdiğin bilgileri masaya yayıyor", "Spreading your details on the table"), ("Notlarını toparlıyor", "Gathering up your notes"), ("Bilgileri düzene sokuyor", "Putting your details in order")],
+        [("Başlığı, etiketleri ve açıklamayı yazıyor", "Writing the title, tags and description"), ("Alıcıya hitap eden bir açıklama kuruyor", "Building a description that talks to the buyer"), ("Kelimeleri tek tek yerine koyuyor", "Putting the words in place one by one")],
+        [("Boyut ve renk seçeneklerini sıralıyor", "Lining up the sizes and colors"), ("Fiyat ve stok tablosunu dolduruyor", "Filling in the price and stock table"), ("Seçenekleri hizalıyor", "Straightening out the options")],
+        [("Ürüne uygun rafı arıyor, yani kategoriyi", "Looking for the right shelf, meaning the category"), ("Kategoriler arasında doğru dalı buluyor", "Finding the right branch among the categories")],
+        [("Son kontrol, virgüller yerinde mi", "Final check, are the commas in place"), ("Taslağı kaydediyor", "Saving the draft"), ("Taslağı çerçeveletiyor, neredeyse bitti", "Framing the draft, nearly there")],
+    ],
+    "keyword_pool": [
+        [("Satış getiren etiketlere bakıyor", "Looking at the tags that bring sales"), ("Alıcıların ne aradığına kulak misafiri oluyor", "Eavesdropping on what buyers search for"), ("Etiketlerin arasında dolaşıyor", "Wandering through the tags")],
+        [("Rakiplerin kelimelerine göz atıyor", "Glancing at the words competitors use"), ("Kalabalık ifadeleri eliyor", "Dropping the overcrowded phrases"), ("En işe yarar kelimeleri ayırıyor", "Picking out the most useful words")],
+    ],
+    "find_category": [
+        [("Kategori ağacında doğru dalı arıyor", "Searching the category tree for the right branch"), ("Ürünün gideceği rafı arıyor", "Looking for the shelf this product belongs on")],
+    ],
+}
+
+_THINKING = [
+    ("Düşünüyor", "Thinking"), ("Bir bakıyor", "Taking a look"), ("Kafasında tartıyor", "Turning it over"), ("İşe koyuluyor", "Getting to it"), ("Not alıyor", "Taking notes"),
+]
+
+
+def thinking(en: bool) -> str:
+    """İlk bekleme yazısı: her seferinde farklı bir söyleyiş."""
+    tr_text, en_text = random.choice(_THINKING)
+    return en_text if en else tr_text
 
 
 def _title(db: Session, shop_id: int, args: dict) -> str | None:
@@ -94,6 +118,8 @@ def _title(db: Session, shop_id: int, args: dict) -> str | None:
 
 def steps_for(db: Session, shop_id: int, name: str, args: dict, en: bool) -> list[str]:
     """Aracın sıralı adım yazıları; tanımlı değilse boş liste (çağıran tek satırlık etikete döner)."""
+    if name in _VARIED:
+        return [(random.choice(step)[1 if en else 0]) for step in _VARIED[name]]
     if name in _TITLED:
         title = _title(db, shop_id, args)
         steps = _TITLED[name]

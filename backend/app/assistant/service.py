@@ -373,6 +373,39 @@ def _strip_app_links(text: str) -> str:
     return _SUMMARY_LEAD.sub("", text).strip()
 
 
+# Yalnızca resim (ya da bir-iki kelime) gelince hemen taslağa geçilmez: önce "bununla liste mi oluşturalım?" diye sorulur (düğmeli). Sunucu kararı, model çağrılmaz.
+_LISTING_INTENT = re.compile(r"liste|listing|taslak|oluştur|yükle|ekle|düzenle|kırp|sil|çıkar|temizle|üret|create|draft|upload|\bedit|remove|crop|generate|\blist\b", re.IGNORECASE)
+_MIN_WORDS_FOR_INTENT = 3
+
+
+def _in_listing_work(db: Session, session_id: int) -> bool:
+    """Sohbette yakın zamanda bir taslak/ön kontrol kartı çıkmış mı (kullanıcı zaten bir listing üzerinde çalışıyor; ek resim bunun parçasıdır)?"""
+    rows = db.scalars(select(ChatMessage.cards_json).where(ChatMessage.session_id == session_id, ChatMessage.role == "assistant").order_by(ChatMessage.id.desc()).limit(6)).all()
+    return any(c.get("type") in ("listing_draft", "brief") for raw in rows for c in json.loads(raw or "[]"))
+
+
+def photo_needs_intent(db: Session, session_id: int, message: str, current: list[ChatImage]) -> bool:
+    """Mesajda yalnızca resim(ler) var (yazı yok ya da en çok iki kelime, liste/düzenleme niyeti yok) ve kullanıcı bir listing üzerinde çalışmıyor mu?"""
+    if not current or any(i.content_type not in IMAGE_TYPES for i in current):
+        return False
+    if len(message.split()) >= _MIN_WORDS_FOR_INTENT or _LISTING_INTENT.search(message):
+        return False
+    return not _in_listing_work(db, session_id)
+
+
+def _intent_reply(ctx: "tools.Ctx") -> tuple[str, list[dict]]:
+    """Resimden ne gördüğünü kısaca söyleyen cümle ve Evet/Hayır düğmeleri (görsel model yoksa genel cümle)."""
+    try:
+        seen = tools._design_reading(ctx)
+    except Exception:  # noqa: BLE001 - görsel model çalışmazsa genel soru yeter
+        seen = None
+    product = str((seen or {}).get("product") or "").strip()
+    text = tr(f"Resimde {product} görüyorum. Bununla yeni bir listing oluşturalım mı?", f"I can see {product} in the picture. Shall we create a new listing with it?") if product else tr(
+        "Resmi aldım. Bununla yeni bir listing oluşturalım mı?", "Got the picture. Shall we create a new listing with it?")
+    card = {"type": "choices", "kind": "question", "question": tr("Liste oluşturalım mı?", "Create a listing?"), "options": [tr("Evet, liste oluştur", "Yes, create a listing"), tr("Hayır, başka bir şey", "No, something else")]}
+    return text, [card]
+
+
 def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message: str, image_ids: list[str], today: dt.date, request_id: str | None = None, lang: str = "tr") -> dict:
     message = (message or "").strip()
     if not message and not image_ids:
@@ -410,7 +443,14 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
         examples=_title_examples(db, shop), files=_images_prompt(session_images), notes=memory.notes_for_prompt(db, shop.id), lang=lang,
     )
     en = lang == "en"
-    set_progress(shop.id, request_id, "Thinking" if en else "Düşünüyor")
+    if photo_needs_intent(db, session.id, message, current):
+        reply, cards = _intent_reply(ctx)
+        assistant = ChatMessage(session_id=session.id, role="assistant", content=reply, cards_json=json.dumps(cards, ensure_ascii=False))
+        db.add(assistant)
+        session.updated_at = dt.datetime.utcnow()
+        db.commit()
+        return {"session_id": session.id, "title": session.title, "user": _msg_out(user_msg, shop.id, {i.id: i for i in current}), "assistant": _msg_out(assistant, shop.id)}
+    set_progress(shop.id, request_id, progress.thinking(en))
     tool_lines: list[str] = []
     called: set[str] = set()  # bu istekte çağrılan araçlar
     failed = False  # son araç çağrısı hata döndürdü mü ya da hiçbir şeyi değiştirmedi mi

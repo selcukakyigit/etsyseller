@@ -433,6 +433,8 @@ def test_a_made_up_when_made_range_is_replaced_by_a_sensible_default(db, monkeyp
     assert made({"when_made": "2007_2009", "personalizable": True}, "isim yazdırılabilir") == "made_to_order", "kişiselleştirilebilir: siparişe göre"
     assert made({"when_made": "2007_2009"}, "bu vintage 2008 yapımı") == "2007_2009", "kullanıcı eski yıl dediyse kalır"
     assert made({"when_made": "made_to_order"}, "yeni ürün") == "made_to_order"
+    assert made({}, "yeni ürün zamansız") == "2020_2026", "model hiç vermediyse de güncel dönem (mağaza alışkanlığından 2007_2009 gelmez)"
+    assert made({"personalizable": True}, "isim yazdırılabilir model") == "made_to_order"
 
 
 def test_redundant_qa_lines_and_the_warm_intro_rule(monkeypatch):

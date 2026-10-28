@@ -27,18 +27,19 @@ Use ONLY these facts. Never invent anything else.
 - Sizes: {sizes}
 - Colors/finishes: {colors}
 - Personalization: {personalization}
+- Other stated features (mention naturally, in paragraph 2): {features}
 - Keywords to use naturally (do not stuff): {keywords}
 
 Hard rules: never name a colour for the item in the photo (colours are options listed above); never mention any activity, hobby, passion, interest or lifestyle; do not invent hobbies, occasions, buyers or life situations (only the places that directly follow from the product type, e.g. a garage sign goes in a garage or workshop); no prices or currency, no stock numbers, no shipping or policy talk, no durability / weather / outdoor / rust / care / warranty claims, no hype words (perfect, best, amazing, stunning, beautiful, high quality), no greeting like "welcome". Do not mention anything not listed above.
 Return ONLY the two paragraphs, separated by one blank line."""
 
 
-def write(*, product: str, design: str, material: str, sizes: list[str], colors: list[str], personalization: str, keywords: list[str]) -> str | None:
+def write(*, product: str, design: str, material: str, sizes: list[str], colors: list[str], personalization: str, keywords: list[str], features: list[str] | None = None) -> str | None:
     """İki paragraflık tanıtım metni ya da None (model yok / kurallara uymuyor)."""
     prompt = _PROMPT.format(
         low=90, high=130, product=product or "item", design=design or "(not visible / not stated)", material=material or "(not stated)",
         sizes=", ".join(sizes) if sizes else "(single size)", colors=", ".join(colors) if colors else "(single option)",
-        personalization=personalization or "none", keywords=", ".join(keywords) or "(none)",
+        personalization=personalization or "none", keywords=", ".join(keywords) or "(none)", features=", ".join(features or []) or "(none)",
     )
     try:
         raw = ask_text(text_model("vision"), prompt, max_tokens=420)

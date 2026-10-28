@@ -168,20 +168,28 @@ export default function ChatPanel({
     [draftKey],
   );
   const voice = useSpeechInput(changeInput);
-  // Bir adım uzun sürerse dönüşümlü gösterilen sabır cümleleri.
-  const patienceLine = useCallback(
-    (i: number) => {
-      const lines = [
-        t("Sabırlı ol, az kaldı…", "Hang in there, almost done…"),
-        t("Detaylara bakıyorum, çay demlenirken biter", "Checking the details, done before the tea is ready"),
-        t("Biraz daha, boş durmuyorum", "Just a bit more, I am not slacking"),
-        t("Neredeyse bitti, söz", "Nearly there, promise"),
-        t("Mükemmel olsun diye uğraşıyorum", "Making it just right"),
-      ];
-      return lines[i % lines.length];
-    },
-    [t]
-  );
+  // Bir adım uzun sürerse gösterilen bekleme cümleleri: rastgele seçilir, art arda aynısı gelmez; "sabırlı ol" demez, işi şakayla anlatır.
+  const lastWait = useRef(-1);
+  const patienceLine = useCallback(() => {
+    const lines = [
+      t("Kelimeleri tek tek tartıyorum", "Weighing the words one by one"),
+      t("Başlığı üç kere okudum, hâlâ hoşuma gidiyor", "Read the title three times, still liking it"),
+      t("Virgülleri yerlerine oturtuyorum", "Seating the commas in their places"),
+      t("Fotoğraftaki detayları saydım, hiçbiri kaçmadı", "Counted every detail in the photo, none escaped"),
+      t("Alıcının aklından geçenleri tahmin ediyorum", "Guessing what is on the buyer's mind"),
+      t("Etiketlerin arasında yürüyüşe çıktım", "Out for a stroll among the tags"),
+      t("Açıklamayı sesli okuyorum, kulağa hoş geliyor", "Reading the description aloud, sounds good"),
+      t("Kategori rafları arasında doğru yeri arıyorum", "Searching the category shelves for the right spot"),
+      t("Bir yandan da rakiplerin ne yazdığına göz atıyorum", "Peeking at what competitors wrote, meanwhile"),
+      t("Fiyat tablosunu hizalıyorum, düzgün olsun", "Lining up the price table nice and straight"),
+      t("Bu iş biraz titizlik istiyor, titizim", "This job asks for care, and I am careful"),
+      t("Kahve molası vermedim, sayılır", "No coffee break so far, for the record"),
+    ];
+    let i = Math.floor(Math.random() * lines.length);
+    if (i === lastWait.current) i = (i + 1) % lines.length;
+    lastWait.current = i;
+    return lines[i];
+  }, [t]);
   const [awayDoneId, setAwayDoneId] = useState<number | null>(null); // yoklaması bitirilen (yanıt gelmeyen) son kullanıcı mesajı
   const [pending, setPending] = useState<Pending[]>([]);
   const [uploading, setUploading] = useState(0);
@@ -302,7 +310,6 @@ export default function ChatPanel({
     const queue: string[] = [];
     let seen = 0;
     let shownAt = Date.now();
-    let filler = 0;
     const show = (text: string) => {
       shownAt = Date.now();
       setStep(text);
@@ -310,10 +317,9 @@ export default function ChatPanel({
     const pace = setInterval(() => {
       const idle = Date.now() - shownAt;
       if (queue.length > 0 && idle >= STEP_MIN_MS) {
-        filler = 0;
         show(queue.shift() as string);
       } else if (queue.length === 0 && idle >= FILLER_AFTER_MS) {
-        show(patienceLine(filler++));
+        show(patienceLine());
       }
     }, 300);
     const tick = () =>

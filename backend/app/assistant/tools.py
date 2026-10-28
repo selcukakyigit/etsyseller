@@ -84,6 +84,7 @@ class Ctx:
     message: str = ""  # kullanıcının bu mesajı (yapıştırılan fatura metni gibi, modele yeniden yazdırmadan okumak için)
     cards: list[dict] = field(default_factory=list)
     session_id: int | None = None  # sohbet oturumu: üretilen resimler bu oturuma kaydedilir
+    brief_soft: int = 0  # brief_check'in "yumuşak" (kalite) retleri bir kez söylenir; sonra kart geçer (oturum 65: aynı kart 3-5 kez reddedilip 16 tur harcandı)
     ask_checked: bool = False  # brief_check planın cevabı bilinmeyen sorularını eklemeyi bir kez hatırlatır
     plan: Any = None  # bu turda keyword_pool'un kurduğu kelime planı (brief_check başlık seçeneklerini buna göre denetler)
     plan_cache: dict = field(default_factory=dict)  # create_listing_draft yeniden denemelerinde plan bir kez kurulur: {anahtar: Plan}
@@ -670,7 +671,8 @@ def _keeps_established_category(ctx: Ctx, current: int | None, picked: int, text
 
 _TOTAL_STOCK = re.compile(r"toplam(?:[ ]+stok)?[ ]*[:=]?[ ]*([0-9]{1,3})\b|stok(?:u|[a-zçğıöşü]*)?[ ]+toplam[ ]*([0-9]{1,3})\b", re.IGNORECASE)
 _EACH_STOCK = re.compile(r"(?:hepsi|her[ ]*biri|her[ ]*kombinasyon\w*|her[ ]*(?:ürün|renk|boyut)\w*)[ ]*(?:için[ ]*)?(?:stok[ ]*)?[:=]?[ ]*([0-9]{1,3})\b", re.IGNORECASE)
-_LINE_COUNT = re.compile(r"([2-5])[ ]*(?:metin|satır|line|text line)", re.IGNORECASE)
+_WORD_NUMBERS = {"iki": 2, "üç": 3, "dört": 4, "beş": 5, "two": 2, "three": 3, "four": 4, "five": 5}
+_LINE_COUNT = re.compile(r"(?<![0-9a-zçğıöşü])([2-5]|iki|üç|dört|beş|two|three|four|five)[ ]*(?:farklı[ ]*|ayrı[ ]*|separate[ ]*|different[ ]*)?(?:metin|satır|alan|kutu|line|text line|field|box)", re.IGNORECASE)
 _MAX_CHARS = re.compile(r"(?:max(?:imum)?\.?[ ]*|en fazla[ ]*|up to[ ]*)([0-9]{1,3})[ ]*(?:karakter|character|harf)|([0-9]{1,3})[ ]*karakter", re.IGNORECASE)
 _PRICE_IN_LABEL = re.compile(r"[ \t\-–—:,|]*[(\[]?[ ]*(?:\$[ ]?[0-9]+(?:[.,][0-9]+)?|[0-9]+(?:[.,][0-9]+)?[ ]?(?:usd|\$|dolar|dollars?))[ ]*[)\]]?[ ]*$", re.IGNORECASE)
 
@@ -690,7 +692,10 @@ def _stated_text_lines(text: str) -> list[str]:
     if re.search(r"üst[ ]*(?:metin|satır|yazı)", low) and re.search(r"orta", low) and re.search(r"alt[ ]*(?:metin|satır|yazı)", low):
         return ["Upper line", "Middle line", "Lower line"]
     m = _LINE_COUNT.search(low)
-    return [f"Line {i}" for i in range(1, int(m.group(1)) + 1)] if m else []
+    if not m:
+        return []
+    n = int(m.group(1)) if m.group(1).isdigit() else _WORD_NUMBERS[m.group(1).lower()]
+    return [f"Line {i}" for i in range(1, n + 1)]
 
 
 def _clean_variation_labels(variations: list[dict]) -> list[dict]:
@@ -720,18 +725,23 @@ def _enrich_description(ctx: Ctx, a: dict, title: str, tags: list[str], variatio
     reading = _design_reading(ctx)
     materials = [str(m) for m in a.get("materials") or []]
     lines = _stated_text_lines(source) if a.get("personalizable") else []
+    if a.get("personalizable") and not lines and len(a.get("personalization_questions") or []) >= 2:  # model alanları kendisi kurduysa (ör. "Personalization line 1/2/3") sayı oradan
+        lines = [f"Line {i}" for i in range(1, len(a["personalization_questions"]) + 1)]
     chars = (_MAX_CHARS.search(source) or None) and next((g for g in _MAX_CHARS.search(source).groups() if g), None)
+    if not chars and a.get("personalization_max_chars"):
+        chars = str(int(a["personalization_max_chars"]))
+    features = [" ".join(str(f).split())[:80] for f in a.get("features") or [] if str(f).strip()][:5]
     personalization = ""
     if a.get("personalizable"):
         personalization = (f"{len(lines)} separate text lines ({', '.join(x.lower() for x in lines)})" if lines else "the buyer enters their own text") + (f", up to {chars} characters each" if chars else "")
     product = str(a.get("product") or title)
     intro = description_writer.write(
         product=product, design=(reading or {}).get("design", ""), material=", ".join(materials), sizes=_option_names(variations, ("size", "scale", "boyut")),
-        colors=_option_names(variations, ("color", "colour", "finish", "renk")), personalization=personalization, keywords=[t for t in [lead_phrase(title), *tags[:3]] if t][:4],
+        colors=_option_names(variations, ("color", "colour", "finish", "renk")), personalization=personalization, keywords=[t for t in [lead_phrase(title), *tags[:3]] if t][:4], features=features,
     )
     if not intro:
         return a
-    details = quality.build_details(description, variations, materials, personalization)
+    details = quality.build_details(description, variations, materials, personalization, features)
     qa = quality.personalization_qa(lines, chars) if a.get("personalizable") else ""  # modelin soru-cevabı uydurma cevap içeriyordu ("farklı font için mesaj atın, müsaitliği doğrularız")
     text = quality.drop_empty_sections("\n\n".join(x for x in (intro, details, qa) if x))
     return {**a, "description": text, "aciklama_zenginlestirildi": True}
@@ -1110,10 +1120,11 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     work.update({"title": title, "description": description, "tags": tags, "materials": [str(m).strip() for m in (a.get("materials") or []) if str(m).strip()][:13]})
     if a.get("who_made") in ("i_did", "someone_else", "collective"):
         work["who_made"] = a["who_made"]
-    if a.get("when_made"):
-        wm = str(a["when_made"])  # model "2007_2009" gibi uydurma yıl aralığı yazmasın (oturum 60): yalnızca geçerli değer ve kullanıcı yıl/vintage dediyse eski aralık
-        old_ok = wm in fields.WHEN_MADE and (wm in ("made_to_order", "2020_2026") or _VINTAGE_ASKED.search(source))
-        work["when_made"] = wm if old_ok else ("made_to_order" if a.get("personalizable") else "2020_2026")
+    # "Ne zaman yapıldı" mağaza alışkanlığından DEĞİL kuraldan gelir: kullanıcı yıl/vintage dediyse o aralık, kişiselleştirilebilirse sipariş üzerine, aksi halde güncel dönem
+    # (model "2007_2009" gibi uydurma yıl aralığı yazmasın, oturum 60; mağaza geçmişindeki en sık değer de bugünün ürününü yansıtmaz, oturum 65)
+    wm = str(a.get("when_made") or "")
+    old_ok = wm in fields.WHEN_MADE and (wm in ("made_to_order", "2020_2026") or _VINTAGE_ASKED.search(source))
+    work["when_made"] = wm if old_ok else ("made_to_order" if a.get("personalizable") else "2020_2026")
     defaults = shop_defaults(ctx, {})
     work["taxonomy_id"] = int(a["taxonomy_id"]) if a.get("taxonomy_id") else None
     category_note = None
@@ -1315,7 +1326,7 @@ def _apply_shop_prefill(ctx: Ctx, work: dict, a: dict, is_digital: bool, title: 
     if got["should_auto_renew"] is not None:
         work["should_auto_renew"] = got["should_auto_renew"]
     if not a.get("who_made") and got["who_made"]:
-        work["who_made"], work["when_made"], work["is_supply"] = got["who_made"], a.get("when_made") or got["when_made"], got["is_supply"]
+        work["who_made"], work["is_supply"] = got["who_made"], got["is_supply"]  # ne zaman yapıldı: kurala göre (yukarıda), alışkanlıktan değil
     if is_digital:
         return chosen
     if got["production_partner_ids"]:
@@ -1457,6 +1468,15 @@ def _brief_answered(ctx: Ctx) -> bool:
     return False
 
 
+def _soft_reject(ctx: Ctx) -> bool:
+    """Kalite retleri (zayıf/benzer başlık, plan açılışı, tasarım uyuşmazlığı) bir turda EN ÇOK BİR kez söylenir: True = şimdi reddet. Sonrası geçer; başlık taslak
+    denetiminde zaten düzeltilir (autofix_title), kullanıcı ise kartı hemen görür."""
+    if getattr(ctx, "brief_soft", 0) >= 1:
+        return False
+    ctx.brief_soft = getattr(ctx, "brief_soft", 0) + 1
+    return True
+
+
 def brief_check(ctx: Ctx, a: dict) -> dict:
     """Yeni listing'ten ÖNCE: anlaşılanları ve eksikleri tek kartta gösterir. Kullanıcının cevapları tek mesajda gelir, taslak tek seferde kurulur.
     Bir listing için EN ÇOK BİR kart: cevaplanmış karttan sonra yenisi çıkmaz (her turda yeni soru ekletilip döngüye giriliyordu, oturum 54)."""
@@ -1493,16 +1513,18 @@ def brief_check(ctx: Ctx, a: dict) -> dict:
             if not plan.lead_options:
                 return {"error": "Kelime planı açılış ifadesi üretemedi; keyword_pool'u ürün adı (query) ve olgularla (facts) yeniden çağır."}
             design = " ".join(str(a.get("design") or "").split())
+            if not design:  # model yazmadıysa görsel modelin resimden okuduğu kullanılır (sunucu doldurur, model döngüye girmez)
+                design = " ".join(str((_design_reading(ctx) or {}).get("design") or "").split())
             if not design:
                 return {"error": "Başlık sorusu için design alanı ŞART: ürünün resimde GÖRÜNEN tasarımını 3-8 İngilizce kelimeyle yaz (desen/form/motif) ve başlık önerilerini ona göre kur; sonra kartı yeniden çağır."}
             seen = _design_mismatch(ctx, design)
-            if seen:
+            if seen and _soft_reject(ctx):
                 return {"error": seen}
             weak = _title_option_problems(item["options"], said, design)
-            if weak:
+            if weak and _soft_reject(ctx):
                 return {"error": "Başlık önerileri zayıf: " + "; ".join(weak[:4]) + ". Her öneri: planın açılışıyla başla ve nesneyi temasıyla birlikte anlat (ör. 'flower themed mug', 'tulip motif carafe'): ürünün GÖRÜNEN tasarımını (design) ve ortak malzemeyi söyle; birden çok ölçü/renk varsa onları yazma; üç öneri farklı tasarım/kullanım açısı öne çıkarsın. Kartı yeniden çağır."}
             off = [o for o in item["options"] if plan_mod.title_problems(o, plan)]
-            if off:
+            if off and _soft_reject(ctx):
                 return {"error": f"Şu başlık seçenekleri planın açılış ifadelerinden biriyle başlamıyor: {off}. Her seçenek şunlardan biriyle başlasın: {plan.lead_options}; ardından 2-3 nesnel niteleyici, 15 kelimenin altı."}
         if item["type"] == "price":
             item["unit"] = "$"
@@ -3483,6 +3505,7 @@ TOOLS: list[dict] = [
         "attributes": {"type": "array", "description": "Kategori özellikleri (malzeme, kullanım yeri/occasion, renk, kişiselleştirilebilir mi…): [{name, values, unit?}]. İzin verilen değerler get_category_attributes'tedir; bilmiyorsan ver, sonuçtaki hata/eksik listesine göre set_listing_attributes ile tamamla.", "items": _obj({"name": {"type": "string"}, "values": {"type": "array", "items": {"type": "string"}}, "unit": {"type": "string"}}, ["name"])},
         "personalization_questions": {"type": "array", "description": "Kullanıcı kişiselleştirme (isim/yazı vb.) istediyse sorular, en fazla 5: {question_text, question_type (text_input|dropdown), required, max_allowed_characters, instructions, options}", "items": _obj({"question_text": {"type": "string"}, "instructions": {"type": "string"}, "question_type": {"type": "string", "enum": list(fields.QUESTION_TYPES)}, "required": {"type": "boolean"}, "max_allowed_characters": {"type": "integer"}, "options": {"type": "array", "items": {"type": "string"}}}, ["question_text"])},
         "video_ids": {"type": "array", "items": {"type": "string"}, "description": "Kullanıcının sohbete yüklediği VİDEOLARIN kimlikleri (sistem mesajındaki KULLANICI VİDEOLARI listesinden), en fazla 2. Kullanıcı video yüklediyse mutlaka ver."},
+        "features": {"type": "array", "items": {"type": "string"}, "description": "Kullanıcının söylediği diğer ürün olguları, kısa İngilizce (en çok 5): ör. 'back-mounted', 'mounting hardware included', 'cut letters'. Açıklamada DETAILS'e ve tanıtıma girer; uydurma ekleme."},
         "personalizable": {"type": "boolean", "description": "Kullanıcı ürünün kişiselleştirilebildiğini söylediyse (isim/yazı yazılabilir) true: sunucu 'Personalization' metin sorusunu ve 'Can be personalized' özelliğini ekler. MUTLAKA ver."},
         "personalization_max_chars": {"type": "integer", "description": "Kişiselleştirme metninin en fazla karakteri (kullanıcı söylediyse, ör. 50)"},
         "crop_first_photo": {"type": "string", "enum": ["1:1", "4:3", "3:4"], "description": "Kullanıcı kapak/ana/birinci resmi kırp dediyse oran (ör. 1:1 = kare). MUTLAKA ver."},
