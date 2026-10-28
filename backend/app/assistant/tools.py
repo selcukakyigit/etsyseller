@@ -698,6 +698,31 @@ def _stated_text_lines(text: str) -> list[str]:
     return [f"Line {i}" for i in range(1, n + 1)]
 
 
+_PRICE_LINE = re.compile(r"^[ ]*(.{1,30}?)[ ]*[-–:][ ]*([0-9]+(?:[.,][0-9]+)?)[ ]*(?:[$]|usd|dolar|dollars?)[ ]*$", re.IGNORECASE)
+_PIECES = re.compile(r"[ ]*(?:adet|tane|pieces?|pcs)[.]?[ ]*$", re.IGNORECASE)
+
+
+def _stated_price_variation(text: str) -> dict | None:
+    """Kullanıcı bir başlık satırının altına "seçenek - fiyat" satırları yazdıysa ("how many" / "100 adet - 330 dolar" / "200 adet - 660 dolar") bu bir FİYATLI VARYASYONDUR:
+    başlık varyasyonun adı, her satır bir seçenek ve fiyatı (oturum 67: model bunu atlayıp yalnızca Size kurmuş, fiyatı boş bırakmıştı). Başlık yoksa ya da tek satırsa None."""
+    lines = [x for x in text.splitlines() if x.strip()]
+    for i in range(1, len(lines)):
+        run = []
+        for line in lines[i:]:
+            m = _PRICE_LINE.match(line)
+            if not m:
+                break
+            run.append((m.group(1).strip(), float(m.group(2).replace(",", "."))))
+        header = lines[i - 1].strip()
+        if len(run) >= 2 and len(header) <= 30 and not re.search(r"[0-9]", header) and not _PRICE_LINE.match(header):
+            values = []
+            for option, price in run:
+                count = _PIECES.sub("", option)
+                values.append({"value": f"{count} pcs" if count.isdigit() and count != option else option, "price": price})
+            return {"name": header[:1].upper() + header[1:], "values": values}
+    return None
+
+
 def _clean_variation_labels(variations: list[dict]) -> list[dict]:
     """Seçenek adındaki fiyat ("L - 120x60 cm - $190") atılır: fiyat alanda durur, alıcı adın içinde görmez."""
     out = []
@@ -725,15 +750,22 @@ def _enrich_description(ctx: Ctx, a: dict, title: str, tags: list[str], variatio
     reading = _design_reading(ctx)
     materials = [str(m) for m in a.get("materials") or []]
     lines = _stated_text_lines(source) if a.get("personalizable") else []
-    if a.get("personalizable") and not lines and len(a.get("personalization_questions") or []) >= 2:  # model alanları kendisi kurduysa (ör. "Personalization line 1/2/3") sayı oradan
-        lines = [f"Line {i}" for i in range(1, len(a["personalization_questions"]) + 1)]
+    questions = [q for q in a.get("personalization_questions") or [] if isinstance(q, dict)]
+    text_questions = [q for q in questions if str(q.get("question_type") or "text_input") == "text_input"]
+    has_upload = len(text_questions) < len(questions)  # dosya yükleme alanı metin satırı sayılmaz (oturum 67: 'logo yükle' + 2 metin alanı "3 metin kutusu" diye yazılmıştı)
+    if a.get("personalizable") and not lines and len(text_questions) >= 2:  # model alanları kendisi kurduysa sayı oradan
+        lines = [f"Line {i}" for i in range(1, len(text_questions) + 1)]
     chars = (_MAX_CHARS.search(source) or None) and next((g for g in _MAX_CHARS.search(source).groups() if g), None)
-    if not chars and a.get("personalization_max_chars"):
+    limits = {int(q["max_allowed_characters"]) for q in text_questions if q.get("max_allowed_characters")}
+    if questions and len(limits) != 1:
+        chars = None  # alanların sınırı farklıysa "her biri N karakter" denmez
+    elif not chars and a.get("personalization_max_chars"):
         chars = str(int(a["personalization_max_chars"]))
     features = [" ".join(str(f).split())[:80] for f in a.get("features") or [] if str(f).strip()][:5]
     personalization = ""
     if a.get("personalizable"):
         personalization = (f"{len(lines)} separate text lines ({', '.join(x.lower() for x in lines)})" if lines else "the buyer enters their own text") + (f", up to {chars} characters each" if chars else "")
+        personalization += "; the buyer can also upload a logo or design file" if has_upload else ""
     product = str(a.get("product") or title)
     intro = description_writer.write(
         product=product, design=_card_design(ctx) or (reading or {}).get("design", ""), material=", ".join(materials), sizes=_option_names(variations, ("size", "scale", "boyut")),
@@ -742,7 +774,7 @@ def _enrich_description(ctx: Ctx, a: dict, title: str, tags: list[str], variatio
     if not intro:
         return a
     details = quality.build_details(description, variations, materials, personalization, features)
-    qa = quality.personalization_qa(lines, chars) if a.get("personalizable") else ""  # modelin soru-cevabı uydurma cevap içeriyordu ("farklı font için mesaj atın, müsaitliği doğrularız")
+    qa = quality.personalization_qa(lines, chars, has_upload) if a.get("personalizable") else ""  # modelin soru-cevabı uydurma cevap içeriyordu ("farklı font için mesaj atın, müsaitliği doğrularız")
     text = quality.drop_empty_sections("\n\n".join(x for x in (intro, details, qa) if x))
     return {**a, "description": text, "aciklama_zenginlestirildi": True}
 
@@ -1086,6 +1118,9 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
         vals = [x if isinstance(x, dict) else {"value": x} for x in v.get("values") or []]
         filled = dimensions.fill_missing_sizes([str(x.get("value", "")) for x in vals])
         v["values"] = [{**x, "value": f} for x, f in zip(vals, filled)]
+    priced = _stated_price_variation(_user_facts(ctx, {}))
+    if priced and len(cleaned) < 3 and not any(v.get("name", "").lower() == priced["name"].lower() or any(_PIECES.sub("", str(x.get("value") if isinstance(x, dict) else x)) == _PIECES.sub("", y["value"].replace(" pcs", "")) for x in v.get("values") or [] for y in priced["values"]) for v in cleaned):
+        cleaned.append(priced)  # kullanıcının "başlık / seçenek - fiyat" satırları: model atladıysa sunucu fiyatlı varyasyonu ekler
     size_variations, unit_assumed = _normalize_sizes(ctx, cleaned)
     a = {**a, "variations": size_variations}
     a = {**a, "description": layout.normalize(str(a.get("description") or ""))}  # düzen: bölüm başlıkları, tek tip madde işareti, emoji yok (ai/layout.py)

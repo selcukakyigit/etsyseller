@@ -460,13 +460,16 @@ def build_details(description: str, variations: dict[str, list[str]], materials:
     return out.strip()
 
 
-def personalization_qa(lines: list[str], chars: str | None) -> str:
-    """Kişiselleştirilebilir ürün için olgulardan türetilen TEK soru-cevap (alıcıların en çok sorduğu soru); modelin uydurma cevapları yerine. Alan sayısı/karakter bilinmiyorsa genel ama doğru cevap."""
+def personalization_qa(lines: list[str], chars: str | None, upload: bool = False) -> str:
+    """Kişiselleştirilebilir ürün için olgulardan türetilen TEK soru-cevap (alıcıların en çok sorduğu soru); modelin uydurma cevapları yerine. Alan sayısı/karakter bilinmiyorsa genel ama doğru cevap.
+    `upload`: ürün logo/tasarım dosyası yükleme alanı da istiyorsa cevaba eklenir (metin kutusu sayısına girmez)."""
     per = f" (up to {chars} characters each)" if chars else ""
     if lines:
         answer = f"Enter your text in the {len(lines)} personalization boxes when you order ({', '.join(x.lower() for x in lines)}{'; up to ' + chars + ' characters each' if chars else ''}); leave any box empty if you do not need it."
     else:
         answer = f"Enter your text in the personalization box when you order{per}."
+    if upload:
+        answer += " You can also upload your logo or design file there."
     return f"QUESTIONS\n• How do I personalize it? — {answer}"
 
 

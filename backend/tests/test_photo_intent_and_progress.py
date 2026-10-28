@@ -122,3 +122,45 @@ def test_a_draft_without_a_price_gets_price_boxes_per_size_and_they_write_throug
     assert {(p["property_values"][0]["values"][0], p["offerings"][0]["price"]["amount"]) for p in inv["products"]} == {("S 83x55cm/33x22in", 8000), ("M 103x67cm/41x26in", 12000)}
     bad = tools.set_card_prices(ctx, out["listing_id"], "Size", [{"option": "Nope", "price": 10}])
     assert bad.get("error"), "olmayan seçenek yazılmaz"
+
+
+def test_a_header_with_option_price_lines_becomes_a_priced_variation():
+    text = "how many \n100 adet - 330 dolar \n200 adet - 660 dolar \ntoplam stok 50 adet olacak\n\nsize \neu size \nUs size"
+    got = tools._stated_price_variation(text)
+    assert got == {"name": "How many", "values": [{"value": "100 pcs", "price": 330.0}, {"value": "200 pcs", "price": 660.0}]}, got
+    assert tools._stated_price_variation("XL - 50 dolar") is None, "başlık ve en az iki satır yoksa varyasyon sayılmaz"
+    assert tools._stated_price_variation("fiyatlar\nS - 40 $\nM - 60 $")["name"] == "Fiyatlar"
+
+
+def test_the_price_variation_is_added_when_the_model_missed_it_and_prices_land_on_it(db, monkeypatch):
+    from app.shops.models import Shop
+
+    shop = Shop(user_id=1, workspace_id=1, etsy_shop_id=1016, etsy_user_id=7, shop_name="S16")
+    db.add(shop); db.commit()
+    monkeypatch.setattr(tools, "_autofill_in_work", lambda *a, **k: ([], []))
+    monkeypatch.setattr(tools, "_category_defs", lambda tid: [])
+    msg = "how many\n100 adet - 330 dolar\n200 adet - 660 dolar\ntoplam stok 50 adet olacak\n\nsize\neu size\nUs size"
+    ctx = tools.Ctx(db=db, shop=shop, user_id=5, today=None, message=msg, cards=[{"type": "brief"}])
+    out = tools.create_listing_draft(ctx, {"title": "Metal Business Card Engraved Logo", "product": "metal business card", "taxonomy_id": 1029, "total_quantity": 50,
+                                           "variations": [{"name": "Size", "values": [{"value": "EU size"}, {"value": "US size"}]}], "description": "Metal business card.\n\nDETAILS\n• Material: metal"})
+    card = next(c for c in ctx.cards if c.get("type") == "listing_draft")
+    assert not card["price_missing"] and card["price"] == [330.0, 660.0], card
+    inv = tools._work_or_error(ctx, out["listing_id"])[0]["inventory"]
+    assert len(inv["products"]) == 4 and inv["price_on_property"], "2 boyut x 2 miktar, fiyat miktar seçeneğinde"
+    assert {tuple(v["values"][0] for v in p["property_values"]) for p in inv["products"]} >= {("EU size", "100 pcs"), ("US size", "200 pcs")}
+
+
+def test_an_upload_field_is_not_counted_as_a_text_line_in_the_description(db, monkeypatch):
+    from app.ai import description_writer
+    from app.shops.models import Shop
+
+    shop = Shop(user_id=1, workspace_id=1, etsy_shop_id=1017, etsy_user_id=7, shop_name="S17")
+    db.add(shop); db.commit()
+    seen = {}
+    monkeypatch.setattr(description_writer, "write", lambda **kw: seen.update(kw) or ("If you are looking for a card, this is it. " + "word " * 25 + "\n\nSecond paragraph. " + "word " * 25))
+    ctx = tools.Ctx(db=db, shop=shop, user_id=5, today=None, message="x")
+    a = {"description": "x", "product": "metal card", "personalizable": True, "materials": ["metal"], "personalization_questions": [
+        {"question_type": "unlabeled_upload", "question_text": "Upload"}, {"question_type": "text_input", "max_allowed_characters": 100}, {"question_type": "text_input", "max_allowed_characters": 200}]}
+    out = tools._enrich_description(ctx, a, "Metal Card", [], {}, "kişiselleştirme", None, [])
+    assert "2 separate text lines" in seen["personalization"] and "upload a logo" in seen["personalization"] and "characters each" not in seen["personalization"], seen
+    assert "2 personalization boxes" in out["description"] and "upload your logo" in out["description"], out["description"]
