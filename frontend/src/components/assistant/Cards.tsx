@@ -17,6 +17,7 @@ import BatchJobCard from "./BatchJobCard";
 import ConfirmActionCard from "./ConfirmActionCard";
 import MediaJobCard from "./MediaJobCard";
 import BriefCard from "./BriefCard";
+import PriceBoxes from "./PriceBoxes";
 import { useT } from "@/lib/i18n-client";
 import EtsyLink from "@/components/ui/EtsyLink";
 
@@ -57,6 +58,7 @@ const changeLabel = (c: string, t: (tr: string, en: string) => string): string =
 /** `onAsk`: karttaki düğmeler sohbete kullanıcı mesajı olarak bir istek gönderir (ör. "Listing'e ekle"). */
 export default function Card({ card, shopId, onAsk, active = true }: { card: ChatCard; shopId: number; onAsk?: (text: string) => void; active?: boolean }) {
   const [preview, setPreview] = useState(false);
+  const [priced, setPriced] = useState<Extract<ChatCard, { type: "listing_draft" }> | null>(null); // fiyat kutularından sonra güncel kart
   const { t, lang, locale } = useT();
   const fmt = currencyFormatter(locale);
   if (card.type === "finance") {
@@ -426,12 +428,12 @@ export default function Card({ card, shopId, onAsk, active = true }: { card: Cha
             <div className="mb-0.5 inline-block rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">{t("YEREL TASLAK · Etsy'ye gönderilmedi", "LOCAL DRAFT · not sent to Etsy")}</div>
             <div className="text-sm font-semibold">{card.title}</div>
             <div className="mt-1 text-neutral-500">
-              {card.price_missing ? (
+              {card.price_missing && !priced ? (
                 <span className="text-amber-600">{t("Fiyat yok", "No price yet")}</span>
-              ) : card.price[0] === card.price[1] ? (
-                `$${card.price[0].toFixed(2)}`
+              ) : (priced ?? card).price[0] === (priced ?? card).price[1] ? (
+                `$${(priced ?? card).price[0].toFixed(2)}`
               ) : (
-                `$${card.price[0].toFixed(2)} – $${card.price[1].toFixed(2)}`
+                `$${(priced ?? card).price[0].toFixed(2)} – $${(priced ?? card).price[1].toFixed(2)}`
               )}{" "}
               · {card.quantity} {t("adet", "in stock")}
               {card.quantity_assumed && <span className="text-amber-600"> {t("(tahmini)", "(estimated)")}</span>}
@@ -446,9 +448,14 @@ export default function Card({ card, shopId, onAsk, active = true }: { card: Cha
             )}
             {card.category && <div className="mt-1 text-neutral-500">{t("Kategori:", "Category:")} {card.category}</div>}
             {card.tags.length > 0 && <div className="mt-1 line-clamp-2 text-neutral-400">{card.tags.join(", ")}</div>}
-            {card.problems.length > 0 && <div className="mt-1 text-amber-600">{t("Yayın için eksik:", "Missing before publishing:")} {card.problems.join(" ")}</div>}
+            {(priced ?? card).problems.length > 0 && <div className="mt-1 text-amber-600">{t("Yayın için eksik:", "Missing before publishing:")} {(priced ?? card).problems.join(" ")}</div>}
           </div>
         </div>
+        {card.price_missing && !priced && card.price_form && (
+          <div className="px-3 pb-3">
+            <PriceBoxes shopId={shopId} listingId={card.listing_id} form={card.price_form} onApplied={setPriced} />
+          </div>
+        )}
         <div className="flex justify-end gap-2 border-t border-neutral-100 bg-neutral-50 px-3 py-2 dark:border-neutral-800 dark:bg-neutral-950">
           <button type="button" onClick={() => setPreview(true)} className="rounded-lg border border-emerald-600 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950">
             {t("Önizle", "Preview")}

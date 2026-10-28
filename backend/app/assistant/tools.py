@@ -909,9 +909,35 @@ def _listing_card(ctx: Ctx, lid: int, work: dict, changes: list[str] | None = No
         "problems": creation.validate_new(work, activate=True) if lid < 0 else [],
         "category": category, "price_missing": (not any(p > 0 for p in prices)) if price_missing is None else price_missing, "quantity_assumed": qty_assumed,
     }
+    if card["price_missing"]:
+        card["price_form"] = _price_form(work)
     if changes:
         card["changes"] = changes
     return card
+
+
+def _price_form(work: dict) -> dict:
+    """Fiyatı eksik kartta gösterilen satırlar: fiyatı belirleyen varyasyonun (boyut, yoksa ilk çok seçenekli) her seçeneği için bir kutu; varyasyonsuzda tek kutu."""
+    names = inventory_edit.variation_names(work)
+    multi = [n for n in names if len(inventory_edit.options(work, n)) > 1]
+    pick = next((n for n in multi if any(k in n.lower() for k in ("size", "boyut", "scale"))), multi[0] if multi else None)
+    return {"variation": pick, "options": inventory_edit.options(work, pick) if pick else []}
+
+
+def set_card_prices(ctx: Ctx, lid: int, variation: str | None, prices: list[dict]) -> dict:
+    """Kartın fiyat kutularından gelen fiyatları yazar: edit_inventory aracının AYNI işlevi (asistan ve kart tek uygulama). Varyasyon yoksa tek fiyat, varsa seçenek başına.
+    Hata varsa o satırın hatası döner. Döner: {"card": güncel listing kartı} ya da {"error"}."""
+    for row in prices:
+        args: dict = {"listing_id": lid, "price": float(row["price"])}
+        if variation and row.get("option"):
+            args["where"] = {variation: str(row["option"])}
+        out = edit_inventory(ctx, args)
+        if out.get("error") or out.get("hatalar"):
+            return {"error": str(out.get("error") or "; ".join(out["hatalar"]))}
+    work, err = _work_or_error(ctx, lid)
+    if err:
+        return err
+    return {"card": _listing_card(ctx, lid, work)}
 
 
 def _show_listing(ctx: Ctx, lid: int, work: dict, changes: list[str] | None = None, **kw) -> None:
@@ -1627,22 +1653,12 @@ def _brief_shown(ctx: Ctx) -> bool:
 
 
 def auto_choices(ctx: Ctx) -> None:
-    """Model seçenek kartı çağırmadıysa, listing kartının durumundan dokunulabilir kart üretir (zayıf modeller ask_user'ı kullanmıyor): fiyat yoksa fiyat seçenekleri
-    (mağazanın tipik fiyatı etrafında), aksi halde sıradaki adım önerileri. Yalnızca bu yanıtta bir listing kartı varsa ve zaten kart yoksa."""
+    """Model seçenek kartı çağırmadıysa, listing kartının durumundan sıradaki adım düğmelerini üretir (zayıf modeller ask_user'ı kullanmıyor). Fiyat eksikse listing kartının kendi fiyat
+    kutuları vardır (price_form), ayrıca fiyat düğmesi çıkmaz. Yalnızca bu yanıtta bir listing kartı varsa ve zaten kart yoksa."""
     if any(c.get("type") in ("choices", "brief") for c in ctx.cards):
         return
     card = next((c for c in reversed(ctx.cards) if c.get("type") == "listing_draft"), None)
     if card is None:
-        return
-    if card.get("price_missing"):
-        try:
-            typical = _shop_norms(ctx)[0]
-        except Exception:  # noqa: BLE001 - mağaza fiyat özeti alınamazsa genel öneriler
-            typical = None
-        base = float(typical) if typical else 25.0
-        prices = sorted({max(1, round(base * f)) for f in (0.8, 1, 1.25)})
-        options = [tr(f"Fiyat {p} dolar olsun", f"Set the price to ${p}") for p in prices[:3]]
-        ctx.cards.append({"type": "choices", "kind": "question", "question": tr("Fiyat ne olsun?", "What should the price be?"), "options": [*options, tr("Sen karar ver", "You decide")], "auto": True})
         return
     options = []
     if (card.get("images") or 0) < 4:

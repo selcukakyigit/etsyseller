@@ -101,3 +101,24 @@ def test_a_long_option_name_is_refused_for_the_model_to_shorten():
 
     err, msg = inventory_edit.add_option({"inventory": {"products": [{"property_values": [{"property_name": "Size", "values": ["S"]}], "offerings": [{}]}]}}, "Size", "S - proportioned to given sizes (inches added in description)")
     assert err == 0 and "20" in (msg or "")
+
+
+def test_a_draft_without_a_price_gets_price_boxes_per_size_and_they_write_through_edit_inventory(db, monkeypatch):
+    from app.shops.models import Shop
+
+    shop = Shop(user_id=1, workspace_id=1, etsy_shop_id=1015, etsy_user_id=7, shop_name="S15")
+    db.add(shop); db.commit()
+    monkeypatch.setattr(tools, "_autofill_in_work", lambda *a, **k: ([], []))
+    monkeypatch.setattr(tools, "_category_defs", lambda tid: [])
+    ctx = tools.Ctx(db=db, shop=shop, user_id=5, today=None, message="fiyatsız", cards=[{"type": "brief"}])
+    sizes = [{"name": "Size", "values": [{"value": "S 83x55cm/33x22in"}, {"value": "M 103x67cm/41x26in"}]}, {"name": "Color", "values": [{"value": "Black"}, {"value": "White"}]}]
+    out = tools.create_listing_draft(ctx, {"title": "Metal Name Plaque Rectangular Sign Wall", "product": "metal sign", "taxonomy_id": 1029, "quantity": 5, "variations": sizes,
+                                           "description": "Metal name plaque.\n\nDETAILS\n• Material: metal"})
+    card = next(c for c in ctx.cards if c.get("type") == "listing_draft")
+    assert card["price_missing"] and card["price_form"] == {"variation": "Size", "options": ["S 83x55cm/33x22in", "M 103x67cm/41x26in"]}, card.get("price_form")
+    res = tools.set_card_prices(ctx, out["listing_id"], "Size", [{"option": "S 83x55cm/33x22in", "price": 80}, {"option": "M 103x67cm/41x26in", "price": 120}])
+    assert res["card"]["price"] == [80.0, 120.0] and not res["card"]["price_missing"] and "price_form" not in res["card"], res
+    inv = tools._work_or_error(ctx, out["listing_id"])[0]["inventory"]
+    assert {(p["property_values"][0]["values"][0], p["offerings"][0]["price"]["amount"]) for p in inv["products"]} == {("S 83x55cm/33x22in", 8000), ("M 103x67cm/41x26in", 12000)}
+    bad = tools.set_card_prices(ctx, out["listing_id"], "Size", [{"option": "Nope", "price": 10}])
+    assert bad.get("error"), "olmayan seçenek yazılmaz"

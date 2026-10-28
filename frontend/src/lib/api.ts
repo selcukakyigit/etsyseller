@@ -1599,7 +1599,7 @@ export type ChatCard =
   | { type: "products"; title: string; currency: string; rows: { title: string; listing_id: number; units: number; sales: number; profit: number; margin: number; image: string; prev_units?: number; prev_sales?: number }[] }
   | { type: "movers"; title: string; currency: string; rows: { title: string; listing_id: number; units: number; prev_units: number; sales: number; prev_sales: number; change: number }[] }
   | { type: "orders"; title: string; rows: { receipt_id: number; buyer: string; country: string; date: string; ship_by: string | null; total: number; items: string[] }[] }
-  | { type: "listing_draft"; listing_id: number; title: string; edit_url: string; price: [number, number]; quantity: number; tags: string[]; combos: number; image: string | null; images: number; problems: string[]; category?: string | null; changes?: string[]; price_missing?: boolean; quantity_assumed?: boolean }
+  | { type: "listing_draft"; listing_id: number; title: string; edit_url: string; price: [number, number]; quantity: number; tags: string[]; combos: number; image: string | null; images: number; problems: string[]; category?: string | null; changes?: string[]; price_missing?: boolean; quantity_assumed?: boolean; price_form?: { variation: string | null; options: string[] } }
   | { type: "brief"; understood: { label: string; value: string }[]; questions: { label: string; options: string[]; type?: "price" | "title" | "text"; unit?: string }[] }
   | { type: "choices"; kind: "question" | "suggestions"; question: string; options: string[] }
   | { type: "status"; title: string; rows: { label: string; value: number }[] }

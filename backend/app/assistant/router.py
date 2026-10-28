@@ -5,7 +5,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.assistant import actions, batch_drafts, llm, media_jobs, memory, service
+from app.assistant import actions, batch_drafts, llm, media_jobs, memory, service, tools
 from app.auth.models import User
 from app.core import blobstore
 from app.core.byte_range import ranged
@@ -14,6 +14,7 @@ from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.core.i18n import tr
 from app.listings import rewrite
+from app.listings.bulk import MIN_PRICE
 from app.shops.deps import get_owned_shop, require_ai_enabled
 from app.shops.models import Shop
 
@@ -115,6 +116,28 @@ def batch_job_start(job_id: str, payload: BatchStartIn, shop: Shop = Depends(get
     job = _batch_job(job_id, shop)
     batch_drafts.confirm(job, payload.items)
     return batch_drafts.public(job)
+
+
+class PriceRowIn(BaseModel):
+    option: str | None = Field(default=None, max_length=80)  # fiyatı belirleyen varyasyonun seçeneği; varyasyonsuzda boş
+    price: float = Field(gt=0, le=1_000_000)
+
+
+class PricesIn(BaseModel):
+    variation: str | None = Field(default=None, max_length=60)
+    prices: list[PriceRowIn] = Field(min_length=1, max_length=40)
+
+
+@router.post("/listings/{listing_id}/prices")
+def set_prices(listing_id: int, body: PricesIn, shop: Shop = Depends(get_owned_shop), user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Taslak kartındaki fiyat kutuları: asistanın edit_inventory aracıyla aynı işlev (tools.set_card_prices). Taslak yalnızca bu mağazanınsa bulunur."""
+    if any(row.price < MIN_PRICE for row in body.prices):
+        raise HTTPException(400, tr(f"Fiyat en az {MIN_PRICE} olmalı.", f"The price must be at least {MIN_PRICE}."))
+    ctx = tools.Ctx(db=db, shop=shop, user_id=user.id, today=dt.date.today())
+    out = tools.set_card_prices(ctx, listing_id, body.variation, [row.model_dump() for row in body.prices])
+    if out.get("error"):
+        raise HTTPException(400, str(out["error"]))
+    return out["card"]
 
 
 @router.post("/batch-jobs/{job_id}/stop")
