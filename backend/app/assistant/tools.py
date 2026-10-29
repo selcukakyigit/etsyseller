@@ -1106,6 +1106,7 @@ def create_listing_draft(ctx: Ctx, a: dict) -> dict:
     picked_title = _chosen_title(ctx)
     if picked_title:  # kullanıcı karttan bir öneri seçti: model başlığı değiştirmiş olsa da seçilen kullanılır (oturum 58)
         title = etsy_rules.clean_title(picked_title)[: etsy_rules.TITLE_MAX]
+    title = quality.proper_title(title)
     if not title:
         return {"error": "Başlık gerekli."}
     if ctx.separate_products and not ctx.unattended and not ctx.redirected:
@@ -1611,8 +1612,9 @@ def brief_check(ctx: Ctx, a: dict) -> dict:
             return {"error": "Kelime planının cevabı BİLİNMEYEN alıcı soruları var: " + "; ".join(q["q"] for q in plan.ask) + ". En az birini kartta kısa bir soru olarak ekle "
                     "(kullanıcının dilinde; plan_question alanına İngilizce soruyu aynen yaz; seçenekler ör. ['Var', 'Yok']); yoksa SSS'ye cevap UYDURMAK zorunda kalırsın. Sonra kartı yeniden çağır."}
     skip = tr("Yazma, atla", "Skip it")
-    for q in questions:  # planın sorusuna her zaman bir "atla" seçeneği: "Yok" gerçek bir cevaptır (SSS'ye "kılıf yok" yazılır); atlanan soru SSS'ye hiç girmez
-        if q.get("plan_question") and skip not in q["options"]:
+    asked_plan = {q["q"] for q in getattr(plan, "ask", None) or []}
+    for q in questions:  # planın GERÇEK sorusuna bir "atla" seçeneği: "Yok" gerçek bir cevaptır (SSS'ye "kılıf yok" yazılır); atlanan soru SSS'ye hiç girmez. Başka sorulara (kişiselleştirme…) eklenmez
+        if q.get("plan_question") in asked_plan and skip not in q["options"]:
             q["options"] = [*q["options"][:3], skip]
     questions = [{k: v for k, v in q.items() if k != "plan_question" or v} for q in questions[:4]]
     if not any(q["type"] == "title" for q in questions):  # yeni listing'de ilk kart HER ZAMAN en az 3 başlık önerisi içerir (kullanıcı seçer ya da kendi başlığını yazar)

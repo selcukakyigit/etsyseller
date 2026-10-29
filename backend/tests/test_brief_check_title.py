@@ -88,3 +88,15 @@ def test_the_first_card_always_has_a_title_question():
     ctx = _ctx(["one", "two", "three"])
     out = brief_check(ctx, {"understood": UNDERSTOOD, "questions": [{"label": "Fiyat?", "type": "price"}]})
     assert "BAŞLIK sorusu yok" in out["error"] and ctx.cards == [], "başlık sorusu olmayan kart gösterilmez"
+
+
+def test_skip_option_only_goes_to_the_plans_questions_not_to_other_cards():
+    ctx = _ctx(["one", "two", "three"])
+    ctx.plan.ask, ctx.ask_checked = [{"q": "do these come with a case", "demand": "high"}], False
+    brief_check(ctx, {"understood": UNDERSTOOD, "design": "thermos bottle flask mug tumbler", "questions": [
+        {"label": "Başlık seç", "options": ["One Insulated Travel Thermos Bottle", "Two Vacuum Insulated Water Flask Cup", "Three Travel Coffee Mug Tumbler Set"]},
+        {"label": "Kişiselleştirme var mı?", "options": ["Var", "Yok"], "plan_question": "do you want personalization"},  # model plan_question'ı uydurmuş
+        {"label": "Kılıf var mı?", "options": ["Var", "Yok"], "plan_question": "do these come with a case"},
+    ]})
+    _title, first, second = ctx.cards[0]["questions"]
+    assert first["options"] == ["Var", "Yok"] and len(second["options"]) == 3

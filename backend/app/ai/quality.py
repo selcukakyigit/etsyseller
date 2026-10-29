@@ -317,11 +317,35 @@ def tag_key(tag: str) -> str:
     return " ".join(sorted(out))
 
 
+def tag_compact_key(tag: str) -> str:
+    """Boşluksuz yazılmış varyantları da yakalar ("metal businesscard" = "metal business card"): çoğul sonekleri atılmış kelimelerin harfleri sıralanıp birleştirilir."""
+    return "".join(sorted(tag_key(tag).replace(" ", "")))
+
+
 def near_duplicate_tags(tags: list[str]) -> list[list[str]]:
     groups: dict[str, list[str]] = {}
     for t in tags:
-        groups.setdefault(tag_key(t), []).append(t)
+        groups.setdefault(tag_compact_key(t), []).append(t)
     return [g for g in groups.values() if len(g) > 1]
+
+
+_SMALL_WORDS = {"and", "or", "of", "for", "with", "in", "on", "to", "the", "a", "an", "at", "by", "from"}
+_UNIT_WORDS = {"ml", "cm", "mm", "oz", "ft", "pcs", "pc", "kg", "g", "l", "m", "inch", "inches", "lb", "lbs"}
+
+
+def proper_title(title: str) -> str:
+    """Tamamı küçük harfle yazılmış başlığı okunur hâle getirir ("business card engraved metal" → "Business Card Engraved Metal"): her kelimenin ilk harfi büyür
+    (bağlaç/edat hariç, ilk kelime hariç değil); sayı/ölçü içeren ve zaten büyük harf taşıyan başlıklara dokunmaz. Kelimeler değişmez."""
+    if any(c.isupper() for c in title):
+        return title
+    words = title.split(" ")
+    out = []
+    for i, w in enumerate(words):
+        if not w or any(c.isdigit() for c in w) or (i > 0 and (w in _SMALL_WORDS or w in _UNIT_WORDS)):
+            out.append(w)
+        else:
+            out.append("-".join(p[:1].upper() + p[1:] for p in w.split("-")))
+    return " ".join(out)
 
 
 def tag_problems(tags: list[str]) -> list[str]:

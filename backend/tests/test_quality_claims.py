@@ -23,3 +23,23 @@ def test_near_duplicate_tags_are_reported():
 def test_evasive_faq_answer_is_flagged():
     assert quality.filler_problems(DESC)
     assert not quality.filler_problems("Sunglasses.\n\nQUESTIONS\nDo these come with a case?\nNo, they ship in a soft pouch.")
+
+
+def test_compound_and_plural_variants_count_as_one_search():
+    tags = ["metal business cards", "metal business card", "metal businesscard", "custom metal cards", "engraved metal"]
+    assert ["metal business cards", "metal business card", "metal businesscard"] in quality.near_duplicate_tags(tags)
+
+
+def test_place_tags_spends_one_tag_per_search():
+    from app.listing_plan import plan as plan_mod
+
+    p = plan_mod.Plan(version="t", shape="no_data", lead="metal business card", lead_options=["metal business card"], lead_angle=None, tags=[{"tag": "metal business card", "role": "head", "confidence": "estimate"}],
+                      great_for=[], questions=[], ask=[], sibling_words=[])
+    out = plan_mod.place_tags(p, ["metal business cards", "metal businesscard", "engraved metal", "custom name card"])
+    assert out == ["metal business card", "engraved metal", "custom name card"]
+
+
+def test_all_lowercase_title_is_title_cased_and_other_titles_are_left_alone():
+    assert quality.proper_title("business card engraved metal rectangle - minimalist line-border engraving") == "Business Card Engraved Metal Rectangle - Minimalist Line-Border Engraving"
+    assert quality.proper_title("engraved metal card with a 750 ml bottle") == "Engraved Metal Card with a 750 ml Bottle"
+    assert quality.proper_title("Already Proper Title, UV Free") == "Already Proper Title, UV Free"
