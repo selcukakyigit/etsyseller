@@ -532,7 +532,8 @@ def chat(db: Session, shop: Shop, user_id: int, session_id: int | None, message:
             "I could not apply that change to the draft; the tool did not change anything. I can try another way, or you can do it in the editor.",
         )
     reply = _guard_progress_claim(called, effective, ctx.cards, _guard_media_reply(called, ctx.cards, _guard_batch_reply(called, ctx.cards, reply)))
-    tools.auto_yes_no(ctx, reply)
+    if called:  # araç çalışmadıysa düz sohbet: cevap düz kalır, kendiliğinden düğme üretilmez
+        tools.auto_yes_no(ctx, reply)
     tools.ensure_listing_card(ctx, message)
     ctx.cards.sort(key=lambda c: {"listing_draft": 1, "brief": 2, "choices": 2}.get(c.get("type"), 0))  # güncel listing kartı(ları) cevabın en altında (sıra korunur)
     assistant = ChatMessage(
