@@ -1400,6 +1400,7 @@ export interface FinSeriesPoint {
   fees: number;
   overhead: number;
   cogs: number;
+  ship_cost: number;
   profit: number;
   orders: number;
   prev_sales: number;

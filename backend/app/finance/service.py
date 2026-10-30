@@ -154,6 +154,13 @@ def unit_cost_for(t: dict, costs: dict, vcosts: dict, kc: float = 1.0, ship_over
     return c["unit"] + c["pct"] + c["ship"], c["defined"]
 
 
+def cost_split_for(t: dict, costs: dict, vcosts: dict, kc: float = 1.0, ship_override: float | None = None, hist: CostHistory | None = None,
+                   when: dt.date | None = None) -> tuple[float, bool, float]:
+    """`unit_cost_for` ile aynı, ek olarak kargo payını da verir: (adet başına toplam, tanımlı mı, adet başına kargo)."""
+    c = cost_parts(t, costs, vcosts, kc, ship_override, hist, when)
+    return c["unit"] + c["pct"] + c["ship"], c["defined"], c["ship"]
+
+
 def _ship_overrides(inv_order: dict, receipt_id: int, txs: list[dict]) -> list[float | None]:
     """Siparişin her kalemi için faturalardan gelen gerçek ADET BAŞINA kargo (fatura yoksa None)."""
     out: list[float | None] = []
@@ -653,7 +660,7 @@ def _report(db: Session, shop: Shop, start: dt.date, end: dt.date, country: str 
         images[lid] = (imgs[0].get("url_170x135") if imgs else "") or ""
 
     def blank():
-        return {"orders": 0, "sales": 0.0, "fees": 0.0, "refunds": 0.0, "cogs": 0.0, "fee_types": defaultdict(float), "units": 0}
+        return {"orders": 0, "sales": 0.0, "fees": 0.0, "refunds": 0.0, "cogs": 0.0, "ship_cogs": 0.0, "ship_invoice": 0.0, "fee_types": defaultdict(float), "units": 0}
 
     def compute(a: dt.date, b: dt.date, rows_out: list | None = None):
         months: dict[str, dict] = defaultdict(blank)
@@ -698,10 +705,15 @@ def _report(db: Session, shop: Shop, start: dt.date, end: dt.date, country: str 
 
             # Sipariş, ay ve ülke toplamları siparişin TARİHİNDEKİ maliyetle; ürün kârlılığı her zaman GÜNCEL maliyetle hesaplanır.
             on = row.created_at.date()
-            resolved_costs = [unit_cost_for(t, costs, vcosts, kc, sv, hist, on) for t, sv in zip(txs, ship_ov)]
+            resolved_costs = [cost_split_for(t, costs, vcosts, kc, sv, hist, on) for t, sv in zip(txs, ship_ov)]
             item_costs = costs_of(resolved_costs)
             product_costs = costs_of([unit_cost_for(t, costs, vcosts, kc, sv) for t, sv in zip(txs, ship_ov)]) if hist else item_costs
             cogs = sum(item_costs)
+            # Kargo payı: sabit gider ürüne yazılır. Elle girilen toplam maliyet varsa kargo, otomatik hesaptaki kargo oranıyla bölünür.
+            ship_auto = sum(r[2] * (t.get("quantity") or 1) for t, r in zip(txs, resolved_costs))
+            auto_total = sum(r[0] * (t.get("quantity") or 1) for t, r in zip(txs, resolved_costs)) + fixed
+            ship_cogs = ship_auto if override is None else (override * ship_auto / auto_total if auto_total else 0.0)
+            ship_invoice = sum(sv * (t.get("quantity") or 1) for t, sv in zip(txs, ship_ov) if sv is not None)
             for t, item_cost, r in zip(txs, product_costs, resolved_costs):
                 qty = t.get("quantity") or 1
                 share = _money(t.get("price")) * qty / item_total
@@ -779,6 +791,8 @@ def _report(db: Session, shop: Shop, start: dt.date, end: dt.date, country: str 
                 bucket["fees"] += fees
                 bucket["refunds"] += refunds
                 bucket["cogs"] += cogs
+                bucket["ship_cogs"] += ship_cogs
+                bucket["ship_invoice"] += ship_invoice
                 bucket["units"] += sum((t.get("quantity") or 1) for t in txs)
                 for k, v in fee_types.items():
                     bucket["fee_types"][k] += v
@@ -829,6 +843,7 @@ def _report(db: Session, shop: Shop, start: dt.date, end: dt.date, country: str 
         return {
             "orders": t["orders"], "units": t["units"], "sales": t["sales"], "refunds": t["refunds"], "fees": t["fees"],
             "overhead": overhead, "cogs": t["cogs"], "profit": profit,
+            "ship_cost": t["ship_cogs"], "product_cost": t["cogs"] - t["ship_cogs"], "ship_invoice": t["ship_invoice"],
             "margin": (profit / t["sales"] * 100) if t["sales"] else 0.0,
             "aov": (t["sales"] / t["orders"]) if t["orders"] else 0.0,
             "etsy_share": ((t["fees"] + overhead) / t["sales"] * 100) if t["sales"] else 0.0,
@@ -857,7 +872,7 @@ def _report(db: Session, shop: Shop, start: dt.date, end: dt.date, country: str 
         series.append({
             "cmp": cmp_extra,
             "month": ck,
-            "sales": c["sales"], "fees": c["fees"], "overhead": ovm_cur.get(ck, 0.0), "cogs": c["cogs"],
+            "sales": c["sales"], "fees": c["fees"], "overhead": ovm_cur.get(ck, 0.0), "cogs": c["cogs"], "ship_cost": c["ship_cogs"],
             "profit": c["sales"] - c["refunds"] - c["fees"] - ovm_cur.get(ck, 0.0) - c["cogs"], "orders": c["orders"],
             "prev_sales": p["sales"], "prev_fees": p["fees"], "prev_orders": p["orders"],
             "prev_profit": p["sales"] - p["refunds"] - p["fees"] - ovm_prev.get(pk, 0.0) - p["cogs"],

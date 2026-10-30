@@ -84,6 +84,9 @@ def build_xlsx(
             ("Reklam / yenileme / diğer giderler", k["overhead"]),
             *[(f"  {n}", v) for n, v in k["overhead_types"].items()],
             ("Ürün + kargo maliyeti", k["cogs"]),
+            ("  Ürün maliyeti", k["product_cost"]),
+            ("  Kargo maliyeti", k["ship_cost"]),
+            ("    kargo faturalarından gelen", k["ship_invoice"]),
             ("Net kâr", k["profit"]),
             ("Kâr marjı (%)", round(k["margin"], 2)),
         ]:
@@ -94,17 +97,17 @@ def build_xlsx(
             row[0].number_format = MONEY
         ws.append([])
         base = ws.max_row + 1
-        ws.append(["Ay", "Satış", "Sipariş ücretleri", "Reklam/diğer", "Ürün+kargo", "Net kâr", "Sipariş", "Geçen yıl satış", "Geçen yıl net kâr"])
+        ws.append(["Ay", "Satış", "Sipariş ücretleri", "Reklam/diğer", "Ürün", "Kargo", "Net kâr", "Sipariş", "Geçen yıl satış", "Geçen yıl net kâr"])
         for c in ws[base]:
             c.font = Font(bold=True, color="FFFFFF")
             c.fill = HEAD_FILL
         for sp in rep["series"]:
-            ws.append([sp["month"], sp["sales"], sp["fees"], sp["overhead"], sp["cogs"], sp["profit"], sp["orders"], sp["prev_sales"], sp["prev_profit"]])
-        for row in ws.iter_rows(min_row=base + 1, min_col=2, max_col=9):
+            ws.append([sp["month"], sp["sales"], sp["fees"], sp["overhead"], sp["cogs"] - sp["ship_cost"], sp["ship_cost"], sp["profit"], sp["orders"], sp["prev_sales"], sp["prev_profit"]])
+        for row in ws.iter_rows(min_row=base + 1, min_col=2, max_col=10):
             for i, cell in enumerate(row):
-                if i != 5:
+                if i != 6:
                     cell.number_format = MONEY
-        for col in "CDEFGHI":
+        for col in "CDEFGHIJ":
             ws.column_dimensions[col].width = 18
 
         _sheet(

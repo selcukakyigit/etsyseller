@@ -477,7 +477,7 @@ export default function FinancePage() {
                     )}
                   </p>
                 )}
-                <section className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+                <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                   <Kpi
                     label={t("Satış (vergi hariç)", "Sales (excl. tax)")}
                     value={fmt(k.sales)}
@@ -491,16 +491,22 @@ export default function FinancePage() {
                     extra={`${t("Sipariş", "Orders")} ${fmt(k.fees)} · ${t("Reklam/diğer", "Ads/other")} ${fmt(k.overhead)}`}
                   />
                   <Kpi
-                    label={t("Ürün + kargo maliyeti", "Product + shipping cost")}
-                    value={fmt(k.cogs)}
+                    label={t("Ürün maliyeti", "Product cost")}
+                    value={fmt(k.product_cost)}
                     sub={
                       k.cogs === 0 ? (
                         <span className="text-xs text-amber-600">{t("Maliyet girilmemiş", "No costs entered")}</span>
                       ) : (
-                        <Delta label={cmpLabel} cur={k.cogs} prev={pk.cogs} invert />
+                        <Delta label={cmpLabel} cur={k.product_cost} prev={pk.product_cost} invert />
                       )
                     }
                     extra={t("Ürün kârlılığı sekmesinden girilir", "Entered on the Product profitability tab")}
+                  />
+                  <Kpi
+                    label={t("Kargo maliyeti", "Shipping cost")}
+                    value={fmt(k.ship_cost)}
+                    sub={<Delta label={cmpLabel} cur={k.ship_cost} prev={pk.ship_cost} invert />}
+                    extra={`${t("Faturalardan", "From invoices")} ${fmt(k.ship_invoice)}`}
                   />
                   <Kpi label={t("Net kâr", "Net profit")} value={fmt(k.profit)} sub={<Delta label={cmpLabel} cur={k.profit} prev={pk.profit} />} highlight />
                   <Kpi
@@ -611,13 +617,17 @@ export default function FinancePage() {
                   <StackedBars
                     data={displayReport.series.map((s) => ({
                       label: monthLabel(s.month),
-                      parts: [s.profit, s.cogs, s.fees, s.overhead],
+                      parts: [s.profit, s.cogs - s.ship_cost, s.ship_cost, s.fees, s.overhead],
                     }))}
                     legend={[
                       { name: t("Net kâr", "Net profit"), color: "#10b981" },
                       {
-                        name: t("Ürün + kargo", "Product + shipping"),
+                        name: t("Ürün maliyeti", "Product cost"),
                         color: "#6366f1",
+                      },
+                      {
+                        name: t("Kargo maliyeti", "Shipping cost"),
+                        color: "#0ea5e9",
                       },
                       {
                         name: t("Sipariş ücretleri", "Order fees"),
@@ -658,7 +668,16 @@ export default function FinancePage() {
                 currency={cur}
               />
             )}
-            {tab === "orders" && shopId !== undefined && <OrderCosts shopId={shopId} range={range} money2={money2} onSaved={scheduleRefresh} onQuery={setOrderQ} />}
+            {tab === "orders" && shopId !== undefined && (
+              <OrderCosts
+                shopId={shopId}
+                range={range}
+                money2={money2}
+                onSaved={scheduleRefresh}
+                onQuery={setOrderQ}
+                summary={{ product: k.product_cost, ship: k.ship_cost, invoice: k.ship_invoice }}
+              />
+            )}
             {tab === "invoices" && shopId !== undefined && (
               <ShippingInvoices shopId={shopId} products={displayReport.products} money2={money2} onSaved={scheduleRefresh} />
             )}

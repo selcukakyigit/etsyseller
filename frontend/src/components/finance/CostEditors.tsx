@@ -492,12 +492,15 @@ export function OrderCosts({
   money2,
   onSaved,
   onQuery,
+  summary,
 }: {
   shopId: number;
   range: { start: string; end: string };
   money2: Intl.NumberFormat;
   onSaved: () => void;
   onQuery?: (q: string) => void;
+  /** Seçili dönemin toplamları (Finans raporundan; tarih/ülke filtresine uyar). */
+  summary?: { product: number; ship: number; invoice: number };
 }) {
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
@@ -549,6 +552,21 @@ export function OrderCosts({
         </div>
         <input value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder={t("Müşteri, ürün veya sipariş no ara", "Search customer, item or order number")} className="w-64 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
       </div>
+      {summary && (
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {[
+            { label: t("Ürün maliyeti", "Item cost"), value: summary.product, sub: undefined },
+            { label: t("Kargo maliyeti", "Shipping cost"), value: summary.ship, sub: undefined },
+            { label: t("Kargo faturalarından", "From shipping invoices"), value: summary.invoice, sub: t("kargo maliyetinin gerçek faturalı kısmı", "the invoiced part of shipping cost") },
+          ].map((s) => (
+            <div key={s.label} className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-950/40">
+              <div className="text-xs font-medium text-neutral-500">{s.label}</div>
+              <div className="mt-0.5 text-xl font-semibold text-neutral-900 dark:text-neutral-100">{money2.format(s.value)}</div>
+              {s.sub && <div className="text-[11px] text-neutral-400">{s.sub}</div>}
+            </div>
+          ))}
+        </div>
+      )}
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
       <div className="overflow-x-auto">
         <table className="w-full min-w-[900px] text-sm">
