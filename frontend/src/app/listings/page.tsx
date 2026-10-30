@@ -8,10 +8,12 @@ import { useAuthAndShop } from "@/lib/useAuthAndShop";
 import { useIncrementalList } from "@/lib/useIncrementalList";
 import AppShell from "@/components/AppShell";
 import { pageContainer } from "@/components/layout/pageContainer";
-import ListingRow from "@/components/ListingRow";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { onPublishFinished, startPublish, usePublishJobs } from "@/lib/publishJobs";
 import ListingCard, { CardAction } from "@/components/listings/ListingCard";
+import ListingTable from "@/components/listings/ListingTable";
+import { useStickyOffset } from "@/lib/useStickyOffset";
+import { DEFAULT_TABLE_SORT, TABLE_SORT_VALUES, compareListings, decodeSort, encodeSort } from "@/components/listings/tableSort";
 import ListingPreviewModal from "@/components/listings/ListingPreviewModal";
 import BulkEditModal, { BulkOp } from "@/components/listings/BulkEditModal";
 import ListingAnalysisPanel from "@/components/listings/analysis/ListingAnalysisPanel";
@@ -50,7 +52,11 @@ export default function Home() {
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useStoredState<ListingSort>("listings.sort", "ending");
+  // Sabit üst bloğun yüksekliği `--os` değişkenine yazılır; filtre paneli üst kenarını buna göre alır.
+  const stickyRef = useStickyOffset();
   const [view, setView] = useStoredState<"grid" | "list">("listings.view", "grid", ["grid", "list"]);
+  const [tableSortRaw, setTableSortRaw] = useStoredState<string>("listings.tableSort", encodeSort(DEFAULT_TABLE_SORT), TABLE_SORT_VALUES);
+  const tableSort = decodeSort(tableSortRaw);
   const [cachedReference, setReference] = useCached<Reference>(cacheShopId !== undefined ? `listing-reference:${cacheShopId}` : null);
   const reference = cachedReference ?? EMPTY_REFERENCE;
   const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
@@ -424,10 +430,13 @@ export default function Home() {
       price_desc: (a, b) => (b.price_min ?? 0) - (a.price_min ?? 0),
       title: (a, b) => a.title.localeCompare(b.title),
     };
+    // Analiz görünümü (liste): sütun başlığıyla sıralanır; kart görünümü: araç çubuğundaki sıralama.
+    if (view === "list") return [...searched].sort(compareListings(tableSort, { sales: cardSales?.listings, ranks: ranks?.listings, touchedAt }));
     return [...searched].sort(cmp[sort] ?? cmp.ending);
-  }, [listings, filters, query, sort, decliningIds, fadedIds, trackedIds, touchedAt]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listings, filters, query, sort, view, tableSortRaw, cardSales, ranks, decliningIds, fadedIds, trackedIds, touchedAt]);
   // Yüzlerce kartı bir anda çizmek sayfayı kasıyor: 12 ile başla (xl ekranda 3 sıra), kaydırdıkça 12 daha ekle.
-  const listKey = `${view}|${query}|${sort}|${JSON.stringify(filters)}`;
+  const listKey = `${view}|${query}|${view === "list" ? tableSortRaw : sort}|${JSON.stringify(filters)}`;
   // Geri dönüşte/yenilemede kaldığı yer: aynı liste ölçütündeyse önceki kart sayısıyla açılır ve oraya kaydırılır.
   const [savedScroll] = useState<{ key: string; y: number; count: number } | null>(() => {
     try {
@@ -439,7 +448,7 @@ export default function Home() {
   });
   const { shown, hasMore, sentinelRef } = useIncrementalList(
     visibleListings,
-    view === "grid" ? 12 : 8,
+    view === "grid" ? 12 : 30, // tablo satırları hafif: kartlardan çok daha fazlası bir anda çizilebilir
     listKey,
     savedScroll?.key === listKey ? savedScroll.count : undefined,
   );
@@ -627,7 +636,7 @@ export default function Home() {
 
         {activeShop && listings && listings.length > 0 && (
           <>
-            <div className="z-[9] -mx-4 bg-neutral-50 px-4 pb-3 pt-3 dark:bg-neutral-950 sm:-mx-6 sm:px-6 lg:sticky lg:top-[49px]">
+            <div ref={stickyRef} className="z-[9] -mx-4 bg-neutral-50 px-4 pb-3 pt-3 dark:bg-neutral-950 sm:-mx-6 sm:px-6 lg:sticky lg:top-[49px]">
               <ListingsToolbar
                 total={listings.length}
                 visible={visibleListings.length}
@@ -741,24 +750,26 @@ export default function Home() {
                     ))}
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    {shown.map((listing) => (
-                      <ListingRow
-                        key={listing.listing_id}
-                        shopId={activeShop.id}
-                        listing={listing}
-                        selected={selected.has(listing.listing_id)}
-                        onSelectChange={(on) => toggleSelected(listing.listing_id, on)}
-                        onPublish={() => publishOne(listing)}
-                        publishing={isPublishing(listing.listing_id)}
-                        publishError={rowErrors[listing.listing_id]}
-                        job={jobs.get(listing.listing_id)}
-                        faded={fadedOf(listing)}
-                        rank={ranks?.listings[String(listing.listing_id)]}
-                        rankMax={ranks?.max_results}
-                      />
-                    ))}
-                  </div>
+                  <ListingTable
+                    rankMax={ranks?.max_results ?? 200}
+                    sort={tableSort}
+                    onSort={(next) => setTableSortRaw(encodeSort(next))}
+                    allSelected={visibleListings.length > 0 && visibleListings.every((l) => selected.has(l.listing_id))}
+                    onToggleAll={(on) => setSelected(on ? new Set(visibleListings.map((l) => l.listing_id)) : new Set())}
+                    rows={shown.map((listing) => ({
+                      listing,
+                      selected: selected.has(listing.listing_id),
+                      onSelectChange: (on: boolean) => toggleSelected(listing.listing_id, on),
+                      onAction: (a: CardAction) => handleAction(a, listing),
+                      publishing: isPublishing(listing.listing_id),
+                      publishError: rowErrors[listing.listing_id],
+                      job: jobs.get(listing.listing_id),
+                      faded: fadedOf(listing),
+                      rank: ranks?.listings[String(listing.listing_id)],
+                      sales: cardSales?.listings[String(listing.listing_id)],
+                      touchedAt: touchedAt(listing),
+                    }))}
+                  />
                 )}
                 {hasMore && (
                   <div ref={sentinelRef} className="py-8 text-center text-xs text-neutral-400 dark:text-neutral-500">

@@ -84,18 +84,20 @@ export default function ListingsToolbar({
   const controls = (
     <>
       {filterButton}
-      <ChoiceMenu
-        label={t("Sırala", "Sort")}
-        value={sort}
-        onChange={onSort}
-        options={SORTS.map(([value, tr, en]) => ({ value, label: t(tr, en) }))}
-        button={
-          <>
-            <SortIcon />
-            <span className="hidden max-w-[11rem] truncate md:inline">{t(sortLabel[1], sortLabel[2])}</span>
-          </>
-        }
-      />
+      {view === "grid" && (
+        <ChoiceMenu
+          label={t("Sırala", "Sort")}
+          value={sort}
+          onChange={onSort}
+          options={SORTS.map(([value, tr, en]) => ({ value, label: t(tr, en) }))}
+          button={
+            <>
+              <SortIcon />
+              <span className="hidden max-w-[11rem] truncate md:inline">{t(sortLabel[1], sortLabel[2])}</span>
+            </>
+          }
+        />
+      )}
       <div className="flex h-9 shrink-0 items-center rounded-full border border-neutral-300 p-0.5 dark:border-neutral-700" role="group" aria-label={t("Görünüm", "View")}>
         {(["grid", "list"] as const).map((v) => (
           <button
@@ -103,7 +105,8 @@ export default function ListingsToolbar({
             type="button"
             onClick={() => onView(v)}
             aria-pressed={view === v}
-            aria-label={v === "grid" ? t("Kart görünümü", "Grid view") : t("Liste görünümü", "List view")}
+            aria-label={v === "grid" ? t("Kart görünümü", "Card view") : t("Analiz görünümü (tablo, sütun başlığıyla sırala)", "Analysis view (table, sort by column)")}
+            title={v === "grid" ? t("Kart görünümü: fotoğraflarla gez", "Card view: browse by photo") : t("Analiz görünümü: satış, görüntülenme, dönüşüm ve sıra tablosu", "Analysis view: table of sales, views, conversion and rank")}
             className={`flex h-full w-8 items-center justify-center rounded-full transition ${
               view === v ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900" : "text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-100"
             }`}

@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { CardSale, FadedInfo, Listing, TrackedRank } from "@/lib/api";
 import { PublishJob } from "@/lib/publishJobs";
 import PublishBar from "@/components/listings/PublishBar";
 import { useT } from "@/lib/i18n-client";
 import ListingDateBadges, { FadedBadge, RankBadge } from "./ListingDateBadges";
+import ListingActionMenu, { type CardAction } from "./ListingActionMenu";
 
-export type CardAction = "preview" | "stats" | "copy" | "activate" | "deactivate" | "renew" | "section" | "delete" | "publish";
+export type { CardAction };
 
 export function formatPrice(l: Listing, locale = "tr-TR"): string | null {
   if (l.price_min == null) return null;
@@ -56,33 +57,9 @@ export default function ListingCard({
     const base = key ? new Date(Number(key.slice(0, 4)), Number(key.slice(5)) - 1 + offset, 1) : new Date();
     return base.toLocaleDateString(locale, { month: "short" });
   };
-  const [menuOpen, setMenuOpen] = useState(false);
   const [totalsOpen, setTotalsOpen] = useState(false); // "?" ile açılan ömür boyu toplamlar
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const close = (e: MouseEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [menuOpen]);
 
   const state = listing.state ?? "active";
-  const item = (key: CardAction, label: string, danger = false, disabled = false) => (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={() => {
-        setMenuOpen(false);
-        onAction(key);
-      }}
-      className={`block w-full px-3 py-2 text-left hover:bg-neutral-50 disabled:opacity-50 dark:hover:bg-neutral-800 ${danger ? "text-red-600" : ""}`}
-    >
-      {label}
-    </button>
-  );
   // Aylık görüntülenme/favori yalnızca günlük kayıt geçmişi varsa gösterilir; yoksa ömür boyu toplam görünür.
   const hasMonthly = !!sales && [sales.views_this, sales.views_last, sales.favs_this, sales.favs_last].some((v) => v !== null);
   const price = formatPrice(listing, locale);
@@ -227,47 +204,7 @@ export default function ListingCard({
           </svg>
           {t("Önizle", "Preview")}
         </button>
-        <div ref={menuRef} className="relative">
-          <button
-            type="button"
-            onClick={() => setMenuOpen((v) => !v)}
-            aria-label={t("İşlemler", "Actions")}
-            className="rounded-md px-2 py-1 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-          >
-            ⚙ ▾
-          </button>
-          {menuOpen && (
-            <div className="absolute bottom-full right-0 z-20 mb-1 w-44 overflow-hidden sm:w-52 rounded-lg border border-neutral-200 bg-white py-1 text-sm shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
-              {listing.url && !listing.is_new && (
-                <a
-                  href={listing.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="block px-3 py-2 hover:bg-neutral-50 dark:hover:bg-neutral-800"
-                >
-                  {t("Etsy'de görüntüle ↗", "View on Etsy ↗")}
-                </a>
-              )}
-              {item("preview", t("Önizle", "Preview"))}
-              {!listing.is_new && item("stats", t("İstatistikleri gör", "View stats"))}
-              <Link
-                href={`/listings/${listing.listing_id}/edit`}
-                className="block px-3 py-2 hover:bg-neutral-50 dark:hover:bg-neutral-800"
-              >
-                {t("Düzenle", "Edit")}
-              </Link>
-              {!listing.is_new && item("copy", t("Kopyala", "Copy"))}
-              {listing.has_local && item("publish", publishing ? t("Yayınlanıyor…", "Publishing…") : listing.is_new ? t("Etsy'de oluştur", "Create on Etsy") : t("Etsy'de yayınla", "Publish to Etsy"), false, publishing)}
-              <div className="my-1 border-t border-neutral-100 dark:border-neutral-800" />
-              {!listing.is_new && state === "active" && item("deactivate", t("Pasife al", "Deactivate"))}
-              {!listing.is_new && (state === "inactive" || state === "draft") && item("activate", t("Aktif et", "Activate"))}
-              {!listing.is_new && (state === "expired" || state === "sold_out") && item("renew", t("Yenile", "Renew"))}
-              {!listing.is_new && item("section", t("Bölümü değiştir", "Change section"))}
-              <div className="my-1 border-t border-neutral-100 dark:border-neutral-800" />
-              {item("delete", listing.is_new ? t("Vazgeç (yerel listing'i sil)", "Discard (delete local listing)") : t("Sil", "Delete"), true)}
-            </div>
-          )}
-        </div>
+        <ListingActionMenu listing={listing} publishing={publishing} onAction={onAction} up />
       </div>
       {job && <PublishBar id={listing.listing_id} job={job} />}
     </div>
