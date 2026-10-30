@@ -103,12 +103,19 @@ export default function ListingsToolbar({
             type="button"
             onClick={() => onView(v)}
             aria-pressed={view === v}
-            aria-label={v === "grid" ? t("Kart görünümü", "Grid view") : t("Liste görünümü", "List view")}
-            className={`flex h-full w-8 items-center justify-center rounded-full transition ${
+            aria-label={v === "grid" ? t("Kart görünümü", "Grid view") : t("Analiz modu (liste görünümü)", "Analysis mode (list view)")}
+            className={`flex h-full items-center justify-center gap-1.5 rounded-full transition ${v === "grid" ? "w-8" : "px-2.5"} ${
               view === v ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900" : "text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-100"
             }`}
           >
-            {v === "grid" ? <GridIcon /> : <ListIcon />}
+            {v === "grid" ? (
+              <GridIcon />
+            ) : (
+              <>
+                <ListIcon />
+                <span className="text-xs font-medium">{t("Analiz modu", "Analysis mode")}</span>
+              </>
+            )}
           </button>
         ))}
       </div>

@@ -9,6 +9,7 @@ import { useIncrementalList } from "@/lib/useIncrementalList";
 import AppShell from "@/components/AppShell";
 import { pageContainer } from "@/components/layout/pageContainer";
 import ListingRow from "@/components/ListingRow";
+import { useStickyOffset } from "@/lib/useStickyOffset";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { onPublishFinished, startPublish, usePublishJobs } from "@/lib/publishJobs";
 import ListingCard, { CardAction } from "@/components/listings/ListingCard";
@@ -50,6 +51,8 @@ export default function Home() {
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useStoredState<ListingSort>("listings.sort", "ending");
+  // Sabit üst bloğun yüksekliği `--os` değişkenine yazılır; filtre paneli üst kenarını buna göre alır.
+  const stickyRef = useStickyOffset();
   const [view, setView] = useStoredState<"grid" | "list">("listings.view", "grid", ["grid", "list"]);
   const [cachedReference, setReference] = useCached<Reference>(cacheShopId !== undefined ? `listing-reference:${cacheShopId}` : null);
   const reference = cachedReference ?? EMPTY_REFERENCE;
@@ -627,7 +630,7 @@ export default function Home() {
 
         {activeShop && listings && listings.length > 0 && (
           <>
-            <div className="z-[9] -mx-4 bg-neutral-50 px-4 pb-3 pt-3 dark:bg-neutral-950 sm:-mx-6 sm:px-6 lg:sticky lg:top-[49px]">
+            <div ref={stickyRef} className="z-[9] -mx-4 bg-neutral-50 px-4 pb-3 pt-3 dark:bg-neutral-950 sm:-mx-6 sm:px-6 lg:sticky lg:top-[49px]">
               <ListingsToolbar
                 total={listings.length}
                 visible={visibleListings.length}
