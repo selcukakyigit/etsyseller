@@ -26,7 +26,9 @@ export async function resolve(specifier, context, next) {
 
 export async function load(url, context, next) {
   if (/\.(ts|tsx)$/.test(url) && url.includes("/src/")) {
-    const out = ts.transpileModule(fs.readFileSync(fileURLToPath(url), "utf8"), {
+    const file = fileURLToPath(url);
+    const out = ts.transpileModule(fs.readFileSync(file, "utf8"), {
+      fileName: file, // .ts dosyası TSX gibi okunmasın (jenerik ok fonksiyonları `<T>(x) =>` JSX sanılır)
       compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
     }).outputText;
     return { format: "module", source: out, shortCircuit: true };

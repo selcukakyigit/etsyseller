@@ -222,7 +222,7 @@ def volumes(db: Session, terms: list[str], *, market: str | None = None, languag
     return out
 
 
-def _enqueue_volumes(db: Session, stale: list[str], market: str, language: str, shop_id: int | None) -> tuple[str | None, int]:
+def _enqueue_volumes(db: Session, stale: list[str], market: str, language: str, shop_id: int | None, priority: int = 0) -> tuple[str | None, int]:
     provider = get_provider()
     size = provider.max_volume_terms
     pending = 0
@@ -230,7 +230,7 @@ def _enqueue_volumes(db: Session, stale: list[str], market: str, language: str, 
         part = sorted(stale[i : i + size])
         key = f"volume:{market}:{language}:" + hashlib.sha1("|".join(part).encode()).hexdigest()
         try:
-            jobs.enqueue(db, kind="volume", provider=provider.name, market=market, language=language, key=key, payload={"terms": part}, shop_id=shop_id)
+            jobs.enqueue(db, kind="volume", provider=provider.name, market=market, language=language, key=key, payload={"terms": part}, shop_id=shop_id, priority=priority)
             pending += len(part)
         except budget.QueueRefused as exc:
             return exc.reason, pending
@@ -382,6 +382,9 @@ def refresh_stale(db: Session) -> int:
     return len(due)
 
 
+MAP_PRIORITY = -1
+
+
 def refresh_markets(db: Session) -> int:
     """Haftalık: kullanılan (ya da sabitli) en çok aranan kelimelerin hacmini ÖTEKİ pazarlarda da ölçer; Keşfet'in ülke haritası bunu okur. Sağlayıcı ücreti istek başınadır:
     pazar başına tek toplu istek (en çok `research_map_terms` kelime), yalnızca süresi dolanlar; maliyet kelime sayısına bağlıdır, mağaza sayısına değil. Kuyruğa alınan kelime sayısını döner."""
@@ -405,7 +408,7 @@ def refresh_markets(db: Session) -> int:
         measured = pool.latest_metrics(db, [c.id for c in ranked], other, language)
         due = [c.term for c in ranked if c.id not in measured or measured[c.id].expires_at <= now]
         if due:
-            refused, pending = _enqueue_volumes(db, due, other, language, None)
+            refused, pending = _enqueue_volumes(db, due, other, language, None, priority=MAP_PRIORITY)  # kullanıcı aramaları (öncelik 0) bunların önüne geçer
             queued += pending
             if refused == "budget":
                 break  # tavan doldu: kalan pazarlar için de denemek boşuna

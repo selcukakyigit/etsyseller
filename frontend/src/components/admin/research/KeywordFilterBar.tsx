@@ -15,11 +15,14 @@ export default function KeywordFilterBar({
   onChange,
   sort,
   onSort,
+  forMap = false,
 }: {
   filters: KeywordFilters;
   onChange: (f: KeywordFilters) => void;
-  sort: KeywordSort;
-  onSort: (s: KeywordSort) => void;
+  sort?: KeywordSort;
+  onSort?: (s: KeywordSort) => void;
+  /** Ülke haritasında kullanılırken: sıralama ve "metrik yok" seçeneği anlamsızdır, gizlenir (harita yalnızca ölçümü olan kelimeleri toplar). */
+  forMap?: boolean;
 }) {
   const { t } = useT();
   const sources = useSourceLabels();
@@ -89,7 +92,7 @@ export default function KeywordFilterBar({
           <option value="">{t("Tüm veri durumları", "All data states")}</option>
           <option value="fresh">{t("Güncel", "Fresh")}</option>
           <option value="stale">{t("Yenilenmeli", "Stale")}</option>
-          <option value="missing">{t("Metrik yok", "No metrics")}</option>
+          {!forMap && <option value="missing">{t("Metrik yok", "No metrics")}</option>}
         </select>
         <select value={filters.status} onChange={(e) => set({ status: e.target.value })} className={`${inputClass} sm:w-44`} aria-label={t("Yönetim durumu", "Management status")}>
           <option value="">{t("Tüm kelimeler", "All keywords")}</option>
@@ -97,6 +100,7 @@ export default function KeywordFilterBar({
           <option value="archived">{t("Arşivli", "Archived")}</option>
           <option value="blocked">{t("Engelli", "Blocked")}</option>
         </select>
+        {!forMap && sort && onSort && (
         <select value={sort} onChange={(e) => onSort(e.target.value as KeywordSort)} className={`${inputClass} sm:w-52`} aria-label={t("Sıralama", "Sort")}>
           <option value="new">{t("En yeni eklenen", "Newest first")}</option>
           <option value="volume">{t("Aylık arama (çoktan aza)", "Monthly searches (high → low)")}</option>
@@ -106,6 +110,7 @@ export default function KeywordFilterBar({
           <option value="expires">{t("Yenilenmesi en yakın", "Refresh due soonest")}</option>
           <option value="used">{t("Son kullanılan", "Recently used")}</option>
         </select>
+        )}
         {button}
       </div>
       {panel}

@@ -5,7 +5,7 @@ import { countryName } from "@/lib/countries";
 import type { DiscoverOverview } from "@/lib/discoverApi";
 import { useT } from "@/lib/i18n-client";
 import { Card, compact } from "./Card";
-import WorldMap from "./WorldMap";
+import WorldMap from "@/components/ui/WorldMap";
 
 type Mode = "search" | "customers";
 type Row = { code: string; value: number; share: number; topTerm?: string | null };

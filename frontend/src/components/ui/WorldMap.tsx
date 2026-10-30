@@ -16,14 +16,18 @@ async function loadMap(): Promise<MapData> {
   return loaded;
 }
 
-/** Değerli ülkeler marka renginde (değere göre koyuluk), diğerleri nötr. Ülkeye gelince/odaklanınca/dokununca `onActive` çağrılır; ipucu metnini üst bileşen gösterir
+/** Dünya haritası (Keşfet ve yönetim paneli ortak). Değerli ülkeler marka renginde (değere göre koyuluk), diğerleri nötr. Ülkeye gelince/odaklanınca/dokununca `onActive` çağrılır; ipucu metnini üst bileşen gösterir
  * (dokunmatikte de çalışsın diye ayrı bir yüzen kutu yok). `values`: ülke kodu -> sayı; haritada olmayan küçük ülkeler listede yine görünür. */
-export default function WorldMap({ values, active, onActive, describe, label }: {
+export default function WorldMap({ values, active, onActive, onSelect, describe, label, scale = "sqrt" }: {
   values: Record<string, number>;
   active: string | null;
   onActive: (code: string | null) => void;
+  /** Verilirse tıklama/Enter bu ülkeyi SEÇER (ipucu `onActive` ile ayrı kalır); verilmezse tıklama ipucunu açıp kapatır (dokunmatik için). */
+  onSelect?: (code: string) => void;
   describe: (code: string, value: number) => string;
   label: string;
+  /** Renk koyuluğu ölçeği: "sqrt" varsayılan; bir ülkenin küçükleri ezdiği (ör. ABD hacmi) çok çarpık dağılımlarda "soft" (değerin 0,35 kuvveti: farklar korunur, küçükler görünür kalır). */
+  scale?: "sqrt" | "soft";
 }) {
   const [map, setMap] = useState<MapData | null>(loaded);
   useEffect(() => {
@@ -53,14 +57,20 @@ export default function WorldMap({ values, active, onActive, describe, label }: 
             role="img"
             aria-label={text}
             fill="#D97757"
-            fillOpacity={0.2 + 0.8 * Math.sqrt(value / max)}
+            fillOpacity={0.2 + 0.8 * (scale === "soft" ? Math.pow(value / max, 0.35) : Math.sqrt(value / max))}
             className="cursor-pointer stroke-white outline-none dark:stroke-neutral-900"
             strokeWidth={0.8}
             onPointerEnter={() => onActive(code)}
             onPointerLeave={() => onActive(null)}
             onFocus={() => onActive(code)}
             onBlur={() => onActive(null)}
-            onClick={() => onActive(active === code ? null : code)}
+            onClick={() => (onSelect ? onSelect(code) : onActive(active === code ? null : code))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                if (onSelect) onSelect(code);
+              }
+            }}
           />
         );
       })}

@@ -12,7 +12,7 @@ from app.admin.deps import admin_only
 from app.auth.models import User
 from app.core.db import get_db
 from app.core.i18n import tr
-from app.research import admin, admin_pool, admin_stats, credentials, jobs, policy, service
+from app.research import admin, admin_map, admin_pool, admin_stats, credentials, jobs, policy, service
 from app.research.models import ResearchJob
 from app.research.providers import DEFAULT_PROVIDER, get_provider
 from app.research.records import ProviderError
@@ -95,6 +95,12 @@ def pool_health(market: str | None = None, language: str | None = None, db: Sess
 @router.get("/analytics", response_model=admin_stats.AnalyticsOut)
 def usage_analytics(db: Session = Depends(get_db)):
     return admin_stats.analytics(db)
+
+
+@router.get("/map", response_model=admin_map.MapOut)
+def pool_map(query: Annotated[admin_map.MapQuery, Query()], db: Session = Depends(get_db)):
+    """Havuzun ülke haritası: pazar başına ölçülen kelime, toplam hacim, tazelik, kapsam ve bu ayki harcama; kelime süzgeci ve bölge seçimiyle."""
+    return admin_map.pool_map(db, query)
 
 
 @router.get("/jobs", response_model=admin.JobsPageOut)

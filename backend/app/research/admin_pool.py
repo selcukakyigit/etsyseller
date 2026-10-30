@@ -137,6 +137,40 @@ def etsy_shop_counts(db: Session, terms: list[str]) -> dict[str, int]:
     return {k: int(n) for k, n in rows}
 
 
+def apply_term_filters(query, f: KeywordFilters, now: dt.datetime):
+    """Yalnızca kelimenin kendisine bakan süzgeçler (metin, kaynak, Etsy, durum, sabit, kullanılmama). Liste, toplu işlem, dışa aktarma ve ülke haritası AYNI kodu kullanır."""
+    if f.q.strip():
+        query = query.where(KeywordTerm.term.contains(f.q.strip().lower(), autoescape=True))
+    if f.source:
+        query = query.where(KeywordTerm.first_source == f.source)
+    if f.etsy:
+        query = query.where(KeywordTerm.term.in_(select(EtsyKeywordData.keyword).where(EtsyKeywordData.source == "marketplace_insights")))
+    if f.status:
+        query = query.where(KeywordTerm.status == f.status)
+    if f.pinned:
+        query = query.where(KeywordTerm.pinned.is_(f.pinned == "yes"))
+    if f.unused_days:
+        query = query.where(or_(KeywordTerm.last_used_at.is_(None), KeywordTerm.last_used_at < now - dt.timedelta(days=f.unused_days)))
+    return query
+
+
+def apply_metric_filters(query, f: KeywordFilters, now: dt.datetime):
+    """Ölçüme bakan süzgeçler (niyet, hacim aralığı, bitiş, güncel/eski). `missing` ölçümü olmayan kelimeyi aradığı için yalnızca `keyword_base`te anlamlıdır."""
+    if f.intent:
+        query = query.where(KeywordMetric.intent == f.intent)
+    if f.min_volume is not None:
+        query = query.where(KeywordMetric.search_volume >= f.min_volume)
+    if f.max_volume is not None:
+        query = query.where(KeywordMetric.search_volume <= f.max_volume)
+    if f.expiring_days:
+        query = query.where(KeywordMetric.expires_at > now, KeywordMetric.expires_at <= now + dt.timedelta(days=f.expiring_days))
+    if f.state == "fresh":
+        query = query.where(KeywordMetric.expires_at > now)
+    elif f.state == "stale":
+        query = query.where(KeywordMetric.expires_at <= now)
+    return query
+
+
 def keyword_base(f: KeywordFilters, now: dt.datetime):
     market, language = f.resolved()
     base = (
@@ -147,32 +181,9 @@ def keyword_base(f: KeywordFilters, now: dt.datetime):
         )
         .where(KeywordTerm.language == language)
     )
-    if f.q.strip():
-        base = base.where(KeywordTerm.term.contains(f.q.strip().lower(), autoescape=True))
-    if f.source:
-        base = base.where(KeywordTerm.first_source == f.source)
-    if f.etsy:
-        base = base.where(KeywordTerm.term.in_(select(EtsyKeywordData.keyword).where(EtsyKeywordData.source == "marketplace_insights")))
-    if f.status:
-        base = base.where(KeywordTerm.status == f.status)
-    if f.pinned:
-        base = base.where(KeywordTerm.pinned.is_(f.pinned == "yes"))
-    if f.intent:
-        base = base.where(KeywordMetric.intent == f.intent)
-    if f.min_volume is not None:
-        base = base.where(KeywordMetric.search_volume >= f.min_volume)
-    if f.max_volume is not None:
-        base = base.where(KeywordMetric.search_volume <= f.max_volume)
-    if f.expiring_days:
-        base = base.where(KeywordMetric.expires_at > now, KeywordMetric.expires_at <= now + dt.timedelta(days=f.expiring_days))
-    if f.unused_days:
-        base = base.where(or_(KeywordTerm.last_used_at.is_(None), KeywordTerm.last_used_at < now - dt.timedelta(days=f.unused_days)))
+    base = apply_metric_filters(apply_term_filters(base, f, now), f, now)
     if f.state == "missing":
         base = base.where(KeywordMetric.id.is_(None))
-    elif f.state == "fresh":
-        base = base.where(KeywordMetric.expires_at > now)
-    elif f.state == "stale":
-        base = base.where(KeywordMetric.expires_at <= now)
     return base
 
 

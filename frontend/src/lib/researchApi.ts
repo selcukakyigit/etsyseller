@@ -88,6 +88,25 @@ export type PoolHealth = {
   forecast: { due: number; requests: number; estimated_usd: number | null };
 };
 
+/** Havuzun ülke haritası: pazar başına güncel ölçümlerin toplamı (backend research/admin_map.py). Ham Google sayıları yalnızca yöneticiye gider. */
+export type PoolMapRegion = "" | "english" | "west" | "eu" | "other";
+export type PoolMapRow = {
+  market: string;
+  keywords: number;
+  with_volume: number;
+  volume: number;
+  avg_cpc: number | null;
+  fresh: number;
+  stale: number;
+  coverage: number;
+  last_measured: string | null;
+  spend_month: number;
+  calls_month: number;
+  default: boolean;
+  configured: boolean;
+};
+export type PoolMap = { language: string; default_market: string; terms: number; rows: PoolMapRow[] };
+
 export type UsageDay = {
   day: string;
   search_hit: number;
@@ -209,8 +228,10 @@ const post = <T>(path: string, body?: unknown) => apiRequest<T>(`${BASE}${path}`
 
 export const researchAdmin = {
   overview: () => apiRequest<ResearchOverview>(`${BASE}/overview`),
-  keywords: (f: KeywordFilters, p: { sort: KeywordSort; page: number }) =>
-    apiRequest<ResearchPage<ResearchKeyword>>(`${BASE}/keywords?${filterQuery(f, { sort: p.sort, page: String(p.page) })}`),
+  keywords: (f: KeywordFilters, p: { sort: KeywordSort; page: number; market?: string }) =>
+    apiRequest<ResearchPage<ResearchKeyword>>(`${BASE}/keywords?${filterQuery(f, { sort: p.sort, page: String(p.page), ...(p.market ? { market: p.market } : {}) })}`),
+  /** Ülke haritası: aynı kelime süzgeci + bölge; pazar başına toplamlar. */
+  map: (f: KeywordFilters, region: PoolMapRegion) => apiRequest<PoolMap>(`${BASE}/map?${filterQuery(f, region ? { region } : {})}`),
   /** Süzgece uyan kelimeleri (en çok 10 000) CSV olarak indirir. */
   exportCsv: (f: KeywordFilters) =>
     apiBlob(`${BASE}/keywords/export?${filterQuery(f)}`, tNow("Dışa aktarılamadı", "Could not export")),

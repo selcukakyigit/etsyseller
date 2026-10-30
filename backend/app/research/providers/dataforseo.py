@@ -22,8 +22,51 @@ _TRANSIENT_CODES = {40202, 50000, 50301, 50302, 50303}
 TREND_WEEKS = 13  # son 13 hafta ile geçen yılın aynı 13 haftası karşılaştırılır (mevsim etkisi böylece ayrılır)
 TREND_HISTORY_DAYS = 16 * 31  # ~16 ay: hem son pencereyi hem bir yıl öncesini kapsar; 9 aydan uzun aralık haftalık veri döner
 QUESTION_LIMIT = 100
-# DataForSEO konum kodu = 2000 + ülkenin ISO 3166-1 sayısal kodu. Sıra, ülke haritasında ölçüm sırasıdır.
-LOCATIONS = {"US": 2840, "GB": 2826, "CA": 2124, "AU": 2036, "DE": 2276, "FR": 2250, "NL": 2528, "IT": 2380, "ES": 2724, "IE": 2372, "NZ": 2554, "TR": 2792}
+# DataForSEO konum kodu = 2000 + ülkenin ISO 3166-1 sayısal kodu. Sıra, ülke haritasında ölçüm sırasıdır: önce ABD ve İngilizce pazarlar, sonra Batı/Kuzey/Güney Avrupa,
+# AB'nin geri kalanı, en sonda diğerleri. Her pazar haftalık ölçümde tek toplu istektir (ücret istek başına). Yeni pazar eklemek için satır ekle; canlıda doğrulanmamış kodlar hata verirse yalnız o pazarın işi düşer.
+LOCATIONS = {
+    "US": 2840,
+    "GB": 2826,
+    "CA": 2124,
+    "AU": 2036,
+    "NZ": 2554,
+    "IE": 2372,
+    "DE": 2276,
+    "FR": 2250,
+    "NL": 2528,
+    "BE": 2056,
+    "LU": 2442,
+    "AT": 2040,
+    "CH": 2756,
+    "IT": 2380,
+    "ES": 2724,
+    "PT": 2620,
+    "SE": 2752,
+    "NO": 2578,
+    "DK": 2208,
+    "FI": 2246,
+    "PL": 2616,
+    "CZ": 2203,
+    "GR": 2300,
+    "HU": 2348,
+    "RO": 2642,
+    "BG": 2100,
+    "HR": 2191,
+    "SK": 2703,
+    "SI": 2705,
+    "LT": 2440,
+    "LV": 2428,
+    "EE": 2233,
+    "CY": 2196,
+    "MT": 2470,
+    "TR": 2792,
+    "JP": 2392,
+    "SG": 2702,
+    "ZA": 2710,
+    "AE": 2784,
+    "MX": 2484,
+    "BR": 2076,
+}
 
 
 def _monthly(items: list[dict] | None) -> list[list[int]] | None:

@@ -100,6 +100,27 @@ def latest_metrics(db: Session, ids: list[int], market: str, language: str) -> d
     return out
 
 
+def latest_metrics_by_market(db: Session, ids: list[int], markets: list[str], language: str) -> dict[tuple[int, str], KeywordMetric]:
+    """(kelime, pazar) -> o pazardaki EN YENİ ölçüm; birçok pazar için tek sorgu (ülke haritası her açılışta pazar başına ayrı sorgu atmasın)."""
+    out: dict[tuple[int, str], KeywordMetric] = {}
+    for part in _chunks(ids):
+        newest = (
+            select(KeywordMetric.keyword_id, KeywordMetric.market, func.max(KeywordMetric.measured_at).label("m"))
+            .where(KeywordMetric.keyword_id.in_(part), KeywordMetric.market.in_(markets), KeywordMetric.language == language)
+            .group_by(KeywordMetric.keyword_id, KeywordMetric.market)
+            .subquery()
+        )
+        rows = db.scalars(
+            select(KeywordMetric).join(newest, (KeywordMetric.keyword_id == newest.c.keyword_id) & (KeywordMetric.market == newest.c.market) & (KeywordMetric.measured_at == newest.c.m))
+            .where(KeywordMetric.market.in_(markets), KeywordMetric.language == language)
+        )
+        for row in rows:
+            key = (row.keyword_id, row.market)
+            if key not in out or row.id > out[key].id:
+                out[key] = row
+    return out
+
+
 def add_metrics(
     db: Session, terms: dict[str, KeywordTerm], records: list[MetricRecord], *, provider: str, source: str, market: str, language: str, ttl_days: float,
 ) -> int:

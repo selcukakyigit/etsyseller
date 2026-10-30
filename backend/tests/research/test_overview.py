@@ -12,7 +12,7 @@ from app.core.db import SessionLocal, get_db
 from app.listings.models import ListingCache
 from app.orders.models import OrderCache
 from app.research import jobs, overview, pool, service, worker
-from app.research.models import KeywordMetric, ResearchJob, SuggestionExposure
+from app.research.models import KeywordMetric, ProviderCall, ResearchJob, SuggestionExposure
 from app.shops.deps import get_owned_shop
 from tests.research.test_discover import SHOP_A, SHOP_B, _research
 
@@ -211,3 +211,58 @@ def test_assistant_tool_matches_the_screen_and_is_registered_everywhere(db, prov
     assert "discover_overview" in {t["name"] for t in tools.TOOLS}
     assert "discover_overview" in assistant_tools.LISTING_TOOL_NAMES and "discover_overview" in assistant_tools.TOOL_GROUPS["discover"]
     assert "discover" in assistant_tools.listing_groups("müşterilerim hangi ülkelerden alıyor, hangi ülke arıyor?", None)
+
+
+# ---- çok pazar: öncelik, devre kesici, sorgu sayısı
+
+def test_map_jobs_wait_behind_user_searches(db, provider):
+    _prepared(db, provider)
+    service.refresh_markets(db)
+    service.volumes(db, ["a brand new keyword"])  # kullanıcı isteği: ana pazar, öncelik 0
+    first = jobs.claim(db, limit=1)[0]
+    assert first.market == "US" and first.priority == 0, "harita işleri (öncelik -1) kullanıcı işinin arkasında bekler"
+
+
+def _failed_calls(db, market, n=5):
+    for _ in range(n):
+        db.add(ProviderCall(provider="dataforseo", endpoint="x", market=market, language="en", items=0, cost_usd=0.0, duration_ms=1, ok=False, error="boom", kind="volume"))
+    db.commit()
+
+
+def test_failures_in_extra_markets_do_not_open_the_breaker(db, provider):
+    _failed_calls(db, "SK")
+    assert worker.breaker_until(db) is None, "yalnızca ek pazar çağrıları hatalı: kullanıcı aramaları durmaz"
+    _failed_calls(db, "US")
+    assert worker.breaker_until(db) is not None, "ana pazar çağrıları üst üste hatalıysa devre kesici açılır"
+
+
+def test_country_demand_reads_every_market_with_a_constant_number_of_queries(db, provider):
+    from sqlalchemy import event
+
+    _prepared(db, provider)
+    provider.markets = ("US",) + tuple(f"X{i}" for i in range(40))
+    statements = []
+    engine = db.get_bind()
+    listener = lambda conn, cursor, statement, *a: statements.append(statement)  # noqa: E731
+    event.listen(engine, "before_cursor_execute", listener)
+    try:
+        out = overview.country_demand(db, TERMS)
+    finally:
+        event.remove(engine, "before_cursor_execute", listener)
+    assert len(out["rows"]) == 41 and out["rows"][0]["market"] == "US"
+    assert len(statements) <= 5, f"pazar sayısından bağımsız sabit sorgu: {len(statements)}"
+
+
+def test_preparing_ends_even_when_small_markets_never_return_data(db, provider):
+    _prepared(db, provider, markets=("US", "GB", "MT"))
+    provider.no_data = set(TERMS)  # sağlayıcı yeni pazarlarda hiçbir kelime için hacim dönmüyor
+    service.refresh_markets(db)
+    assert overview.country_demand(db, TERMS)["preparing"] is True, "işler sırada"
+    _run_all(db)
+    assert overview.country_demand(db, TERMS)["preparing"] is True, "ek pazarda hiç ölçüm yok: hâlâ hazırlanıyor sayılır"
+    provider.no_data = {"metal farm sign tiny"}
+    db.query(KeywordMetric).filter(KeywordMetric.market != "US").update({"expires_at": dt.datetime.utcnow() - dt.timedelta(days=1)})  # boş ölçümler eskidi: yeniden istenir
+    db.commit()
+    service.refresh_markets(db)
+    _run_all(db)
+    assert overview.country_demand(db, TERMS)["preparing"] is False, "bir ek pazarda ölçüm var ve sırada iş yok: hazır (MT'de veri olmaması beklemeyi uzatmaz)"

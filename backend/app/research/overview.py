@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.orders.models import OrderCache
 from app.research import discover, exposure, policy, pool, service
-from app.research.models import KeywordLink, KeywordTerm
+from app.research.models import KeywordLink, KeywordTerm, ResearchJob
 from app.research.providers import get_provider
 from app.research.terms import researchable
 from app.shops.models import Shop
@@ -45,21 +45,29 @@ def _top_tags(db: Session, shop: Shop) -> list[str]:
 
 def country_demand(db: Session, terms: list[str]) -> dict:
     """Etiketlerin ölçülen pazarlardaki toplam aylık Google araması (İngilizce sorgular). `rows`: pazar başına hacim, pay (%) ve en çok aranan etiket; hacme göre azalan.
-    `preparing`: ülke ölçümü açık ama en az bir pazarda etiketlerin yarısından azı ölçülmüş (haftalık iş henüz doldurmadı)."""
-    default, _ = service._market(None, None)
+    Tüm pazarlar tek sorguyla okunur. `preparing`: ülke ölçümü açık ve ana pazar dışında ya hiç ölçüm yok ya da bir ölçüm işi sırada/çalışıyor (küçük pazarlarda bazı kelimelerin
+    hacmi hiç gelmeyebilir; bu yüzden "yarısı ölçülmedi" gibi kalıcı bir koşul kullanılmaz)."""
+    default, language = service._market(None, None)
     enabled = bool(policy.get("research_map_enabled"))
     markets = [m for m in get_provider().markets if enabled or m == default]
+    seeds = pool.find_terms(db, terms, language)
+    by_id = {row.id: term for term, row in seeds.items()}
+    latest = pool.latest_metrics_by_market(db, list(by_id), markets, language) if by_id else {}
+    volumes: dict[str, dict[str, int]] = {m: {} for m in markets}
+    for (keyword_id, market), metric in latest.items():
+        if metric.search_volume is not None:
+            volumes[market][by_id[keyword_id]] = metric.search_volume
     rows = []
     for market in markets:
-        views = service.peek(db, terms, market=market)
-        measured = {t: v.search_volume for t, v in views.items() if v.search_volume is not None}
+        measured = volumes[market]
         top = max(measured, key=measured.get) if measured else None
         rows.append({"market": market, "volume": sum(measured.values()), "measured": len(measured), "top_term": top, "default": market == default})
     total = sum(r["volume"] for r in rows)
     for r in rows:
         r["share"] = round(r["volume"] / total * 100) if total else 0
-    rows.sort(key=lambda r: -r["volume"])
-    preparing = enabled and bool(terms) and any(r["measured"] * 2 < len(terms) for r in rows)
+    rows.sort(key=lambda r: (-r["volume"], r["market"]))
+    working = db.scalar(select(func.count(ResearchJob.id)).where(ResearchJob.kind == "volume", ResearchJob.market != default, ResearchJob.status.in_(("queued", "running")))) or 0
+    preparing = enabled and bool(terms) and (working > 0 or not any(r["measured"] for r in rows if not r["default"]))
     return {"enabled": enabled, "default_market": default, "tags": len(terms), "rows": rows, "preparing": preparing}
 
 

@@ -166,7 +166,7 @@ def discover_overview(ctx, a: dict) -> dict:
     out["ulke_talebi"] = {
         "olculen_pazarlar": [
             {"kod": r["market"], "google_aylik_arama_toplam": r["volume"], "yuzde": r["share"], "olculen_etiket": r["measured"], **({"en_cok_aranan": r["top_term"]} if r["top_term"] else {})}
-            for r in c["rows"]
+            for r in c["rows"] if r["volume"] > 0
         ],
         "etiket_sayisi": c["tags"],
         **({"hazirlaniyor": True} if c["preparing"] else {}),

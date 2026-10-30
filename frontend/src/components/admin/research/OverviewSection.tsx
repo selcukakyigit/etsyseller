@@ -9,6 +9,7 @@ import { useApiData } from "@/lib/useApiData";
 import AlertsStrip from "./AlertsStrip";
 import CostPanel from "./CostPanel";
 import HealthPanel from "./HealthPanel";
+import PoolMap from "./PoolMap";
 
 export default function OverviewSection() {
   const { t } = useT();
@@ -24,6 +25,8 @@ export default function OverviewSection() {
   return (
     <div className="space-y-6">
       <AlertsStrip alerts={data.alerts} />
+
+      <PoolMap />
       {data.credentials === "none" && (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
           {t("Sağlayıcı kimlik bilgisi girilmemiş; yeni veri çekilmiyor. ", "Provider credentials are not set; no new data is fetched. ")}

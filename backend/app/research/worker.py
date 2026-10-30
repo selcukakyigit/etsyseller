@@ -24,7 +24,9 @@ BREAKER_PAUSE = dt.timedelta(minutes=10)  # bu süre yeni istek atılmaz (işler
 def breaker_until(db: Session) -> dt.datetime | None:
     """Devre kesici açıksa duraklamanın biteceği an, değilse None. Son `BREAKER_FAILS` çağrının hepsi hatalıysa açılır; süre dolunca bir deneme çağrısına
     izin verilir (başarılıysa kapanır, başarısızsa yeniden açılır)."""
-    rows = db.execute(select(ProviderCall.ok, ProviderCall.created_at).order_by(ProviderCall.id.desc()).limit(BREAKER_FAILS)).all()
+    # Yalnızca ana pazarın çağrılarına bakılır: ülke haritası için açılan ek pazar işleri (yeni/doğrulanmamış konum kodları dahil) tek başına kullanıcı aramalarını durdurmasın.
+    default = str(policy.get("research_default_market"))
+    rows = db.execute(select(ProviderCall.ok, ProviderCall.created_at).where(ProviderCall.market == default).order_by(ProviderCall.id.desc()).limit(BREAKER_FAILS)).all()
     if len(rows) < BREAKER_FAILS or any(ok for ok, _ in rows):
         return None
     until = rows[0].created_at + BREAKER_PAUSE
