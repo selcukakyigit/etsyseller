@@ -56,7 +56,7 @@ const sortValue = (i: DiscoverItem, key: SortKey, etsy: Record<string, number | 
     case "competition":
       return i.competition;
     case "difficulty":
-      return i.difficulty;
+      return i.difficulty ?? null; // eski yanıt/önbellekte alan hiç olmayabilir (undefined)
     case "etsy":
       return etsy[i.term] ?? null;
   }
@@ -133,7 +133,7 @@ const csvCell = (v: string | number | null) => {
 
 export function toCsv(items: DiscoverItem[], etsy: Record<string, number | null>): string {
   const head = ["keyword", "google_monthly_searches", "cpc_usd", "ad_competition_0_100", "seo_difficulty_0_100", "trend_pct", "intent", "etsy_listings"];
-  const rows = items.map((i) => [i.term, i.volume, i.cpc, i.competition, i.difficulty, i.trend_pct, i.intent, etsy[i.term] ?? null]);
+  const rows = items.map((i) => [i.term, i.volume, i.cpc, i.competition, i.difficulty ?? null, i.trend_pct, i.intent, etsy[i.term] ?? null]);
   return [head, ...rows].map((r) => r.map((c) => csvCell(c as string | number | null)).join(",")).join("\r\n");
 }
 

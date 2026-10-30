@@ -55,7 +55,7 @@ export default function KeywordTable({
   const [open, setOpen] = useState<Set<string>>(new Set());
   const visible = rows.slice(0, shown);
   const allChecked = visible.length > 0 && visible.every((r) => selected.has(r.item.term));
-  const num = (n: number | null) => (n === null ? "—" : n.toLocaleString(locale));
+  const num = (n: number | null | undefined) => (n == null ? "—" : n.toLocaleString(locale));
   const toggleOpen = (term: string) =>
     setOpen((prev) => {
       const next = new Set(prev);

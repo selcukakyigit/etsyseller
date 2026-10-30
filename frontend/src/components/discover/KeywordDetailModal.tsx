@@ -64,7 +64,7 @@ export default function KeywordDetailModal({ shopId, item, onClose, onAnalyze }:
   }, [shopId, term]);
 
   const season = state && state.term === term ? state.season : null;
-  const num = (n: number | null) => (n === null ? "—" : n.toLocaleString(locale));
+  const num = (n: number | null | undefined) => (n == null ? "—" : n.toLocaleString(locale));
   const max = Math.max(1, ...item.monthly);
   const peakAt = item.monthly.indexOf(Math.max(...item.monthly));
   const labels = monthLabels(item.last_month, item.monthly.length, monthNames(locale));

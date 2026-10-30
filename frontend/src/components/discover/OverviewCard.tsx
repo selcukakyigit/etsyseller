@@ -56,7 +56,7 @@ export default function OverviewCard({ item, selected, onToggle, onAnalyze, seas
           )}
         </Stat>
         <Stat label={t("SEO zorluğu", "SEO difficulty")} hint={t("0–100, Google organik arama; Etsy sıralaması değildir", "0–100, Google organic search; not Etsy ranking")}>
-          {item.difficulty === null ? "—" : item.difficulty}
+          {item.difficulty == null ? "—" : item.difficulty}
         </Stat>
         <Stat label={t("Trend (12 ay)", "Trend (12 months)")}>
           <span className="flex items-center gap-2">
