@@ -553,11 +553,14 @@ export function OrderCosts({
         <input value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder={t("Müşteri, ürün veya sipariş no ara", "Search customer, item or order number")} className="w-64 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
       </div>
       {summary && (
-        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           {[
             { label: t("Ürün maliyeti", "Item cost"), value: summary.product, sub: undefined },
-            { label: t("Kargo maliyeti", "Shipping cost"), value: summary.ship, sub: undefined },
-            { label: t("Kargo faturalarından", "From shipping invoices"), value: summary.invoice, sub: t("kargo maliyetinin gerçek faturalı kısmı", "the invoiced part of shipping cost") },
+            {
+              label: t("Kargo maliyeti", "Shipping cost"),
+              value: summary.ship,
+              sub: summary.invoice > 0 ? `${t("Faturalardan", "From invoices")} ${money2.format(summary.invoice)}` : undefined,
+            },
           ].map((s) => (
             <div key={s.label} className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-950/40">
               <div className="text-xs font-medium text-neutral-500">{s.label}</div>
@@ -661,9 +664,12 @@ function OrderRow({ o, shopId, money2, onSaved, onOpen, onBreakdown, currency }:
           </button>
         </div>
         {o.items.map((i, idx) => (
-          <div key={idx} className="max-w-md text-xs text-neutral-500">
-            {i.quantity}× {i.title.slice(0, 70)}
-            {i.variant && <span className="text-neutral-400"> · {i.variant}</span>}
+          <div key={idx} className="mt-1 flex max-w-md items-start gap-2 text-xs text-neutral-500">
+            <ProductThumb src={i.image} size={40} />
+            <div className="min-w-0">
+              {i.quantity}× {i.title.slice(0, 70)}
+              {i.variant && <span className="text-neutral-400"> · {i.variant}</span>}
+            </div>
           </div>
         ))}
         <FulfillmentTimes f={o} className="mt-0.5" />

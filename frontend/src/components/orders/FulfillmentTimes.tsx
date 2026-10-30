@@ -29,5 +29,15 @@ export default function FulfillmentTimes({ f, className = "" }: { f: Fulfillment
   }
   if (!parts.length) return null;
 
-  return <p className={`text-xs ${tone} ${className}`}>{parts.join(" · ")}</p>;
+  const delivered = Boolean(f.delivered_at);
+  return (
+    <p className={`flex flex-wrap items-center gap-1.5 text-xs ${tone} ${className}`}>
+      {delivered && (
+        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">
+          {t("Teslim edildi", "Delivered")}
+        </span>
+      )}
+      <span>{parts.join(" · ")}</span>
+    </p>
+  );
 }

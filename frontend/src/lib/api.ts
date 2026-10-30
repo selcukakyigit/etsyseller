@@ -1580,7 +1580,7 @@ export interface FinOrderCost extends Fulfillment {
   buyer: string;
   country: string;
   total: number;
-  items: { title: string; quantity: number; variant: string; defined: boolean }[];
+  items: { title: string; quantity: number; variant: string; defined: boolean; image?: string }[];
   auto_cost: number;
   fixed_cost: number;
   /** Faturalardan gelen gerçek kargo toplamı (fatura yoksa null). */

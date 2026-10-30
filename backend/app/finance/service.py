@@ -1124,6 +1124,12 @@ def orders_costs(db: Session, shop: Shop, start: dt.date, end: dt.date, q: str =
     from app.finance import invoices as _invoices  # döngüsel import'tan kaçınmak için burada
 
     inv_order = _invoices.order_shipping(db, shop)
+    lids = {t.get("listing_id") for raw in parsed.values() for t in raw.get("transactions") or [] if t.get("listing_id")}
+    images: dict[int, str] = {}
+    if lids:
+        for lid, rawj in db.execute(select(ListingCache.listing_id, ListingCache.raw_json).where(ListingCache.shop_id == shop.id, ListingCache.listing_id.in_(lids))):
+            imgs = json.loads(rawj).get("images") or []
+            images[lid] = (imgs[0].get("url_170x135") if imgs else "") or ""
     out = []
     for row in page_rows:
         raw = parsed[row.receipt_id]
@@ -1146,7 +1152,7 @@ def orders_costs(db: Session, shop: Shop, start: dt.date, end: dt.date, q: str =
                 "original_currency": tbl["meta"][row.receipt_id][0],
                 "original_total": grand,
                 "items": [
-                    {"title": html.unescape(t.get("title") or ""), "quantity": t.get("quantity") or 1, "variant": variant_key(t), "defined": r[1]}
+                    {"title": html.unescape(t.get("title") or ""), "quantity": t.get("quantity") or 1, "variant": variant_key(t), "defined": r[1], "image": images.get(t.get("listing_id"), "")}
                     for t, r in zip(txs, resolved)
                 ],
                 "auto_cost": sum(r[0] * (t.get("quantity") or 1) for t, r in zip(txs, resolved)) + fixed,
