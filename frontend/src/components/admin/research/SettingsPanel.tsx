@@ -26,7 +26,7 @@ export default function SettingsPanel() {
 }
 
 /** Sayı olarak düzenlenen ayarlar (açma/kapama, pazar ve dil ayrı alanlardır; `research_ttl_jitter` sabit kalır). */
-type NumKey = Exclude<keyof ResearchSettings, "research_enabled" | "research_auto_refresh" | "research_default_market" | "research_default_language" | "research_ttl_jitter">;
+type NumKey = Exclude<keyof ResearchSettings, "research_enabled" | "research_auto_refresh" | "research_map_enabled" | "research_default_market" | "research_default_language" | "research_ttl_jitter">;
 type Spec = { key: NumKey; tr: string; en: string; money?: boolean; unit?: [string, string] };
 type Group = { tr: string; en: string; help: [string, string]; fields: Spec[] };
 
@@ -73,6 +73,7 @@ const GROUPS: Group[] = [
       { key: "research_shop_monthly_searches", tr: "Mağaza başı aylık yeni kelime araştırması (Keşfet)", en: "New keyword searches per shop per month (Discover)" },
       { key: "research_shop_daily_searches", tr: "Günlük üst sınır (aylık hak tek günde bitmesin)", en: "Daily ceiling (so the monthly allowance cannot go in one day)" },
       { key: "research_refresh_per_day", tr: "Her yenilemede en fazla kelime", en: "Max keywords per refresh run", unit: ["kelime", "keywords"] },
+      { key: "research_map_terms", tr: "Ülke haritası: pazar başına en fazla kelime", en: "Country map: max keywords per market", unit: ["kelime", "keywords"] },
       { key: "research_active_days", tr: "Kullanılmış sayılma süresi", en: "Counts as in use for", unit: DAYS },
     ],
   },
@@ -85,6 +86,7 @@ const fmtNum = (key: NumKey, v: number) => (isMoney(key) ? v.toFixed(2) : String
 const toForm = (s: ResearchSettings) => ({
   enabled: s.research_enabled,
   auto: s.research_auto_refresh,
+  map: s.research_map_enabled,
   market: s.research_default_market,
   language: s.research_default_language,
   nums: Object.fromEntries(NUM_KEYS.map((k) => [k, fmtNum(k, s[k])])) as Record<NumKey, string>,
@@ -103,6 +105,7 @@ function SettingsForm({ initial, onSaved }: { initial: ResearchSettings; onSaved
       const saved = await researchAdmin.saveSettings({
         research_enabled: form.enabled,
         research_auto_refresh: form.auto,
+        research_map_enabled: form.map,
         research_default_market: form.market,
         research_default_language: form.language,
         ...Object.fromEntries(NUM_KEYS.map((k) => [k, Number(form.nums[k])])),
@@ -179,6 +182,18 @@ function SettingsForm({ initial, onSaved }: { initial: ResearchSettings; onSaved
                 </HelpTip>
               </span>
               <Toggle checked={form.auto} onChange={(v) => setForm((f) => ({ ...f, auto: v }))} label={t("Otomatik yenileme", "Automatic refresh")} />
+            </div>
+            <div className="flex items-center justify-between gap-3 sm:col-span-2">
+              <span className="flex items-center gap-1.5 text-sm text-neutral-900 dark:text-neutral-100">
+                {t("Ülke haritası ölçümü", "Country map measurement")}
+                <HelpTip>
+                  {t(
+                    "Açıkken kullanılan en çok aranan kelimeler (en fazla 'pazar başına en fazla kelime' kadar) öteki pazarlarda da haftada bir ölçülür; Keşfet'in dünya haritası bunu okur. Sağlayıcı ücreti istek başınadır: pazar başına tek toplu istek, yalnızca süresi (30 gün) dolanlar için. Kapalıyken harita yalnızca ana pazarı gösterir. Otomatik yenileme kapalıysa bu iş de çalışmaz.",
+                    "When on, the most searched keywords in use (up to 'max keywords per market') are also measured in the other markets once a week; the Discover world map reads this. The provider charges per request: one bulk request per market, only for measurements older than 30 days. When off, the map shows only the main market. This job does not run while automatic refresh is off.",
+                  )}
+                </HelpTip>
+              </span>
+              <Toggle checked={form.map} onChange={(v) => setForm((f) => ({ ...f, map: v }))} label={t("Ülke haritası ölçümü", "Country map measurement")} />
             </div>
             <Field label={t("Varsayılan pazar (ülke kodu)", "Default market (country code)")}>
               <input value={form.market} maxLength={2} onChange={(e) => setForm((f) => ({ ...f, market: e.target.value.toUpperCase().replace(/[^A-Z]/g, "") }))} className={inputClass} />

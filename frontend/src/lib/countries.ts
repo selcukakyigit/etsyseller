@@ -15,3 +15,16 @@ export function countryName(code: string | null | undefined, locale: string = tN
     return code;
   }
 }
+
+const shortCache: Record<string, Intl.DisplayNames> = {};
+
+/** Kısa ülke adı ("ABD", "UK"): dar kartlarda. `countryName` ile aynı güvenlik kuralı: geçersiz kodda sayfayı düşürmez; uzun kalan adlarda kodun kendisi döner. */
+export function countryShortName(code: string | null | undefined, locale: string = tNow("tr", "en")): string {
+  if (!code) return "";
+  try {
+    const short = (shortCache[locale] ??= new Intl.DisplayNames([locale], { type: "region", style: "short", fallback: "code" })).of(code) ?? code;
+    return short.length > 12 ? code : short; // bazı tarayıcılarda kısa ad yok ve uzun ad döner: dar kartta kod daha iyi
+  } catch {
+    return countryName(code, locale);
+  }
+}

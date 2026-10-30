@@ -68,7 +68,7 @@ BATCH_DENIED = frozenset({
     "edit_inventory", "add_variation_option", "remove_variation_option", "edit_personalization_question", "personalization_library", "add_digital_file", "remove_digital_file", "set_listing_type",
     # araştırma ve çözümleme (ön kontrol zaten rakipleri tarar; kullanıcıya özel analizler sohbette); link okuma toplu işte sunucu tarafında, çözümleme adımında yapılır (items[].links)
     "read_link",
-    "search_listings", "analyze_listing_values", "listing_health_status", "workspace_status", "market_research", "suggest_price", "research_keywords", "keyword_detail", "upcoming_seasons",
+    "search_listings", "analyze_listing_values", "listing_health_status", "workspace_status", "market_research", "suggest_price", "research_keywords", "keyword_detail", "upcoming_seasons", "discover_overview",
     "saved_keywords", "save_keywords", "etsy_top_results",
     # şablon yönetimi, hafıza, destek: kullanıcı kararı
     "save_description_template", "delete_description_templates", "remember_note", "forget_note", "open_support_ticket", "my_support_tickets",

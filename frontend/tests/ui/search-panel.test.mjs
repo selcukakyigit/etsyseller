@@ -20,12 +20,28 @@ const HOME = {
   collections: [{ name: "Farm", count: 3 }],
   preparing: false,
 };
+const OVERVIEW = {
+  pulse: { tags: 3, measured: 2, monthly_searches: 19000, top_market: "US", next_peak: { term: "christmas ornaments", in_months: 1, peak_months: [11, 12] } },
+  calendar: [
+    { term: "christmas ornaments", monthly: [5, 5, 5, 5, 5, 5, 5, 10, 30, 60, 100, 95], peak_months: [11, 12], in_months: 1, volume: 22000 },
+    { term: "pumpkin sign", monthly: [5, 5, 5, 5, 5, 5, 5, 20, 60, 100, 40, 10], peak_months: [10], in_months: 0, volume: 8000 },
+  ],
+  movers: { rising: [{ term: "metal farm sign", volume: 18100, trend_pct: 120, monthly: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], last_month: "2026-10", seasonal: false }], falling: [] },
+  opportunities: [item("barn door sign", 5000)],
+  countries: {
+    enabled: true, default_market: "US", tags: 3, preparing: false,
+    rows: [{ market: "US", volume: 15000, measured: 2, top_term: "metal farm sign", default: true, share: 79 }, { market: "GB", volume: 4000, measured: 2, top_term: "barn decor", default: false, share: 21 }],
+  },
+  customers: { days: 365, orders: 4, rows: [{ country: "US", orders: 3, share: 75 }, { country: "DE", orders: 1, share: 25 }] },
+};
+let overviewFails = false;
 let allowanceCalls = 0;
 let allowance = { month_limit: 150, month_used: 38, day_limit: 40, day_used: 3, remaining: 37 };
 let homeCalls = 0;
 let calls = [], script = [];
 globalThis.__api = async (path) => {
   if (path.includes("/discover/home")) { homeCalls++; return HOME; }
+  if (path.includes("/discover/overview")) { if (overviewFails) throw new Error("boom"); return OVERVIEW; }
   if (path.includes("/discover/allowance")) { allowanceCalls++; return allowance; }
   calls.push(path); const next = script.shift(); return typeof next === "function" ? next(path) : next;
 };
@@ -163,6 +179,7 @@ console.log("11 yenilemede arama kalıyor OK");
 const server = new Set();
 globalThis.__api = async (path, init) => {
   if (path.includes("/discover/home")) return HOME;
+  if (path.includes("/discover/overview")) return OVERVIEW;
   calls.push(path + (init?.body ? " " + init.body : ""));
   if (path.includes("/discover/search")) return ready(ALL);
   if (path.includes("/discover/saved/remove")) { for (const t of JSON.parse(init.body).terms) server.delete(t); return { removed: 1 }; }
@@ -363,8 +380,10 @@ console.log("15 mevsimsellik OK");
 const { clearPageCache: clearCache17 } = await import("../../src/lib/pageCache.ts");
 const HOME_BEFORE = globalThis.__api;
 let preparingHome = false;
+let overviewCalls = 0;
 globalThis.__api = async (path, init) => {
   if (path.includes("/discover/home")) { homeCalls++; return preparingHome ? { ...HOME, upcoming: [], preparing: true } : HOME; }
+  if (path.includes("/discover/overview")) { overviewCalls++; if (overviewFails) throw new Error("boom"); return preparingHome ? { ...OVERVIEW, calendar: [] } : OVERVIEW; }
   calls.push(path);
   return path.includes("/discover/search") ? ready(ALL) : HOME_BEFORE(path, init);
 };
@@ -381,15 +400,49 @@ localStorage.clear();
 let openedSaved = 0;
 let m = await mount17({ onOpenSaved: () => { openedSaved++; } });
 const sectionTitles = () => [...m.host.querySelectorAll("h2")].map((e) => e.textContent);
-eq(sectionTitles(), ["Yaklaşan sezon", "Mağazandan başla", "Koleksiyonların"], "ilk açılışta son arama yok; diğer bölümler var");
-const cards = [...m.host.querySelectorAll("button")].filter((b) => b.textContent.includes("Zirve"));
-eq(cards.length, 2, "iki yaklaşan sezon kartı");
-eq(cards[0].textContent.includes("Zirve: Kas, Ara") && cards[0].textContent.includes("1 ay sonra") && cards[0].textContent.includes("22.000"), true, "zirve ayları, kalan süre ve Google aylık araması");
-eq(cards[1].textContent.includes("şimdi zirvede"), true, "bu ay zirvedeyse 'şimdi zirvede'");
-eq(/havuz|DataForSEO|pool|kuyruk|API/i.test(m.host.textContent), false, "iç işleyiş kelimeleri görünmemeli");
-const tagChip = [...m.host.querySelectorAll("button")].find((b) => b.textContent.startsWith("barn decor"));
+eq(sectionTitles(), ["Dünya haritası", "Sezon takvimi", "Yükselenler ve düşenler", "Fırsat kelimeler", "Mağazandan başla", "Koleksiyonların"], "ilk açılışta son arama yok; harita, takvim, yükselenler, fırsatlar ve diğer bölümler var");
+// özet kartlar
+const hostText = () => m.host.textContent;
+eq(hostText().includes("Etiketlerin") && hostText().includes("2 tanesi ölçüldü"), true, "etiket sayısı kartı");
+eq(hostText().includes("En çok arayan ülke") && hostText().includes("%79"), true, "en çok arayan ülke ve payı");
+const nextSeason = [...m.host.querySelectorAll("button")].find((b) => b.textContent.startsWith("Sıradaki sezon"));
+eq(nextSeason.textContent.includes("christmas ornaments") && nextSeason.textContent.includes("Kas, Ara") && nextSeason.textContent.includes("1 ay sonra"), true, "sıradaki sezon kartı: kelime, zirve ayları, kalan süre");
+// harita: Aramalar görünümü; renkli ülkeler ve ipucu
+await act(async () => { await sleep(80); }); // harita yolları gevşek yüklenir
+const mapPaths = () => [...m.host.querySelectorAll("svg[role=group] path[aria-label]")];
+eq(mapPaths().length, 2, "yalnızca verisi olan iki ülke etkileşimli (ABD, İngiltere)");
+eq(mapPaths().every((p) => p.getAttribute("aria-label").includes("aylık arama")), true, "ipucu Google aylık aramasını söyler");
+await act(async () => mapPaths()[0].dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
+eq(m.host.querySelector("p[aria-live=polite]").textContent.includes("%"), true, "ülkeye dokununca ipucu satırı dolar");
+// Müşterilerin görünümü: gerçek siparişler
+const customersTab = [...m.host.querySelectorAll("button[aria-pressed]")].find((b) => b.textContent === "Müşterilerin");
+await act(async () => customersTab.dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
+eq(mapPaths().length === 2 && mapPaths().every((p) => p.getAttribute("aria-label").includes("sipariş")), true, "müşteri görünümünde ülkeler sipariş sayısıyla");
+eq(hostText().includes("Son 365 gün") && hostText().includes("iptaller hariç"), true, "müşteri görünümü kapsamını söyler");
+const searchesTab = [...m.host.querySelectorAll("button[aria-pressed]")].find((b) => b.textContent === "Aramalar");
+await act(async () => searchesTab.dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
+eq(hostText().includes("ölçülen pazarlar: US, GB"), true, "arama görünümü ölçülen pazarları söyler");
+// sezon takvimi: iki satır, her satırda 12 ay; zirve ve yakınlık
+eq(m.host.querySelectorAll("span[title^='Oca:']").length, 2, "iki sezonluk etiket satırı (her biri 12 hücre)");
+eq([...m.host.querySelectorAll("span[title^='Kas:']")].length, 2, "her satırda Kasım hücresi");
+eq(hostText().includes("şimdi") && hostText().includes("1 ay"), true, "bu ay ve 1 ay sonra etiketleri");
+// yükselenler ve fırsatlar
+eq(hostText().includes("+120%"), true, "yükselen kelimenin değişimi");
+eq(hostText().includes("Belirgin bir düşüş yok."), true, "boş düşenler listesi açıklama gösterir");
+eq(hostText().includes("barn door sign"), true, "fırsat kelime listelenir");
+eq(/havuz|DataForSEO|pool|kuyruk|API/i.test(hostText()), false, "iç işleyiş kelimeleri görünmemeli");
+const opp = [...m.host.querySelectorAll("button")].find((b) => b.textContent.startsWith("barn door sign"));
+calls = [];
+await act(async () => opp.dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
+await act(async () => { await sleep(60); });
+eq(calls.some((c) => c.includes("/discover/search") && c.includes("q=barn%20door%20sign")), true, "fırsat kelimesine tıklayınca araştırılır (ilk tıkta)");
+await act(async () => m.r.unmount());
+m.host.remove();
+localStorage.clear(); // fırsat tıklaması son aramalara yazdı; aşağıdaki beklentiler temiz başlasın
+m = await mount17({ onOpenSaved: () => { openedSaved++; } });
+const tagChip = [...m.host.querySelectorAll("button.rounded-full")].find((b) => b.textContent.startsWith("barn decor")); // "Mağazandan başla" çipi (ülke listesindeki düğme değil)
 eq(tagChip.textContent.includes("900"), true, "etiketin yanında Google aylık araması (ölçülmüşse)");
-const rangeChip = [...m.host.querySelectorAll("button")].find((b) => b.textContent.startsWith("ranch gate"));
+const rangeChip = [...m.host.querySelectorAll("button.rounded-full")].find((b) => b.textContent.startsWith("ranch gate"));
 eq(/\d/.test(rangeChip.textContent), false, "ölçülmemiş etiketin yanında sayı yok");
 const col = [...m.host.querySelectorAll("button")].find((b) => b.textContent.startsWith("Farm"));
 await act(async () => col.dispatchEvent(new w.MouseEvent("click", { bubbles: true })));
@@ -425,7 +478,18 @@ preparingHome = false;
 await act(async () => { await sleep(5400); });
 eq(homeCalls >= 2, true, "hazırlanıyorsa ekran yeniden sorar");
 eq(m.host.textContent.includes("sezonları hesaplanıyor"), false, "hazır olunca açıklama kalkar");
-eq(m.host.querySelectorAll("h2").length >= 2 && m.host.textContent.includes("christmas ornaments"), true, "hazır olunca yaklaşan sezon kartları gelir");
+eq(m.host.textContent.includes("christmas ornaments"), true, "hazır olunca takvim ve özet kartı sezonu gösterir");
+eq(overviewCalls >= 2, true, "sezonlar hazır olunca pano da yeniden okunur");
+await act(async () => m.r.unmount());
+m.host.remove();
+
+// pano okunamazsa yalnızca o bölüm düşer; etiketler ve koleksiyonlar çalışmaya devam eder
+overviewFails = true;
+m = await mount17();
+eq(m.host.textContent.includes("Pano şu an yüklenemedi"), true, "pano hatasında kısa açıklama");
+eq([...m.host.querySelectorAll("button")].some((b) => b.textContent.startsWith("barn decor")), true, "etiket çipleri yine çalışır");
+eq(m.host.querySelectorAll("svg[role=group]").length, 0, "pano yokken harita çizilmez");
+overviewFails = false;
 await act(async () => m.r.unmount());
 m.host.remove();
 globalThis.__api = HOME_BEFORE;

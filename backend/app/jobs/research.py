@@ -52,6 +52,22 @@ def refresh_stale() -> None:
         db.close()
 
 
+def refresh_markets() -> None:
+    """Haftalık: kullanılan en çok aranan kelimeleri öteki pazarlarda da ölçmek için kuyruğa alır; Keşfet'in ülke haritası (bkz. research/service.py refresh_markets)."""
+    if not _auto_refresh_on():
+        return
+    db = SessionLocal()
+    try:
+        n = service.refresh_markets(db)
+        if n:
+            logger.info("Araştırma: %s kelime ülke haritası için kuyruğa alındı", n)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        logger.exception("Ülke ölçümü başarısız")
+    finally:
+        db.close()
+
+
 def rebuild_signals() -> None:
     """Gece: kalabalık sayacı ve sonuç kanıtı tablolarını yeniden kurar (bkz. research/exposure.py, research/outcomes.py)."""
     db = SessionLocal()

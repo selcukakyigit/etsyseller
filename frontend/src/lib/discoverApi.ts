@@ -41,6 +41,19 @@ export type DiscoverHomeData = {
   preparing: boolean;
 };
 
+/** Ana ekranın zengin bölümleri (backend research/overview.py). Ülke verisi GOOGLE aramasıdır (Etsy satışı değil); müşteri ülkeleri mağazanın gerçek siparişleridir. */
+export type OverviewMover = { term: string; volume: number | null; trend_pct: number; monthly: number[]; last_month: string | null; seasonal: boolean };
+export type CalendarRow = { term: string; monthly: number[]; peak_months: number[]; /** Yaklaşan zirveye kaç ay (0 = bu ay); 12 ay içinde yoksa null */ in_months: number | null; volume: number | null };
+export type CountryDemandRow = { market: string; volume: number; measured: number; top_term: string | null; default: boolean; share: number };
+export type DiscoverOverview = {
+  pulse: { tags: number; measured: number; monthly_searches: number; top_market: string | null; next_peak: { term: string; in_months: number; peak_months: number[] } | null };
+  calendar: CalendarRow[];
+  movers: { rising: OverviewMover[]; falling: OverviewMover[] };
+  opportunities: DiscoverItem[];
+  countries: { enabled: boolean; default_market: string; tags: number; rows: CountryDemandRow[]; /** Bazı pazarlarda etiketlerin yarısından azı ölçülmüş: haftalık iş henüz doldurmadı */ preparing: boolean };
+  customers: { days: number; orders: number; rows: { country: string; orders: number; share: number }[] };
+};
+
 export type SearchStatus = "ready" | "pending" | "refused" | "empty" | "invalid";
 
 /** Takvim ayına göre göreli ilgi (Google Trends, 5 yıl ortalaması); monthly[0]=Ocak, en yüksek ay 100. Profil yoksa monthly boş. */
@@ -111,6 +124,7 @@ export const discoverApi = {
     apiRequest<{ removed: number }>(`${base(shopId)}/saved/remove`, { method: "POST", body: JSON.stringify({ terms, collection }) }),
   allowance: (shopId: number) => apiRequest<DiscoverAllowance>(`${base(shopId)}/allowance`),
   home: (shopId: number) => apiRequest<DiscoverHomeData>(`${base(shopId)}/home`),
+  overview: (shopId: number) => apiRequest<DiscoverOverview>(`${base(shopId)}/overview`),
   /** Tek kelimenin mevsimsellik profili; `pending` iken yoklanır. Geçersiz kelimede season null. */
   season: (shopId: number, q: string) => apiRequest<{ season: Season | null }>(`${base(shopId)}/season?q=${encodeURIComponent(q)}`),
   /** Bir aramanın Etsy'deki ilk 20 sonucunun analizi; `limited`: ölçüm hakkı geçici doldu. */

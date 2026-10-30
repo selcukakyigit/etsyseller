@@ -28,6 +28,8 @@ DEFAULTS: dict[str, Any] = {
     "research_shop_monthly_searches": 150,  # bir mağazanın ayda en fazla kaç YENİ kelime araştırması (Keşfet); havuzda hazır olan aramalar sayılmaz
     "research_shop_daily_searches": 40,  # aylık hakkın tek günde tüketilmesini önleyen günlük üst sınır
     "research_refresh_per_day": 2000,  # her yenileme turunda (haftalık otomatik iş ya da yönetici düğmesi) en fazla kelime; ücret istek başınadır, bu yüzden sınır düşük maliyetlidir
+    "research_map_enabled": True,  # ülke haritası: kullanılan kelimeler diğer pazarlarda da ölçülür (haftalık toplu iş; istek sayısı kelime sayısına bağlıdır, mağaza sayısına değil)
+    "research_map_terms": 1000,  # her pazar için en çok bu kadar kelime ölçülür (tek istekte 1000 kelime: pazar başına tek istek)
     "research_active_days": 90,  # bu kadar gündür istenmeyen kelime otomatik yenilenmez
     "research_crowd_window_days": 28,  # kalabalık sayacı: son kaç günde önerilen mağazalar sayılır
     "research_crowd_full_shops": 25,  # bu kadar farklı mağazaya önerilmiş ifade "tamamen kalabalık" sayılır (özgünlük puanı 0)

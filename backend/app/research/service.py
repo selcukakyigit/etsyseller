@@ -380,3 +380,34 @@ def refresh_stale(db: Session) -> int:
         _enqueue_volumes(db, due, market, language, None)
     db.commit()
     return len(due)
+
+
+def refresh_markets(db: Session) -> int:
+    """Haftalık: kullanılan (ya da sabitli) en çok aranan kelimelerin hacmini ÖTEKİ pazarlarda da ölçer; Keşfet'in ülke haritası bunu okur. Sağlayıcı ücreti istek başınadır:
+    pazar başına tek toplu istek (en çok `research_map_terms` kelime), yalnızca süresi dolanlar; maliyet kelime sayısına bağlıdır, mağaza sayısına değil. Kuyruğa alınan kelime sayısını döner."""
+    market, language = _market(None, None)
+    if not policy.get("research_map_enabled") or _available(db, market) is not None or budget.over_budget(db):
+        return 0
+    now = dt.datetime.utcnow()
+    since = now - dt.timedelta(days=int(policy.get("research_active_days")))
+    limit = int(policy.get("research_map_terms"))
+    candidates = db.scalars(
+        select(KeywordTerm).where(
+            KeywordTerm.language == language, KeywordTerm.status == "active", or_(KeywordTerm.last_used_at >= since, KeywordTerm.pinned.is_(True)),
+        ).order_by(KeywordTerm.last_used_at.desc().nulls_last()).limit(limit * 5)
+    ).all()
+    home = pool.latest_metrics(db, [c.id for c in candidates], market, language)  # sıralama ölçütü: ana pazardaki hacim (ölçülmemişler sonda)
+    ranked = sorted(candidates, key=lambda c: (not c.pinned, -((home[c.id].search_volume or 0) if c.id in home else 0)))[:limit]
+    queued = 0
+    for other in get_provider().markets:
+        if other == market or _available(db, other) is not None:
+            continue
+        measured = pool.latest_metrics(db, [c.id for c in ranked], other, language)
+        due = [c.term for c in ranked if c.id not in measured or measured[c.id].expires_at <= now]
+        if due:
+            refused, pending = _enqueue_volumes(db, due, other, language, None)
+            queued += pending
+            if refused == "budget":
+                break  # tavan doldu: kalan pazarlar için de denemek boşuna
+    db.commit()
+    return queued

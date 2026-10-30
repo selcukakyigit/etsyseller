@@ -184,6 +184,8 @@ export type ResearchSettings = {
   research_default_language: string;
   research_ttl_volume_days: number;
   research_auto_refresh: boolean;
+  research_map_enabled: boolean;
+  research_map_terms: number;
   research_ttl_suggest_days: number;
   research_ttl_trend_days: number;
   research_ttl_jitter: number;
@@ -215,8 +217,8 @@ export const researchAdmin = {
   /** Seçili kelimelere ya da süzgece uyanların hepsine (en çok 1000) toplu işlem. */
   bulk: (action: BulkAction, target: { ids: number[] } | { filters: KeywordFilters }) =>
     post<BulkResult>("/keywords/bulk", { action, ...("ids" in target ? { ids: target.ids } : { filters: filterBody(target.filters) }) }),
-  /** Süresi dolmuş (kullanılan ya da sabitli) kelimelerin hacmini şimdi kuyruğa alır; haftalık otomatik işle aynı kurallar. */
-  refreshDue: () => post<{ queued: number }>("/keywords/refresh-due"),
+  /** Süresi dolmuş (kullanılan ya da sabitli) kelimelerin hacmini şimdi kuyruğa alır (ana pazar + ülke haritası pazarları); haftalık otomatik işlerle aynı kurallar. */
+  refreshDue: () => post<{ queued: number; market_queued: number }>("/keywords/refresh-due"),
   health: () => apiRequest<PoolHealth>(`${BASE}/health`),
   analytics: () => apiRequest<UsageAnalytics>(`${BASE}/analytics`),
   keyword: (id: number) => apiRequest<ResearchKeywordDetail>(`${BASE}/keywords/${id}`),

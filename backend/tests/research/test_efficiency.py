@@ -117,4 +117,4 @@ def test_admin_refresh_due_endpoint_queues_expired_used_keywords(db, provider):
         out = TestClient(main.app).post("/api/admin/research/keywords/refresh-due")
     finally:
         main.app.dependency_overrides.clear()
-    assert out.status_code == 200 and out.json() == {"queued": 1}  # kullanılmayan kelimeye para harcanmaz
+    assert out.status_code == 200 and out.json() == {"queued": 1, "market_queued": 0}  # kullanılmayan kelimeye para harcanmaz

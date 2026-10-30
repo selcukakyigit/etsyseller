@@ -11,14 +11,18 @@ class FakeProvider:
         self.calls: list[tuple[str, object]] = []
         self.fail: Exception | None = None
         self.volume = 100  # volumes() her kelime için bunu döner
+        self.volume_by_market: dict[str, int] = {}  # pazar -> hacim (verilmeyen pazar `volume` döner)
+        self.volume_markets: list[str] = []  # volumes() çağrılarının pazarları (sırayla)
         self.empty_seeds: set[str] = set()  # öneri döndürmeyen tohumlar
         self.keep_only: set[str] | None = None  # verilirse öneri listesi yalnızca bu kelimelere indirilir ("liste değişti")
         self.no_data: set[str] = set()  # hacim kaydı hiç dönmeyen kelimeler
         self.season_monthly: list[int] | None = [10, 10, 12, 15, 20, 25, 30, 40, 60, 100, 90, 50]  # None: profil çıkarılamadı
         self.trend_values = {"a": (10.0, 20.0), "b": (10.0, 2.0), "c": (30.0, 30.0)}
 
+    markets: tuple[str, ...] = ("US",)  # testler ülke haritası için genişletir
+
     def supports_market(self, market: str) -> bool:
-        return market == "US"
+        return market in self.markets
 
     def _maybe_fail(self):
         if self.fail:
@@ -26,8 +30,9 @@ class FakeProvider:
 
     def volumes(self, creds, terms, market, language):
         self.calls.append(("volume", list(terms)))
+        self.volume_markets.append(market)
         self._maybe_fail()
-        records = [MetricRecord(t, search_volume=self.volume, cpc=0.5) for t in terms if t not in self.no_data]
+        records = [MetricRecord(t, search_volume=self.volume_by_market.get(market, self.volume), cpc=0.5) for t in terms if t not in self.no_data]
         return ProviderResponse("fake/volume", records, 0.09, 5)
 
     def suggestions(self, creds, seed, market, language, limit, questions=False):

@@ -224,14 +224,19 @@ export default function SearchPanel({ shopId, collections, onSaved, onOpenSaved 
   return (
     <div className="space-y-4">
       <form onSubmit={submit} className="flex gap-2">
-        <input
-          value={input}
-          onChange={(e) => setTyped(e.target.value)}
-          maxLength={120}
-          placeholder={t("Bir ürün ya da kelime yaz (ör. metal wall art)", "Type a product or keyword (e.g. metal wall art)")}
-          aria-label={t("Aranacak kelime", "Keyword to research")}
-          className="min-w-0 flex-1 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-[#D97757] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100"
-        />
+        <div className="relative min-w-0 flex-1">
+          <svg viewBox="0 0 24 24" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400 dark:text-neutral-500" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" aria-hidden>
+            <path d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+          </svg>
+          <input
+            value={input}
+            onChange={(e) => setTyped(e.target.value)}
+            maxLength={120}
+            placeholder={t("Bir ürün ya da kelime yaz (ör. metal wall art)", "Type a product or keyword (e.g. metal wall art)")}
+            aria-label={t("Aranacak kelime", "Keyword to research")}
+            className="w-full rounded-xl border border-neutral-200 bg-white py-2.5 pl-9 pr-3 text-sm text-neutral-900 shadow-sm outline-none transition focus:border-[#D97757] focus:ring-2 focus:ring-[#D97757]/20 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:shadow-none"
+          />
+        </div>
         <Button type="submit" tone="primary" busy={loading} disabled={!input.trim()}>
           {t("Araştır", "Research")}
         </Button>

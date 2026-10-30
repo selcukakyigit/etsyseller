@@ -22,7 +22,8 @@ _TRANSIENT_CODES = {40202, 50000, 50301, 50302, 50303}
 TREND_WEEKS = 13  # son 13 hafta ile geçen yılın aynı 13 haftası karşılaştırılır (mevsim etkisi böylece ayrılır)
 TREND_HISTORY_DAYS = 16 * 31  # ~16 ay: hem son pencereyi hem bir yıl öncesini kapsar; 9 aydan uzun aralık haftalık veri döner
 QUESTION_LIMIT = 100
-LOCATIONS = {"US": 2840, "GB": 2826, "CA": 2124, "AU": 2036, "DE": 2276, "FR": 2250, "TR": 2792}
+# DataForSEO konum kodu = 2000 + ülkenin ISO 3166-1 sayısal kodu. Sıra, ülke haritasında ölçüm sırasıdır.
+LOCATIONS = {"US": 2840, "GB": 2826, "CA": 2124, "AU": 2036, "DE": 2276, "FR": 2250, "NL": 2528, "IT": 2380, "ES": 2724, "IE": 2372, "NZ": 2554, "TR": 2792}
 
 
 def _monthly(items: list[dict] | None) -> list[list[int]] | None:
@@ -89,6 +90,7 @@ class DataForSeoProvider:
     name = "dataforseo"
     max_volume_terms = 1000
     max_trend_terms = 5  # Google Trends tek istekte en fazla 5 terim karşılaştırır
+    markets = tuple(LOCATIONS)
 
     def supports_market(self, market: str) -> bool:
         return market in LOCATIONS

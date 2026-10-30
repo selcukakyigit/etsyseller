@@ -6,7 +6,11 @@ import { BlockSpinner } from "@/components/ui/Spinner";
 import { discoverApi } from "@/lib/discoverApi";
 import { useT } from "@/lib/i18n-client";
 import { useApiData } from "@/lib/useApiData";
-import { monthNames } from "./SeasonChart";
+import CountryPanel from "./home/CountryPanel";
+import Movers from "./home/Movers";
+import Opportunities from "./home/Opportunities";
+import PulseCards from "./home/PulseCards";
+import SeasonCalendar from "./home/SeasonCalendar";
 
 const POLL_MS = 5000;
 const POLL_MAX = 12; // mevsimsellikler hazırlanırken en çok ~1 dakika yoklar
@@ -27,8 +31,8 @@ function Section({ title, help, action, children }: { title: string; help?: Reac
 const chip =
   "rounded-full border border-neutral-200 px-3 py-1 text-sm text-neutral-700 transition hover:border-[#D97757] hover:text-[#B4553A] dark:border-neutral-700 dark:text-neutral-300 dark:hover:text-[#E89A7F]";
 
-/** Arama yapılmadan önceki Keşfet ekranı: son aramalar, mağazanın kendi etiketlerinden yaklaşan sezon ve başlangıç noktaları, koleksiyonlar.
- * Herkese aynı "en çok aranan" listesi gösterilmez: her mağazanın girişi kendi etiketlerinden gelir. */
+/** Arama yapılmadan önceki Keşfet ekranı: son aramalar, özet kartlar, dünya haritası (kim arıyor, müşterilerin nereden), sezon takvimi, yükselenler, fırsat kelimeler,
+ * mağazanın kendi etiketleri ve koleksiyonlar. Herkese aynı "en çok aranan" listesi gösterilmez: her mağazanın girişi kendi etiketlerinden ve siparişlerinden gelir. */
 export default function DiscoverHome({
   shopId,
   recent,
@@ -44,8 +48,10 @@ export default function DiscoverHome({
 }) {
   const { t, locale } = useT();
   const { data, error, reload } = useApiData(`discover:home:${shopId}`, () => discoverApi.home(shopId));
-  const names = monthNames(locale);
+  const overview = useApiData(`discover:overview:${shopId}`, () => discoverApi.overview(shopId));
+  const reloadOverview = overview.reload;
   const attempts = useRef(0);
+  const wasPreparing = useRef(false);
 
   // Etiketlerin mevsimselliği hazırlanırken ekran kendiliğinden birkaç kez yeniden sorar.
   useEffect(() => {
@@ -57,6 +63,15 @@ export default function DiscoverHome({
     return () => clearTimeout(timer);
   }, [data, reload]);
 
+  // Sezonlar hazır olunca takvim de tazelensin.
+  useEffect(() => {
+    if (data?.preparing) wasPreparing.current = true;
+    else if (data && wasPreparing.current) {
+      wasPreparing.current = false;
+      reloadOverview();
+    }
+  }, [data, reloadOverview]);
+
   const hint = (
     <p className="py-10 text-center text-sm text-neutral-400 dark:text-neutral-500">
       {t("Bir kelime yaz; ilgili aramaları, aylık arama sayısını, trendi, CPC'yi ve alıcı niyetini göster.", "Type a keyword to see related searches, monthly searches, trend, CPC and buyer intent.")}
@@ -65,9 +80,9 @@ export default function DiscoverHome({
 
   if (!data && !error) return recent.length === 0 ? <BlockSpinner /> : null;
   const tags = data?.tags ?? [];
-  const upcoming = data?.upcoming ?? [];
   const collections = data?.collections ?? [];
   if (recent.length === 0 && tags.length === 0 && collections.length === 0) return hint;
+  const ov = overview.data;
 
   return (
     <div className="space-y-6 py-2">
@@ -90,43 +105,22 @@ export default function DiscoverHome({
         </Section>
       )}
 
-      {(upcoming.length > 0 || data?.preparing) && (
-        <Section
-          title={t("Yaklaşan sezon", "Upcoming season")}
-          help={t(
-            "Mağazandaki en sık etiketlerden, önümüzdeki 3 ayda aranmaları zirve yapacak olanlar (Google Trends, son 5 yılın ortalaması). Alıcılar zirveden 1-2 ay önce aramaya başladığı için listing'i şimdiden hazırla. Çok az aranan etiketlerin mevsimselliği hesaplanmaz.",
-            "Among the tags you use most, the ones whose searches peak in the next 3 months (Google Trends, 5-year average). Shoppers start searching 1-2 months before the peak, so get the listing ready now. Seasonality is not computed for tags that are searched very rarely.",
-          )}
-        >
-          {upcoming.length > 0 ? (
-            <div className="grid gap-2 sm:grid-cols-2">
-              {upcoming.map((u) => (
-                <button
-                  key={u.term}
-                  type="button"
-                  onClick={() => onPick(u.term)}
-                  className="rounded-xl border border-neutral-200 bg-white p-3 text-left transition hover:border-[#D97757] dark:border-neutral-800 dark:bg-neutral-900"
-                >
-                  <span className="block text-sm font-semibold text-neutral-900 dark:text-neutral-100">{u.term}</span>
-                  <span className="mt-0.5 block text-xs text-neutral-500 dark:text-neutral-400">
-                    {t("Zirve", "Peak")}: {u.peak_months.map((m) => names[m - 1]).join(", ")}
-                    {" · "}
-                    <span className={u.in_months <= 1 ? "font-medium text-[#B4553A] dark:text-[#E89A7F]" : ""}>
-                      {u.in_months === 0 ? t("şimdi zirvede", "peaking now") : t(`${u.in_months} ay sonra`, `in ${u.in_months} month${u.in_months === 1 ? "" : "s"}`)}
-                    </span>
-                  </span>
-                  {u.volume !== null && (
-                    <span className="mt-0.5 block text-xs text-neutral-400 dark:text-neutral-500">
-                      {t(`${u.volume.toLocaleString(locale)} aylık arama (Google)`, `${u.volume.toLocaleString(locale)} monthly searches (Google)`)}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-neutral-400 dark:text-neutral-500">{t("Etiketlerinin sezonları hesaplanıyor…", "Working out the seasons of your tags…")}</p>
-          )}
-        </Section>
+      {ov ? (
+        <div className="space-y-4">
+          <PulseCards overview={ov} onPick={onPick} />
+          <CountryPanel countries={ov.countries} customers={ov.customers} onPick={onPick} />
+          <SeasonCalendar rows={ov.calendar} preparing={!!data?.preparing} onPick={onPick} />
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Movers movers={ov.movers} onPick={onPick} />
+            <Opportunities items={ov.opportunities} onPick={onPick} />
+          </div>
+        </div>
+      ) : overview.error ? (
+        <p className="text-xs text-neutral-400 dark:text-neutral-500">{t("Pano şu an yüklenemedi.", "The dashboard could not be loaded right now.")}</p>
+      ) : (
+        <div className="min-h-[12rem]">
+          <BlockSpinner />
+        </div>
       )}
 
       {tags.length > 0 && (

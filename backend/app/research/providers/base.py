@@ -16,6 +16,7 @@ class ResearchProvider(Protocol):
     name: str
     max_volume_terms: int  # tek istekte sorulabilecek en fazla kelime
     max_trend_terms: int  # tek trend isteğinde karşılaştırılabilecek en fazla kelime
+    markets: tuple[str, ...]  # ölçülebilen pazarlar (ülke kodu); ülke haritası bunlar kadar toplu istek açar
 
     def supports_market(self, market: str) -> bool: ...
 

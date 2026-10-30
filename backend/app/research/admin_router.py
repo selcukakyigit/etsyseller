@@ -71,11 +71,12 @@ def refresh(payload: RefreshIn, admin_user: User = Depends(admin_only), db: Sess
 
 @router.post("/keywords/refresh-due")
 def refresh_due(admin_user: User = Depends(admin_only), db: Session = Depends(get_db)):
-    """"Süresi dolanları şimdi yenile": haftalık otomatik işin kurallarıyla (kullanılan ya da sabitli, günlük sınır, bütçe) hemen çalıştırır.
+    """"Süresi dolanları şimdi yenile": haftalık otomatik işlerin kurallarıyla (kullanılan ya da sabitli, günlük sınır, bütçe) hemen çalıştırır: ana pazar + ülke haritası pazarları.
     Otomatik yenileme anahtarı kapalı olsa da çalışır; yönetici elle istiyor."""
     queued = service.refresh_stale(db)
-    audit.record(db, admin_user, "research.refresh_due", f"{queued} terms", "")
-    return {"queued": queued}
+    market_queued = service.refresh_markets(db)
+    audit.record(db, admin_user, "research.refresh_due", f"{queued} terms, {market_queued} market terms", "")
+    return {"queued": queued, "market_queued": market_queued}
 
 
 @router.post("/keywords/bulk",response_model=admin_pool.BulkOut)

@@ -22,7 +22,12 @@ export default function HealthPanel() {
     setRefreshing(true);
     try {
       const r = await researchAdmin.refreshDue();
-      toast.success(r.queued > 0 ? t(`${f.num(r.queued)} kelime yenileme için kuyruğa alındı.`, `${f.num(r.queued)} keywords queued for refresh.`) : t("Yenilenecek kelime yok (bütçe ya da kullanım nedeniyle de olabilir).", "Nothing to refresh (it can also be due to budget or usage)."));
+      const total = r.queued + r.market_queued;
+      toast.success(
+        total > 0
+          ? t(`${f.num(total)} kelime yenileme için kuyruğa alındı (ülke haritası: ${f.num(r.market_queued)}).`, `${f.num(total)} keywords queued for refresh (country map: ${f.num(r.market_queued)}).`)
+          : t("Yenilenecek kelime yok (bütçe ya da kullanım nedeniyle de olabilir).", "Nothing to refresh (it can also be due to budget or usage)."),
+      );
       reload();
     } catch (e) {
       if (errorText(e)) toast.error(errorText(e));
@@ -53,8 +58,8 @@ export default function HealthPanel() {
           </Button>
           <HelpTip align="right">
           {t(
-            "Varsayılan pazar ve dil için. 'Yenileme tahmini': önümüzdeki 30 günde süresi dolacak (ya da dolmuş) normal durumdaki kelimelerin hepsi yenilenirse kaç istek ve yaklaşık ne kadar tutar; sağlayıcı istek başına ücret alır (kelime sayısından bağımsız, istek başına en çok 1000 kelime). Gerçek harcama yenileme başına kelime sınırına ve kullanılmayan kelimelerin atlanmasına göre bundan düşüktür. 'Süresi dolanları şimdi yenile' haftalık otomatik işin kurallarıyla (kullanılan ya da sabitli kelimeler) hemen çalışır; otomatik yenileme kapalı olsa da çalışır.",
-            "For the default market and language. 'Refresh forecast': how many requests, and roughly what cost, if every active keyword that expires (or has expired) within 30 days were refreshed; the provider charges per request (not per keyword, up to 1000 keywords each). Real spend is lower because of the per-run keyword cap and skipped unused keywords. 'Refresh expired now' runs the weekly automatic job's rules right away (used or pinned keywords); it works even when automatic refresh is off.",
+            "Varsayılan pazar ve dil için. 'Yenileme tahmini': önümüzdeki 30 günde süresi dolacak (ya da dolmuş) normal durumdaki kelimelerin hepsi yenilenirse kaç istek ve yaklaşık ne kadar tutar; sağlayıcı istek başına ücret alır (kelime sayısından bağımsız, istek başına en çok 1000 kelime). Gerçek harcama yenileme başına kelime sınırına ve kullanılmayan kelimelerin atlanmasına göre bundan düşüktür. 'Süresi dolanları şimdi yenile' haftalık otomatik işlerin kurallarıyla (kullanılan ya da sabitli kelimeler; ana pazar ve ülke haritası pazarları) hemen çalışır; otomatik yenileme kapalı olsa da çalışır.",
+            "For the default market and language. 'Refresh forecast': how many requests, and roughly what cost, if every active keyword that expires (or has expired) within 30 days were refreshed; the provider charges per request (not per keyword, up to 1000 keywords each). Real spend is lower because of the per-run keyword cap and skipped unused keywords. 'Refresh expired now' runs the weekly automatic jobs' rules right away (used or pinned keywords; the main market and the country map markets); it works even when automatic refresh is off.",
           )}
         </HelpTip>
         </div>

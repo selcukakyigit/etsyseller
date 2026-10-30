@@ -17,7 +17,8 @@ from app.jobs.listing_refresh import refresh_all_shops
 from app.jobs.order_sync import sync_all_shops
 from app.jobs.rank_tracking import track_all_shops
 from app.jobs.research import (
-    rebuild_signals as research_signals, refresh_stale as research_refresh, refresh_trends as research_trends, run_queue as research_queue, warm_own_tags as research_warm,
+    rebuild_signals as research_signals, refresh_markets as research_markets, refresh_stale as research_refresh, refresh_trends as research_trends, run_queue as research_queue,
+    warm_own_tags as research_warm,
 )
 from app.jobs.retention import purge_expired_records
 from app.jobs.reviews import sync_all_shops as sync_reviews
@@ -158,6 +159,12 @@ def start_scheduler() -> None:
         _measured(research_warm),
         trigger=CronTrigger(day_of_week="mon", hour=2, minute=45),
         id="research_warm",
+        replace_existing=True,
+    )
+    _scheduler.add_job(
+        _measured(research_markets),
+        trigger=CronTrigger(day_of_week="mon", hour=3, minute=0),  # haftalık: yalnızca süresi (30 gün) dolan ülke ölçümleri yenilenir
+        id="research_markets",
         replace_existing=True,
     )
     _scheduler.add_job(

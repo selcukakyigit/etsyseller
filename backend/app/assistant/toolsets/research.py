@@ -1,6 +1,6 @@
 """Keşfet (kelime araştırması) araçları: ekranla AYNI işlevleri çağırır (research/discover.py), ikinci bir uygulama yoktur. Sağlayıcıya istek atılmaz:
 havuzda olmayan ya da eskimiş aramalar kuyruğa girer, sonuç genellikle bir iki dakikada hazır olur. Kullanıcıya ham arama sayısı gösterilmez, yalnızca bant."""
-from app.research import budget, discover, etsy_top
+from app.research import budget, discover, etsy_top, overview
 
 _MONTHS = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"]
 
@@ -143,6 +143,43 @@ def upcoming_seasons(ctx, a: dict) -> dict:
     return out
 
 
+def discover_overview(ctx, a: dict) -> dict:
+    """Keşfet ana ekranının kartları (sezon takvimi, yükselenler/düşenler, fırsatlar, ülkelere göre Google talebi, müşteri ülkeleri); ekranla AYNI işlev (research/overview.py)."""
+    view = overview.overview(ctx.db, ctx.shop, getattr(ctx, "today", None))
+    pulse = view.pulse
+    out: dict = {
+        "ozet": {
+            "etiket_sayisi": pulse["tags"], "olculen_etiket": pulse["measured"], "etiketlerin_toplam_google_aylik_aramasi": pulse["monthly_searches"],
+            "en_cok_arayan_ulke_kodu": pulse["top_market"],
+            **({"siradaki_zirve": {"kelime": pulse["next_peak"]["term"], "kac_ay_sonra": pulse["next_peak"]["in_months"], "zirve_aylar": [_MONTHS[m - 1] for m in pulse["next_peak"]["peak_months"]]}} if pulse["next_peak"] else {}),
+        },
+        "sezon_takvimi": [
+            {"kelime": c["term"], "zirve_aylar": [_MONTHS[m - 1] for m in c["peak_months"]], **({"kac_ay_sonra": c["in_months"]} if c["in_months"] is not None else {})}
+            for c in view.calendar
+        ],
+        "yukselenler": [{"kelime": m["term"], "google_aylik_arama": m["volume"], "son3ay_ilk3ay_yuzde": m["trend_pct"], "mevsimsel": m["seasonal"]} for m in view.movers["rising"]],
+        "dusenler": [{"kelime": m["term"], "google_aylik_arama": m["volume"], "son3ay_ilk3ay_yuzde": m["trend_pct"], "mevsimsel": m["seasonal"]} for m in view.movers["falling"]],
+        "firsatlar": [_item(discover.Item(**o)) for o in view.opportunities],
+        "musteri_ulkeleri": {"son_gun": view.customers["days"], "siparis": view.customers["orders"], "ulkeler": [{"kod": r["country"], "siparis": r["orders"], "yuzde": r["share"]} for r in view.customers["rows"][:15]]},
+    }
+    c = view.countries
+    out["ulke_talebi"] = {
+        "olculen_pazarlar": [
+            {"kod": r["market"], "google_aylik_arama_toplam": r["volume"], "yuzde": r["share"], "olculen_etiket": r["measured"], **({"en_cok_aranan": r["top_term"]} if r["top_term"] else {})}
+            for r in c["rows"]
+        ],
+        "etiket_sayisi": c["tags"],
+        **({"hazirlaniyor": True} if c["preparing"] else {}),
+    }
+    out["not"] = (
+        "ulke_talebi: mağaza etiketlerinin her pazarda İNGİLİZCE Google aramalarının toplamıdır (Etsy satışı ya da Etsy arama hacmi DEĞİL); yalnızca ölçülen pazarlar vardır, listede olmayan ülke 'arama yok' demek değildir. "
+        "Ülke ölçümü haftalık hazırlanır: hazirlaniyor=true ise eksik olabilir, sayıları kesin sunma. musteri_ulkeleri mağazanın GERÇEK siparişleridir (son yıl, iptaller hariç). "
+        "yukselenler/dusenler: son 3 ayın ortalaması, 12 aylık serinin ilk 3 ayına göre; mevsimsel=true ise yön sezondan olabilir. firsatlar: mağazanın kullanmadığı, çok aranan, kalabalık olmayan öneriler; Etsy rekabetini ölçmez (etsy_top_results ile bak). "
+        "Boş bölümü uydurma; boş ise ölçüm henüz yok ya da veri yetersiz de."
+    )
+    return out
+
+
 def saved_keywords(ctx, a: dict) -> dict:
     v = discover.saved(ctx.db, ctx.shop, a.get("collection"))
     return {
@@ -228,6 +265,15 @@ TOOLS: list[dict] = [
         "input_schema": {"type": "object", "properties": {}, "required": []},
     },
     {
+        "name": "discover_overview",
+        "description": (
+            "Keşfet ana ekranının tüm kartları tek seferde: etiketlerin SEZON TAKVİMİ, yükselen ve düşen kelimeler, fırsat kelimeler (mağazanın kullanmadığı, çok aranan, kalabalık olmayan), "
+            "ÜLKELERE GÖRE Google talebi (hangi ülkeler bu etiketleri arıyor) ve MÜŞTERİ ÜLKELERİ (mağazanın gerçek siparişleri). "
+            "'Hangi ülkeler arıyor', 'müşterilerim nereden', 'hangi kelimelerim yükseliyor/düşüyor', 'fırsat kelime var mı', 'sezon takvimim' soruları için. Kredi harcamaz; yalnızca ortak havuzu ve mağazanın siparişlerini okur."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
         "name": "saved_keywords",
         "description": "Kullanıcının Keşfet'te kaydettiği kelimeler ve koleksiyonları (talep bandıyla). 'Kaydettiğim kelimeler', 'koleksiyonlarım' için. collection verilmezse ilk koleksiyon.",
         "input_schema": {"type": "object", "properties": {"collection": {"type": "string", "description": "Koleksiyon adı (boş = Genel)"}}, "required": []},
@@ -246,6 +292,6 @@ TOOLS: list[dict] = [
         },
     },
 ]
-EXECUTORS = {"upcoming_seasons": upcoming_seasons, "keyword_detail": keyword_detail, "research_keywords": research_keywords, "saved_keywords": saved_keywords, "save_keywords": save_keywords, "etsy_top_results": etsy_top_results}
-LABELS = {"upcoming_seasons": "Yaklaşan sezonlara bakıyor", "keyword_detail": "Kelimenin ayrıntısına bakıyor", "etsy_top_results": "Etsy'deki rakiplere bakıyor", "research_keywords": "Kelimeleri araştırıyor", "saved_keywords": "Kayıtlı kelimelere bakıyor", "save_keywords": "Kelimeleri kaydediyor"}
-LABELS_EN = {"upcoming_seasons": "Checking upcoming seasons", "keyword_detail": "Looking at the keyword details", "etsy_top_results": "Looking at Etsy competitors", "research_keywords": "Researching keywords", "saved_keywords": "Looking at saved keywords", "save_keywords": "Saving keywords"}
+EXECUTORS = {"upcoming_seasons": upcoming_seasons, "discover_overview": discover_overview, "keyword_detail": keyword_detail, "research_keywords": research_keywords, "saved_keywords": saved_keywords, "save_keywords": save_keywords, "etsy_top_results": etsy_top_results}
+LABELS = {"upcoming_seasons": "Yaklaşan sezonlara bakıyor", "discover_overview": "Kelime panosuna bakıyor", "keyword_detail": "Kelimenin ayrıntısına bakıyor", "etsy_top_results": "Etsy'deki rakiplere bakıyor", "research_keywords": "Kelimeleri araştırıyor", "saved_keywords": "Kayıtlı kelimelere bakıyor", "save_keywords": "Kelimeleri kaydediyor"}
+LABELS_EN = {"upcoming_seasons": "Checking upcoming seasons", "discover_overview": "Looking at the keyword dashboard", "keyword_detail": "Looking at the keyword details", "etsy_top_results": "Looking at Etsy competitors", "research_keywords": "Researching keywords", "saved_keywords": "Looking at saved keywords", "save_keywords": "Saving keywords"}
