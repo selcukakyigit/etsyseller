@@ -79,6 +79,9 @@ export type ErrorGroup = {
   status: ErrorGroupStatus;
   count: number;
   tickets: number;
+  affected_users: number;
+  last_user_id: number | null;
+  last_user_email: string | null;
   first_seen: string;
   last_seen: string;
 };
@@ -121,5 +124,8 @@ export const adminTicketsApi = {
     apiRequest<CannedReply>(id ? `/api/admin/tickets/canned/${id}` : "/api/admin/tickets/canned", { method: id ? "PUT" : "POST", body: JSON.stringify(body) }),
   deleteCanned: (id: number) => apiRequest<void>(`/api/admin/tickets/canned/${id}`, { method: "DELETE" }),
   errors: (status: "open" | "all") => apiRequest<ErrorGroup[]>(`/api/admin/errors?status=${status}`),
+  errorAlerts: () => apiRequest<{ enabled: boolean; configured: boolean }>("/api/admin/errors/alerts"),
+  setErrorAlerts: (enabled: boolean) =>
+    apiRequest<{ enabled: boolean; configured: boolean }>("/api/admin/errors/alerts", { method: "PUT", body: JSON.stringify({ enabled }) }),
   setErrorStatus: (id: number, status: ErrorGroupStatus) => apiRequest<void>(`/api/admin/errors/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
 };

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% import "_components.html" as c %}
+{% block content %}
+{{ c.heading("New error") }}
+{{ c.facts([("Source", source), ("Where", url or "-")]) }}
+<div style="white-space:pre-wrap;word-break:break-word;margin:0 0 16px;">{{ message }}</div>
+{{ c.button(link, "Open errors") }}
+{{ c.small("You get this email once per new error. Turn it off in Admin > Errors.") }}
+{% endblock %}

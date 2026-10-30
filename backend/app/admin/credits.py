@@ -4,7 +4,7 @@ import datetime as dt
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.admin.deps import AdminError
+from app.admin.deps import AdminError, escape_like
 from app.admin.schemas import (
     CreditSettingsIn, CreditSettingsOut, WorkspaceCreditOut, WorkspaceCreditsPageOut,
 )
@@ -27,10 +27,6 @@ def update_settings(db: Session, data: CreditSettingsIn) -> CreditSettingsOut:
     return get_settings()
 
 
-def _escape_like(text: str) -> str:
-    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
 def list_workspaces(db: Session, q: str = "", limit: int = 50, offset: int = 0) -> WorkspaceCreditsPageOut:
     """Çalışma alanları, sahibinin e-postası, bakiye ve son 30 günde harcanan (fiyatlanan) kredi."""
     owner = (
@@ -42,7 +38,7 @@ def list_workspaces(db: Session, q: str = "", limit: int = 50, offset: int = 0) 
     )
     stmt = select(Workspace.id, Workspace.name, owner.c.email).outerjoin(owner, owner.c.workspace_id == Workspace.id)
     if q.strip():
-        pattern = f"%{_escape_like(q.strip().lower())}%"
+        pattern = f"%{escape_like(q.strip().lower())}%"
         stmt = stmt.where(or_(func.lower(owner.c.email).like(pattern, escape="\\"), func.lower(Workspace.name).like(pattern, escape="\\")))
     total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
     rows = db.execute(stmt.order_by(Workspace.id.desc()).limit(max(1, min(limit, MAX_PAGE))).offset(max(0, offset))).all()

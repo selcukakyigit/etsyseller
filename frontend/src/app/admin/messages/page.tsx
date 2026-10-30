@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import AdminShell from "@/components/admin/AdminShell";
-import { Badge, EmptyState, Section, useFormat } from "@/components/admin/ui";
+import { Badge, Button, EmptyState, Section, errorText, inputClass, useFormat } from "@/components/admin/ui";
+import { Modal, btnGhost, btnPrimary } from "@/components/listing-editor/Modal";
 import { useApiData } from "@/lib/useApiData";
 import { BlockSpinner, Spinner } from "@/components/ui/Spinner";
 import { AdminMessage, api } from "@/lib/api";
@@ -86,6 +87,7 @@ function MessageCard({ message: m, onChanged }: { message: AdminMessage; onChang
   const { t } = useT();
   const f = useFormat();
   const [saving, setSaving] = useState(false);
+  const [replying, setReplying] = useState(false);
   const [opening, setOpening] = useState<number | null>(null);
   const topic = TOPICS[m.topic] ?? TOPICS.other;
 
@@ -133,6 +135,10 @@ function MessageCard({ message: m, onChanged }: { message: AdminMessage; onChang
             <span>{f.dateTime(m.created_at)}</span>
           </div>
         </div>
+        <div className="flex flex-shrink-0 gap-1.5">
+        <Button onClick={() => setReplying(true)} className="text-xs">
+          {t("Yanıtla", "Reply")}
+        </Button>
         <button
           type="button"
           onClick={() => void toggleHandled()}
@@ -145,6 +151,7 @@ function MessageCard({ message: m, onChanged }: { message: AdminMessage; onChang
         >
           {m.handled ? t("Yeniden aç", "Reopen") : t("İlgilenildi", "Mark handled")}
         </button>
+        </div>
       </div>
 
       <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">{m.message}</p>
@@ -165,6 +172,69 @@ function MessageCard({ message: m, onChanged }: { message: AdminMessage; onChang
           ))}
         </div>
       )}
+      {replying && (
+        <ReplyModal
+          message={m}
+          onClose={() => setReplying(false)}
+          onSent={(updated) => {
+            setReplying(false);
+            onChanged(updated);
+          }}
+        />
+      )}
     </li>
+  );
+}
+
+/** E-postayla yanıt: metin gönderene gider, mesaj "ilgilenildi" olur. Yanıt metni saklanmaz. */
+function ReplyModal({ message: m, onClose, onSent }: { message: AdminMessage; onClose: () => void; onSent: (m: AdminMessage) => void }) {
+  const { t } = useT();
+  const [body, setBody] = useState("");
+  const [sending, setSending] = useState(false);
+
+  async function send() {
+    setSending(true);
+    try {
+      onSent(await api.admin.replyMessage(m.id, body.trim()));
+      toast.success(t("Yanıt gönderildi", "Reply sent"));
+    } catch (e) {
+      const msg = errorText(e);
+      if (msg) toast.error(msg);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <Modal
+      title={t(`Yanıtla: ${m.email}`, `Reply to ${m.email}`)}
+      widthClass="max-w-lg"
+      sheet
+      onClose={onClose}
+      closeButton
+      footer={
+        <>
+          <button type="button" className={btnGhost} onClick={onClose}>
+            {t("Vazgeç", "Cancel")}
+          </button>
+          <button type="button" className={btnPrimary} disabled={sending || body.trim().length < 2} onClick={() => void send()}>
+            {sending ? t("Gönderiliyor…", "Sending…") : t("Gönder", "Send")}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <p className="max-h-24 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-neutral-100 p-2 text-xs text-neutral-600 dark:bg-neutral-950 dark:text-neutral-400">{m.message}</p>
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={8}
+          maxLength={5000}
+          autoFocus
+          placeholder={t("Yanıtınız (gönderenin dilinde yazın)", "Your reply (write in the sender's language)")}
+          className={`${inputClass} h-48 resize-none`}
+        />
+      </div>
+    </Modal>
   );
 }

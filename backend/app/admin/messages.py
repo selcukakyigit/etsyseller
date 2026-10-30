@@ -2,11 +2,15 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.admin.deps import AdminError
 from app.core.dates import iso
 from app.admin.schemas import AttachmentOut, AttachmentUrlOut, MessageOut
 from app.contact.models import ContactAttachment, ContactMessage
 from app.contact.router import BUCKET
 from app.core import storage
+from app.core.config import settings
+from app.emails.renderer import render
+from app.emails.sender import email_configured, send_email
 
 MAX_MESSAGES = 200
 
@@ -41,6 +45,28 @@ def set_handled(db: Session, message_id: int, handled: bool) -> MessageOut:
     if row is None:
         raise NotFound
     row.handled = handled
+    db.commit()
+    return _out(row)
+
+
+def reply(db: Session, message_id: int, body: str) -> MessageOut:
+    """Gönderene e-posta ile yanıt verir (yanıt adresi ekibin iletişim kutusudur, gönderen yanıtlayınca ekibe döner) ve mesajı "ilgilenildi" yapar.
+    Yanıt metni saklanmaz; yönetici işlem kaydında yalnızca kimin kime yanıtladığı durur."""
+    row = db.get(ContactMessage, message_id)
+    if row is None:
+        raise NotFound
+    if not email_configured():
+        raise AdminError(503, "E-posta gönderimi yapılandırılmamış.")
+    tr = row.lang == "tr"
+    html, text = render(
+        "admin_reply.html", title="Ulagg", preheader=body[:90],
+        greeting=f"Merhaba {row.name}," if tr else f"Hi {row.name},", body=body.strip(),
+        quoted_label="Mesajınız:" if tr else "Your message:", original=row.message[:1500],
+    )
+    reply_to = next((a.strip() for a in settings.contact_to.split(",") if a.strip()), None)
+    if not send_email([row.email], "Ulagg: mesajınıza yanıt" if tr else "Ulagg: reply to your message", html, text, reply_to=reply_to):
+        raise AdminError(502, "Yanıt gönderilemedi.")
+    row.handled = True
     db.commit()
     return _out(row)
 

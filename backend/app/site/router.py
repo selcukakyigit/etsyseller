@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.admin import announcement
 from app.billing import price_list
 from app.core.db import get_db
 from app.site import settings as site_settings
@@ -13,6 +14,12 @@ router = APIRouter(prefix="/api/site", tags=["site"])
 @router.get("/landing")
 def landing():
     return {"social": site_settings.get_social()}
+
+
+@router.get("/announcement")
+def current_announcement():
+    """Uygulama içi duyuru bandı; yoksa `null`. Yalnızca yöneticinin herkese göstermek için yazdığı metin döner."""
+    return announcement.current()
 
 
 @router.get("/pricing")

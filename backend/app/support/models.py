@@ -121,3 +121,13 @@ class ErrorGroup(Base):
     last_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     first_seen: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
     last_seen: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+
+
+class ErrorGroupUser(Base):
+    """Hata grubundan etkilenen kullanıcı (grup başına bir satır). "Kaç kullanıcı etkilendi" sayısı buradan gelir; kullanıcı hesabı silinince satır da gider."""
+
+    __tablename__ = "support_error_users"
+
+    group_id: Mapped[int] = mapped_column(ForeignKey("support_error_groups.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
+    first_seen: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)

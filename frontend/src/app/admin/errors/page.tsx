@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import AdminShell from "@/components/admin/AdminShell";
-import { Badge, Button, EmptyState, Section, useFormat } from "@/components/admin/ui";
+import { Badge, Button, EmptyState, Section, Toggle, useFormat } from "@/components/admin/ui";
 import HelpTip from "@/components/ui/HelpTip";
 import { BlockSpinner, Spinner } from "@/components/ui/Spinner";
 import { useT } from "@/lib/i18n-client";
@@ -70,6 +70,7 @@ function Errors() {
         </div>
       }
     >
+      <AlertsSwitch />
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
       {!data && !error && <BlockSpinner />}
       {data && data.length === 0 && <EmptyState>{t("Açık hata yok.", "No open errors.")}</EmptyState>}
@@ -95,11 +96,17 @@ function ErrorRow({ group: g, onStatus }: { group: ErrorGroup; onStatus: (g: Err
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
             <Badge tone={g.source === "server" ? "bad" : "warn"}>{g.source === "server" ? t("Sunucu", "Server") : t("Tarayıcı", "Browser")}</Badge>
             <Badge tone="muted">×{f.num(g.count)}</Badge>
+            {g.affected_users > 0 && <Badge tone="muted">{t(`${f.num(g.affected_users)} kullanıcı`, `${f.num(g.affected_users)} users`)}</Badge>}
             {g.status !== "open" && <Badge tone="good">{g.status === "resolved" ? t("Çözüldü", "Resolved") : t("Yok sayıldı", "Ignored")}</Badge>}
             {g.url && <span className="font-mono">{g.url}</span>}
             <span>
               {t("Son", "Last")}: {f.dateTime(g.last_seen)}
             </span>
+            {g.last_user_id && (
+              <Link href={`/admin/users/${g.last_user_id}`} className="text-[#D97757] hover:text-[#C6613F]">
+                {t("Son kullanıcı", "Last user")}: {g.last_user_email ?? `#${g.last_user_id}`}
+              </Link>
+            )}
             {g.tickets > 0 && (
               <Link href="/admin/tickets" className="text-[#D97757] hover:text-[#C6613F]">
                 {t(`${g.tickets} talep`, `${g.tickets} requests`)}
@@ -127,5 +134,34 @@ function ErrorRow({ group: g, onStatus }: { group: ErrorGroup; onStatus: (g: Err
         </details>
       )}
     </li>
+  );
+}
+
+/** Yeni hata e-postası anahtarı: yalnızca yeni (ya da çözülmüşken geri gelen) hata için ekibe e-posta gider. */
+function AlertsSwitch() {
+  const { t } = useT();
+  const { data, setData } = useApiData("admin:error-alerts", adminTicketsApi.errorAlerts);
+  if (!data) return null;
+
+  async function change(enabled: boolean) {
+    try {
+      setData(await adminTicketsApi.setErrorAlerts(enabled));
+    } catch (e) {
+      if (e instanceof Error && e.message) toast.error(e.message);
+    }
+  }
+
+  return (
+    <div className="mb-4 flex items-center gap-3">
+      <Toggle checked={data.enabled} onChange={(v) => void change(v)} label={t("Yeni hata e-postası", "New error email")} disabled={!data.configured} />
+      <span className="text-sm text-neutral-700 dark:text-neutral-300">{t("Yeni hata olunca e-posta gönder", "Email me when a new error appears")}</span>
+      <HelpTip>
+        {t(
+          "Yalnızca yeni ya da çözülmüşken geri gelen hata için, iletişim e-posta adresine gider. Aynı hatanın tekrarı için gelmez; saatte en çok 10 e-posta gönderilir.",
+          "Sent to the contact address only for a new error or one that comes back after being resolved, never for repeats. At most 10 emails per hour.",
+        )}
+      </HelpTip>
+      {!data.configured && <Badge tone="warn">{t("E-posta gönderimi yapılandırılmamış", "Email sending is not configured")}</Badge>}
+    </div>
   );
 }

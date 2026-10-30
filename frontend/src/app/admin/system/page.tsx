@@ -31,10 +31,7 @@ const JOB_NAMES: Record<string, [string, string]> = {
 export default function AdminSystemPage() {
   return (
     <AdminShell current="/admin/system">
-      <div className="space-y-6">
-        <System />
-        <AuditLog />
-      </div>
+      <System />
     </AdminShell>
   );
 }
@@ -180,63 +177,5 @@ function JobRow({ job, canRun, onStarted }: { job: AdminJob; canRun: boolean; on
       {job.last_error && <p className="mt-1 break-words font-mono text-xs text-red-600 dark:text-red-400">{job.last_error}</p>}
     {confirmElement}
     </li>
-  );
-}
-
-// Yönetici işlemlerinin okunur adları (backend/app/admin/router.py'deki audit.record eylemleri).
-const ACTIONS: Record<string, [string, string]> = {
-  "job.run": ["İş elle çalıştırıldı", "Job run manually"],
-  "model.create": ["Model eklendi", "Model added"],
-  "model.update": ["Model güncellendi", "Model updated"],
-  "model.delete": ["Model silindi", "Model deleted"],
-  "task.assign": ["Görev modeli değişti", "Task model changed"],
-  "key.set": ["Anahtar kaydedildi", "Key saved"],
-  "key.clear": ["Anahtar silindi", "Key removed"],
-  "credits.settings": ["Kredi ayarları değişti", "Credit settings changed"],
-  "credits.adjust": ["Bakiye düzeltildi", "Balance adjusted"],
-  "product.create": ["Ürün eklendi", "Product added"],
-  "product.update": ["Ürün güncellendi", "Product updated"],
-  "product.delete": ["Ürün silindi", "Product deleted"],
-  "user.credits": ["Kullanıcı kredisi düzeltildi", "User credits adjusted"],
-  "user.note": ["Kullanıcıya not eklendi", "User note added"],
-  "user.note_delete": ["Kullanıcı notu silindi", "User note deleted"],
-  "user.password_reset": ["Şifre sıfırlama gönderildi", "Password reset sent"],
-  "user.role": ["Kullanıcı rolü değişti", "User role changed"],
-  "user.status": ["Kullanıcı durumu değişti", "User status changed"],
-  "user.delete": ["Kullanıcı silindi", "User deleted"],
-  "user.bulk.credits": ["Toplu kredi", "Bulk credits"],
-  "user.bulk.suspend": ["Toplu askıya alma", "Bulk suspend"],
-  "user.bulk.block": ["Toplu engelleme", "Bulk block"],
-  "user.bulk.activate": ["Toplu etkinleştirme", "Bulk activate"],
-};
-
-function AuditLog() {
-  const { t } = useT();
-  const f = useFormat();
-  const { data, error } = useApiData("admin:audit", api.admin.audit);
-  return (
-    <Section title={t("Yönetici işlem kaydı", "Admin activity log")}>
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
-      {!data && !error && <BlockSpinner />}
-      {data && data.length === 0 && <EmptyState>{t("Henüz kayıt yok.", "No entries yet.")}</EmptyState>}
-      {data && data.length > 0 && (
-        <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
-          {data.map((a) => {
-            const name = ACTIONS[a.action];
-            return (
-              <li key={a.id} className="flex flex-col gap-0.5 py-2 sm:flex-row sm:items-center sm:justify-between">
-                <p className="min-w-0 text-sm text-neutral-800 dark:text-neutral-200">
-                  {name ? t(name[0], name[1]) : a.action}
-                  {a.target && <span className="ml-2 font-mono text-xs text-neutral-500 dark:text-neutral-400">{a.target}</span>}
-                </p>
-                <p className="flex-shrink-0 text-xs text-neutral-500 dark:text-neutral-400">
-                  {a.email} · {f.dateTime(a.created_at)}
-                </p>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </Section>
   );
 }

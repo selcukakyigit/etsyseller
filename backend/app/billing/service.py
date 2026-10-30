@@ -84,7 +84,7 @@ def handle_event(db: Session, payload: dict) -> None:
 # Kayda yalnızca sorun gidermeye yeten alanlar yazılır; müşterinin adı, e-postası ve kart bilgisi saklanmaz.
 _KEPT_ATTRS = (
     "status", "variant_id", "product_id", "total", "currency",
-    "refunded", "test_mode", "created_at",
+    "refunded", "test_mode", "created_at", "total_usd", "refunded_amount",
 )
 
 

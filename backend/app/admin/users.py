@@ -7,7 +7,7 @@ from collections import defaultdict
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.admin.deps import AdminError
+from app.admin.deps import AdminError, escape_like
 from app.admin.models import AdminAuditLog, AdminUserNote
 from app.admin.schemas import (
     AdminUserOut, AuditOut, LedgerRowOut, NoteOut, OnlineUserOut, UserDetailOut, UsersPageOut, UserShopOut,
@@ -21,10 +21,6 @@ from app.shops.models import OAuthToken, Shop
 MAX_PAGE = 100
 SORTS = ("newest", "oldest", "last_seen")
 DETAIL_LEDGER_ROWS = 50
-
-
-def _escape_like(text: str) -> str:
-    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def _primary_ws():
@@ -42,7 +38,7 @@ def _filters(q: str, status: str, joined_from: dt.date | None, joined_to: dt.dat
     if online:
         where.append(UserAccess.last_seen_at >= dt.datetime.utcnow() - ONLINE_WINDOW)
     if q.strip():
-        pattern = f"%{_escape_like(q.strip().lower())}%"
+        pattern = f"%{escape_like(q.strip().lower())}%"
         where.append(or_(func.lower(User.email).like(pattern, escape="\\"), func.lower(User.name).like(pattern, escape="\\")))
     if status == "active":
         where.append(or_(UserAccess.status.is_(None), UserAccess.status == "active"))

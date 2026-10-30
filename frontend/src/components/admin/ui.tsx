@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { ButtonHTMLAttributes, ReactNode } from "react";
+import { ButtonHTMLAttributes, ReactNode, useState } from "react";
 import { Spinner } from "@/components/ui/Spinner";
 import { useT } from "@/lib/i18n-client";
+import { toast } from "@/lib/toast";
 
 /** Yönetim sayfalarının ortak küçük parçaları: bölüm kutusu, sayı kartı, durum rozeti ve tarih/sayı biçimleri. */
 
@@ -88,6 +89,13 @@ export function useFormat() {
   const { locale } = useT();
   return {
     num: (n: number) => n.toLocaleString(locale),
+    money: (n: number, currency: string) => {
+      try {
+        return n.toLocaleString(locale, { style: "currency", currency });
+      } catch {
+        return `${n.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
+      }
+    },
     date: (iso: string | null) => {
       if (!iso) return "—";
       const d = new Date(iso);
@@ -160,4 +168,75 @@ export function Toggle({ checked, onChange, disabled, label }: { checked: boolea
 /** Yakalanan hatanın gösterilecek metni. Ağ hatasında boştur: api.ts zaten bildirim gösterdi, ikinci kez gösterilmez. */
 export function errorText(e: unknown): string {
   return e instanceof Error ? e.message : "";
+}
+
+/** "1–50 / 230" ve Önceki / Sonraki. Sayfa başına `step` kayıt; `offset` kayıt sırasıdır. */
+export function Pager({ offset, step, total, onChange }: { offset: number; step: number; total: number; onChange: (offset: number) => void }) {
+  const { t } = useT();
+  const f = useFormat();
+  if (total <= step) return null;
+  return (
+    <div className="mt-4 flex items-center justify-between text-sm text-neutral-600 dark:text-neutral-400">
+      <span className="tabular-nums">
+        {f.num(offset + 1)}–{f.num(Math.min(offset + step, total))} / {f.num(total)}
+      </span>
+      <div className="flex gap-2">
+        <Button disabled={offset === 0} onClick={() => onChange(Math.max(0, offset - step))}>
+          {t("Önceki", "Previous")}
+        </Button>
+        <Button disabled={offset + step >= total} onClick={() => onChange(offset + step)}>
+          {t("Sonraki", "Next")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** CSV indirme düğmesi: `run` dosyayı indirir (api.admin.exportCsv); hata bildirimi burada gösterilir. */
+export function ExportButton({ run }: { run: () => Promise<void> }) {
+  const { t } = useT();
+  const [busy, setBusy] = useState(false);
+  async function click() {
+    setBusy(true);
+    try {
+      await run();
+    } catch (e) {
+      const msg = errorText(e);
+      if (msg) toast.error(msg);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Button busy={busy} onClick={() => void click()}>
+      {!busy && (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+          <path d="M12 4v11m0 0l-4-4m4 4l4-4M5 20h14" />
+        </svg>
+      )}
+      {t("CSV indir", "Download CSV")}
+    </Button>
+  );
+}
+
+/** Gün aralığı seçici (7 / 30 / 90 gün gibi küçük düğme grubu). */
+export function RangeButtons<T extends number>({ value, options, onChange }: { value: T; options: readonly T[]; onChange: (v: T) => void }) {
+  const { t } = useT();
+  return (
+    <div className="flex gap-1">
+      {options.map((d) => (
+        <button
+          key={d}
+          type="button"
+          onClick={() => onChange(d)}
+          aria-pressed={value === d}
+          className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+            value === d ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900" : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+          }`}
+        >
+          {t(`${d} gün`, `${d} days`)}
+        </button>
+      ))}
+    </div>
+  );
 }

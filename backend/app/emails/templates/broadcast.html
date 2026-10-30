@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% import "_components.html" as c %}
+{% block content %}
+{{ c.heading(subject) }}
+<div style="white-space:pre-wrap;margin:0 0 20px;">{{ body }}</div>
+{{ c.small(footer) }}
+{% endblock %}

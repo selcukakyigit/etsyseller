@@ -2,12 +2,13 @@ import datetime as dt
 from typing import Callable, Literal, TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from app.admin import ai_models, audit, billing, credits, landing, messages, overview, system, user_actions, users
+from app.admin import ai_models, announcement, audit, billing, broadcast, credits, exports, landing, messages, overview, revenue, shops, system, trends, user_actions, users
 from app.admin.deps import AdminError, admin_only
 from app.admin.schemas import (
-    AdjustIn, AiModelIn, AiModelOut, AttachmentUrlOut, AuditOut, BillingOverviewOut, BulkIn, LemonCheckOut, BulkResultOut,
+    AdjustIn, AiModelIn, AiModelOut, AnnouncementIn, AnnouncementOut, AttachmentUrlOut, BroadcastIn, BroadcastPreviewOut, BroadcastSendIn, BroadcastStatusOut, AuditPageOut, MessageReplyIn, OrdersPageOut, RevenueOut, ShopsPageOut, TrendsOut, BillingOverviewOut, BulkIn, LemonCheckOut, BulkResultOut,
     CatalogOut, CreditSettingsIn, CreditSettingsOut, DeleteUserIn, KeyIn, KeyTestIn, LandingSettingsIn, LandingSettingsOut,
     MessageOut, MessageUpdateIn, NoteIn,
     OnlineUserOut, OverviewOut, ProductIn, ProductOut, RoleIn, StatusIn, SystemOut, TaskIn, TestOut, UserCreditsIn,
@@ -159,9 +160,98 @@ def run_job(job_id: str, admin: User = Depends(admin_only), db: Session = Depend
     return {"ok": True}
 
 
-@router.get("/audit", response_model=list[AuditOut])
-def get_audit(db: Session = Depends(get_db)):
-    return audit.recent(db)
+@router.get("/audit", response_model=AuditPageOut)
+def get_audit(
+    q: str = Query("", max_length=200), action: str = Query("", max_length=60), admin: str = Query("", max_length=255),
+    date_from: dt.date | None = None, date_to: dt.date | None = None,
+    limit: int = Query(50, ge=1, le=audit.MAX_PAGE), offset: int = Query(0, ge=0), db: Session = Depends(get_db),
+):
+    return audit.search(db, q=q, action=action, admin=admin, date_from=date_from, date_to=date_to, limit=limit, offset=offset)
+
+
+@router.get("/overview/trends", response_model=TrendsOut)
+def overview_trends(days: int = Query(30, ge=7, le=trends.MAX_DAYS), db: Session = Depends(get_db)):
+    return trends.trends(db, days)
+
+
+@router.get("/shops", response_model=ShopsPageOut)
+def list_shops(
+    q: str = Query("", max_length=200), status: Literal["", "connected", "revoked", "demo", "stale", "never"] = "",
+    limit: int = Query(50, ge=1, le=shops.MAX_PAGE), offset: int = Query(0, ge=0), db: Session = Depends(get_db),
+):
+    return shops.list_shops(db, q=q, status=status, limit=limit, offset=offset)
+
+
+@router.post("/messages/{message_id}/reply", response_model=MessageOut)
+def reply_message(message_id: int, payload: MessageReplyIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    try:
+        out = _run(messages.reply, db, message_id, payload.body)
+    except messages.NotFound as exc:
+        raise HTTPException(404, "Mesaj bulunamadı") from exc
+    audit.record(db, admin, "message.reply", f"message:{message_id}", out.email)
+    return out
+
+
+@router.get("/announcement", response_model=AnnouncementOut)
+def get_announcement():
+    return announcement.get()
+
+
+@router.put("/announcement", response_model=AnnouncementOut)
+def put_announcement(payload: AnnouncementIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    out = _run(announcement.save, db, payload)
+    audit.record(db, admin, "announcement.save", "", "on" if out.active else "off")
+    return out
+
+
+@router.get("/announcement/email", response_model=BroadcastPreviewOut)
+def broadcast_preview(db: Session = Depends(get_db)):
+    return broadcast.preview(db)
+
+
+@router.get("/announcement/email/status", response_model=BroadcastStatusOut)
+def broadcast_status():
+    return broadcast.status()
+
+
+@router.post("/announcement/email/test")
+def broadcast_test(payload: BroadcastIn, admin: User = Depends(admin_only)):
+    _run(broadcast.send_test, admin, payload)
+    return {"ok": True}
+
+
+@router.post("/announcement/email", response_model=BroadcastStatusOut)
+def broadcast_send(payload: BroadcastSendIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    out = _run(broadcast.start, db, payload, payload.confirm_count)
+    audit.record(db, admin, "broadcast.send", "", f"{out.total} recipients: {payload.subject_en}")
+    return out
+
+
+def _csv(name: str, content: str) -> Response:
+    return Response(content, media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{name}-{dt.date.today().isoformat()}.csv"'})
+
+
+@router.get("/export/{kind}")
+def export_csv(
+    kind: Literal["users", "ledger", "orders", "audit"],
+    q: str = Query("", max_length=200), status: Literal["", "active", "suspended", "blocked"] = "",
+    joined_from: dt.date | None = None, joined_to: dt.date | None = None,
+    days: int = Query(30, ge=1, le=366), workspace_id: int | None = None,
+    action: str = Query("", max_length=60), admin_email: str = Query("", max_length=255),
+    date_from: dt.date | None = None, date_to: dt.date | None = None,
+    admin: User = Depends(admin_only), db: Session = Depends(get_db),
+):
+    """Ekrandaki filtrelerle aynı süzgeçle CSV. Kişisel veri içerdiği için indirme işlem kaydına yazılır."""
+    if kind == "users":
+        body = exports.users_csv(db, q, status, joined_from, joined_to)
+    elif kind == "ledger":
+        body = exports.ledger_csv(db, days, workspace_id)
+    elif kind == "orders":
+        body = exports.orders_csv(db, days)
+    else:
+        body = exports.audit_csv(db, q=q, action=action, admin=admin_email, date_from=date_from, date_to=date_to)
+    audit.record(db, admin, "export.csv", kind)
+    return _csv(kind, body)
 
 
 # ---- Modeller ve anahtarlar
@@ -282,6 +372,19 @@ def update_landing_settings(payload: LandingSettingsIn, admin: User = Depends(ad
 @router.get("/billing", response_model=BillingOverviewOut)
 def billing_overview(db: Session = Depends(get_db)):
     return billing.overview(db)
+
+
+@router.get("/billing/revenue", response_model=RevenueOut)
+def billing_revenue(days: int = Query(30, ge=1, le=revenue.MAX_DAYS), db: Session = Depends(get_db)):
+    return revenue.revenue(db, days)
+
+
+@router.get("/billing/orders", response_model=OrdersPageOut)
+def billing_orders(
+    days: int = Query(30, ge=1, le=revenue.MAX_DAYS), limit: int = Query(50, ge=1, le=revenue.MAX_PAGE), offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
+    return revenue.orders(db, days, limit, offset)
 
 
 @router.get("/billing/lemon-check", response_model=LemonCheckOut)

@@ -5,7 +5,7 @@ import { SignedIntegerInput } from "@/components/ui/NumberInputs";
 import { useEffect, useMemo, useState } from "react";
 import Avatar from "@/components/Avatar";
 import AdminShell from "@/components/admin/AdminShell";
-import { Badge, Button, EmptyState, Field, errorText, inputClass, useFormat } from "@/components/admin/ui";
+import { Badge, Button, EmptyState, ExportButton, Field, errorText, inputClass, useFormat } from "@/components/admin/ui";
 import { StatusBadge, UserActionsMenu, useUserAction } from "@/components/admin/userActions";
 import { Modal, btnGhost, btnPrimary } from "@/components/listing-editor/Modal";
 import DateRangePicker, { presetOptions } from "@/components/ui/DateRangePicker";
@@ -122,6 +122,7 @@ function Users() {
               {t("Filtreleri temizle", "Clear filters")}
             </Button>
           )}
+          <ExportButton run={() => api.admin.exportCsv("users", { q: query.q, status: query.status, joined_from: query.joined_from, joined_to: query.joined_to })} />
           <Button busy={loading && !!data} onClick={reload} aria-label={t("Yenile", "Refresh")}>
             {!(loading && data) && (
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" className="h-4 w-4" aria-hidden>

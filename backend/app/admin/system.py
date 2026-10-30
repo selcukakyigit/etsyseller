@@ -1,7 +1,7 @@
 """Sistem sağlığı: Etsy günlük çağrı sayısı, zamanlanmış işlerin durumu ve mağaza senkronlarının tazeliği.
 
-Etsy sayacı ve iş durumları şu an bu sürecin belleğindedir (etsy/rate_limit.py, jobs/scheduler.py). İşler ayrı bir worker'a
-taşındığında yalnızca `etsy_usage` ve `jobs` ortak bir depodan (ör. Redis) okunacak şekilde değişir; panelin geri kalanı
+Etsy günlük sayacı veritabanında kalıcıdır (etsy/rate_limit.py + call_counter.py; en çok 15 sn gecikmeyle), iş durumları bu sürecin belleğindedir
+(jobs/scheduler.py). İşler ayrı bir worker'a taşındığında yalnızca `jobs` ortak bir depodan okunacak şekilde değişir; panelin geri kalanı
 bu fonksiyonların döndürdüğü biçime bağlıdır."""
 import datetime as dt
 

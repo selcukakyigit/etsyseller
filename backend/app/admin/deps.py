@@ -20,3 +20,8 @@ class AdminError(Exception):
     def __init__(self, status: int, message: str):
         super().__init__(message)
         self.status = status
+
+
+def escape_like(text: str) -> str:
+    """LIKE aramasında kullanıcı metnindeki joker karakterleri düz metne çevirir (sorguda `escape="\\"` ile kullanılır)."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")

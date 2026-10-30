@@ -11,6 +11,7 @@ import { useShopState } from "@/lib/useShopState";
 import { BOTTOM_NAV_SPACE } from "@/components/layout/constants";
 import Topbar from "@/components/Topbar";
 import SummaryStrip, { useSummaryStrip } from "@/components/layout/SummaryStrip";
+import { SiteAnnouncementBar } from "@/components/layout/AnnouncementBar";
 import CreditRequiredModal from "@/components/billing/CreditRequiredModal";
 import { useT } from "@/lib/i18n-client";
 import { usePresence } from "@/lib/usePresence";
@@ -54,6 +55,7 @@ export default function AppShell({
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar activeShop={activeShop} strip={strip} />
         <SummaryStrip strip={strip} />
+        {!!user && <SiteAnnouncementBar />}
         {activeShop?.is_demo && (
           <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs leading-relaxed text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
             {t(

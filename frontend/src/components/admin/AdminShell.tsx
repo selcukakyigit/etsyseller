@@ -22,6 +22,7 @@ type NavItem = NavLink & { icon: string; children?: readonly NavLink[] };
 const TABS = [
   { href: "/admin", tr: "Genel bakış", en: "Overview", icon: "M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" },
   { href: "/admin/users", tr: "Kullanıcılar", en: "Users", icon: "M16 11a4 4 0 10-8 0 4 4 0 008 0zM4 21a8 8 0 0116 0" },
+  { href: "/admin/shops", tr: "Mağazalar", en: "Shops", icon: "M4 9l1.5-5h13L20 9M4 9v11h16V9M4 9h16M9 20v-6h6v6" },
   {
     href: "/admin/models",
     tr: "Modeller",
@@ -50,7 +51,9 @@ const TABS = [
   { href: "/admin/tickets", tr: "Talepler", en: "Tickets", icon: "M4 6h16v4a2 2 0 000 4v4H4v-4a2 2 0 000-4V6zm10 0v12" },
   { href: "/admin/errors", tr: "Hatalar", en: "Errors", icon: "M12 3l9 16H3L12 3zm0 6v5m0 3h.01" },
   { href: "/admin/messages", tr: "Mesajlar", en: "Messages", icon: "M4 5h16v11H8l-4 4V5z" },
+  { href: "/admin/announcement", tr: "Duyuru", en: "Announcement", icon: "M3 11v2a1 1 0 001 1h2l5 4V6L6 10H4a1 1 0 00-1 1zm13-2a4 4 0 010 6m2.5-9a8 8 0 010 12" },
   { href: "/admin/landing", tr: "Landing", en: "Landing", icon: "M3 5h18v14H3V5zm0 4h18M7 7h.01M10 7h.01" },
+  { href: "/admin/audit", tr: "İşlem kaydı", en: "Activity log", icon: "M9 4h6l1 2h3v14H5V6h3l1-2zm-1 8h8m-8 4h5" },
   { href: "/admin/system", tr: "Sistem", en: "System", icon: "M12 15a3 3 0 100-6 3 3 0 000 6zm7.4-3a7.4 7.4 0 00-.1-1.2l2-1.6-2-3.4-2.4 1a7.5 7.5 0 00-2-1.2L14.5 3h-5l-.4 2.6a7.5 7.5 0 00-2 1.2l-2.4-1-2 3.4 2 1.6a7.4 7.4 0 000 2.4l-2 1.6 2 3.4 2.4-1a7.5 7.5 0 002 1.2l.4 2.6h5l.4-2.6a7.5 7.5 0 002-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z" },
 ] as const satisfies readonly NavItem[];
 

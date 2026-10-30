@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -377,6 +379,12 @@ class AuditOut(BaseModel):
     created_at: str | None
 
 
+class AuditPageOut(BaseModel):
+    items: list[AuditOut]
+    total: int
+    actions: list[str]  # filtre listesi için kayıtlarda görülen işlem türleri
+
+
 
 class OnlineUserOut(BaseModel):
     id: int
@@ -403,3 +411,139 @@ class LandingSettingsIn(BaseModel):
 
 class LandingSettingsOut(BaseModel):
     social: SocialLinks
+
+
+# ---- Gelir, trend, mağazalar, duyuru
+
+class CurrencyTotalsOut(BaseModel):
+    currency: str
+    gross: float
+    refunds: float
+    net: float
+    orders: int
+    refunded_orders: int
+
+
+class DailyRevenueOut(BaseModel):
+    date: str
+    gross: float
+    refunds: float
+
+
+class ProductRevenueOut(BaseModel):
+    name: str
+    orders: int
+    gross: float
+
+
+class CostRevenueOut(BaseModel):
+    ai_cost_usd: float
+    research_cost_usd: float
+    revenue_usd: float | None  # yalnızca USD cinsinden gelir varsa
+    margin_usd: float | None
+
+
+class RevenueOut(BaseModel):
+    days: int
+    main_currency: str | None
+    currencies: list[CurrencyTotalsOut]
+    daily: list[DailyRevenueOut]  # ana para biriminde
+    by_product: list[ProductRevenueOut]
+    cost: CostRevenueOut
+    test_orders: int
+    failed_events: int
+
+
+class OrderRowOut(BaseModel):
+    kind: str  # order | refund
+    date: str | None
+    event_id: int
+    workspace_id: int | None
+    owner_email: str | None
+    product: str
+    amount: float
+    currency: str
+
+
+class OrdersPageOut(BaseModel):
+    items: list[OrderRowOut]
+    total: int
+
+
+class TrendPointOut(BaseModel):
+    date: str
+    signups: int
+    active_workspaces: int
+    ai_requests: int
+    credits_spent: int
+    ai_cost_usd: float
+    revenue: float
+
+
+class TrendsOut(BaseModel):
+    days: int
+    revenue_currency: str | None
+    points: list[TrendPointOut]
+
+
+class ShopRowOut(BaseModel):
+    id: int
+    shop_name: str
+    etsy_shop_id: int
+    workspace_id: int
+    owner_id: int
+    owner_email: str | None
+    connected: bool
+    revoked_at: str | None
+    is_demo: bool
+    connected_at: str | None
+    listings_synced_at: str | None
+    stale: bool  # bağlı ama ilan senkronu 6 saatten eski ya da hiç yapılmamış
+    listing_count: int
+
+
+class ShopsPageOut(BaseModel):
+    items: list[ShopRowOut]
+    total: int
+
+
+class AnnouncementIn(BaseModel):
+    active: bool = False
+    tone: Literal["info", "warning"] = "info"
+    text_tr: str = Field(default="", max_length=400)
+    text_en: str = Field(default="", max_length=400)
+    ends_at: str | None = None  # ISO, boşsa süresiz
+
+
+class AnnouncementOut(AnnouncementIn):
+    pass
+
+
+class MessageReplyIn(BaseModel):
+    body: str = Field(min_length=2, max_length=5000)
+
+
+class BroadcastIn(BaseModel):
+    subject_tr: str = Field(min_length=3, max_length=150)
+    subject_en: str = Field(min_length=3, max_length=150)
+    body_tr: str = Field(min_length=10, max_length=5000)
+    body_en: str = Field(min_length=10, max_length=5000)
+
+
+class BroadcastSendIn(BroadcastIn):
+    confirm_count: int  # önizlemedeki alıcı sayısı; değişmişse gönderilmez
+
+
+class BroadcastPreviewOut(BaseModel):
+    recipients: int
+    tr: int
+    en: int
+    configured: bool
+
+
+class BroadcastStatusOut(BaseModel):
+    state: Literal["idle", "sending", "done"]
+    total: int
+    sent: int
+    failed: int
+    started_at: str | None

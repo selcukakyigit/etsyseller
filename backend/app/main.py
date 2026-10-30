@@ -11,6 +11,7 @@ from app.core.errors import register_error_handlers
 from app.core.i18n import set_lang, tr, translate_detail
 from app.core.limits import SlidingWindow
 from app.core.net import client_ip
+from app.etsy import rate_limit
 from app.etsy.client import DemoShopError, EtsyApiError, EtsyAuthError
 
 # Uygulama logları (Etsy'ye giden yazma istekleri, yayın adımları) uvicorn çıktısıyla aynı yere düşsün.
@@ -80,9 +81,14 @@ from app.webhooks.router import router as webhooks_router
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     warn_unlocked_tables()
+    rate_limit.start_persistence()
     start_scheduler()
     yield
     stop_scheduler()
+    try:
+        rate_limit.flush()  # kapanırken biriken çağrılar kaybolmasın
+    except Exception:  # noqa: BLE001
+        logging.getLogger("app").exception("Etsy çağrı sayacı kapanışta yazılamadı")
 
 
 app = FastAPI(

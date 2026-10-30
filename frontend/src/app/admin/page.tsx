@@ -3,8 +3,10 @@
 import Link from "next/link";
 import AdminShell from "@/components/admin/AdminShell";
 import OnlineUsers from "@/components/admin/OnlineUsers";
+import TrendsSection from "@/components/admin/TrendsSection";
 import { EmptyState, Section, StatCard, UsageBar, useFormat } from "@/components/admin/ui";
 import { useApiData } from "@/lib/useApiData";
+import HelpTip from "@/components/ui/HelpTip";
 import { BlockSpinner } from "@/components/ui/Spinner";
 import { api } from "@/lib/api";
 import { useT } from "@/lib/i18n-client";
@@ -62,9 +64,21 @@ function Overview() {
         </Link>
       </div>
 
+      <TrendsSection />
+
       <OnlineUsers />
 
-      <Section title={t("Etsy günlük kota", "Etsy daily quota")}>
+      <Section
+        title={t("Etsy günlük kota", "Etsy daily quota")}
+        action={
+          <HelpTip align="right">
+            {t(
+              "Çağrılar veritabanındaki günlük toplama birkaç saniyede bir eklenir; sunucu yeniden başlasa da toplam korunur. Sayı en fazla birkaç saniye geriden gelir.",
+              "Calls are added to a daily total in the database every few seconds, so the total survives a restart. The number can lag by a few seconds.",
+            )}
+          </HelpTip>
+        }
+      >
         <div className="space-y-2">
           <div className="flex items-baseline justify-between text-sm">
             <span className="tabular-nums text-neutral-900 dark:text-neutral-100">
@@ -73,12 +87,6 @@ function Overview() {
             <span className="text-xs text-neutral-400 dark:text-neutral-500">{t("UTC gün başından beri", "Since UTC midnight")}</span>
           </div>
           <UsageBar used={data.etsy_calls_today} limit={data.etsy_daily_limit} />
-          <p className="text-xs text-neutral-400 dark:text-neutral-500">
-            {t(
-              "Sayaç sunucu belleğindedir; sunucu yeniden başlarsa sıfırdan sayar, gerçek kullanım biraz daha yüksek olabilir.",
-              "The counter lives in server memory; it restarts from zero when the server restarts, so real usage may be a little higher.",
-            )}
-          </p>
         </div>
       </Section>
 

@@ -4,11 +4,14 @@ import datetime as dt
 import logging
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.auth.models import User
 from app.core.db import SessionLocal
 from app.support.fingerprint import fingerprint
-from app.support.models import ErrorGroup, Ticket
+from app.support import alerts
+from app.support.models import ErrorGroup, ErrorGroupUser, Ticket
 
 log = logging.getLogger("app.support.errors")
 RETENTION = dt.timedelta(days=90)
@@ -29,8 +32,11 @@ def record(db: Session, source: str, message: str, detail: str = "", url: str = 
     fp = fingerprint(message)
     now = dt.datetime.utcnow()
     group = db.scalar(select(ErrorGroup).where(ErrorGroup.fingerprint == fp))
+    fresh = group is None or group.status == "resolved"  # yeni ya da çözülmüşken geri gelen hata: ekibe haber verilir
     if group is None:
-        db.add(ErrorGroup(fingerprint=fp, source=source, message=message, detail=detail[:2000], url=url[:300], last_user_id=user_id, first_seen=now, last_seen=now))
+        group = ErrorGroup(fingerprint=fp, source=source, message=message, detail=detail[:2000], url=url[:300], last_user_id=user_id, first_seen=now, last_seen=now)
+        db.add(group)
+        db.flush()
     else:
         group.count += 1
         group.last_seen = now
@@ -38,7 +44,15 @@ def record(db: Session, source: str, message: str, detail: str = "", url: str = 
         group.last_user_id = user_id or group.last_user_id
         if group.status == "resolved":
             group.status = "open"
-    db.commit()
+    if user_id and db.get(ErrorGroupUser, (group.id, user_id)) is None:
+        db.add(ErrorGroupUser(group_id=group.id, user_id=user_id, first_seen=now))
+    try:
+        db.commit()
+    except IntegrityError:  # aynı kullanıcı iki istekte aynı anda ekledi: sayaç artışı kaybolmasın diye yeniden dene
+        db.rollback()
+        return record(db, source, message, detail, url, user_id)
+    if fresh:
+        alerts.notify(message, source, url)
 
 
 def record_server_error(path: str, exc: Exception, trace: str) -> None:
@@ -60,8 +74,11 @@ def list_groups(db: Session, status: str) -> list[dict]:
         stmt = stmt.where(ErrorGroup.status == "open")
     rows = db.scalars(stmt.order_by(ErrorGroup.last_seen.desc()).limit(200)).all()
     tickets = dict(db.execute(select(Ticket.fingerprint, func.count(Ticket.id)).where(Ticket.fingerprint.in_([r.fingerprint for r in rows])).group_by(Ticket.fingerprint)).all()) if rows else {}
+    affected = dict(db.execute(select(ErrorGroupUser.group_id, func.count(ErrorGroupUser.user_id)).where(ErrorGroupUser.group_id.in_([r.id for r in rows])).group_by(ErrorGroupUser.group_id)).all()) if rows else {}
+    emails = dict(db.execute(select(User.id, User.email).where(User.id.in_([r.last_user_id for r in rows if r.last_user_id]))).all()) if rows else {}
     return [
         {
+            "affected_users": int(affected.get(r.id, 0)), "last_user_id": r.last_user_id, "last_user_email": emails.get(r.last_user_id),
             "id": r.id, "source": r.source, "message": r.message, "detail": r.detail, "url": r.url, "status": r.status, "count": r.count,
             "tickets": int(tickets.get(r.fingerprint, 0)), "first_seen": r.first_seen.isoformat() + "Z", "last_seen": r.last_seen.isoformat() + "Z",
         }

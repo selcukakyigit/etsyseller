@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% import "_components.html" as c %}
+{% block content %}
+{{ c.heading(greeting) }}
+<div style="white-space:pre-wrap;margin:0 0 20px;">{{ body }}</div>
+{{ c.small(quoted_label) }}
+<div style="white-space:pre-wrap;margin:0 0 16px;padding-left:12px;border-left:3px solid #E6DFD3;color:#8A8278;">{{ original }}</div>
+{% endblock %}

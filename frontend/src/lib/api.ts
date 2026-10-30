@@ -1173,6 +1173,56 @@ export type AdminBilling = {
 };
 
 export type AdminAudit = { id: number; email: string; action: string; target: string; detail: string; created_at: string | null };
+export type AdminAuditPage = { items: AdminAudit[]; total: number; actions: string[] };
+export type AdminAuditQuery = { q: string; action: string; admin: string; date_from: string; date_to: string; offset: number };
+
+export type AdminCurrencyTotals = { currency: string; gross: number; refunds: number; net: number; orders: number; refunded_orders: number };
+export type AdminRevenue = {
+  days: number;
+  main_currency: string | null;
+  currencies: AdminCurrencyTotals[];
+  daily: { date: string; gross: number; refunds: number }[];
+  by_product: { name: string; orders: number; gross: number }[];
+  cost: { ai_cost_usd: number; research_cost_usd: number; revenue_usd: number | null; margin_usd: number | null };
+  test_orders: number;
+  failed_events: number;
+};
+export type AdminOrderRow = {
+  kind: "order" | "refund";
+  date: string | null;
+  event_id: number;
+  workspace_id: number | null;
+  owner_email: string | null;
+  product: string;
+  amount: number;
+  currency: string;
+};
+export type AdminTrendPoint = { date: string; signups: number; active_workspaces: number; ai_requests: number; credits_spent: number; ai_cost_usd: number; revenue: number };
+export type AdminTrends = { days: number; revenue_currency: string | null; points: AdminTrendPoint[] };
+
+export type AdminShopStatus = "" | "connected" | "revoked" | "demo" | "stale" | "never";
+export type AdminShopRow = {
+  id: number;
+  shop_name: string;
+  etsy_shop_id: number;
+  workspace_id: number;
+  owner_id: number;
+  owner_email: string | null;
+  connected: boolean;
+  revoked_at: string | null;
+  is_demo: boolean;
+  connected_at: string | null;
+  listings_synced_at: string | null;
+  stale: boolean;
+  listing_count: number;
+};
+
+export type AdminAnnouncement = { active: boolean; tone: "info" | "warning"; text_tr: string; text_en: string; ends_at: string | null };
+export type AdminBroadcastInput = { subject_tr: string; subject_en: string; body_tr: string; body_en: string };
+export type AdminBroadcastPreview = { recipients: number; tr: number; en: number; configured: boolean };
+export type AdminBroadcastStatus = { state: "idle" | "sending" | "done"; total: number; sent: number; failed: number; started_at: string | null };
+export type SiteAnnouncement = { id: string; tone: "info" | "warning"; text_tr: string; text_en: string } | null;
+export type AdminExportKind = "users" | "ledger" | "orders" | "audit";
 
 export type BillingProductOption = {
   id: number;
@@ -1286,8 +1336,26 @@ async function requestForm<T>(path: string, formData: FormData): Promise<T> {
   return res.json();
 }
 
+/** Kimlik başlığı gerektiren bir adresi dosya olarak indirir (düz `<a href>` oturum belirtecini göndermez). */
+async function download(path: string, fallbackName: string): Promise<void> {
+  const res = await send(`${API_URL}${path}`, { headers: await authHeader() });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, detailText(body.detail) ?? `${tNow("İstek başarısız", "Request failed")}: ${res.status}`);
+  }
+  const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? fallbackName;
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 /** Modüllerin (src/modules/*) kendi API istemcilerini kurması için: aynı kimlik, dil başlığı ve hata işleme. */
 export { request as apiRequest, requestForm as apiUpload };
+/** Herkese açık duyuru bandı (giriş gerekmez). */
+export const siteApi = { announcement: () => request<SiteAnnouncement>("/api/site/announcement") };
 
 export interface FinKpi {
   orders: number;
@@ -1824,7 +1892,28 @@ export const api = {
     attachmentUrl: (id: number) => request<{ url: string; filename: string }>(`/api/admin/messages/attachments/${id}/url`),
     system: () => request<AdminSystem>("/api/admin/system"),
     runJob: (jobId: string) => request<{ ok: boolean }>(`/api/admin/system/jobs/${encodeURIComponent(jobId)}/run`, { method: "POST" }),
-    audit: () => request<AdminAudit[]>("/api/admin/audit"),
+    audit: (q: AdminAuditQuery) => {
+      const params = new URLSearchParams({ offset: String(q.offset), limit: "50" });
+      for (const key of ["q", "action", "admin", "date_from", "date_to"] as const) if (q[key]) params.set(key, q[key]);
+      return request<AdminAuditPage>(`/api/admin/audit?${params}`);
+    },
+    trends: (days: number) => request<AdminTrends>(`/api/admin/overview/trends?days=${days}`),
+    revenue: (days: number) => request<AdminRevenue>(`/api/admin/billing/revenue?days=${days}`),
+    orders: (days: number, offset: number) =>
+      request<{ items: AdminOrderRow[]; total: number }>(`/api/admin/billing/orders?days=${days}&offset=${offset}&limit=50`),
+    shops: (q: string, status: AdminShopStatus, offset: number) =>
+      request<{ items: AdminShopRow[]; total: number }>(`/api/admin/shops?${new URLSearchParams({ q, status, offset: String(offset), limit: "50" })}`),
+    announcement: () => request<AdminAnnouncement>("/api/admin/announcement"),
+    saveAnnouncement: (body: AdminAnnouncement) => request<AdminAnnouncement>("/api/admin/announcement", { method: "PUT", body: JSON.stringify(body) }),
+    broadcastPreview: () => request<AdminBroadcastPreview>("/api/admin/announcement/email"),
+    broadcastStatus: () => request<AdminBroadcastStatus>("/api/admin/announcement/email/status"),
+    broadcastTest: (body: AdminBroadcastInput) => request<{ ok: boolean }>("/api/admin/announcement/email/test", { method: "POST", body: JSON.stringify(body) }),
+    broadcastSend: (body: AdminBroadcastInput, confirmCount: number) =>
+      request<AdminBroadcastStatus>("/api/admin/announcement/email", { method: "POST", body: JSON.stringify({ ...body, confirm_count: confirmCount }) }),
+    replyMessage: (id: number, body: string) => request<AdminMessage>(`/api/admin/messages/${id}/reply`, { method: "POST", body: JSON.stringify({ body }) }),
+    /** CSV indirir. `params`: ekrandaki filtreler (sunucudaki dışa aktarma ucuyla aynı adlar). */
+    exportCsv: (kind: AdminExportKind, params: Record<string, string | number | undefined> = {}) =>
+      download(`/api/admin/export/${kind}?${new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]))}`, `${kind}.csv`),
     catalog: () => request<AdminCatalog>("/api/admin/catalog"),
     createModel: (body: AdminAiModelInput) => request<AdminAiModel>("/api/admin/models", { method: "POST", body: JSON.stringify(body) }),
     updateModel: (id: number, body: AdminAiModelInput) => request<AdminAiModel>(`/api/admin/models/${id}`, { method: "PUT", body: JSON.stringify(body) }),

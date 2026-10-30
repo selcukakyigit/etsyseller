@@ -11,7 +11,7 @@ from app.admin.deps import admin_only
 from app.auth.models import User
 from app.core.attachments import read_uploads
 from app.core.db import get_db
-from app.support import canned, errors, queue, report, service, taxonomy
+from app.support import alerts, canned, errors, queue, report, service, taxonomy
 from app.support.models import Ticket
 from app.support.router import check_size
 
@@ -83,6 +83,23 @@ def delete_canned(reply_id: int, db: Session = Depends(get_db)):
 @router.get("/errors")
 def list_errors(status: Literal["open", "all"] = "open", db: Session = Depends(get_db)):
     return errors.list_groups(db, status)
+
+
+class ErrorAlertsIn(BaseModel):
+    enabled: bool
+
+
+@router.get("/errors/alerts")
+def get_error_alerts():
+    """Yeni hata e-postası açık mı (e-posta gönderimi yapılandırılmamışsa `configured` false)."""
+    return {"enabled": alerts.enabled(), "configured": alerts.email_configured()}
+
+
+@router.put("/errors/alerts")
+def put_error_alerts(payload: ErrorAlertsIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    alerts.set_enabled(db, payload.enabled)
+    audit_record(db, admin, "errors.alerts", "", "on" if payload.enabled else "off")
+    return {"enabled": alerts.enabled(), "configured": alerts.email_configured()}
 
 
 @router.patch("/errors/{group_id}", status_code=204)
