@@ -116,19 +116,28 @@ def test_shops_filters_by_status(db, owner, monkeypatch):
     assert shops.list_shops(db, q="OWNER@x").total == 3 and shops.list_shops(db, q="zzz").total == 0
 
 
-def test_announcement_needs_both_languages_and_expires(db):
+def test_announcements_list_toggle_expire_and_delete(db):
     with pytest.raises(AdminError):
-        announcement.save(db, AnnouncementIn(active=True, text_tr="Bakım", text_en=""))
-    assert announcement.current() is None
+        announcement.create(db, AnnouncementIn(active=True, text_tr="Bakım", text_en=""))
+    a = announcement.create(db, AnnouncementIn(active=True, text_tr="Bakım var", text_en="Maintenance", tone="warning"))
+    b = announcement.create(db, AnnouncementIn(active=False, text_tr="Yeni özellik", text_en="New feature"))
+    c = announcement.create(db, AnnouncementIn(active=True, text_tr="Eski", text_en="Old", ends_at="2000-01-01T00:00:00Z"))
 
-    announcement.save(db, AnnouncementIn(active=True, text_tr="Bakım var", text_en="Maintenance", tone="warning"))
-    live = announcement.current()
-    assert live and live["tone"] == "warning" and live["text_en"] == "Maintenance"
+    listed = announcement.list_all(db)
+    assert [x.id for x in listed] == [c.id, b.id, a.id] and listed[0].expired and not listed[1].active
+    shown = announcement.current(db)
+    assert [x["text_en"] for x in shown] == ["Maintenance"]  # kapalı ve süresi dolmuş gösterilmez
 
-    announcement.save(db, AnnouncementIn(active=True, text_tr="Bakım var", text_en="Maintenance", ends_at="2000-01-01T00:00:00Z"))
-    assert announcement.current() is None
+    announcement.update(db, b.id, AnnouncementIn(active=True, text_tr="Yeni özellik", text_en="New feature"))
+    assert [x["text_en"] for x in announcement.current(db)] == ["New feature", "Maintenance"]  # birden çok aktif: yeniden eskiye
+
+    announcement.update(db, a.id, AnnouncementIn(active=True, text_tr="Bakım yarın", text_en="Maintenance tomorrow", tone="warning"))
+    assert shown[0]["id"] not in {x["id"] for x in announcement.current(db)}  # metin değişince kapatma seçimi sıfırlansın
     with pytest.raises(AdminError):
-        announcement.save(db, AnnouncementIn(active=False, ends_at="not-a-date"))
+        announcement.update(db, a.id, AnnouncementIn(text_tr="x", text_en="y", ends_at="not-a-date"))
+    announcement.delete(db, a.id)
+    with pytest.raises(AdminError):
+        announcement.delete(db, a.id)
 
 
 def test_csv_cells_cannot_become_formulas(db):

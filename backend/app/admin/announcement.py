@@ -1,22 +1,17 @@
-"""Uygulama içi duyuru bandı (bakım, yeni özellik…). Tek duyuru, `app_settings` tablosunda JSON olarak durur (göç gerekmez); yönetici panelden
-yazar, giriş yapmış herkes `/api/site/announcement` ile okur. Süresi dolan ya da kapalı duyuru herkese boş döner."""
+"""Uygulama içi duyurular (bakım, yeni özellik…). Yönetici panelden listeler, ekler, düzenler, açıp kapatır; aktif ve süresi dolmamış olanların hepsi giriş
+yapmış kullanıcılara `/api/site/announcement` ile (alt alta bant olarak) gösterilir."""
 import datetime as dt
 import hashlib
-from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.admin.deps import AdminError
+from app.admin.models import Announcement
 from app.admin.schemas import AnnouncementIn, AnnouncementOut
-from app.core import app_settings
+from app.core.dates import iso
 
-KEY = "announcement"
-EMPTY: dict[str, Any] = {"active": False, "tone": "info", "text_tr": "", "text_en": "", "ends_at": None}
-
-
-def _stored() -> dict[str, Any]:
-    value = app_settings.get(KEY, {})
-    return {**EMPTY, **value} if isinstance(value, dict) else dict(EMPTY)
+MAX_ROWS = 200
 
 
 def _ends(value: str | None) -> dt.datetime | None:
@@ -29,25 +24,62 @@ def _ends(value: str | None) -> dt.datetime | None:
     return parsed.astimezone(dt.timezone.utc).replace(tzinfo=None) if parsed.tzinfo else parsed
 
 
-def get() -> AnnouncementOut:
-    return AnnouncementOut(**_stored())
+def _expired(row: Announcement, now: dt.datetime) -> bool:
+    return row.ends_at is not None and row.ends_at <= now
 
 
-def save(db: Session, data: AnnouncementIn) -> AnnouncementOut:
-    _ends(data.ends_at)
-    if data.active and not (data.text_tr.strip() and data.text_en.strip()):
-        raise AdminError(422, "Duyuruyu açmak için iki dilde de metin yazın.")
-    app_settings.set_many(db, {KEY: {**data.model_dump(), "text_tr": data.text_tr.strip(), "text_en": data.text_en.strip()}})
-    return get()
+def _out(row: Announcement, now: dt.datetime) -> AnnouncementOut:
+    return AnnouncementOut(
+        id=row.id, active=row.active, tone=row.tone, text_tr=row.text_tr, text_en=row.text_en, ends_at=iso(row.ends_at),
+        expired=_expired(row, now), created_at=iso(row.created_at),
+    )
 
 
-def current() -> dict[str, Any] | None:
-    """Şu an gösterilecek duyuru (herkese açık okuma); yoksa None."""
-    value = _stored()
-    if not value["active"] or not (value["text_tr"] and value["text_en"]):
-        return None
-    ends = _ends(value["ends_at"])
-    if ends is not None and ends <= dt.datetime.utcnow():
-        return None
-    # `id`: metin değişince ön yüzdeki "kapat" seçimi sıfırlansın diye içerikten türer.
-    return {"id": hashlib.sha1(f'{value["tone"]}|{value["text_tr"]}|{value["text_en"]}'.encode()).hexdigest()[:10], "tone": value["tone"], "text_tr": value["text_tr"], "text_en": value["text_en"]}
+def _get(db: Session, announcement_id: int) -> Announcement:
+    row = db.get(Announcement, announcement_id)
+    if row is None:
+        raise AdminError(404, "Duyuru bulunamadı")
+    return row
+
+
+def _apply(row: Announcement, data: AnnouncementIn) -> None:
+    if not (data.text_tr.strip() and data.text_en.strip()):
+        raise AdminError(422, "Duyuru için iki dilde de metin yazın.")
+    row.tone, row.text_tr, row.text_en = data.tone, data.text_tr.strip(), data.text_en.strip()
+    row.active, row.ends_at, row.updated_at = data.active, _ends(data.ends_at), dt.datetime.utcnow()
+
+
+def list_all(db: Session) -> list[AnnouncementOut]:
+    now = dt.datetime.utcnow()
+    rows = db.scalars(select(Announcement).order_by(Announcement.id.desc()).limit(MAX_ROWS)).all()
+    return [_out(r, now) for r in rows]
+
+
+def create(db: Session, data: AnnouncementIn) -> AnnouncementOut:
+    row = Announcement(text_tr="", text_en="")
+    _apply(row, data)
+    db.add(row)
+    db.commit()
+    return _out(row, dt.datetime.utcnow())
+
+
+def update(db: Session, announcement_id: int, data: AnnouncementIn) -> AnnouncementOut:
+    row = _get(db, announcement_id)
+    _apply(row, data)
+    db.commit()
+    return _out(row, dt.datetime.utcnow())
+
+
+def delete(db: Session, announcement_id: int) -> None:
+    db.delete(_get(db, announcement_id))
+    db.commit()
+
+
+def current(db: Session) -> list[dict]:
+    """Şu an gösterilecek duyurular (herkese açık okuma), yeniden eskiye. `id` metin değişince değişir: kullanıcının "kapat" seçimi yeni metinde sıfırlanır."""
+    now = dt.datetime.utcnow()
+    rows = db.scalars(select(Announcement).where(Announcement.active.is_(True)).order_by(Announcement.id.desc()).limit(10)).all()
+    return [
+        {"id": f"{r.id}-{hashlib.sha1(f'{r.tone}|{r.text_tr}|{r.text_en}'.encode()).hexdigest()[:8]}", "tone": r.tone, "text_tr": r.text_tr, "text_en": r.text_en}
+        for r in rows if not _expired(r, now)
+    ]

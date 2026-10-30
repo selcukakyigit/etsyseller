@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.admin import ai_models, announcement, audit, billing, broadcast, credits, exports, landing, messages, overview, revenue, shops, system, trends, user_actions, users
 from app.admin.deps import AdminError, admin_only
 from app.admin.schemas import (
-    AdjustIn, AiModelIn, AiModelOut, AnnouncementIn, AnnouncementOut, AttachmentUrlOut, BroadcastIn, BroadcastPreviewOut, BroadcastSendIn, BroadcastStatusOut, AuditPageOut, MessageReplyIn, OrdersPageOut, RevenueOut, ShopsPageOut, TrendsOut, BillingOverviewOut, BulkIn, LemonCheckOut, BulkResultOut,
+    AdjustIn, AiModelIn, AiModelOut, AnnouncementIn, AnnouncementOut, AttachmentUrlOut, BroadcastIn, BroadcastOut, BroadcastPreviewOut, BroadcastSendIn, AuditPageOut, MessageReplyIn, OrdersPageOut, RevenueOut, ShopsPageOut, TrendsOut, BillingOverviewOut, BulkIn, LemonCheckOut, BulkResultOut,
     CatalogOut, CreditSettingsIn, CreditSettingsOut, DeleteUserIn, KeyIn, KeyTestIn, LandingSettingsIn, LandingSettingsOut,
     MessageOut, MessageUpdateIn, NoteIn,
     OnlineUserOut, OverviewOut, ProductIn, ProductOut, RoleIn, StatusIn, SystemOut, TaskIn, TestOut, UserCreditsIn,
@@ -192,38 +192,68 @@ def reply_message(message_id: int, payload: MessageReplyIn, admin: User = Depend
     return out
 
 
-@router.get("/announcement", response_model=AnnouncementOut)
-def get_announcement():
-    return announcement.get()
+@router.get("/announcements", response_model=list[AnnouncementOut])
+def list_announcements(db: Session = Depends(get_db)):
+    return announcement.list_all(db)
 
 
-@router.put("/announcement", response_model=AnnouncementOut)
-def put_announcement(payload: AnnouncementIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
-    out = _run(announcement.save, db, payload)
-    audit.record(db, admin, "announcement.save", "", "on" if out.active else "off")
+@router.post("/announcements", response_model=AnnouncementOut)
+def create_announcement(payload: AnnouncementIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    out = _run(announcement.create, db, payload)
+    audit.record(db, admin, "announcement.create", f"announcement:{out.id}", "on" if out.active else "off")
     return out
 
 
-@router.get("/announcement/email", response_model=BroadcastPreviewOut)
+@router.put("/announcements/{announcement_id}", response_model=AnnouncementOut)
+def update_announcement(announcement_id: int, payload: AnnouncementIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    out = _run(announcement.update, db, announcement_id, payload)
+    audit.record(db, admin, "announcement.update", f"announcement:{announcement_id}", "on" if out.active else "off")
+    return out
+
+
+@router.delete("/announcements/{announcement_id}")
+def delete_announcement(announcement_id: int, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    _run(announcement.delete, db, announcement_id)
+    audit.record(db, admin, "announcement.delete", f"announcement:{announcement_id}")
+    return {"ok": True}
+
+
+@router.get("/broadcasts", response_model=list[BroadcastOut])
+def list_broadcasts(db: Session = Depends(get_db)):
+    return broadcast.list_all(db)
+
+
+@router.get("/broadcasts/preview", response_model=BroadcastPreviewOut)
 def broadcast_preview(db: Session = Depends(get_db)):
     return broadcast.preview(db)
 
 
-@router.get("/announcement/email/status", response_model=BroadcastStatusOut)
-def broadcast_status():
-    return broadcast.status()
-
-
-@router.post("/announcement/email/test")
+@router.post("/broadcasts/test")
 def broadcast_test(payload: BroadcastIn, admin: User = Depends(admin_only)):
     _run(broadcast.send_test, admin, payload)
     return {"ok": True}
 
 
-@router.post("/announcement/email", response_model=BroadcastStatusOut)
-def broadcast_send(payload: BroadcastSendIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
-    out = _run(broadcast.start, db, payload, payload.confirm_count)
-    audit.record(db, admin, "broadcast.send", "", f"{out.total} recipients: {payload.subject_en}")
+@router.post("/broadcasts", response_model=BroadcastOut)
+def create_broadcast(payload: BroadcastIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    return broadcast.create(db, admin, payload)
+
+
+@router.put("/broadcasts/{broadcast_id}", response_model=BroadcastOut)
+def update_broadcast(broadcast_id: int, payload: BroadcastIn, db: Session = Depends(get_db)):
+    return _run(broadcast.update, db, broadcast_id, payload)
+
+
+@router.delete("/broadcasts/{broadcast_id}")
+def delete_broadcast(broadcast_id: int, db: Session = Depends(get_db)):
+    _run(broadcast.delete, db, broadcast_id)
+    return {"ok": True}
+
+
+@router.post("/broadcasts/{broadcast_id}/send", response_model=BroadcastOut)
+def send_broadcast(broadcast_id: int, payload: BroadcastSendIn, admin: User = Depends(admin_only), db: Session = Depends(get_db)):
+    out = _run(broadcast.start, db, broadcast_id, payload.confirm_count)
+    audit.record(db, admin, "broadcast.send", f"broadcast:{broadcast_id}", f"{out.total} recipients: {out.subject_en}")
     return out
 
 

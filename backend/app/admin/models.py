@@ -1,6 +1,6 @@
 import datetime as dt
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -31,3 +31,38 @@ class AdminUserNote(Base):
     author_email: Mapped[str] = mapped_column(String(255))
     text: Mapped[str] = mapped_column(Text)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+
+class Announcement(Base):
+    """Uygulama içi duyuru bandı. Aktif ve süresi dolmamış olanların hepsi giriş yapmış kullanıcılara gösterilir (alt alta)."""
+
+    __tablename__ = "announcements"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    tone: Mapped[str] = mapped_column(String(10), default="info")  # info | warning
+    text_tr: Mapped[str] = mapped_column(String(400))
+    text_en: Mapped[str] = mapped_column(String(400))
+    active: Mapped[bool] = mapped_column(Boolean, default=False)
+    ends_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+
+class EmailBroadcast(Base):
+    """Tüm kullanıcılara giden hizmet e-postası: taslak, gönderilirken ilerleme ve sonuç. Gönderilmiş kayıt değişmez (geçmiş olarak durur)."""
+
+    __tablename__ = "email_broadcasts"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    subject_tr: Mapped[str] = mapped_column(String(150), default="")
+    subject_en: Mapped[str] = mapped_column(String(150), default="")
+    body_tr: Mapped[str] = mapped_column(Text, default="")
+    body_en: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(12), default="draft", index=True)  # draft | sending | done | interrupted
+    total: Mapped[int] = mapped_column(Integer, default=0)
+    sent: Mapped[int] = mapped_column(Integer, default=0)
+    failed: Mapped[int] = mapped_column(Integer, default=0)
+    created_by: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    started_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)

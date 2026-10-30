@@ -5,7 +5,7 @@ import { siteApi } from "@/lib/api";
 import { useT } from "@/lib/i18n-client";
 import { useApiData } from "@/lib/useApiData";
 
-const DISMISS_KEY = "ulagg_announcement_dismissed";
+const DISMISS_KEY = "ulagg_announcements_dismissed";
 
 const TONES = {
   info: "border-sky-200 bg-sky-50 text-sky-900 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-200",
@@ -29,32 +29,38 @@ export default function AnnouncementView({ tone, text, onClose }: { tone: keyof 
   );
 }
 
-function dismissedId(): string | null {
+function dismissedIds(): string[] {
   try {
-    return localStorage.getItem(DISMISS_KEY);
+    const parsed: unknown = JSON.parse(localStorage.getItem(DISMISS_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
   } catch {
-    return null;
+    return [];
   }
 }
 
-/** Uygulamanın üstündeki duyuru bandı. Kullanıcı kapatınca aynı metin bir daha çıkmaz (metin değişirse yeniden çıkar). */
+/** Uygulamanın üstündeki duyuru bantları (aktif olanların hepsi, alt alta). Kullanıcı kapatınca aynı metin bir daha çıkmaz (metin değişirse yeniden çıkar). */
 export function SiteAnnouncementBar() {
   const { locale } = useT();
-  const { data } = useApiData("site:announcement", siteApi.announcement);
-  const [closed, setClosed] = useState<string | null>(() => dismissedId());
-  if (!data || closed === data.id) return null;
+  const { data } = useApiData("site:announcements", siteApi.announcements);
+  const [closed, setClosed] = useState<string[]>(dismissedIds);
+  const open = (data ?? []).filter((a) => !closed.includes(a.id));
+  if (open.length === 0) return null;
+
+  function dismiss(id: string) {
+    const next = [...closed, id].slice(-50);
+    setClosed(next);
+    try {
+      localStorage.setItem(DISMISS_KEY, JSON.stringify(next));
+    } catch {
+      // Depolama kapalıysa (gizli pencere) yalnızca bu oturumda kapalı kalır.
+    }
+  }
+
   return (
-    <AnnouncementView
-      tone={data.tone}
-      text={locale === "tr" ? data.text_tr : data.text_en}
-      onClose={() => {
-        setClosed(data.id);
-        try {
-          localStorage.setItem(DISMISS_KEY, data.id);
-        } catch {
-          // Depolama kapalıysa (gizli pencere) yalnızca bu oturumda kapalı kalır.
-        }
-      }}
-    />
+    <>
+      {open.map((a) => (
+        <AnnouncementView key={a.id} tone={a.tone} text={locale === "tr" ? a.text_tr : a.text_en} onClose={() => dismiss(a.id)} />
+      ))}
+    </>
   );
 }

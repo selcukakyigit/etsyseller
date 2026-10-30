@@ -1217,11 +1217,23 @@ export type AdminShopRow = {
   listing_count: number;
 };
 
-export type AdminAnnouncement = { active: boolean; tone: "info" | "warning"; text_tr: string; text_en: string; ends_at: string | null };
+export type AdminAnnouncementInput = { active: boolean; tone: "info" | "warning"; text_tr: string; text_en: string; ends_at: string | null };
+export type AdminAnnouncement = AdminAnnouncementInput & { id: number; expired: boolean; created_at: string | null };
 export type AdminBroadcastInput = { subject_tr: string; subject_en: string; body_tr: string; body_en: string };
+export type AdminBroadcastStatus = "draft" | "sending" | "done" | "interrupted";
+export type AdminBroadcast = AdminBroadcastInput & {
+  id: number;
+  status: AdminBroadcastStatus;
+  total: number;
+  sent: number;
+  failed: number;
+  created_by: string;
+  created_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+};
 export type AdminBroadcastPreview = { recipients: number; tr: number; en: number; configured: boolean };
-export type AdminBroadcastStatus = { state: "idle" | "sending" | "done"; total: number; sent: number; failed: number; started_at: string | null };
-export type SiteAnnouncement = { id: string; tone: "info" | "warning"; text_tr: string; text_en: string } | null;
+export type SiteAnnouncement = { id: string; tone: "info" | "warning"; text_tr: string; text_en: string };
 export type AdminExportKind = "users" | "ledger" | "orders" | "audit";
 
 export type BillingProductOption = {
@@ -1355,7 +1367,7 @@ async function download(path: string, fallbackName: string): Promise<void> {
 /** Modüllerin (src/modules/*) kendi API istemcilerini kurması için: aynı kimlik, dil başlığı ve hata işleme. */
 export { request as apiRequest, requestForm as apiUpload };
 /** Herkese açık duyuru bandı (giriş gerekmez). */
-export const siteApi = { announcement: () => request<SiteAnnouncement>("/api/site/announcement") };
+export const siteApi = { announcements: () => request<SiteAnnouncement[]>("/api/site/announcement") };
 
 export interface FinKpi {
   orders: number;
@@ -1365,6 +1377,9 @@ export interface FinKpi {
   fees: number;
   overhead: number;
   cogs: number;
+  product_cost: number;
+  ship_cost: number;
+  ship_invoice: number;
   profit: number;
   margin: number;
   aov: number;
@@ -1903,13 +1918,19 @@ export const api = {
       request<{ items: AdminOrderRow[]; total: number }>(`/api/admin/billing/orders?days=${days}&offset=${offset}&limit=50`),
     shops: (q: string, status: AdminShopStatus, offset: number) =>
       request<{ items: AdminShopRow[]; total: number }>(`/api/admin/shops?${new URLSearchParams({ q, status, offset: String(offset), limit: "50" })}`),
-    announcement: () => request<AdminAnnouncement>("/api/admin/announcement"),
-    saveAnnouncement: (body: AdminAnnouncement) => request<AdminAnnouncement>("/api/admin/announcement", { method: "PUT", body: JSON.stringify(body) }),
-    broadcastPreview: () => request<AdminBroadcastPreview>("/api/admin/announcement/email"),
-    broadcastStatus: () => request<AdminBroadcastStatus>("/api/admin/announcement/email/status"),
-    broadcastTest: (body: AdminBroadcastInput) => request<{ ok: boolean }>("/api/admin/announcement/email/test", { method: "POST", body: JSON.stringify(body) }),
-    broadcastSend: (body: AdminBroadcastInput, confirmCount: number) =>
-      request<AdminBroadcastStatus>("/api/admin/announcement/email", { method: "POST", body: JSON.stringify({ ...body, confirm_count: confirmCount }) }),
+    announcements: () => request<AdminAnnouncement[]>("/api/admin/announcements"),
+    createAnnouncement: (body: AdminAnnouncementInput) => request<AdminAnnouncement>("/api/admin/announcements", { method: "POST", body: JSON.stringify(body) }),
+    updateAnnouncement: (id: number, body: AdminAnnouncementInput) =>
+      request<AdminAnnouncement>(`/api/admin/announcements/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+    deleteAnnouncement: (id: number) => request<{ ok: boolean }>(`/api/admin/announcements/${id}`, { method: "DELETE" }),
+    broadcasts: () => request<AdminBroadcast[]>("/api/admin/broadcasts"),
+    broadcastPreview: () => request<AdminBroadcastPreview>("/api/admin/broadcasts/preview"),
+    broadcastTest: (body: AdminBroadcastInput) => request<{ ok: boolean }>("/api/admin/broadcasts/test", { method: "POST", body: JSON.stringify(body) }),
+    createBroadcast: (body: AdminBroadcastInput) => request<AdminBroadcast>("/api/admin/broadcasts", { method: "POST", body: JSON.stringify(body) }),
+    updateBroadcast: (id: number, body: AdminBroadcastInput) => request<AdminBroadcast>(`/api/admin/broadcasts/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+    deleteBroadcast: (id: number) => request<{ ok: boolean }>(`/api/admin/broadcasts/${id}`, { method: "DELETE" }),
+    sendBroadcast: (id: number, confirmCount: number) =>
+      request<AdminBroadcast>(`/api/admin/broadcasts/${id}/send`, { method: "POST", body: JSON.stringify({ confirm_count: confirmCount }) }),
     replyMessage: (id: number, body: string) => request<AdminMessage>(`/api/admin/messages/${id}/reply`, { method: "POST", body: JSON.stringify({ body }) }),
     /** CSV indirir. `params`: ekrandaki filtreler (sunucudaki dışa aktarma ucuyla aynı adlar). */
     exportCsv: (kind: AdminExportKind, params: Record<string, string | number | undefined> = {}) =>

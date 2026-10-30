@@ -516,7 +516,9 @@ class AnnouncementIn(BaseModel):
 
 
 class AnnouncementOut(AnnouncementIn):
-    pass
+    id: int
+    expired: bool  # bitiş zamanı geçti (aktif işaretli olsa da gösterilmez)
+    created_at: str | None
 
 
 class MessageReplyIn(BaseModel):
@@ -524,14 +526,28 @@ class MessageReplyIn(BaseModel):
 
 
 class BroadcastIn(BaseModel):
-    subject_tr: str = Field(min_length=3, max_length=150)
-    subject_en: str = Field(min_length=3, max_length=150)
-    body_tr: str = Field(min_length=10, max_length=5000)
-    body_en: str = Field(min_length=10, max_length=5000)
+    """Taslak yarım kaydedilebilir; test ve gönderimde dolu olması broadcast.py'de denetlenir."""
+
+    subject_tr: str = Field(default="", max_length=150)
+    subject_en: str = Field(default="", max_length=150)
+    body_tr: str = Field(default="", max_length=5000)
+    body_en: str = Field(default="", max_length=5000)
 
 
-class BroadcastSendIn(BroadcastIn):
+class BroadcastSendIn(BaseModel):
     confirm_count: int  # önizlemedeki alıcı sayısı; değişmişse gönderilmez
+
+
+class BroadcastOut(BroadcastIn):
+    id: int
+    status: Literal["draft", "sending", "done", "interrupted"]
+    total: int
+    sent: int
+    failed: int
+    created_by: str
+    created_at: str | None
+    started_at: str | None
+    finished_at: str | None
 
 
 class BroadcastPreviewOut(BaseModel):
@@ -539,11 +555,3 @@ class BroadcastPreviewOut(BaseModel):
     tr: int
     en: int
     configured: bool
-
-
-class BroadcastStatusOut(BaseModel):
-    state: Literal["idle", "sending", "done"]
-    total: int
-    sent: int
-    failed: int
-    started_at: str | None

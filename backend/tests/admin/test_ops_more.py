@@ -6,6 +6,7 @@ import pytest
 
 from app.admin import broadcast
 from app.admin.deps import AdminError
+from app.admin.models import EmailBroadcast
 from app.admin.schemas import BroadcastIn
 from app.auth.access import UserAccess
 from app.auth.models import User
@@ -97,7 +98,6 @@ def test_alert_email_respects_switch_config_and_hourly_cap(db, monkeypatch):
 
 @pytest.fixture
 def audience(db, monkeypatch):
-    monkeypatch.setattr(broadcast, "_state", {"state": "idle", "total": 0, "sent": 0, "failed": 0, "started_at": None, "finished_at": None})
     monkeypatch.setattr(broadcast, "PAUSE_SECONDS", 0)
     monkeypatch.setattr(broadcast, "email_configured", lambda: True)
     people = [("a@x.co", "tr", None), ("b@x.co", "en", None), ("c@x.co", "tr", "suspended"), ("d@x.co", "en", "blocked"), ("e@x.co", "en", "active")]
@@ -107,53 +107,95 @@ def audience(db, monkeypatch):
         db.flush()
         if status:
             db.add(UserAccess(user_id=user.id, status=status))
+    admin = User(supabase_id="sb-adm", email="admin@x.co")
+    db.add(admin)
     db.commit()
+    return admin
 
 
 DATA = BroadcastIn(subject_tr="Bakım", subject_en="Maintenance", body_tr="Bu gece kısa bakım var.", body_en="Short maintenance tonight.")
 
 
+def _wait_done(db, broadcast_id):
+    for _ in range(100):
+        db.expire_all()
+        row = db.get(EmailBroadcast, broadcast_id)
+        if row.status != "sending":
+            return row
+        time.sleep(0.05)
+    raise AssertionError("gönderim bitmedi")
+
+
 def test_broadcast_preview_skips_suspended_and_blocked(db, audience):
     out = broadcast.preview(db)
-    assert (out.recipients, out.tr, out.en) == (3, 1, 2)
+    assert (out.recipients, out.tr, out.en) == (4, 1, 3)  # a, b, e + yönetici (aktif)
 
 
-def test_broadcast_needs_matching_count_and_sends_in_each_language(db, audience, monkeypatch):
+def test_broadcast_draft_lifecycle(db, audience):
+    draft = broadcast.create(db, audience, BroadcastIn(subject_tr="Yarım"))  # yarım taslak kaydedilebilir
+    assert draft.status == "draft" and draft.created_by == "admin@x.co"
+    with pytest.raises(AdminError):
+        broadcast.start(db, draft.id, confirm_count=4)  # eksik taslak gönderilmez
+    with pytest.raises(AdminError):
+        broadcast.send_test(audience, BroadcastIn(subject_tr="Yarım"))
+
+    assert broadcast.update(db, draft.id, DATA).subject_en == "Maintenance"
+    assert [b.id for b in broadcast.list_all(db)] == [draft.id]
+    broadcast.delete(db, draft.id)
+    with pytest.raises(AdminError):
+        broadcast.update(db, draft.id, DATA)
+
+
+def test_broadcast_sends_in_each_language_and_then_is_locked(db, audience, monkeypatch):
     sent = []
     monkeypatch.setattr(broadcast, "send_email", lambda to, subject, html, text, reply_to=None, **k: sent.append((to[0], subject)) or True)
+    draft = broadcast.create(db, audience, DATA)
     with pytest.raises(AdminError):
-        broadcast.start(db, DATA, confirm_count=99)  # sayı değişti
+        broadcast.start(db, draft.id, confirm_count=99)  # alıcı sayısı değişti
     assert sent == []
 
-    assert broadcast.start(db, DATA, confirm_count=3).state == "sending"
-    for _ in range(100):
-        if broadcast.status().state == "done":
-            break
-        time.sleep(0.05)
-    out = broadcast.status()
-    assert (out.state, out.sent, out.failed, out.total) == ("done", 3, 0, 3)
-    assert sorted(sent) == [("a@x.co", "Bakım"), ("b@x.co", "Maintenance"), ("e@x.co", "Maintenance")]
+    assert broadcast.start(db, draft.id, confirm_count=4).status == "sending"
+    row = _wait_done(db, draft.id)
+    assert (row.status, row.sent, row.failed, row.total) == ("done", 4, 0, 4)
+    assert sorted(sent) == [("a@x.co", "Bakım"), ("admin@x.co", "Maintenance"), ("b@x.co", "Maintenance"), ("e@x.co", "Maintenance")]
 
-    with pytest.raises(AdminError):  # hemen ikinci gönderim engellenir
-        broadcast.start(db, DATA, confirm_count=3)
+    with pytest.raises(AdminError):
+        broadcast.update(db, draft.id, DATA)  # gönderilmiş kayıt değişmez
+    again = broadcast.create(db, audience, DATA)
+    with pytest.raises(AdminError):
+        broadcast.start(db, again.id, confirm_count=4)  # hemen ikinci gönderim engellenir (bekleme)
 
 
 def test_broadcast_counts_failures_and_blocks_parallel_send(db, audience, monkeypatch):
     monkeypatch.setattr(broadcast, "send_email", lambda *a, **k: False)
-    broadcast._state["state"] = "sending"
+    running = broadcast.create(db, audience, DATA)
+    row = db.get(EmailBroadcast, running.id)
+    row.status = "sending"
+    db.commit()
+    other = broadcast.create(db, audience, DATA)
     with pytest.raises(AdminError):
-        broadcast.start(db, DATA, confirm_count=3)
-    broadcast._state["state"] = "idle"
-    broadcast._run([("a@x.co", "tr"), ("b@x.co", "en")], DATA)
-    assert broadcast.status().failed == 2 and broadcast.status().state == "done"
+        broadcast.start(db, other.id, confirm_count=4)  # biri sürerken ikincisi başlamaz
+
+    broadcast._run(running.id, [("a@x.co", "tr"), ("b@x.co", "en")])
+    db.expire_all()
+    done = db.get(EmailBroadcast, running.id)
+    assert (done.status, done.failed, done.sent) == ("done", 2, 0) and done.finished_at is not None
+
+
+def test_broadcast_recovers_interrupted_sends_on_startup(db, audience):
+    draft = broadcast.create(db, audience, DATA)
+    db.get(EmailBroadcast, draft.id).status = "sending"
+    db.commit()
+    broadcast.recover(db)
+    db.expire_all()
+    assert db.get(EmailBroadcast, draft.id).status == "interrupted"
 
 
 def test_broadcast_test_goes_only_to_the_admin(db, audience, monkeypatch):
     sent = []
     monkeypatch.setattr(broadcast, "send_email", lambda to, subject, html, text, reply_to=None, **k: sent.append((to, subject)) or True)
-    admin = User(supabase_id="sb-adm", email="admin@x.co")
-    broadcast.send_test(admin, DATA)
+    broadcast.send_test(audience, DATA)
     assert sent == [(["admin@x.co"], "Bakım"), (["admin@x.co"], "Maintenance")]
     monkeypatch.setattr(broadcast, "email_configured", lambda: False)
     with pytest.raises(AdminError):
-        broadcast.send_test(admin, DATA)
+        broadcast.send_test(audience, DATA)

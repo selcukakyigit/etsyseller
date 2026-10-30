@@ -17,9 +17,13 @@ def landing():
 
 
 @router.get("/announcement")
-def current_announcement():
-    """Uygulama içi duyuru bandı; yoksa `null`. Yalnızca yöneticinin herkese göstermek için yazdığı metin döner."""
-    return announcement.current()
+def current_announcements(db: Session = Depends(get_db)):
+    """Uygulama içi duyuru bantları (aktif ve süresi dolmamış olanlar); yoksa boş liste. Yalnızca yöneticinin herkese göstermek için yazdığı metin döner."""
+    try:
+        return announcement.current(db)
+    except SQLAlchemyError:  # tablo henüz yoksa (göç uygulanmamış) bant yok sayılır
+        db.rollback()
+        return []
 
 
 @router.get("/pricing")

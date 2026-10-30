@@ -36,7 +36,7 @@ from app.insights import models as _insights_models  # noqa: F401
 from app.notifications import models as _notification_models  # noqa: F401
 from app.ai import models as _ai_models  # noqa: F401
 from app.billing import models as _billing_models  # noqa: F401
-from app.admin import models as _admin_models  # noqa: F401
+from app.admin import broadcast, models as _admin_models  # noqa: F401
 from app.modkit import models as _modkit_models  # noqa: F401
 from app.supply import models as _supply_models  # noqa: F401
 from app.taxonomy import models as _taxonomy_models  # noqa: F401
@@ -82,6 +82,7 @@ from app.webhooks.router import router as webhooks_router
 async def lifespan(_: FastAPI):
     warn_unlocked_tables()
     rate_limit.start_persistence()
+    broadcast.recover_on_startup()
     start_scheduler()
     yield
     stop_scheduler()
