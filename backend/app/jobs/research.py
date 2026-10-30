@@ -7,12 +7,17 @@ from sqlalchemy import select
 
 from app.core.db import SessionLocal
 from app.listings.models import ListingCache
-from app.research import exposure, outcomes, service, worker
+from app.research import exposure, outcomes, policy, service, worker
 
 logger = logging.getLogger(__name__)
 
 
 _queue_lock = threading.Lock()
+
+
+def _auto_refresh_on() -> bool:
+    """Yönetim > Araştırma'daki "otomatik yenileme" anahtarı. Kapalıyken zamanlanmış yenileme işleri sağlayıcıya istek atmaz; yönetici düğmesi ve kullanıcı aramaları etkilenmez."""
+    return bool(policy.get("research_auto_refresh"))
 
 
 def run_queue() -> None:
@@ -32,6 +37,9 @@ def run_queue() -> None:
 
 
 def refresh_stale() -> None:
+    """Haftalık: süresi dolmuş, kullanılan ya da sabitli kelimelerin hacmini yenilemek için kuyruğa alır (bkz. research/service.py)."""
+    if not _auto_refresh_on():
+        return
     db = SessionLocal()
     try:
         n = service.refresh_stale(db)
@@ -59,6 +67,8 @@ def rebuild_signals() -> None:
 
 def warm_own_tags() -> None:
     """Mağazaların listing'lerinde zaten kullanılan etiketlerin hacmini önceden kuyruğa alır: ilk öneride Google verisi hazır olsun."""
+    if not _auto_refresh_on():
+        return
     db = SessionLocal()
     try:
         tags: set[str] = set()
@@ -78,7 +88,9 @@ def warm_own_tags() -> None:
 
 
 def refresh_trends() -> None:
-    """Haftalık: sıra takibindeki aramaların Google ilgisini (geçen yıla göre değişim) yenilemek için kuyruğa alır (bkz. research/service.py)."""
+    """Aylık: sıra takibindeki aramaların Google ilgisini (geçen yıla göre değişim) yenilemek için kuyruğa alır (bkz. research/service.py)."""
+    if not _auto_refresh_on():
+        return
     db = SessionLocal()
     try:
         n = service.refresh_tracked_trends(db)

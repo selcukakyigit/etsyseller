@@ -104,7 +104,7 @@ def add_metrics(
     db: Session, terms: dict[str, KeywordTerm], records: list[MetricRecord], *, provider: str, source: str, market: str, language: str, ttl_days: float,
 ) -> int:
     """Her kayıt için YENİ ölçüm satırı ekler (eskisini ezmez). Sağlayıcının hiç döndürmediği kelimeler için boş ölçüm de yazılır: TTL boyunca yeniden sorulmaz.
-    Süre kademelidir (`policy.tiered_ttl_days`): çok aranan kelime sık, nadir aranan seyrek yenilenir. Zorluk ve niyet yalnızca öneri (Labs) kayıtlarında gelir;
+    Zorluk ve niyet yalnızca öneri (Labs) kayıtlarında gelir;
     hacim ölçümü bunları boş getirince önceki ölçümden taşınır (yoksa yeni "güncel" satır bilgiyi kaybettirirdi)."""
     now = dt.datetime.utcnow()
     by_term = {r.term: r for r in records}
@@ -130,7 +130,7 @@ def add_metrics(
             competition=rec.competition, difficulty=rec.difficulty if rec.difficulty is not None or old is None else old.difficulty,
             intent=rec.intent or (old.intent if old else None),
             monthly_json=json.dumps(rec.monthly) if rec.monthly else None, measured_at=now,
-            expires_at=policy.expires_at(now, policy.tiered_ttl_days(rec.search_volume, ttl_days)),
+            expires_at=policy.expires_at(now, ttl_days),
         ))
     db.add_all(rows)
     return len(rows)

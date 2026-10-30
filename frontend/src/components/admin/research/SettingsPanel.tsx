@@ -26,7 +26,7 @@ export default function SettingsPanel() {
 }
 
 /** Sayı olarak düzenlenen ayarlar (açma/kapama, pazar ve dil ayrı alanlardır; `research_ttl_jitter` sabit kalır). */
-type NumKey = Exclude<keyof ResearchSettings, "research_enabled" | "research_default_market" | "research_default_language" | "research_ttl_jitter">;
+type NumKey = Exclude<keyof ResearchSettings, "research_enabled" | "research_auto_refresh" | "research_default_market" | "research_default_language" | "research_ttl_jitter">;
 type Spec = { key: NumKey; tr: string; en: string; money?: boolean; unit?: [string, string] };
 type Group = { tr: string; en: string; help: [string, string]; fields: Spec[] };
 
@@ -36,15 +36,12 @@ const GROUPS: Group[] = [
     tr: "Yenileme süreleri",
     en: "Refresh lifetimes",
     help: [
-      "Çok aranan kelimenin talebi hızlı değişir ve herkes onu kullanır: sık yenilenir. Nadir aranan kelime (ve verisi boş dönen) seyrek yenilenir. Arada kalanlar 'orta' süreyi alır. Her süreye ±%15 sapma eklenir ki binlerce kelime aynı gün dolmasın.",
-      "A heavily searched keyword changes fast and everyone uses it: it refreshes often. Rarely searched (and empty-result) keywords refresh seldom. The ones in between use the 'middle' lifetime. A ±15% jitter is added so thousands of keywords do not expire on the same day.",
+      "Google Ads aylık arama sayısı ayda bir güncellenir; bu yüzden hacim ölçümü 30 gün yaşar, daha sık sormak aynı sayıyı tekrar almak olur. Süresi dolan kelimeler haftalık otomatik işle (ya da Havuz sağlığındaki düğmeyle) yenilenir. Her süreye ±%15 sapma eklenir ki binlerce kelime aynı gün dolmasın.",
+      "Google Ads monthly searches update once a month, so a volume measurement lives 30 days; asking more often just returns the same number. Expired keywords refresh in the weekly automatic job (or with the button under Pool health). A ±15% jitter is added so thousands of keywords do not expire on the same day.",
     ],
     fields: [
-      { key: "research_ttl_volume_high_days", tr: "Çok aranan kelime", en: "Heavily searched keyword", unit: DAYS },
-      { key: "research_ttl_volume_days", tr: "Orta (hacim ölçümü)", en: "Middle (volume measurement)", unit: DAYS },
-      { key: "research_ttl_volume_low_days", tr: "Nadir aranan kelime", en: "Rarely searched keyword", unit: DAYS },
-      { key: "research_tier_high_volume", tr: "Çok aranan eşiği (aylık arama)", en: "Heavily searched threshold (monthly searches)" },
-      { key: "research_tier_low_volume", tr: "Nadir eşiği (aylık arama)", en: "Rare threshold (monthly searches)" },
+      { key: "research_ttl_volume_days", tr: "Hacim ölçümü", en: "Volume measurement", unit: DAYS },
+      { key: "research_ttl_trend_days", tr: "Google ilgi (trend) ölçümü", en: "Google interest (trend) measurement", unit: DAYS },
       { key: "research_ttl_suggest_days", tr: "Öneri listesi", en: "Suggestion list", unit: DAYS },
     ],
   },
@@ -68,14 +65,14 @@ const GROUPS: Group[] = [
     tr: "Kotalar ve otomatik yenileme",
     en: "Quotas and auto-refresh",
     help: [
-      "Mağaza kotaları tek bir mağazanın bütçeyi tüketmesini önler; havuzda hazır olan kelimeler kotaya sayılmaz. Günlük otomatik yenileme yalnızca son 'kullanılmış sayılma süresi' içinde istenen ya da sabitli kelimeleri yeniler; kullanılmayan kelimeye para harcanmaz.",
-      "Shop quotas stop one shop from using up the budget; keywords already in the pool do not count. The daily auto-refresh only refreshes keywords requested within the 'counts as in use' window, or pinned ones; no money is spent on unused keywords.",
+      "Mağaza kotaları tek bir mağazanın bütçeyi tüketmesini önler; havuzda hazır olan kelimeler kotaya sayılmaz. Otomatik yenileme (haftalık) yalnızca son 'kullanılmış sayılma süresi' içinde istenen ya da sabitli kelimeleri yeniler; kullanılmayan kelimeye para harcanmaz.",
+      "Shop quotas stop one shop from using up the budget; keywords already in the pool do not count. The (weekly) auto-refresh only refreshes keywords requested within the 'counts as in use' window, or pinned ones; no money is spent on unused keywords.",
     ],
     fields: [
       { key: "research_shop_daily_jobs", tr: "Mağaza başı günlük iş", en: "Jobs per shop per day" },
       { key: "research_shop_monthly_searches", tr: "Mağaza başı aylık yeni kelime araştırması (Keşfet)", en: "New keyword searches per shop per month (Discover)" },
       { key: "research_shop_daily_searches", tr: "Günlük üst sınır (aylık hak tek günde bitmesin)", en: "Daily ceiling (so the monthly allowance cannot go in one day)" },
-      { key: "research_refresh_per_day", tr: "Günlük otomatik yenileme", en: "Daily auto-refresh", unit: ["kelime", "keywords"] },
+      { key: "research_refresh_per_day", tr: "Her yenilemede en fazla kelime", en: "Max keywords per refresh run", unit: ["kelime", "keywords"] },
       { key: "research_active_days", tr: "Kullanılmış sayılma süresi", en: "Counts as in use for", unit: DAYS },
     ],
   },
@@ -87,6 +84,7 @@ const fmtNum = (key: NumKey, v: number) => (isMoney(key) ? v.toFixed(2) : String
 
 const toForm = (s: ResearchSettings) => ({
   enabled: s.research_enabled,
+  auto: s.research_auto_refresh,
   market: s.research_default_market,
   language: s.research_default_language,
   nums: Object.fromEntries(NUM_KEYS.map((k) => [k, fmtNum(k, s[k])])) as Record<NumKey, string>,
@@ -104,6 +102,7 @@ function SettingsForm({ initial, onSaved }: { initial: ResearchSettings; onSaved
     try {
       const saved = await researchAdmin.saveSettings({
         research_enabled: form.enabled,
+        research_auto_refresh: form.auto,
         research_default_market: form.market,
         research_default_language: form.language,
         ...Object.fromEntries(NUM_KEYS.map((k) => [k, Number(form.nums[k])])),
@@ -168,6 +167,18 @@ function SettingsForm({ initial, onSaved }: { initial: ResearchSettings; onSaved
             <div className="flex items-center justify-between gap-3 sm:col-span-2">
               <span className="text-sm text-neutral-900 dark:text-neutral-100">{t("Araştırma açık", "Research enabled")}</span>
               <Toggle checked={form.enabled} onChange={(v) => setForm((f) => ({ ...f, enabled: v }))} label={t("Araştırma açık", "Research enabled")} />
+            </div>
+            <div className="flex items-center justify-between gap-3 sm:col-span-2">
+              <span className="flex items-center gap-1.5 text-sm text-neutral-900 dark:text-neutral-100">
+                {t("Otomatik yenileme", "Automatic refresh")}
+                <HelpTip>
+                  {t(
+                    "Açıkken süresi dolan kelimeler haftada bir (pazartesi), trend ölçümleri ayda bir kendiliğinden yenilenir. Kapalıyken zamanlanmış hiçbir iş sağlayıcıya istek atmaz; yalnızca kullanıcı aramaları ve senin düğmelerin istek açar. Veriler eskiyebilir, Havuz sağlığındaki düğmeyi düzenli kullan.",
+                    "When on, expired keywords refresh once a week (Monday) and trend measurements once a month. When off, no scheduled job calls the provider; only user searches and your buttons do. Data can age, so use the button under Pool health regularly.",
+                  )}
+                </HelpTip>
+              </span>
+              <Toggle checked={form.auto} onChange={(v) => setForm((f) => ({ ...f, auto: v }))} label={t("Otomatik yenileme", "Automatic refresh")} />
             </div>
             <Field label={t("Varsayılan pazar (ülke kodu)", "Default market (country code)")}>
               <input value={form.market} maxLength={2} onChange={(e) => setForm((f) => ({ ...f, market: e.target.value.toUpperCase().replace(/[^A-Z]/g, "") }))} className={inputClass} />

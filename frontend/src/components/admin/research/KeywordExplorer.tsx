@@ -71,8 +71,8 @@ export default function KeywordExplorer() {
         <div className="flex items-center gap-2">
           <HelpTip align="right">
             {t(
-              "Sayılar GOOGLE verisidir (Etsy arama hacmi değil). Kullanıcılara ham sayı gösterilmez; yalnızca öneriyi etkiler. 'Yenilenmeli': ölçümün süresi doldu, kelime kullanılıyorsa gece otomatik yenilenir. Sabitli kelime kullanılmasa da yenilenir; arşivli yenilenmez; engelli hiç ölçülmez ve Keşfet/asistan önerilerinde görünmez. Toplu işlemde seçim yoksa işlem süzgece uyan kelimelere (en çok 1000) uygulanır.",
-              "Numbers are GOOGLE data (not Etsy search volume). Users never see raw numbers; they only influence suggestions. 'Stale': the measurement expired; used keywords refresh automatically overnight. A pinned keyword refreshes even when unused; archived ones do not refresh; blocked ones are never measured and vanish from Discover/assistant suggestions. With no selection, a bulk action applies to the keywords matching the filters (max 1000).",
+              "Sayılar GOOGLE verisidir (Etsy arama hacmi değil). Kullanıcılara ham sayı gösterilmez; yalnızca öneriyi etkiler. 'Yenilenmeli': ölçümün süresi doldu, kelime kullanılıyorsa haftalık otomatik işte yenilenir. Sabitli kelime kullanılmasa da yenilenir; arşivli yenilenmez; engelli hiç ölçülmez ve Keşfet/asistan önerilerinde görünmez. Toplu işlemde seçim yoksa işlem süzgece uyan kelimelere (en çok 1000) uygulanır.",
+              "Numbers are GOOGLE data (not Etsy search volume). Users never see raw numbers; they only influence suggestions. 'Stale': the measurement expired; used keywords refresh in the weekly automatic job. A pinned keyword refreshes even when unused; archived ones do not refresh; blocked ones are never measured and vanish from Discover/assistant suggestions. With no selection, a bulk action applies to the keywords matching the filters (max 1000).",
             )}
           </HelpTip>
           <Button busy={exporting} onClick={() => void exportCsv()}>

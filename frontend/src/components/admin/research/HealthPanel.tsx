@@ -1,6 +1,8 @@
 "use client";
 
-import { Section, StatCard, useFormat } from "@/components/admin/ui";
+import { useState } from "react";
+import { Button, Section, StatCard, errorText, useFormat } from "@/components/admin/ui";
+import { toast } from "@/lib/toast";
 import HelpTip from "@/components/ui/HelpTip";
 import { BlockSpinner } from "@/components/ui/Spinner";
 import { useT } from "@/lib/i18n-client";
@@ -13,7 +15,21 @@ export default function HealthPanel() {
   const { t, locale } = useT();
   const f = useFormat();
   const sources = useSourceLabels();
-  const { data, error } = useApiData("admin:research:health", researchAdmin.health);
+  const { data, error, reload } = useApiData("admin:research:health", researchAdmin.health);
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function refreshDue() {
+    setRefreshing(true);
+    try {
+      const r = await researchAdmin.refreshDue();
+      toast.success(r.queued > 0 ? t(`${f.num(r.queued)} kelime yenileme için kuyruğa alındı.`, `${f.num(r.queued)} keywords queued for refresh.`) : t("Yenilenecek kelime yok (bütçe ya da kullanım nedeniyle de olabilir).", "Nothing to refresh (it can also be due to budget or usage)."));
+      reload();
+    } catch (e) {
+      if (errorText(e)) toast.error(errorText(e));
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   if (error && !data) return <p className="text-sm text-red-600 dark:text-red-400">{error}</p>;
   if (!data) return <BlockSpinner />;
@@ -31,12 +47,17 @@ export default function HealthPanel() {
     <Section
       title={t(`Havuz sağlığı (${data.market}/${data.language})`, `Pool health (${data.market}/${data.language})`)}
       action={
-        <HelpTip align="right">
+        <div className="flex items-center gap-2">
+          <Button busy={refreshing} onClick={() => void refreshDue()}>
+            {t("Süresi dolanları şimdi yenile", "Refresh expired now")}
+          </Button>
+          <HelpTip align="right">
           {t(
-            "Varsayılan pazar ve dil için. 'Yenileme tahmini': önümüzdeki 30 günde süresi dolacak (ya da dolmuş) normal durumdaki kelimelerin hepsi yenilenirse kaç istek ve yaklaşık ne kadar tutar; sağlayıcı istek başına ücret alır (kelime sayısından bağımsız, istek başına en çok 1000 kelime). Gerçek harcama günlük yenileme sınırına ve kullanılmayan kelimelerin atlanmasına göre bundan düşüktür.",
-            "For the default market and language. 'Refresh forecast': how many requests, and roughly what cost, if every active keyword that expires (or has expired) within 30 days were refreshed; the provider charges per request (not per keyword, up to 1000 keywords each). Real spend is lower because of the daily refresh cap and skipped unused keywords.",
+            "Varsayılan pazar ve dil için. 'Yenileme tahmini': önümüzdeki 30 günde süresi dolacak (ya da dolmuş) normal durumdaki kelimelerin hepsi yenilenirse kaç istek ve yaklaşık ne kadar tutar; sağlayıcı istek başına ücret alır (kelime sayısından bağımsız, istek başına en çok 1000 kelime). Gerçek harcama yenileme başına kelime sınırına ve kullanılmayan kelimelerin atlanmasına göre bundan düşüktür. 'Süresi dolanları şimdi yenile' haftalık otomatik işin kurallarıyla (kullanılan ya da sabitli kelimeler) hemen çalışır; otomatik yenileme kapalı olsa da çalışır.",
+            "For the default market and language. 'Refresh forecast': how many requests, and roughly what cost, if every active keyword that expires (or has expired) within 30 days were refreshed; the provider charges per request (not per keyword, up to 1000 keywords each). Real spend is lower because of the per-run keyword cap and skipped unused keywords. 'Refresh expired now' runs the weekly automatic job's rules right away (used or pinned keywords); it works even when automatic refresh is off.",
           )}
         </HelpTip>
+        </div>
       }
     >
       <div className="space-y-5">

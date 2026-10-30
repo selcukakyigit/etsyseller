@@ -138,7 +138,7 @@ def start_scheduler() -> None:
     )
     _scheduler.add_job(
         _measured(research_trends),
-        trigger=CronTrigger(day_of_week="mon", hour=6, minute=30),
+        trigger=CronTrigger(day=1, hour=6, minute=30),  # aylık: Google ilgi ölçümü 30 gün yaşar
         id="research_trends",
         replace_existing=True,
     )
@@ -150,13 +150,13 @@ def start_scheduler() -> None:
     )
     _scheduler.add_job(
         _measured(research_refresh),
-        trigger=CronTrigger(hour=2, minute=30),
+        trigger=CronTrigger(day_of_week="mon", hour=2, minute=30),  # haftalık: yalnızca süresi (30 gün) dolanlar yenilenir
         id="research_refresh",
         replace_existing=True,
     )
     _scheduler.add_job(
         _measured(research_warm),
-        trigger=CronTrigger(hour=2, minute=45),
+        trigger=CronTrigger(day_of_week="mon", hour=2, minute=45),
         id="research_warm",
         replace_existing=True,
     )

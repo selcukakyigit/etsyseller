@@ -1,9 +1,9 @@
-"""Verimlilik: hacme göre kademeli yenileme süresi, zorluk/niyetin hacim ölçümünde kaybolmaması, yenileme önceliği, zorluğun Keşfet'e ve asistana çıkması."""
+"""Verimlilik: tek 30 günlük hacim süresi, zorluk/niyetin hacim ölçümünde kaybolmaması, yenileme önceliği, zorluğun Keşfet'e ve asistana çıkması."""
 import datetime as dt
 
 from app.core import app_settings
 from app.research import discover, policy, pool, service, worker
-from app.research.models import KeywordMetric, KeywordTerm
+from app.research.models import KeywordMetric, KeywordTerm, ResearchJob
 from app.research.records import MetricRecord
 from tests.research.test_discover import SHOP_A, _research
 
@@ -14,19 +14,13 @@ def _days(db, term):
     return (m.expires_at - m.measured_at).total_seconds() / 86400
 
 
-def test_ttl_follows_volume_tiers_within_the_jitter(db):
-    rows = pool.get_or_create_terms(db, ["hot term", "mid term", "rare term", "no data term"], "en", "volume")
-    records = [MetricRecord("hot term", search_volume=5000), MetricRecord("mid term", search_volume=300), MetricRecord("rare term", search_volume=20)]
-    pool.add_metrics(db, rows, records, provider="p", source="google_ads", market="US", language="en", ttl_days=21)
+def test_every_volume_measurement_lives_thirty_days_within_the_jitter(db):
+    rows = pool.get_or_create_terms(db, ["hot term", "rare term", "no data term"], "en", "volume")
+    records = [MetricRecord("hot term", search_volume=5000), MetricRecord("rare term", search_volume=20)]
+    pool.add_metrics(db, rows, records, provider="p", source="google_ads", market="US", language="en", ttl_days=policy.get("research_ttl_volume_days"))
     db.commit()
-    for term, expected in (("hot term", 14), ("mid term", 21), ("rare term", 45), ("no data term", 45)):
-        assert abs(_days(db, term) - expected) <= expected * 0.16, term  # ±%15 sapma
-
-
-def test_tier_thresholds_and_days_come_from_settings(db):
-    assert policy.tiered_ttl_days(1000, 21) == 14 and policy.tiered_ttl_days(999, 21) == 21 and policy.tiered_ttl_days(99, 21) == 45
-    app_settings.set_many(db, {"research_tier_high_volume": 500, "research_ttl_volume_high_days": 7})
-    assert policy.tiered_ttl_days(600, 21) == 7
+    for term in ("hot term", "rare term", "no data term"):
+        assert abs(_days(db, term) - 30) <= 30 * 0.16, term  # tek süre (Google Ads aylık veridir), ±%15 sapma
 
 
 def test_volume_measurement_keeps_difficulty_and_intent_from_the_suggestion_row(db):
@@ -70,3 +64,57 @@ def test_difficulty_reaches_the_discover_screen_and_the_assistant(db, provider):
     assert by["metal farm sign big"].difficulty == 61 and by["metal farm sign mid"].difficulty is None
     assert tools._item(by["metal farm sign big"])["seo_zorlugu_0_100"] == 61
     assert "seo_zorlugu_0_100" not in tools._item(by["metal farm sign mid"])
+
+
+def test_scheduled_refresh_jobs_do_nothing_when_auto_refresh_is_off_but_the_admin_button_still_works(db, provider, monkeypatch):
+    from app.jobs import research as jobs_research
+
+    rows = pool.get_or_create_terms(db, ["old one"], "en", "volume")
+    old = dt.datetime.utcnow() - dt.timedelta(days=60)
+    db.add(KeywordMetric(keyword_id=rows["old one"].id, provider="p", source="google_ads", market="US", language="en", search_volume=100, measured_at=old, expires_at=old + dt.timedelta(days=21)))
+    pool.touch(db, [rows["old one"].id])
+    db.commit()
+    monkeypatch.setattr(jobs_research, "SessionLocal", lambda: db)
+    monkeypatch.setattr(db, "close", lambda: None)
+
+    app_settings.set_many(db, {"research_auto_refresh": False})
+    jobs_research.refresh_stale()
+    jobs_research.warm_own_tags()
+    jobs_research.refresh_trends()
+    assert db.query(ResearchJob).count() == 0  # anahtar kapalı: hiçbir iş kuyruğa girmez
+
+    assert service.refresh_stale(db) == 1  # yönetici düğmesi aynı işlevi çağırır, anahtardan etkilenmez
+    app_settings.set_many(db, {"research_auto_refresh": True})
+    assert db.query(ResearchJob).count() == 1
+
+
+def test_admin_refresh_due_endpoint_queues_expired_used_keywords(db, provider):
+    from types import SimpleNamespace as NS
+
+    from fastapi.testclient import TestClient
+
+    from app import main
+    from app.admin.deps import admin_only
+    from app.core.db import SessionLocal, get_db
+
+    rows = pool.get_or_create_terms(db, ["old one", "unused one"], "en", "volume")
+    old = dt.datetime.utcnow() - dt.timedelta(days=60)
+    for kw in rows.values():
+        db.add(KeywordMetric(keyword_id=kw.id, provider="p", source="google_ads", market="US", language="en", search_volume=100, measured_at=old, expires_at=old + dt.timedelta(days=21)))
+    pool.touch(db, [rows["old one"].id])
+    db.commit()
+
+    def _db():
+        session = SessionLocal()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    main.app.dependency_overrides[get_db] = _db
+    main.app.dependency_overrides[admin_only] = lambda: NS(id=1, email="a@b.c", is_admin=True)
+    try:
+        out = TestClient(main.app).post("/api/admin/research/keywords/refresh-due")
+    finally:
+        main.app.dependency_overrides.clear()
+    assert out.status_code == 200 and out.json() == {"queued": 1}  # kullanılmayan kelimeye para harcanmaz

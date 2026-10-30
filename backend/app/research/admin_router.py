@@ -69,7 +69,16 @@ def refresh(payload: RefreshIn, admin_user: User = Depends(admin_only), db: Sess
     return {"pending": result.pending, "refused": result.refused, "pinned": pinned}
 
 
-@router.post("/keywords/bulk", response_model=admin_pool.BulkOut)
+@router.post("/keywords/refresh-due")
+def refresh_due(admin_user: User = Depends(admin_only), db: Session = Depends(get_db)):
+    """"Süresi dolanları şimdi yenile": haftalık otomatik işin kurallarıyla (kullanılan ya da sabitli, günlük sınır, bütçe) hemen çalıştırır.
+    Otomatik yenileme anahtarı kapalı olsa da çalışır; yönetici elle istiyor."""
+    queued = service.refresh_stale(db)
+    audit.record(db, admin_user, "research.refresh_due", f"{queued} terms", "")
+    return {"queued": queued}
+
+
+@router.post("/keywords/bulk",response_model=admin_pool.BulkOut)
 def bulk(payload: admin_pool.BulkIn, admin_user: User = Depends(admin_only), db: Session = Depends(get_db)):
     """Seçili kelimelere (ya da süzgece uyanların hepsine, en çok 1000) toplu işlem: ölç, sabitle, engelle, arşivle, sil."""
     out = admin_pool.apply_bulk(db, payload)
