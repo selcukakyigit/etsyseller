@@ -3,6 +3,7 @@
 import { countryName } from "@/lib/countries";
 import { EMPTY_ORDER_FILTERS, OrderFilters } from "./orderUtils";
 import { useT } from "@/lib/i18n-client";
+import { STICKY_PANEL } from "@/lib/useStickyOffset";
 
 function Radio({ checked, onChange, children, count }: { checked: boolean; onChange: () => void; children: React.ReactNode; count?: number }) {
   return (
@@ -39,7 +40,7 @@ export default function OrderFilterPanel({
   const set = (p: Partial<OrderFilters>) => onChange({ ...filters, ...p });
   const { t, lang } = useT();
   return (
-    <aside className="w-full shrink-0 lg:w-60 lg:sticky lg:self-start lg:overflow-y-auto lg:top-[14rem] lg:max-h-[calc(100vh-15rem)]">
+    <aside className={`w-full shrink-0 lg:w-60 ${STICKY_PANEL}`}>
       <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
         <span className={heading}>{t("Gönderim tarihi", "Ship-by date")}</span>
         {(

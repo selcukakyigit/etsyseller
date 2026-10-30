@@ -6,6 +6,7 @@ import { Modal } from "@/components/listing-editor/Modal";
 import ShopSectionsSection from "@/components/shipping/ShopSectionsSection";
 import { ReconnectNotice } from "@/components/shipping/shared";
 import { T, useT } from "@/lib/i18n-client";
+import { STICKY_PANEL } from "@/lib/useStickyOffset";
 
 export type Filters = {
   status: string; // "all" | Etsy state
@@ -162,7 +163,7 @@ export default function ListingFilters({
   }, [listings]);
 
   return (
-    <aside className="w-full shrink-0 lg:w-64 lg:sticky lg:self-start lg:overflow-y-auto lg:top-[14rem] lg:max-h-[calc(100vh-15rem)]">
+    <aside className={`w-full shrink-0 lg:w-64 ${STICKY_PANEL}`}>
       <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
         <span className="block text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("Listing durumu", "Listing status")}</span>
         <div className="mt-2">

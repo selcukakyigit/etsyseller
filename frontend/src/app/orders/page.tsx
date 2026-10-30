@@ -21,6 +21,7 @@ import { onSyncDone } from "@/lib/syncEvents";
 import { useUrlTab } from "@/lib/useUrlTab";
 import { ORDER_FOCUS_EVENT, OrderFocus, orderFocusFromUrl } from "@/lib/orderFocus";
 import { useT } from "@/lib/i18n-client";
+import { useStickyOffset } from "@/lib/useStickyOffset";
 import { useCached } from "@/lib/pageCache";
 import { useStoredState } from "@/lib/useStoredState";
 import { PageSpinner } from "@/components/ui/Spinner";
@@ -68,14 +69,8 @@ export default function OrdersPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  // Sabit üst bloğun yüksekliğini CSS değişkenine yazar; altındaki sabit satırlar (sayı, grup başlığı) buna göre dizilir.
-  const stickyRef = useCallback((el: HTMLDivElement | null) => {
-    const root = el?.parentElement;
-    if (!el || !root) return;
-    const set = () => root.style.setProperty("--os", `${el.offsetHeight}px`);
-    set();
-    new ResizeObserver(set).observe(el);
-  }, []);
+  // Sabit üst bloğun yüksekliği `--os` değişkenine yazılır; altındaki sabit parçalar (filtre paneli, sayı, grup başlığı) buna göre dizilir.
+  const stickyRef = useStickyOffset();
   const bootstrapped = useRef<number | null>(null);
   const shopId = activeShop?.id;
   const queryKey = JSON.stringify([shopId, tab, query, filters, sort, page, perPage]);
