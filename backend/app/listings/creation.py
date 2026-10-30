@@ -165,7 +165,7 @@ def local_summaries(db: Session, shop: Shop) -> list[dict]:
     for local in db.scalars(select(ListingLocal).where(ListingLocal.shop_id == shop.id).where(ListingLocal.listing_id < 0)).all():
         work = json.loads(local.data_json)
         images = sorted(work.get("images") or [], key=lambda i: i.get("rank", 0))
-        out.append({"local": local, "work": work, "image_url": images[0].get("url_170x135") if images else None})
+        out.append({"local": local, "work": work, "image_url": service.card_image_url(images[0]) if images else None})
     return out
 
 

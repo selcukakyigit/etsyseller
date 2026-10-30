@@ -410,9 +410,7 @@ def _build_listings(db: Session, shop: Shop) -> list[ListingOut]:
         local_row = local_rows.get(row.listing_id)
         draft = json.loads(local_row.data_json) if local_row else {}
         draft_images = sorted(draft.get("images") or [], key=lambda i: i.get("rank", 0))
-        image_url = (
-            draft_images[0].get("url_170x135") if draft_images else (raw.get("images") or [{}])[0].get("url_170x135")
-        )
+        image_url = card_image_url(draft_images[0] if draft_images else (raw.get("images") or [{}])[0])
         out.append(
             ListingOut(
                 listing_id=row.listing_id,
@@ -507,6 +505,11 @@ def generate_for_listing(db: Session, shop: Shop, listing_id: int, overrides: Su
         raise SuggestionError(f"SEO önerisi üretilemedi: {exc}") from exc
     return listing, suggestion
 
+
+
+def card_image_url(image: dict) -> str | None:
+    """Liste kartı küçük resmi: 570 px'lik sürüm (kart ~235 px, retina ~470 px genişliğinde; 170 px'lik sürüm büyütülüp bulanıklaşıyordu), yoksa daha küçükler."""
+    return image.get("url_570xN") or image.get("url_fullxfull") or image.get("url_170x135") or None
 
 def create_suggestion(
     db: Session, shop: Shop, user_id: int, listing_id: int, overrides: SuggestIn | None = None
