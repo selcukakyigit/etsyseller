@@ -24,7 +24,9 @@ export function useResponsiveFilters({ activeCount, onReset, children }: { activ
 
   const panel = (
     <>
-      <div className="hidden lg:block">{children}</div>
+      {/* lg:self-stretch: sarmalayıcı yan yana düzende satırın tüm yüksekliğini kaplar; yoksa yüksekliği panel kadar kalır ve içindeki sabit (sticky) panel
+          kayabileceği alan bulamayıp sayfayla birlikte yukarı giderdi. */}
+      <div className="hidden lg:block lg:self-stretch">{children}</div>
       <BottomSheet
         open={open}
         onClose={close}

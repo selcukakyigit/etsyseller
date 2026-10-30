@@ -6,7 +6,7 @@ import { Modal } from "@/components/listing-editor/Modal";
 import ShopSectionsSection from "@/components/shipping/ShopSectionsSection";
 import { ReconnectNotice } from "@/components/shipping/shared";
 import { T, useT } from "@/lib/i18n-client";
-import { STICKY_PANEL } from "@/lib/useStickyOffset";
+import { PANEL_CARD, PANEL_PINNED, PANEL_SCROLL, STICKY_PANEL } from "@/lib/useStickyOffset";
 
 export type Filters = {
   status: string; // "all" | Etsy state
@@ -164,7 +164,8 @@ export default function ListingFilters({
 
   return (
     <aside className={`w-full shrink-0 lg:w-64 ${STICKY_PANEL}`}>
-      <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+      <div className={PANEL_CARD}>
+        <div className={PANEL_PINNED}>
         <span className="block text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("Listing durumu", "Listing status")}</span>
         <div className="mt-2">
           <Radio checked={filters.status === "all"} onChange={() => set({ status: "all" })} count={listings.length}>
@@ -182,7 +183,9 @@ export default function ListingFilters({
             </Radio>
           ))}
         </div>
+        </div>
 
+        <div className={PANEL_SCROLL}>
         <span className={label}>{t("Satış eğilimi", "Sales trend")}</span>
         <Radio checked={filters.trend === "all"} onChange={() => set({ trend: "all" })}>
           {t("Hepsi", "All")}
@@ -296,6 +299,7 @@ export default function ListingFilters({
         >
           {t("Filtreleri temizle", "Clear filters")}
         </button>
+        </div>
       </div>
 
       {manageSections && (
