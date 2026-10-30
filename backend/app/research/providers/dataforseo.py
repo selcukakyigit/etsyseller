@@ -115,7 +115,7 @@ class DataForSeoProvider:
         code = task.get("status_code") or data.get("status_code")
         if code != OK:
             message = str(task.get("status_message") or data.get("status_message") or "")[:200]
-            raise ProviderError(f"Sağlayıcı hatası {code}: {message}", transient=code in _TRANSIENT_CODES)
+            raise ProviderError(f"Sağlayıcı hatası {code}: {message}", transient=code in _TRANSIENT_CODES, cost_usd=float(task.get("cost") or 0.0))
         return task, float(task.get("cost") or 0.0), ms
 
     # ---- Yetenekler

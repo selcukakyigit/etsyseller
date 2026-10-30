@@ -6,7 +6,9 @@ import { BlockSpinner } from "@/components/ui/Spinner";
 import { useT } from "@/lib/i18n-client";
 import { researchAdmin } from "@/lib/researchApi";
 import { useApiData } from "@/lib/useApiData";
+import AlertsStrip from "./AlertsStrip";
 import CostPanel from "./CostPanel";
+import HealthPanel from "./HealthPanel";
 
 export default function OverviewSection() {
   const { t } = useT();
@@ -21,6 +23,7 @@ export default function OverviewSection() {
 
   return (
     <div className="space-y-6">
+      <AlertsStrip alerts={data.alerts} />
       {data.credentials === "none" && (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
           {t("Sağlayıcı kimlik bilgisi girilmemiş; yeni veri çekilmiyor. ", "Provider credentials are not set; no new data is fetched. ")}
@@ -41,6 +44,8 @@ export default function OverviewSection() {
         <StatCard label={t("Sağlayıcı çağrısı (24 sa)", "Provider calls (24 h)")} value={f.num(data.calls_24h)} hint={t(`Hata oranı %${errorPct}`, `Error rate ${errorPct}%`)} />
         <StatCard label={t("Ölçüm kaydı", "Metric rows")} value={f.num(data.metrics)} />
       </div>
+
+      <HealthPanel />
 
       <CostPanel />
 

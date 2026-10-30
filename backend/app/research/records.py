@@ -42,11 +42,13 @@ class ProviderResponse:
 
 
 class ProviderError(Exception):
-    """`transient` doğruysa iş yeniden denenir (ağ, zaman aşımı, hız sınırı); değilse bir daha denenmez."""
+    """`transient` doğruysa iş yeniden denenir (ağ, zaman aşımı, hız sınırı); değilse bir daha denenmez.
+    `cost_usd`: sağlayıcı hatalı yanıtta da ücret yazdıysa o tutar (bütçe gerçek harcamayı görsün)."""
 
-    def __init__(self, message: str, transient: bool = True):
+    def __init__(self, message: str, transient: bool = True, cost_usd: float = 0.0):
         super().__init__(message)
         self.transient = transient
+        self.cost_usd = cost_usd
 
 
 class ProviderNotConfigured(ProviderError):

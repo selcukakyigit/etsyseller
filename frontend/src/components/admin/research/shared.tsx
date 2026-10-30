@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/admin/ui";
-import type { KeywordState, ResearchJob, ResearchKeyword } from "@/lib/researchApi";
+import type { KeywordState, KeywordStatus, ResearchJob, ResearchKeyword } from "@/lib/researchApi";
 import { useT } from "@/lib/i18n-client";
 
 /** Yönetim > Araştırma sayfalarının ortak küçük parçaları. */
@@ -23,6 +23,31 @@ export function StateBadge({ state, reason = "", detail = "" }: { state: Keyword
       <Badge tone={tone}>{label}</Badge>
     </span>
   );
+}
+
+/** Yönetim kararı rozetleri: sabitli, arşivli, engelli (normal kelimede hiçbir şey göstermez). */
+export function StatusBadges({ status, pinned }: { status: KeywordStatus; pinned: boolean }) {
+  const { t } = useT();
+  return (
+    <>
+      {pinned && <Badge tone="good">{t("Sabitli", "Pinned")}</Badge>}
+      {status === "archived" && <Badge tone="muted">{t("Arşivli", "Archived")}</Badge>}
+      {status === "blocked" && <Badge tone="bad">{t("Engelli", "Blocked")}</Badge>}
+    </>
+  );
+}
+
+/** Kelimenin ilk geldiği yer (backend `KeywordTerm.first_source`). */
+export function useSourceLabels(): Record<string, string> {
+  const { t } = useT();
+  return {
+    volume: t("Hacim isteği", "Volume request"),
+    suggestion: t("Öneri", "Suggestion"),
+    question: t("Soru", "Question"),
+    trend: t("Trend", "Trend"),
+    season: t("Mevsim", "Season"),
+    admin: t("Yönetici", "Admin"),
+  };
 }
 
 export function JobStatusBadge({ status }: { status: ResearchJob["status"] }) {
@@ -48,6 +73,12 @@ export function useRefusedText() {
         return null;
       case "budget":
         return t("Aylık bütçe doldu; eski veriyle devam ediliyor.", "Monthly budget reached; continuing with old data.");
+      case "shop_month":
+        return t("Bu ayki yeni kelime araştırması hakkı doldu.", "The monthly allowance for new keyword searches is used up.");
+      case "shop_searches":
+        return t("Bugünlük yeni kelime araştırması sınırına ulaşıldı.", "Today's limit for new keyword searches is reached.");
+      case "shop_daily":
+        return t("Bugünkü araştırma hakkı doldu.", "Today's research allowance is used up.");
       case "disabled":
         return t("Araştırma kapalı.", "Research is turned off.");
       case "not_configured":

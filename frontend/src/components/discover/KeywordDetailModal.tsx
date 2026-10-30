@@ -90,6 +90,7 @@ export default function KeywordDetailModal({ shopId, item, onClose, onAnalyze }:
           <Stat label={t("Aylık arama", "Monthly searches")}>{num(item.volume)}</Stat>
           <Stat label="CPC">{item.cpc === null ? "—" : `$${item.cpc.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</Stat>
           <Stat label={t("Reklam rekabeti", "Ad competition")} hint={t("0–100, Google Ads", "0–100, Google Ads")}>{num(item.competition)}</Stat>
+          <Stat label={t("SEO zorluğu", "SEO difficulty")} hint={t("0–100, Google organik; Etsy sıralaması değil", "0–100, Google organic; not Etsy ranking")}>{num(item.difficulty)}</Stat>
           <Stat label={t("Trend (12 ay)", "Trend (12 months)")} hint={t("Son 3 ay ilk 3 aya göre", "Last 3 months vs first 3")}>
             {item.trend_pct === null ? (
               "—"

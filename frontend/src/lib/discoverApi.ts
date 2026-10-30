@@ -15,6 +15,8 @@ export type DiscoverItem = {
   cpc: number | null;
   /** 0–100 Google Ads reklam rekabeti (Etsy organik rekabeti değil) */
   competition: number | null;
+  /** 0–100 Google ORGANİK arama zorluğu (Etsy sıralaması ve reklam rekabeti değil); yalnızca öneri listesinden gelen kelimelerde dolu. */
+  difficulty: number | null;
   /** Son 12 ay (eskiden yeniye); veri yoksa boş */
   monthly: number[];
   /** Serinin son ayı "YYYY-AA"; ay adları buradan geriye sayılır */

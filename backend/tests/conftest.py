@@ -21,7 +21,7 @@ assert settings.database_url.startswith("sqlite"), "testler yalnızca geçici SQ
 import app.main  # noqa: E402,F401  (tüm modelleri yükler)
 from app.core import app_settings  # noqa: E402
 from app.core.db import Base, SessionLocal, engine  # noqa: E402
-from app.research import credentials, discover, providers  # noqa: E402
+from app.research import credentials, discover, providers, stats  # noqa: E402
 from tests.fakes import FakeProvider  # noqa: E402
 
 
@@ -36,6 +36,7 @@ def db():
             conn.execute(table.delete())
     app_settings.clear_cache()
     discover._tags_cache.clear()
+    stats.reset()
     session = SessionLocal()
     try:
         yield session

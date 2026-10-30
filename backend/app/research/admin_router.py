@@ -1,5 +1,9 @@
 """Yönetim > Araştırma uç noktaları. Yetki router seviyesinde (yalnızca yönetici); ham sayısal tablolar yalnızca buradan çıkar."""
+import datetime as dt
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -8,7 +12,7 @@ from app.admin.deps import admin_only
 from app.auth.models import User
 from app.core.db import get_db
 from app.core.i18n import tr
-from app.research import admin, credentials, jobs, policy, service
+from app.research import admin, admin_pool, admin_stats, credentials, jobs, policy, service
 from app.research.models import ResearchJob
 from app.research.providers import DEFAULT_PROVIDER, get_provider
 from app.research.records import ProviderError
@@ -19,15 +23,7 @@ router = APIRouter(prefix="/api/admin/research", tags=["admin-research"], depend
 class RefreshIn(BaseModel):
     terms: list[str] = Field(min_length=1, max_length=1000)
     market: str | None = None
-
-
-class MeasureIn(BaseModel):
-    """Yönetim listesindeki süzgeçle aynı; süzgece uyan kelimelerin (en çok 1000) ölçümü tek istekle kuyruğa alınır."""
-
-    q: str = ""
-    state: str = Field("", pattern="^(|fresh|stale|missing)$")
-    source: str = Field("", max_length=30)
-    etsy: bool = False
+    pin: bool = False  # eklenen kelimeleri sabitle (kullanılmasa da otomatik yenilenir)
 
 
 class CredentialsIn(BaseModel):
@@ -44,16 +40,17 @@ def overview(db: Session = Depends(get_db)):
     return admin.overview(db)
 
 
-@router.get("/keywords", response_model=admin.KeywordsPageOut)
-def keywords(
-    q: str = "", state: str = Query("", pattern="^(|fresh|stale|missing)$"), market: str | None = None, language: str | None = None,
-    sort: str = Query("new", pattern="^(new|volume|cpc|difficulty|measured)$"), source: str = Query("", max_length=30), etsy: bool = False,
-    page: int = Query(1, ge=1), db: Session = Depends(get_db),
-):
-    return admin.keywords(
-        db, q=q, state=state, market=market or policy.get("research_default_market"), language=language or policy.get("research_default_language"), page=page,
-        sort=sort, source=source, etsy=etsy,
-    )
+@router.get("/keywords", response_model=admin_pool.KeywordsPageOut)
+def keywords(query: Annotated[admin_pool.KeywordListQuery, Query()], db: Session = Depends(get_db)):
+    return admin_pool.keywords(db, query, page=query.page, sort=query.sort)
+
+
+@router.get("/keywords/export")
+def export_keywords(filters: Annotated[admin_pool.KeywordFilters, Query()], admin_user: User = Depends(admin_only), db: Session = Depends(get_db)):
+    """Süzgece uyan kelimeler CSV olarak (en çok 10 000; ham sağlayıcı sayıları içerir)."""
+    audit.record(db, admin_user, "research.export", filters.q or "-", "")
+    name = f"keywords-{dt.date.today().isoformat()}.csv"
+    return StreamingResponse(admin_pool.export_csv(db, filters), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @router.get("/keywords/{keyword_id}", response_model=admin.KeywordDetailOut)
@@ -67,22 +64,27 @@ def keyword_detail(keyword_id: int, market: str | None = None, db: Session = Dep
 @router.post("/keywords/refresh")
 def refresh(payload: RefreshIn, admin_user: User = Depends(admin_only), db: Session = Depends(get_db)):
     result = service.request_refresh(db, payload.terms, market=payload.market)
-    audit.record(db, admin_user, "research.refresh", f"{len(payload.terms)} terms", result.refused or "")
-    return {"pending": result.pending, "refused": result.refused}
+    pinned = admin_pool.pin_terms(db, payload.terms) if payload.pin else 0
+    audit.record(db, admin_user, "research.refresh", f"{len(payload.terms)} terms", result.refused or ("pinned" if pinned else ""))
+    return {"pending": result.pending, "refused": result.refused, "pinned": pinned}
 
 
-@router.post("/keywords/measure")
-def measure(payload: MeasureIn, admin_user: User = Depends(admin_only), db: Session = Depends(get_db)):
-    market, language = policy.get("research_default_market"), policy.get("research_default_language")
-    terms = admin.measure_terms(db, q=payload.q, state=payload.state, market=market, language=language, source=payload.source, etsy=payload.etsy)
-    if not terms:
-        return {"matched": 0, "pending": 0, "requests": 0, "refused": None}
-    result = service.request_refresh(db, terms, market=market, language=language)
-    audit.record(db, admin_user, "research.measure", f"{len(terms)} terms", result.refused or "")
-    return {
-        "matched": len(terms), "pending": result.pending, "refused": result.refused,
-        "requests": -(-len(terms) // get_provider().max_volume_terms) if result.pending else 0,
-    }
+@router.post("/keywords/bulk", response_model=admin_pool.BulkOut)
+def bulk(payload: admin_pool.BulkIn, admin_user: User = Depends(admin_only), db: Session = Depends(get_db)):
+    """Seçili kelimelere (ya da süzgece uyanların hepsine, en çok 1000) toplu işlem: ölç, sabitle, engelle, arşivle, sil."""
+    out = admin_pool.apply_bulk(db, payload)
+    audit.record(db, admin_user, f"research.bulk.{payload.action}", f"{out.matched} terms", out.refused or "")
+    return out
+
+
+@router.get("/health", response_model=admin_stats.HealthOut)
+def pool_health(market: str | None = None, language: str | None = None, db: Session = Depends(get_db)):
+    return admin_stats.health(db, market, language)
+
+
+@router.get("/analytics", response_model=admin_stats.AnalyticsOut)
+def usage_analytics(db: Session = Depends(get_db)):
+    return admin_stats.analytics(db)
 
 
 @router.get("/jobs", response_model=admin.JobsPageOut)
@@ -126,6 +128,12 @@ def cost(db: Session = Depends(get_db)):
 @router.get("/settings")
 def get_settings():
     return policy.snapshot()
+
+
+@router.get("/settings/defaults")
+def get_setting_defaults():
+    """Fabrika varsayılanları ("varsayılana dön" düğmesi için); kaydedilmiş değerleri değiştirmez."""
+    return dict(policy.DEFAULTS)
 
 
 @router.put("/settings")

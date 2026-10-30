@@ -68,7 +68,7 @@ def warm_own_tags() -> None:
             except (ValueError, AttributeError):
                 continue
         if tags:
-            result = service.volumes(db, sorted(tags))
+            result = service.volumes(db, sorted(tags), track=False)
             logger.info("Araştırma: %s etiket ısındırıldı (%s kuyruğa alındı)", len(tags), result.pending)
     except Exception:  # noqa: BLE001
         db.rollback()

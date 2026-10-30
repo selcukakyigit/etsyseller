@@ -103,9 +103,17 @@ def latest_metrics(db: Session, ids: list[int], market: str, language: str) -> d
 def add_metrics(
     db: Session, terms: dict[str, KeywordTerm], records: list[MetricRecord], *, provider: str, source: str, market: str, language: str, ttl_days: float,
 ) -> int:
-    """Her kayıt için YENİ ölçüm satırı ekler (eskisini ezmez). Sağlayıcının hiç döndürmediği kelimeler için boş ölçüm de yazılır: TTL boyunca yeniden sorulmaz."""
+    """Her kayıt için YENİ ölçüm satırı ekler (eskisini ezmez). Sağlayıcının hiç döndürmediği kelimeler için boş ölçüm de yazılır: TTL boyunca yeniden sorulmaz.
+    Süre kademelidir (`policy.tiered_ttl_days`): çok aranan kelime sık, nadir aranan seyrek yenilenir. Zorluk ve niyet yalnızca öneri (Labs) kayıtlarında gelir;
+    hacim ölçümü bunları boş getirince önceki ölçümden taşınır (yoksa yeni "güncel" satır bilgiyi kaybettirirdi)."""
     now = dt.datetime.utcnow()
     by_term = {r.term: r for r in records}
+    previous: dict[int, KeywordMetric] = {}
+    for part in _chunks([kw.id for kw in terms.values()]):
+        for old in db.scalars(select(KeywordMetric).where(
+            KeywordMetric.keyword_id.in_(part), KeywordMetric.market == market, KeywordMetric.language == language, KeywordMetric.is_latest.is_(True),
+        )):
+            previous[old.keyword_id] = old
     for part in _chunks([kw.id for kw in terms.values()]):  # eski "güncel" satırlar kapanır; liste ekranı gruplamadan güncel ölçümü bulur
         db.execute(
             update(KeywordMetric).where(
@@ -114,11 +122,15 @@ def add_metrics(
         )
     rows = []
     for term, kw in terms.items():
-        rec = by_term.get(term) or MetricRecord(term=term)
+        found = by_term.get(term)
+        rec = found or MetricRecord(term=term)
+        old = previous.get(kw.id) if found else None
         rows.append(KeywordMetric(
             keyword_id=kw.id, provider=provider, source=source, market=market, language=language, search_volume=rec.search_volume, cpc=rec.cpc,
-            competition=rec.competition, difficulty=rec.difficulty, intent=rec.intent,
-            monthly_json=json.dumps(rec.monthly) if rec.monthly else None, measured_at=now, expires_at=policy.expires_at(now, ttl_days),
+            competition=rec.competition, difficulty=rec.difficulty if rec.difficulty is not None or old is None else old.difficulty,
+            intent=rec.intent or (old.intent if old else None),
+            monthly_json=json.dumps(rec.monthly) if rec.monthly else None, measured_at=now,
+            expires_at=policy.expires_at(now, policy.tiered_ttl_days(rec.search_volume, ttl_days)),
         ))
     db.add_all(rows)
     return len(rows)

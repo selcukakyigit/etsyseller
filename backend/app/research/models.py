@@ -2,7 +2,7 @@
 yazar. Mağazaya ait hiçbir veri (satış, taslak, performans) buraya girmez (bkz. CLAUDE.md "Research data")."""
 import datetime as dt
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.crypto import EncryptedText
@@ -25,6 +25,10 @@ class KeywordTerm(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
     # Son istenme zamanı: yenileme yalnızca yakın zamanda kullanılan kelimeler için yapılır (kullanılmayan kelimeye para harcanmaz).
     last_used_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    # Yönetim kararı: active = normal; archived = otomatik yenilenmez (yine okunur); blocked = hiç ölçülmez ve Keşfet/asistan listelerinde görünmez.
+    status: Mapped[str] = mapped_column(String(10), default="active", server_default="active", index=True)
+    # Sabitli kelime kullanılmasa da otomatik yenilenir (stratejik kelimeler).
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
 
 
 class KeywordMetric(Base):
@@ -154,7 +158,30 @@ class ProviderCall(Base):
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
     ok: Mapped[bool] = mapped_column(default=True)
     error: Mapped[str] = mapped_column(String(300), default="")
+    kind: Mapped[str] = mapped_column(String(12), default="", server_default="")  # iş türü (volume | suggest | season | trend): iş türü başına bütçe tavanı buradan hesaplanır
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+
+
+class UsageDaily(Base):
+    """Günlük kullanım sayaçları (önbellek isabeti/ıskası, reddedilme nedenleri). Yalnızca sayı; kim olduğu tutulmaz. `research/stats.py` toplu yazar."""
+
+    __tablename__ = "research_usage_daily"
+
+    day: Mapped[dt.date] = mapped_column(Date, primary_key=True)
+    event: Mapped[str] = mapped_column(String(40), primary_key=True)
+    n: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class SearchDaily(Base):
+    """Keşfet'te günlük arama sayısı (kelime, pazar): en çok aranan ve sonuçsuz kalan aramalar. Mağaza kimliği YOKTUR (yalnızca sayı)."""
+
+    __tablename__ = "research_searches"
+
+    day: Mapped[dt.date] = mapped_column(Date, primary_key=True)
+    term: Mapped[str] = mapped_column(String(120), primary_key=True)
+    market: Mapped[str] = mapped_column(String(2), primary_key=True)
+    n: Mapped[int] = mapped_column(Integer, default=0)
+    empty: Mapped[int] = mapped_column(Integer, default=0)  # kaçında kullanıcı sonuç göremedi (sonuçsuz / reddedildi)
 
 
 class ResearchProviderKey(Base):

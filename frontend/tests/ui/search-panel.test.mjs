@@ -8,7 +8,7 @@ const { act, createElement: h } = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { default: SearchPanel } = await import("../../src/components/discover/SearchPanel.tsx");
 
-const item = (term, volume, extra = {}) => ({ term, demand: "high", volume, cpc: 0.8, competition: 50, monthly: [], last_month: null, trend_pct: null, intent: "commercial", crowded: false, mine: false, saved: false, ...extra });
+const item = (term, volume, extra = {}) => ({ term, demand: "high", volume, cpc: 0.8, competition: 50, difficulty: 40, monthly: [], last_month: null, trend_pct: null, intent: "commercial", crowded: false, mine: false, saved: false, ...extra });
 const ALL = [item("large metal wall art", 1900), item("outdoor metal wall art", 2900), item("large outdoor metal wall art", 1000), item("metal wall decor", 800), item("outdoor metal sign", 500)];
 const QUESTIONS = [item("how to hang metal wall art", 260), item("what is metal wall art", 90)];
 const ready = (items, mode = "all") => ({ seed: "metal wall art", status: "ready", refused: null, seed_item: item("metal wall art", 18100), items, stale: false, total_volume: 0, mode, measured_at: "2026-10-23T10:00:00Z" });

@@ -1,6 +1,7 @@
 "use client";
 
 import AdminShell from "@/components/admin/AdminShell";
+import AnalyticsSection from "./AnalyticsSection";
 import KeywordExplorer from "./KeywordExplorer";
 import OperationsSection from "./OperationsSection";
 import OverviewSection from "./OverviewSection";
@@ -8,6 +9,7 @@ import OverviewSection from "./OverviewSection";
 const SECTIONS = {
   overview: { href: "/admin/research/overview", Component: OverviewSection },
   keywords: { href: "/admin/research/keywords", Component: KeywordExplorer },
+  analytics: { href: "/admin/research/analytics", Component: AnalyticsSection },
   operations: { href: "/admin/research/operations", Component: OperationsSection },
 } as const;
 

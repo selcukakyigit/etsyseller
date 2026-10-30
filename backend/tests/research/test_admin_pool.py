@@ -2,7 +2,7 @@
 import datetime as dt
 
 from app.insights import etsy_data
-from app.research import admin, pool
+from app.research import admin, admin_pool, pool
 from app.research.models import KeywordMetric, ProviderCall
 
 
@@ -11,8 +11,8 @@ def _metric(db, kw, volume, cpc, days_ago=1):
     db.add(KeywordMetric(keyword_id=kw.id, provider="p", source="google_ads", market="US", language="en", search_volume=volume, cpc=cpc, measured_at=t, expires_at=t + dt.timedelta(days=20)))
 
 
-def _list(db, **kw):
-    return admin.keywords(db, q="", state="", market="US", language="en", page=1, **kw)
+def _list(db, sort="new", **kw):
+    return admin_pool.keywords(db, admin_pool.KeywordFilters(market="US", language="en", **kw), page=1, sort=sort)
 
 
 def _shop(n):
@@ -103,11 +103,11 @@ def test_total_is_capped_and_bulk_measure_follows_the_filters(db, provider, monk
     rows = pool.get_or_create_terms(db, ["a one", "b two", "c three"], "en", "volume")
     _metric(db, rows["a one"], 10, 0.1)
     db.commit()
-    monkeypatch.setattr(admin, "TOTAL_CAP", 2)
+    monkeypatch.setattr(admin_pool, "TOTAL_CAP", 2)
     out = _list(db)
     assert (out.total, out.capped) == (2, True)
     monkeypatch.undo()
-    terms = admin.measure_terms(db, q="", state="missing", market="US", language="en")
+    terms = [k.term for k in admin_pool.matching_terms(db, admin_pool.KeywordFilters(state="missing", market="US", language="en"))]
     assert sorted(terms) == ["b two", "c three"], "ölçümü olanlar ölçtürülmez"
     result = service.request_refresh(db, terms, market="US", language="en")
     assert result.pending == 2 and result.refused is None

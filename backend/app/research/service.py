@@ -5,10 +5,10 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.research import budget, credentials, jobs, policy, pool
+from app.research import budget, credentials, jobs, policy, pool, stats
 from app.research.models import KeywordLink, KeywordMetric, KeywordTerm
 from app.research.providers import DEFAULT_PROVIDER, get_provider
 from app.research.terms import normalize, researchable
@@ -90,6 +90,8 @@ def seasonality(db: Session, term: str, *, market: str | None = None, language: 
     if not researchable(key_term):
         return SeasonView()
     row = pool.find_terms(db, [key_term], language).get(key_term)
+    if row is not None and row.status == "blocked":
+        return SeasonView()
     latest = pool.latest_season(db, row.id, market, language) if row else None
     now = dt.datetime.utcnow()
     view = season_view(json.loads(latest.monthly_json)) if latest and latest.monthly_json else SeasonView()
@@ -188,8 +190,9 @@ def _available(db: Session, market: str) -> str | None:
     return None
 
 
-def volumes(db: Session, terms: list[str], *, market: str | None = None, language: str | None = None, shop_id: int | None = None) -> Lookup:
-    """Kelimelerin Google arama hacmi/CPC/rekabeti. Eksik ya da süresi dolmuş olanlar kuyruğa alınır; havuzdaki eski değer yine döner."""
+def volumes(db: Session, terms: list[str], *, market: str | None = None, language: str | None = None, shop_id: int | None = None, track: bool = True) -> Lookup:
+    """Kelimelerin Google arama hacmi/CPC/rekabeti. Eksik ya da süresi dolmuş olanlar kuyruğa alınır; havuzdaki eski değer yine döner.
+    `track=False`: sistem işleri (ısındırma, yenileme) kullanım ölçümüne yazılmaz; isabet oranı yalnızca gerçek kullanımı yansıtsın."""
     market, language = _market(market, language)
     wanted = list(dict.fromkeys(t for t in (normalize(x) for x in terms) if researchable(t)))
     out = Lookup()
@@ -204,8 +207,13 @@ def volumes(db: Session, terms: list[str], *, market: str | None = None, languag
         m = latest.get(row.id)
         if m is not None:
             out.metrics[term] = _view(term, m, now)
-        if m is None or m.expires_at <= now:
+        if (m is None or m.expires_at <= now) and row.status != "blocked":  # engelli kelime (yönetim kararı) hiç ölçtürülmez
             stale.append(term)
+    if track:
+        missing = sum(1 for t in rows if rows[t].id not in latest)
+        stats.count(stats.VOLUME_MISS, missing)
+        stats.count(stats.VOLUME_STALE, len(stale) - missing)
+        stats.count(stats.VOLUME_FRESH, len(rows) - len(stale))
     if stale:
         out.refused = _available(db, market)
         if out.refused is None:
@@ -296,11 +304,13 @@ def expand(
         return out
     rows = pool.get_or_create_terms(db, [term], language, "suggestion")
     seed_row = rows[term]
+    if seed_row.status == "blocked":  # yönetimin engellediği kelime araştırılmaz ve öneri listelerinde görünmez
+        return out
     pool.touch(db, [seed_row.id])
     now = dt.datetime.utcnow()
     related = db.scalars(
         select(KeywordTerm).join(KeywordLink, KeywordLink.keyword_id == KeywordTerm.id)
-        .where(KeywordLink.seed_id == seed_row.id, KeywordLink.relation == relation).order_by(KeywordLink.rank)
+        .where(KeywordLink.seed_id == seed_row.id, KeywordLink.relation == relation, KeywordTerm.status != "blocked").order_by(KeywordLink.rank)
     ).all()
     latest = pool.latest_metrics(db, [r.id for r in related], market, language)
     for r in related:
@@ -341,7 +351,8 @@ def request_refresh(db: Session, terms: list[str], *, market: str | None = None,
     out.refused = _available(db, market)
     if out.refused is None:
         wanted = [t for t in dict.fromkeys(normalize(x) for x in terms) if researchable(t)]
-        pool.get_or_create_terms(db, wanted, language, "admin")
+        rows = pool.get_or_create_terms(db, wanted, language, "admin")
+        wanted = [t for t in wanted if t in rows and rows[t].status != "blocked"]
         out.refused, out.pending = _enqueue_volumes(db, wanted, market, language, None)
     db.commit()
     return out
@@ -356,10 +367,15 @@ def refresh_stale(db: Session) -> int:
     since = now - dt.timedelta(days=int(policy.get("research_active_days")))
     limit = int(policy.get("research_refresh_per_day"))
     candidates = db.scalars(
-        select(KeywordTerm).where(KeywordTerm.language == language, KeywordTerm.last_used_at >= since).order_by(KeywordTerm.last_used_at.desc()).limit(limit * 5)
+        select(KeywordTerm).where(
+            KeywordTerm.language == language, KeywordTerm.status == "active", or_(KeywordTerm.last_used_at >= since, KeywordTerm.pinned.is_(True)),
+        ).order_by(KeywordTerm.pinned.desc(), KeywordTerm.last_used_at.desc().nulls_last()).limit(limit * 5)
     ).all()
     latest = pool.latest_metrics(db, [c.id for c in candidates], market, language)
-    due = [c.term for c in candidates if c.id not in latest or latest[c.id].expires_at <= now][:limit]
+    due_rows = [c for c in candidates if c.id not in latest or latest[c.id].expires_at <= now]
+    # Günlük tavan dolarsa en değerliler kalmasın: sabitliler, sonra çok aranan kelimeler; hacmi bilinmeyenler sonda (kendi içinde en son kullanılan önce, sıra korunur)
+    due_rows.sort(key=lambda c: (not c.pinned, -((latest[c.id].search_volume or 0) if c.id in latest else 0)))
+    due = [c.term for c in due_rows[:limit]]
     if due:
         _enqueue_volumes(db, due, market, language, None)
     db.commit()

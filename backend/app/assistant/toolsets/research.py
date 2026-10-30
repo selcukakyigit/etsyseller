@@ -25,6 +25,8 @@ def _item(i: discover.Item) -> dict:
         out["cpc_usd"] = i.cpc
     if i.competition is not None:
         out["reklam_rekabeti_0_100"] = i.competition
+    if i.difficulty is not None:
+        out["seo_zorlugu_0_100"] = i.difficulty  # Google organik arama zorluğu; reklam rekabeti ve Etsy rekabeti değil
     if i.trend_pct is not None:
         out["yillik_egilim_yuzde"] = i.trend_pct
     if i.intent:

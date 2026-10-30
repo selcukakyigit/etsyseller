@@ -166,6 +166,7 @@ export default function KeywordTable({
         </td>
         <td className="px-2 py-1.5 text-right tabular-nums text-neutral-700 dark:text-neutral-300">{r.cpc === null ? "—" : `$${r.cpc.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</td>
         <td className="px-2 py-1.5 text-right tabular-nums text-neutral-700 dark:text-neutral-300">{num(r.competition)}</td>
+        <td className="px-2 py-1.5 text-right tabular-nums text-neutral-700 dark:text-neutral-300">{num(r.difficulty)}</td>
         {showEtsy && (
           <td className="px-2 py-1.5 text-right tabular-nums text-neutral-700 dark:text-neutral-300">
             {count === undefined ? <span className="text-neutral-300 dark:text-neutral-600">·</span> : count === null ? "—" : num(count)}
@@ -183,7 +184,7 @@ export default function KeywordTable({
 
   return (
     <div className="max-h-[26rem] overflow-auto rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 md:max-h-[32rem]">
-      <table className="w-full min-w-[760px] text-left text-sm">
+      <table className="w-full min-w-[820px] text-left text-sm">
         <thead className="sticky top-0 z-10 border-b border-neutral-200 bg-white text-xs text-neutral-500 shadow-[0_1px_0_0] shadow-neutral-100 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400 dark:shadow-neutral-800">
           <tr>
             <th scope="col" className="w-9 px-3 py-2">
@@ -196,6 +197,7 @@ export default function KeywordTable({
             {head("trend", t("Trend", "Trend"), t("Son 12 ay; yüzde: son 3 ay ilk 3 aya göre", "Last 12 months; percent: last 3 months vs first 3"))}
             {head("cpc", "CPC", t("Google Ads tıklama başına ortalama maliyet (USD)", "Average Google Ads cost per click (USD)"))}
             {head("competition", t("Rekabet", "Comp."), t("Google Ads reklam rekabeti 0–100 (Etsy rekabeti değil)", "Google Ads ad competition 0–100 (not Etsy competition)"))}
+            {head("difficulty", t("Zorluk", "Difficulty"), t("Google'da organik ilk 10'a girmenin güçlüğü 0–100 (Etsy sıralaması ve reklam rekabeti değil)", "How hard it is to reach Google's organic top 10, 0–100 (not Etsy ranking or ad competition)"))}
             {showEtsy && head("etsy", t("Etsy ilan", "Etsy listings"), t("Etsy'de bu aramada aktif ilan sayısı; altındaki sayı: aylık arama ÷ ilan (yüksek = az rekabetle çok arama)", "Active listings on Etsy for this search; the number below: monthly searches ÷ listings (high = lots of searches, little competition)"))}
             {onRemove && <th scope="col" className="w-10 px-2 py-2" />}
           </tr>

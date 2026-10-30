@@ -1,7 +1,7 @@
 // Keşfet tablosunun saf mantığı: süzme, sıralama, kelime grupları, fırsat oranı, CSV.
 import { applyFilters, sortItems, wordGroups, toCsv, opportunity, variantKey, collapseVariants, EMPTY_FILTERS } from "../../src/components/discover/table.ts";
 
-const item = (term, volume, extra = {}) => ({ term, demand: null, volume, cpc: null, competition: null, monthly: [], trend_pct: null, intent: null, crowded: false, mine: false, saved: false, ...extra });
+const item = (term, volume, extra = {}) => ({ term, demand: null, volume, cpc: null, competition: null, difficulty: null, monthly: [], trend_pct: null, intent: null, crowded: false, mine: false, saved: false, ...extra });
 const items = [item("metal wall art", 12100), item("outdoor metal wall art", 2900, { intent: "commercial" }), item("large metal wall art", 1900, { mine: true }), item("how to hang metal wall art", 210), item("metal art for walls", null), item("large outdoor metal wall art", 1000)];
 let failed = 0;
 const eq = (a, b, m) => { if (JSON.stringify(a) !== JSON.stringify(b)) { failed++; console.log("HATA", m, "\n  gelen:", JSON.stringify(a), "\n  beklenen:", JSON.stringify(b)); } };
@@ -19,9 +19,10 @@ eq(terms(sortItems(items, { key: "volume", dir: "asc" }, {}))[0], "how to hang m
 eq(terms(sortItems(items, { key: "volume", dir: "asc" }, {})).at(-1), "metal art for walls", "boş değer sonda (artan)");
 eq(terms(sortItems(items, { key: "volume", dir: "desc" }, {})).at(-1), "metal art for walls", "boş değer sonda (azalan)");
 eq(terms(sortItems(items, { key: "etsy", dir: "asc" }, { "metal wall art": 50, "large metal wall art": 10 })).slice(0, 2), ["large metal wall art", "metal wall art"], "Etsy ilan sayısına göre");
+eq(terms(sortItems([item("a", 1, { difficulty: 20 }), item("b", 1, { difficulty: 70 }), item("c", 1)], { key: "difficulty", dir: "desc" }, {})), ["b", "a", "c"], "zorluğa göre; ölçülmemiş sonda");
 eq(wordGroups(items, "metal wall art").slice(0, 2), [{ word: "large", count: 2 }, { word: "outdoor", count: 2 }], "kelime grupları (tohum kelimeleri hariç)");
 eq(opportunity(1000, 50), 20, "fırsat"); eq(opportunity(null, 5), null, "fırsat yok"); eq(opportunity(100, 0), null, "ilan yok");
-eq(toCsv([item('say "x", y', 5, { cpc: 0.5, competition: 20, trend_pct: -3, intent: "commercial" })], { 'say "x", y': 7 }).split("\r\n")[1], '"say ""x"", y",5,0.5,20,-3,commercial,7', "CSV kaçışı");
+eq(toCsv([item('say "x", y', 5, { cpc: 0.5, competition: 20, difficulty: 35, trend_pct: -3, intent: "commercial" })], { 'say "x", y': 7 }).split("\r\n")[1], '"say ""x"", y",5,0.5,20,35,-3,commercial,7', "CSV kaçışı");
 // varyantlar: kelime sırası, çoğul, bağlaçlar ve tekrar eden kelime aynı aramadır
 eq(variantKey("art metal wall"), variantKey("metal wall art"), "kelime sırası");
 eq(variantKey("metal art for the wall"), variantKey("metal wall art"), "bağlaçlar");

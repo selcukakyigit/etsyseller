@@ -5,9 +5,10 @@ pazar/dildeki bekleyen tüm hacim işleri tek istekte toplanır."""
 import datetime as dt
 import logging
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.research import budget, credentials, jobs, policy, pool
+from app.research import budget, credentials, jobs, policy, pool, stats
 from app.research.models import ProviderCall, ResearchJob
 from app.research.providers import get_provider
 from app.research.records import ProviderError, ProviderResponse, SeasonRecord
@@ -16,12 +17,24 @@ from app.research.terms import normalize, researchable
 log = logging.getLogger(__name__)
 MAX_CALLS_PER_RUN = 5  # bir çalışmada en fazla bu kadar sağlayıcı isteği (Google Ads Live: dakikada 12)
 BUDGET_RETRY = dt.timedelta(hours=1)
+BREAKER_FAILS = 5  # üst üste bu kadar başarısız sağlayıcı çağrısı: sağlayıcı sorunlu sayılır
+BREAKER_PAUSE = dt.timedelta(minutes=10)  # bu süre yeni istek atılmaz (işler kuyrukta bekler, deneme hakkı yenmez)
 
 
-def _log_call(db: Session, job_ids: list[int], provider: str, market: str, language: str, resp: ProviderResponse | None, error: str = "", ms: int = 0) -> None:
+def breaker_until(db: Session) -> dt.datetime | None:
+    """Devre kesici açıksa duraklamanın biteceği an, değilse None. Son `BREAKER_FAILS` çağrının hepsi hatalıysa açılır; süre dolunca bir deneme çağrısına
+    izin verilir (başarılıysa kapanır, başarısızsa yeniden açılır)."""
+    rows = db.execute(select(ProviderCall.ok, ProviderCall.created_at).order_by(ProviderCall.id.desc()).limit(BREAKER_FAILS)).all()
+    if len(rows) < BREAKER_FAILS or any(ok for ok, _ in rows):
+        return None
+    until = rows[0].created_at + BREAKER_PAUSE
+    return until if until > dt.datetime.utcnow() else None
+
+
+def _log_call(db: Session, job_ids: list[int], kind: str, provider: str, market: str, language: str, resp: ProviderResponse | None, error: str = "", ms: int = 0, cost: float = 0.0) -> None:
     db.add(ProviderCall(
         job_id=job_ids[0] if job_ids else None, provider=provider, endpoint=resp.endpoint if resp else "-", market=market, language=language,
-        items=len(resp.records) if resp else 0, cost_usd=resp.cost_usd if resp else 0, duration_ms=resp.duration_ms if resp else ms, ok=not error, error=error[:300],
+        items=len(resp.records) if resp else 0, cost_usd=resp.cost_usd if resp else cost, duration_ms=resp.duration_ms if resp else ms, ok=not error, error=error[:300], kind=kind,
     ))
 
 
@@ -40,7 +53,7 @@ def _run_volume(db: Session, batch: list[ResearchJob]) -> None:
         db, rows, resp.records, provider=first.provider, source="google_ads", market=first.market, language=first.language,
         ttl_days=policy.get("research_ttl_volume_days"),
     )
-    _log_call(db, [j.id for j in batch], first.provider, first.market, first.language, resp)
+    _log_call(db, [j.id for j in batch], "volume", first.provider, first.market, first.language, resp)
     share = resp.cost_usd / len(batch)
     for job in batch:
         jobs.finish(job, share)
@@ -56,7 +69,7 @@ def _run_trend(db: Session, job: ResearchJob) -> None:
     resp = provider.trends(creds, terms, job.market, job.language)
     rows = pool.get_or_create_terms(db, terms, job.language, "trend")
     pool.add_trends(db, rows, resp.trends, provider=job.provider, market=job.market, language=job.language, ttl_days=policy.get("research_ttl_trend_days"))
-    _log_call(db, [job.id], job.provider, job.market, job.language, ProviderResponse(resp.endpoint, [], cost_usd=resp.cost_usd, duration_ms=resp.duration_ms))
+    _log_call(db, [job.id], "trend", job.provider, job.market, job.language, ProviderResponse(resp.endpoint, [], cost_usd=resp.cost_usd, duration_ms=resp.duration_ms))
     jobs.finish(job, resp.cost_usd)
 
 
@@ -70,7 +83,7 @@ def _run_season(db: Session, job: ResearchJob) -> None:
     resp = provider.seasonality(creds, term, job.market, job.language)
     row = pool.get_or_create_terms(db, [term], job.language, "season")[term]
     pool.add_season(db, row, resp.seasons[0] if resp.seasons else SeasonRecord(term=term), provider=job.provider, market=job.market, language=job.language, ttl_days=policy.get("research_ttl_season_days"))
-    _log_call(db, [job.id], job.provider, job.market, job.language, ProviderResponse(resp.endpoint, [], cost_usd=resp.cost_usd, duration_ms=resp.duration_ms))
+    _log_call(db, [job.id], "season", job.provider, job.market, job.language, ProviderResponse(resp.endpoint, [], cost_usd=resp.cost_usd, duration_ms=resp.duration_ms))
     jobs.finish(job, resp.cost_usd)
 
 
@@ -94,7 +107,7 @@ def _run_suggest(db: Session, job: ResearchJob) -> None:
     )
     if seed in rows:
         pool.link_suggestions(db, rows[seed].id, [rows[r.term] for r in related if r.term in rows and r.term != seed], relation="question" if questions else "suggestion")
-    _log_call(db, [job.id], job.provider, job.market, job.language, resp)
+    _log_call(db, [job.id], "suggest", job.provider, job.market, job.language, resp)
     jobs.finish(job, resp.cost_usd)
 
 
@@ -115,7 +128,7 @@ def _execute(db: Session, batch: list[ResearchJob]) -> None:
     except ProviderError as exc:
         db.rollback()
         batch = [db.get(ResearchJob, j.id) for j in batch]  # geri alma sonrası taze satırlar
-        _log_call(db, [j.id for j in batch], first.provider, first.market, first.language, None, error=str(exc))
+        _log_call(db, [j.id for j in batch], first.kind, first.provider, first.market, first.language, None, error=str(exc), cost=exc.cost_usd)
         for job in batch:
             jobs.fail(job, str(exc), exc.transient)
         db.commit()
@@ -123,9 +136,15 @@ def _execute(db: Session, batch: list[ResearchJob]) -> None:
 
 
 def run_once(db: Session) -> int:
-    """Bekleyen işleri sırayla yürütür; çalıştırılan sağlayıcı isteği sayısını döner."""
+    """Bekleyen işleri sırayla yürütür; çalıştırılan sağlayıcı isteği sayısını döner. Birikmiş kullanım sayaçlarını da yazar (bkz. stats.py)."""
+    try:
+        stats.flush(db)
+    except Exception:  # noqa: BLE001 — ölçüm hatası kuyruğu durdurmaz (sayaçlar geri eklenir, sonraki turda yeniden denenir)
+        log.exception("Kullanım sayaçları yazılamadı")
     if jobs.recover_stuck(db):
         db.commit()
+    if breaker_until(db):
+        return 0
     calls = 0
     while calls < MAX_CALLS_PER_RUN:
         if budget.over_budget(db):
@@ -136,6 +155,11 @@ def run_once(db: Session) -> int:
         head = jobs.claim(db, limit=1)
         if not head:
             break
+        if budget.over_kind_budget(db, head[0].kind):  # bu türün aylık tavanı doldu: türün bekleyen işleri ertelenir, diğer türler sürer
+            for job in head + jobs.claim(db, kind=head[0].kind, limit=50):
+                jobs.defer(job, "Bu iş türünün aylık bütçesi doldu; sonraki saatte yeniden denenecek", BUDGET_RETRY)
+            db.commit()
+            continue
         batch = head
         if head[0].kind == "volume":
             limit = get_provider(head[0].provider).max_volume_terms

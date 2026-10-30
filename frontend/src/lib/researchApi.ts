@@ -1,6 +1,13 @@
-import { apiRequest } from "@/lib/api";
+import { apiBlob, apiRequest } from "@/lib/api";
+import { tNow } from "@/lib/i18n";
+import { type KeywordFilters, filterBody, filterQuery } from "@/lib/researchFilters";
+
+export { type KeywordFilters, EMPTY_KEYWORD_FILTERS, advancedFilterCount } from "@/lib/researchFilters";
 
 /** Yönetim > Araştırma (ortak keyword havuzu) API istemcisi. Uç noktalar yalnızca yöneticiye açıktır (backend/app/research/admin_router.py). */
+
+/** Yönetim uyarısı; metni arayüz üretir (components/admin/research/AlertsStrip.tsx). `value`/`limit` anlamı anahtara göre: yüzde, dakika, sayı ya da tutar. */
+export type ResearchAlert = { key: string; level: "warn" | "bad"; value: number | null; limit: number | null };
 
 export type ResearchOverview = {
   terms: number;
@@ -14,9 +21,11 @@ export type ResearchOverview = {
   budget_month: number;
   credentials: "none" | "database" | "env";
   enabled: boolean;
+  alerts: ResearchAlert[];
 };
 
 export type KeywordState = "fresh" | "stale" | "missing";
+export type KeywordStatus = "active" | "archived" | "blocked";
 
 export type ResearchKeyword = {
   id: number;
@@ -25,6 +34,9 @@ export type ResearchKeyword = {
   first_source: string;
   created_at: string;
   last_used_at: string | null;
+  /** active | archived (otomatik yenilenmez) | blocked (hiç ölçülmez, Keşfet'te görünmez) */
+  status: KeywordStatus;
+  pinned: boolean;
   market: string | null;
   search_volume: number | null;
   cpc: number | null;
@@ -32,6 +44,7 @@ export type ResearchKeyword = {
   difficulty: number | null;
   intent: string | null;
   measured_at: string | null;
+  expires_at: string | null;
   state: KeywordState;
   /** Yalnızca state === "missing": ölçümün neden olmadığı. */
   reason: "" | "queued" | "failed" | "other_market" | "none";
@@ -39,7 +52,7 @@ export type ResearchKeyword = {
   etsy_shops: number;
 };
 
-export type KeywordSort = "new" | "volume" | "cpc" | "difficulty" | "measured";
+export type KeywordSort = "new" | "volume" | "cpc" | "difficulty" | "measured" | "expires" | "used";
 
 /** Mağazaların Marketplace Insights'tan yapıştırdığı verinin özeti (yalnızca toplu sayılar; Google ölçümünden ayrı). */
 export type ResearchEtsyInsights = {
@@ -55,7 +68,46 @@ export type ResearchEtsyInsights = {
 
 export type ResearchPage<T> = { items: T[]; total: number; page: number; per_page: number; capped?: boolean };
 
-export type KeywordFilters = { q: string; state: string; source: string; etsy: boolean };
+export type BulkAction = "refresh" | "pin" | "unpin" | "block" | "unblock" | "archive" | "unarchive" | "delete";
+export type BulkResult = { matched: number; changed: number; skipped: number; pending: number; requests: number; refused: string | null };
+
+export type PoolHealth = {
+  market: string;
+  language: string;
+  terms: number;
+  fresh: number;
+  expiring_7d: number;
+  stale: number;
+  missing: number;
+  status: Record<KeywordStatus, number>;
+  pinned: number;
+  unused_90d: number;
+  metric_rows: number;
+  sources: { key: string; count: number }[];
+  markets: { key: string; count: number }[];
+  forecast: { due: number; requests: number; estimated_usd: number | null };
+};
+
+export type UsageDay = {
+  day: string;
+  search_hit: number;
+  search_stale: number;
+  search_miss: number;
+  volume_fresh: number;
+  volume_stale: number;
+  volume_miss: number;
+  refused: number;
+};
+
+export type UsageAnalytics = {
+  days: UsageDay[];
+  hit_rate: number | null;
+  refused: { key: string; count: number }[];
+  latency: { kind: string; jobs: number; p50_s: number | null; p95_s: number | null }[];
+  top_searches: { term: string; market: string; searches: number; empty: number }[];
+  empty_searches: { term: string; market: string; searches: number; empty: number }[];
+  shops: { shop_id: number; jobs: number; cost_usd: number }[];
+};
 
 export type ResearchMetric = {
   source: string;
@@ -131,9 +183,18 @@ export type ResearchSettings = {
   research_default_market: string;
   research_default_language: string;
   research_ttl_volume_days: number;
+  research_ttl_volume_high_days: number;
+  research_ttl_volume_low_days: number;
+  research_tier_high_volume: number;
+  research_tier_low_volume: number;
   research_ttl_suggest_days: number;
   research_ttl_jitter: number;
   research_monthly_budget_usd: number;
+  research_budget_volume_usd: number;
+  research_budget_suggest_usd: number;
+  research_budget_season_usd: number;
+  research_budget_trend_usd: number;
+  research_low_balance_usd: number;
   research_shop_daily_jobs: number;
   research_shop_monthly_searches: number;
   research_shop_daily_searches: number;
@@ -148,20 +209,25 @@ const post = <T>(path: string, body?: unknown) => apiRequest<T>(`${BASE}${path}`
 
 export const researchAdmin = {
   overview: () => apiRequest<ResearchOverview>(`${BASE}/overview`),
-  keywords: (p: { q: string; state: string; page: number; sort: KeywordSort; source: string; etsy: boolean }) => {
-    const params = new URLSearchParams({ q: p.q, state: p.state, page: String(p.page), sort: p.sort, source: p.source, etsy: String(p.etsy) });
-    return apiRequest<ResearchPage<ResearchKeyword>>(`${BASE}/keywords?${params}`);
-  },
-  measure: (f: KeywordFilters) =>
-    post<{ matched: number; pending: number; requests: number; refused: string | null }>("/keywords/measure", f),
+  keywords: (f: KeywordFilters, p: { sort: KeywordSort; page: number }) =>
+    apiRequest<ResearchPage<ResearchKeyword>>(`${BASE}/keywords?${filterQuery(f, { sort: p.sort, page: String(p.page) })}`),
+  /** Süzgece uyan kelimeleri (en çok 10 000) CSV olarak indirir. */
+  exportCsv: (f: KeywordFilters) =>
+    apiBlob(`${BASE}/keywords/export?${filterQuery(f)}`, tNow("Dışa aktarılamadı", "Could not export")),
+  /** Seçili kelimelere ya da süzgece uyanların hepsine (en çok 1000) toplu işlem. */
+  bulk: (action: BulkAction, target: { ids: number[] } | { filters: KeywordFilters }) =>
+    post<BulkResult>("/keywords/bulk", { action, ...("ids" in target ? { ids: target.ids } : { filters: filterBody(target.filters) }) }),
+  health: () => apiRequest<PoolHealth>(`${BASE}/health`),
+  analytics: () => apiRequest<UsageAnalytics>(`${BASE}/analytics`),
   keyword: (id: number) => apiRequest<ResearchKeywordDetail>(`${BASE}/keywords/${id}`),
-  refresh: (terms: string[]) => post<{ pending: number; refused: string | null }>("/keywords/refresh", { terms }),
+  refresh: (terms: string[], pin = false) => post<{ pending: number; refused: string | null }>("/keywords/refresh", { terms, pin }),
   jobs: (p: { status: string; page: number }) => apiRequest<ResearchPage<ResearchJob>>(`${BASE}/jobs?status=${p.status}&page=${p.page}`),
   retryJob: (id: number) => post<{ ok: boolean }>(`/jobs/${id}/retry`),
   cancelJob: (id: number) => post<{ ok: boolean }>(`/jobs/${id}/cancel`),
   calls: () => apiRequest<ResearchCall[]>(`${BASE}/calls`),
   cost: () => apiRequest<ResearchCost>(`${BASE}/cost`),
   settings: () => apiRequest<ResearchSettings>(`${BASE}/settings`),
+  settingDefaults: () => apiRequest<ResearchSettings>(`${BASE}/settings/defaults`),
   saveSettings: (values: Partial<ResearchSettings>) =>
     apiRequest<ResearchSettings>(`${BASE}/settings`, { method: "PUT", body: JSON.stringify({ values }) }),
   saveCredentials: (login: string, password: string) =>

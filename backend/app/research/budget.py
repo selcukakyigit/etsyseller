@@ -29,6 +29,23 @@ def over_budget(db: Session) -> bool:
     return month_spend(db) >= float(policy.get("research_monthly_budget_usd"))
 
 
+KINDS = ("volume", "suggest", "season", "trend")
+
+
+def kind_cap(kind: str) -> float:
+    """İş türünün aylık tavanı (USD); 0 = ayrı tavan yok (yalnızca sistem tavanı geçerli)."""
+    return float(policy.get(f"research_budget_{kind}_usd")) if kind in KINDS else 0.0
+
+
+def kind_spend(db: Session, kind: str) -> float:
+    return float(db.scalar(select(func.coalesce(func.sum(ProviderCall.cost_usd), 0)).where(ProviderCall.created_at >= month_start(), ProviderCall.kind == kind)) or 0)
+
+
+def over_kind_budget(db: Session, kind: str) -> bool:
+    cap = kind_cap(kind)
+    return cap > 0 and kind_spend(db, kind) >= cap
+
+
 def _shop_jobs_since(db: Session, shop_id: int, since: dt.datetime, kind: str | None = None) -> int:
     q = select(func.count(ResearchJob.id)).where(ResearchJob.shop_id == shop_id, ResearchJob.created_at >= since)
     if kind:
@@ -60,7 +77,7 @@ def search_allowance(db: Session, shop_id: int) -> dict:
 def check_enqueue(db: Session, shop_id: int | None, kind: str | None = None) -> None:
     if not policy.get("research_enabled"):
         raise QueueRefused("disabled")
-    if over_budget(db):
+    if over_budget(db) or (kind and over_kind_budget(db, kind)):
         raise QueueRefused("budget")
     if shop_id is not None and shop_jobs_today(db, shop_id) >= int(policy.get("research_shop_daily_jobs")):
         raise QueueRefused("shop_daily")

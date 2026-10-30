@@ -2,7 +2,7 @@ import type { DiscoverItem, Intent } from "@/lib/discoverApi";
 
 /** Keşfet tablosunun saf mantığı (süzme, sıralama, kelime grupları, CSV): bileşenlerden ayrı, kolay denenir. */
 
-export type SortKey = "term" | "volume" | "trend" | "cpc" | "competition" | "etsy";
+export type SortKey = "term" | "volume" | "trend" | "cpc" | "competition" | "difficulty" | "etsy";
 export type Sort = { key: SortKey; dir: "asc" | "desc" };
 
 export type Filters = {
@@ -55,6 +55,8 @@ const sortValue = (i: DiscoverItem, key: SortKey, etsy: Record<string, number | 
       return i.cpc;
     case "competition":
       return i.competition;
+    case "difficulty":
+      return i.difficulty;
     case "etsy":
       return etsy[i.term] ?? null;
   }
@@ -130,8 +132,8 @@ const csvCell = (v: string | number | null) => {
 };
 
 export function toCsv(items: DiscoverItem[], etsy: Record<string, number | null>): string {
-  const head = ["keyword", "google_monthly_searches", "cpc_usd", "ad_competition_0_100", "trend_pct", "intent", "etsy_listings"];
-  const rows = items.map((i) => [i.term, i.volume, i.cpc, i.competition, i.trend_pct, i.intent, etsy[i.term] ?? null]);
+  const head = ["keyword", "google_monthly_searches", "cpc_usd", "ad_competition_0_100", "seo_difficulty_0_100", "trend_pct", "intent", "etsy_listings"];
+  const rows = items.map((i) => [i.term, i.volume, i.cpc, i.competition, i.difficulty, i.trend_pct, i.intent, etsy[i.term] ?? null]);
   return [head, ...rows].map((r) => r.map((c) => csvCell(c as string | number | null)).join(",")).join("\r\n");
 }
 

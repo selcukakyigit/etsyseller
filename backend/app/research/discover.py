@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.dates import iso
 from app.core.limits import SlidingWindow
 from app.listings.models import ListingCache
-from app.research import bands, exposure, policy, service
+from app.research import bands, exposure, policy, service, stats
 from app.research.models import SavedKeyword
 from app.research.questions import is_question
 from app.research.terms import normalize, researchable
@@ -37,6 +37,7 @@ class Item:
     volume: int | None  # Google aylık arama (Etsy hacmi DEĞİL)
     cpc: float | None  # USD
     competition: int | None  # 0–100 Google Ads reklam rekabeti (Etsy organik rekabeti değil)
+    difficulty: int | None  # 0–100 Google ORGANİK arama zorluğu (ilk 10'a girmenin güçlüğü); Etsy sıralaması değil, reklam rekabetinden ayrı
     monthly: list[int]  # son 12 ay (eskiden yeniye); trend çizgisi için
     last_month: str | None  # serinin son ayı "YYYY-AA" (ay adları buradan geriye sayılır)
     trend_pct: int | None  # son 3 ay ortalaması / ilk 3 ay ortalaması - 1 (%)
@@ -116,6 +117,7 @@ def _item(term: str, metric: "service.MetricView | None", crowd: dict[str, int],
     return Item(
         term=term, demand=bands.demand_band(metric.search_volume) if metric else None, volume=metric.search_volume if metric else None,
         cpc=round(metric.cpc, 2) if metric and metric.cpc is not None else None, competition=None if competition is None else round(competition * 100),
+        difficulty=metric.difficulty if metric else None,
         monthly=monthly, last_month=metric.last_month if metric and monthly else None, trend_pct=trend_pct(monthly), intent=intent,
         crowded=crowd.get(term, 0) / max(1, full) >= CROWDED_FROM, mine=term in mine, saved=term in saved,
     )
@@ -132,7 +134,30 @@ def season_of(db: Session, shop: Shop, term: str) -> dict | None:
 
 def search(db: Session, shop: Shop, seed: str, mode: str = "all", refresh: bool = False) -> SearchResult:
     """Tohum kelimenin önerileri (havuzdan); `mode="questions"`: yalnızca soru kalıpları (ayrı bir iş, yalnızca istenince çekilir).
-    Havuzda yoksa/eskiyse araştırma işi kuyruğa alınır (`pending`); sonuç geldikçe aynı çağrı dolu döner."""
+    Havuzda yoksa/eskiyse araştırma işi kuyruğa alınır (`pending`); sonuç geldikçe aynı çağrı dolu döner. Aramayı ölçüm sayaçlarına da yazar."""
+    result = _search(db, shop, seed, mode, refresh)
+    _record(shop, result, mode)
+    return result
+
+
+def _record(shop: Shop, result: SearchResult, mode: str) -> None:
+    """Ölçüm: ekran sonuç gelene kadar yoklar, bu yüzden aynı mağaza+kelime için kısa süre içindeki tekrarlar tek arama sayılır (bkz. research/stats.py)."""
+    if result.status == "invalid":
+        return
+    market = str(policy.get("research_default_market"))
+    first = stats.once((shop.id, result.seed, mode))
+    empty = result.status in ("empty", "refused")
+    if first:
+        outcome = stats.SEARCH_MISS if result.status == "pending" else stats.SEARCH_STALE if result.stale else stats.SEARCH_HIT
+        stats.count(outcome)
+        stats.search(result.seed, market, empty)
+        if result.refused:
+            stats.count(stats.REFUSED_PREFIX + result.refused)
+    elif empty and stats.once((shop.id, result.seed, mode, "empty")):  # ilk bakışta "hazırlanıyor" idi, sonuç boş çıktı: sonuçsuz arama olarak da sayılır
+        stats.search(result.seed, market, True, new=False)
+
+
+def _search(db: Session, shop: Shop, seed: str, mode: str, refresh: bool) -> SearchResult:
     term = normalize(seed)
     if not researchable(term):
         return SearchResult(seed=term, status="invalid")

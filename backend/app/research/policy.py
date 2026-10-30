@@ -11,12 +11,22 @@ DEFAULTS: dict[str, Any] = {
     "research_default_market": "US",
     "research_default_language": "en",
     "research_ttl_volume_days": 21,  # hacim/CPC ölçümü
+    "research_ttl_volume_high_days": 14,  # çok aranan kelimenin hacim ölçümü (aşağıdaki "çok aranan" eşiğinin üstü)
+    "research_ttl_volume_low_days": 45,  # nadir aranan kelime (aşağıdaki "nadir" eşiğinin altı) ya da ölçümü boş dönen kelime
+    "research_tier_high_volume": 1000,  # aylık arama bu sayıdan çoksa kelime "çok aranan"
+    "research_tier_low_volume": 100,  # aylık arama bu sayıdan azsa kelime "nadir aranan"
     "research_ttl_suggest_days": 60,  # tohum kelime önerileri (adaylar uzun yaşar; metrikleri ayrı yenilenir)
     "research_ttl_season_days": 90,  # mevsimsellik profili (yıllık şekil çok yavaş değişir)
     "research_season_min_volume": 100,  # ölçülmüş aylık araması bunun altındaki kelime için mevsimsellik çekilmez (Google Trends çok az aramada desen vermez; boşuna ücret)
     "research_ttl_trend_days": 7,  # Google ilgi endeksi (yıllık değişim) ölçümü
     "research_ttl_jitter": 0.15,  # TTL'e ±%15 sapma: aynı gün toplanan binlerce kelime aynı gün dolmasın
     "research_monthly_budget_usd": 30.0,  # sistem geneli aylık tavan; aşılınca eski veriyle devam edilir
+    # İş türü başına aylık tavan (sistem tavanının içinde): bir tür (ör. mevsimsellik) bütçenin tamamını yemesin. 0 = bu tür için ayrı tavan yok.
+    "research_budget_volume_usd": 14.0,
+    "research_budget_suggest_usd": 10.0,
+    "research_budget_season_usd": 5.0,
+    "research_budget_trend_usd": 1.0,
+    "research_low_balance_usd": 5.0,  # sağlayıcı bakiyesi bunun altına inince yönetim panelinde uyarı çıkar
     "research_shop_daily_jobs": 40,  # bir mağazanın günde en fazla kaç yeni iş açabileceği (listing havuzu işleri dahil)
     "research_shop_monthly_searches": 150,  # bir mağazanın ayda en fazla kaç YENİ kelime araştırması (Keşfet); havuzda hazır olan aramalar sayılmaz
     "research_shop_daily_searches": 40,  # aylık hakkın tek günde tüketilmesini önleyen günlük üst sınır
@@ -34,6 +44,18 @@ def get(name: str) -> Any:
 
 def snapshot() -> dict[str, Any]:
     return {k: get(k) for k in EDITABLE}
+
+
+def tiered_ttl_days(volume: int | None, base_days: float) -> float:
+    """Hacim ölçümünün yaşam süresi (gün): çok aranan kelime sık yenilenir (talep onda değişir ve onu herkes kullanır), nadir aranan ve verisi boş kelime seyrek
+    (az değişir, yenilemenin değeri düşük). Arada kalanlar `base_days` (`research_ttl_volume_days`). Yalnızca hacim ölçümü için; öneri listesi ve mevsimsellik sabittir."""
+    if volume is None:
+        return float(get("research_ttl_volume_low_days"))
+    if volume >= int(get("research_tier_high_volume")):
+        return float(get("research_ttl_volume_high_days"))
+    if volume < int(get("research_tier_low_volume")):
+        return float(get("research_ttl_volume_low_days"))
+    return base_days
 
 
 def expires_at(now: dt.datetime, days: float) -> dt.datetime:

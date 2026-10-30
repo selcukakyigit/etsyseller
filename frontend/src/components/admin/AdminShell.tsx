@@ -41,6 +41,7 @@ const TABS = [
     children: [
       { href: "/admin/research/overview", tr: "Genel bakış", en: "Overview" },
       { href: "/admin/research/keywords", tr: "Keyword Explorer", en: "Keyword Explorer" },
+      { href: "/admin/research/analytics", tr: "Kullanım analitiği", en: "Usage analytics" },
       { href: "/admin/research/operations", tr: "Veri işlemleri", en: "Data operations" },
     ],
   },

@@ -1253,6 +1253,13 @@ async function authHeader(): Promise<Record<string, string>> {
   return token ? { Authorization: `Bearer ${token}`, ...lang } : lang;
 }
 
+/** Yetkili GET ile dosya indirir (CSV/Excel gibi); hata olursa sunucunun mesajıyla fırlatır. */
+export async function apiBlob(path: string, failMessage: string): Promise<Blob> {
+  const res = await send(`${API_URL}${path}`, { headers: await authHeader() });
+  if (!res.ok) throw new Error(failMessage);
+  return res.blob();
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await send(`${API_URL}${path}`, {
     ...init,
