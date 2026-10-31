@@ -71,3 +71,18 @@ def test_reseeding_replaces_instead_of_duplicating(db, shop):
     seed.seed_shop(db, shop)
     seed.seed_shop(db, shop)
     assert db.query(seed.OrderCache).filter_by(shop_id=shop.id).count() == seed.N_ORDERS
+
+
+def test_shipping_pages_work_without_etsy(db, shop):
+    """Kargo/iade/hazırlık/bölüm/profil uç noktaları örnek mağazada Etsy'ye gitmeden, hazır yerel veriden yanıt verir."""
+    from app.shops import router as shops_router
+
+    seed.seed_shop(db, shop)
+    profiles = shops_router.shipping_profiles(shop=shop, db=db)
+    assert {p["shipping_profile_id"]: p["active_listings_count"] for p in profiles} == {1: 4, 2: 1}
+    assert len(profiles[0]["shipping_profile_destinations"]) == 3
+    assert shops_router.return_policies(shop=shop, db=db)[0]["active_listings_count"] == 5
+    assert shops_router.readiness_state_definitions(shop=shop, db=db)[0]["active_listings_count"] == 5
+    assert len(shops_router.sections(shop=shop, db=db)) == 3
+    assert shops_router.production_partners(shop=shop, db=db) == []
+    assert shops_router.shop_profile(shop=shop, db=db)["listing_active_count"] == 5

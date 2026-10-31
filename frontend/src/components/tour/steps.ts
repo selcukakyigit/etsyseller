@@ -35,8 +35,8 @@ export const MAIN_TOUR: TourStep[] = [
   {
     id: "orders",
     target: "nav:/orders",
-    tr: ["Siparişler", "Gönderim tarihine göre sıralı siparişler, kişiselleştirme notları, takip numaraları ve gecikme uyarıları."],
-    en: ["Orders", "Orders sorted by ship-by date, personalization notes, tracking numbers and late-shipment warnings."],
+    tr: ["Siparişler", "Gönderim tarihine göre sıralı siparişler, kişiselleştirme notları, takip numaraları, kargo faturaları ve gecikme uyarıları."],
+    en: ["Orders", "Orders sorted by ship-by date, personalization notes, tracking numbers, shipping invoices and late-shipment warnings."],
   },
   {
     id: "finance",
@@ -49,6 +49,12 @@ export const MAIN_TOUR: TourStep[] = [
     target: "credits",
     tr: ["Krediler", "Yapay zekâ işlemleri kredi harcar. Abonelik yok; görsel ve video fiyatı üretmeden önce gösterilir. Bakiyen ve geçmişin burada."],
     en: ["Credits", "AI actions use credits. There is no subscription, and image and video prices are shown before you generate. Your balance and history live here."],
+  },
+  {
+    id: "shop",
+    target: "nav:shop",
+    tr: ["Mağaza menüsü", "Kargo profilleri ve ücretleri, iade politikası, hazırlık süreleri, yorumlar, açıklama şablonları ve banner oluşturucu burada. Kargo ayarını bir kez düzenlersin, o profili kullanan tüm listing'ler güncellenir."],
+    en: ["Shop menu", "Shipping profiles and prices, return policy, processing times, reviews, description templates and the banner maker live here. Edit a shipping profile once and every listing that uses it is updated."],
   },
   {
     id: "help",

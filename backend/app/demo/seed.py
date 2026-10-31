@@ -16,7 +16,7 @@ from app.finance.models import FinPayment, LedgerEntry, ListingCost, VariantCost
 from app.listings.models import ListingCache, ListingHealth, ListingStatSnapshot
 from app.orders.derive import derive
 from app.orders.models import OrderCache
-from app.shops.models import ReviewCache, Shop
+from app.shops.models import ReviewCache, ShippingReferenceCache, Shop
 
 CURRENCY = "USD"
 SHOP_NAME = "Terra & Ember Ceramics"
@@ -38,7 +38,7 @@ COUNTRIES = [("US", "United States", 60), ("GB", "United Kingdom", 12), ("CA", "
 # sağlık durumu (aşama, darboğaz, not). İlanlar bilerek farklı durumlarda: biri iyi optimize, ikisinin SEO'su zayıf, biri dönüşümde takılı.
 LISTINGS = [
     {
-        "key": "mug", "title": "Speckled Stoneware Coffee Mug, Handmade Ceramic Mug 12 oz, Microwave Safe Gift for Coffee Lovers",
+        "key": "mug", "section": 11, "title": "Speckled Stoneware Coffee Mug, Handmade Ceramic Mug 12 oz, Microwave Safe Gift for Coffee Lovers",
         "description": (
             "Our speckled stoneware mug is wheel-thrown by hand and glazed in a warm oat white with natural iron speckles. Every mug is slightly different, "
             "which is part of the charm.\n\nDetails\n- Holds 12 oz (350 ml)\n- Dishwasher and microwave safe\n- Food-safe lead-free glaze\n- Comfortable handle that fits two fingers\n\n"
@@ -50,7 +50,7 @@ LISTINGS = [
         "health": ("stable", None, "Strong listing: keep as is."),
     },
     {
-        "key": "planter", "title": "Hand Thrown Ceramic Planter with Drainage Hole and Saucer, Indoor Plant Pot in Terracotta or Sage",
+        "key": "planter", "section": 12, "title": "Hand Thrown Ceramic Planter with Drainage Hole and Saucer, Indoor Plant Pot in Terracotta or Sage",
         "description": (
             "A hand-thrown planter with a drainage hole and a matching saucer, made to give indoor plants a home that looks as good as the plant.\n\n"
             "Choose your size:\n- Small: 4 in (10 cm)\n- Medium: 6 in (15 cm)\n- Large: 8 in (20 cm)\n\nColors: terracotta glaze or soft sage. "
@@ -62,14 +62,14 @@ LISTINGS = [
         "variants": [("Small", 3600, 9.5), ("Medium", 4600, 13.5), ("Large", 6200, 19.0)],
     },
     {
-        "key": "candle", "title": "Soy Candle in Ceramic Jar",
+        "key": "candle", "section": 13, "title": "Soy Candle in Ceramic Jar",
         "description": "Hand poured soy candle in a ceramic jar. Reusable jar. Nice gift.",
         "tags": ["soy candle", "ceramic candle", "candle gift", "handmade candle", "home fragrance", "scented candle", "cozy gift", "reusable jar"],
         "materials": ["soy wax", "ceramic jar"], "price": 3400, "qty": 25, "weight": 8, "cost": 10.5, "ship_cost": 5.4, "views": 900, "favs": 28,
         "health": ("flagged", "seo", "Few views for the age of the listing: the title, tags and description are too thin for search."),
     },
     {
-        "key": "bowls", "title": "Ceramic Nesting Bowl Set of 3, Handmade Stoneware Serving Bowls for Kitchen and Table, Wedding Registry Gift",
+        "key": "bowls", "section": 12, "shipping_profile": 2, "title": "Ceramic Nesting Bowl Set of 3, Handmade Stoneware Serving Bowls for Kitchen and Table, Wedding Registry Gift",
         "description": (
             "A set of three nesting stoneware bowls in soft blue-grey glaze, designed to be used every day: cereal, salad, snacks, dips.\n\n"
             "Sizes: 4 in, 6 in and 8 in across. Dishwasher, microwave and oven safe. They nest together to save shelf space.\n\n"
@@ -80,7 +80,7 @@ LISTINGS = [
         "health": ("watching", None, "Collecting data."),
     },
     {
-        "key": "dish", "title": "Personalized Ceramic Ring Dish with Name, Custom Jewelry Tray Bridesmaid Gift, Engagement Trinket Dish",
+        "key": "dish", "section": 13, "title": "Personalized Ceramic Ring Dish with Name, Custom Jewelry Tray Bridesmaid Gift, Engagement Trinket Dish",
         "description": (
             "A small ceramic dish for rings and little treasures, personalized with the name of your choice in a hand-painted script.\n\n"
             "How to order: choose the dish, then type the name in the personalization box (up to 12 characters). "
@@ -144,12 +144,51 @@ def _listing_raw(spec: dict, index: int, now: dt.datetime) -> dict:
         "creation_timestamp": _ts(created), "original_creation_timestamp": _ts(created), "last_modified_timestamp": _ts(now - dt.timedelta(days=12 + index)),
         "ending_timestamp": _ts(now + dt.timedelta(days=90)), "quantity": spec["qty"], "url": None,
         "num_favorers": spec["favs"], "views": spec["views"], "price": _money(spec["price"]),
-        "tags": spec["tags"], "materials": spec["materials"], "style": [], "taxonomy_id": 1, "shipping_profile_id": 1, "return_policy_id": 1,
-        "processing_min": 3, "processing_max": 5, "who_made": "i_did", "when_made": "made_to_order", "is_supply": False, "item_weight": spec["weight"],
+        "tags": spec["tags"], "materials": spec["materials"], "style": [], "taxonomy_id": 1, "shipping_profile_id": spec.get("shipping_profile", 1), "return_policy_id": 1,
+        "readiness_state_id": 1, "shop_section_id": spec["section"], "processing_min": 3, "processing_max": 5, "who_made": "i_did", "when_made": "made_to_order", "is_supply": False, "item_weight": spec["weight"],
         "item_weight_unit": "oz", "is_customizable": spec["key"] == "dish", "is_personalizable": spec["key"] == "dish",
         "personalization_is_required": spec["key"] == "dish", "personalization_char_count_max": 12, "personalization_instructions": "Type the name exactly as it should appear." if spec["key"] == "dish" else None,
         "has_variations": bool(spec.get("variants")), "should_auto_renew": True, "language": "en-US", "listing_type": "physical", "production_partners": [],
         "images": _images(listing_id, spec["key"], spec["title"]), "videos": [],
+    }
+
+
+def _reference_data(shop: Shop) -> dict:
+    """Kargo/iade/hazırlık/bölüm/mağaza profili: sayfalar bunları Etsy'den çekip yerel önbelleğe yazar; örnek mağaza Etsy'ye hiç gitmediği için
+    aynı biçimde hazır yazılır (bkz. shops/reference_cache.py). Listing'lerdeki `shipping_profile_id`, `shop_section_id` ile tutarlıdır."""
+    def dest(dest_id: int, profile: int, country: str | None, region: str, cost: int, extra: int, lo: int, hi: int) -> dict:
+        return {
+            "shipping_profile_destination_id": dest_id, "shipping_profile_id": profile, "origin_country_iso": "US", "destination_country_iso": country,
+            "destination_region": region, "primary_cost": _money(cost), "secondary_cost": _money(extra), "shipping_carrier_id": 0, "mail_class": None,
+            "min_delivery_days": lo, "max_delivery_days": hi,
+        }
+
+    def profile(pid: int, title: str, us: int, intl: int) -> dict:
+        return {
+            "shipping_profile_id": pid, "title": title, "user_id": 1, "min_processing_days": 3, "max_processing_days": 5, "processing_days_display_label": "3-5 business days",
+            "origin_country_iso": "US", "origin_postal_code": "00000", "profile_type": "manual", "is_deleted": False, "domestic_handling_fee": 0.0, "international_handling_fee": 0.0,
+            "shipping_profile_destinations": [dest(pid * 10 + 1, pid, "US", "none", us, 200, 3, 6), dest(pid * 10 + 2, pid, None, "eu", intl, 400, 7, 14), dest(pid * 10 + 3, pid, None, "non_eu", intl + 300, 400, 8, 16)],
+            "shipping_profile_upgrades": [],
+        }
+
+    return {
+        "shipping_profiles": [profile(1, "Standard shipping", 595, 1495), profile(2, "Heavy and fragile items", 995, 2495)],
+        "return_policies": [{"return_policy_id": 1, "accepts_returns": True, "accepts_exchanges": False, "return_deadline": 30}],
+        "readiness_state_definitions": [{
+            "readiness_state_id": 1, "readiness_state": "made_to_order", "min_processing_time": 3, "max_processing_time": 5, "processing_time_unit": "days",
+            "min_processing_days": 3, "max_processing_days": 5, "processing_days_display_label": "3-5 business days",
+        }],
+        "sections": [
+            {"shop_section_id": 11, "title": "Mugs and cups", "rank": 1, "user_id": 1, "active_listing_count": 1},
+            {"shop_section_id": 12, "title": "Planters and decor", "rank": 2, "user_id": 1, "active_listing_count": 2},
+            {"shop_section_id": 13, "title": "Gifts", "rank": 3, "user_id": 1, "active_listing_count": 2},
+        ],
+        "production_partners": [],
+        "shop_profile": {
+            "shop_id": shop.etsy_shop_id, "shop_name": shop.shop_name, "title": "Handmade ceramics for everyday life",
+            "announcement": "Sample shop with made-up data. Nothing here is a real shop.", "url": None, "icon_url_fullxfull": None, "image_url_760x100": None,
+            "num_favorers": 482, "listing_active_count": len(LISTINGS), "is_vacation": False, "vacation_message": None, "review_count": 8, "review_average": 4.9,
+        },
     }
 
 
@@ -285,6 +324,9 @@ def seed_shop(db: Session, shop: Shop, now: dt.datetime | None = None) -> dict:
             transaction_id=rc_id, shop_id=shop.id, listing_id=raws[n % len(raws)]["listing_id"], buyer_user_id=None, rating=5 if n != 3 else 4, review=reviews[n % len(reviews)],
             language="en", image_url=None, created_at=now - dt.timedelta(days=3 + n * 6), synced_at=now,
         ))
+
+    for kind, value in _reference_data(shop).items():
+        db.add(ShippingReferenceCache(shop_id=shop.id, kind=kind, data_json=json.dumps(value, ensure_ascii=False), updated_at=now))
 
     shop.listings_synced_at = now
     shop.currency = CURRENCY

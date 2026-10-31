@@ -72,6 +72,7 @@ export default function SidebarNav({ user, hasShop, shops, activeShop, onSwitchS
           <button
             type="button"
             aria-expanded={shopOpen}
+            data-tour="nav:shop"
             onClick={() => setShopMenu(shopOpen ? "closed" : "open")}
             className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition hover:bg-neutral-100 dark:hover:bg-neutral-800 ${
               inShopMenu ? "text-neutral-900 dark:text-neutral-100" : "text-neutral-600 dark:text-neutral-300"

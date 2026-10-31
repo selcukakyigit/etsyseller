@@ -108,13 +108,13 @@ export default function ProductTour({
         <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">{title}</h2>
         <p className="mt-1.5 text-sm leading-relaxed text-neutral-600 dark:text-neutral-300">{body}</p>
 
-        <div className="mt-4 flex items-center justify-between gap-2">
+        <div className="mt-4 space-y-3">
           <div className="flex gap-1" aria-hidden>
             {steps.map((s, i) => (
               <span key={s.id} className={`h-1.5 rounded-full transition-all ${i === index ? "w-4 bg-[#D97757]" : "w-1.5 bg-neutral-300 dark:bg-neutral-700"}`} />
             ))}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2 [&>*]:whitespace-nowrap">
             {index > 0 && (
               <button
                 type="button"
