@@ -54,6 +54,7 @@ export default async function TermsPage() {
       <UL>
         <li>Hizmeti hukuka, Etsy politikalarına ve üçüncü kişilerin haklarına aykırı biçimde kullanmamak.</li>
         <li>Telif, marka veya kişilik hakkı ihlali içeren içerik yüklememek veya üretmemek; üzerinde hakkınız olmayan görselleri kullanmamak.</li>
+        <li>Yüz değiştirme (face swap), deepfake, ses taklidi üretmemek ve bir kişinin görüntüsünü ya da sesini açık rızası olmadan kullanmamak.</li>
         <li>Hizmeti tersine mühendislikle çözmeye, otomatik kazıma yapmaya veya aşırı yük bindirmeye çalışmamak.</li>
         <li>Hesabı başkalarıyla izinsiz paylaşmamak veya yeniden satmamak.</li>
       </UL>

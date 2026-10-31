@@ -46,6 +46,9 @@ export default async function AiDataPage() {
       <H2>İçerik ve kötüye kullanım</H2>
       <P>
         Marka, telif veya kişilik hakkı ihlali, yanıltıcı veya yasa dışı içerik üretmek Kullanım Koşulları&apos;nda yasaktır.
+        Yapay zekâ özelliklerimiz satıcının kendi ürün görsellerinden ve talimatlarından, kendi mağazasında kullanmak üzere ürün
+        fotoğrafı ve kısa ürün videosu üretir; yüz değiştirme, deepfake, ses taklidi ve bir kişinin görüntüsünün rızasız
+        kullanımı yasaktır.
         Görsel ve video üretimi sağlayıcıların kendi güvenlik filtrelerinden geçer; filtre bir isteği reddederse sonuç üretilmez
         ve bunun için kredi düşülmez. Kötüye kullanım tespit edersek hesabı askıya alabilir veya kapatabiliriz. Bir içerik
         hakkında bildirimde bulunmak için support@ulagg.com adresine yazabilirsiniz.

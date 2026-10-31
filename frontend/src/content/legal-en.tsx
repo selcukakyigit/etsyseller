@@ -38,6 +38,7 @@ export function TermsEn() {
       <UL>
         <li>Do not use the service in violation of law, Etsy&apos;s policies or third-party rights.</li>
         <li>Do not upload or generate content that infringes copyright, trademark or personality rights, or use images you have no right to use.</li>
+        <li>Do not create face swaps, deepfakes or voice impersonation, and do not use a person&apos;s image or voice without their explicit consent.</li>
         <li>Do not reverse engineer the service, scrape it, or place excessive load on it.</li>
         <li>Do not share or resell your account.</li>
       </UL>
@@ -274,7 +275,9 @@ export function AiDataEn() {
       <H2>Content and abuse</H2>
       <P>
         Generating content that infringes brands, copyright or personality rights, or that is misleading or illegal, is
-        prohibited by the Terms of Service. Image and video generation passes through the providers&apos; own safety filters; if a
+        prohibited by the Terms of Service. Our AI features create product photos and short product videos from the seller&apos;s
+        own product images and instructions, for use in their own shop; face swaps, deepfakes, voice impersonation and use of a
+        person&apos;s likeness without consent are prohibited. Image and video generation passes through the providers&apos; own safety filters; if a
         filter rejects a request, no result is produced and no credits are charged. If we detect abuse we may suspend or close
         the account. To report content, write to support@ulagg.com.
       </P>
