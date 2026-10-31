@@ -277,7 +277,7 @@ export function AiDataEn() {
         Generating content that infringes brands, copyright or personality rights, or that is misleading or illegal, is
         prohibited by the Terms of Service. Our AI features create product photos and short product videos from the seller&apos;s
         own product images and instructions, for use in their own shop; face swaps, deepfakes, voice impersonation and use of a
-        person&apos;s likeness without consent are prohibited. Image and video generation passes through the providers&apos; own safety filters; if a
+        person&apos;s likeness without consent are prohibited. The assistant helps with anything related to Etsy and running a shop and declines unrelated requests (such as code, homework or politics); text that comes from outside, such as buyer messages, invoices and uploaded documents, is treated as data, never as instructions. Image and video requests also carry a safety rule and pass through the providers&apos; own safety filters; if a
         filter rejects a request, no result is produced and no credits are charged. If we detect abuse we may suspend or close
         the account. To report content, write to support@ulagg.com.
       </P>

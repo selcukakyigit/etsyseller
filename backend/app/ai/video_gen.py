@@ -18,6 +18,8 @@ from app.ai.client import REPLICATE_API, replicate_headers
 from app.core.i18n import tr
 
 REQUEST_TIMEOUT = 30
+# Görsel üretimindeki güvenlik kuralının video karşılığı (bkz. image_gen.SAFETY_DIRECTIVE); video modeli İngilizce istemle çalışır.
+VIDEO_SAFETY = " Product video only: no real or recognizable people, no face swap, no other brands' logos, no sexual, violent or hateful content."
 DOWNLOAD_TIMEOUT = 120
 
 
@@ -59,7 +61,7 @@ def start(
 ) -> str:
     """Tahmini başlatır, kimliğini döner. `model_id` "sahip/ad" ise modelin son sürümü, "sahip/ad:sürüm" ise o sürüm
     kullanılır."""
-    payload_input: dict = {"prompt": prompt, "duration": duration, **(variant.params if variant else {})}
+    payload_input: dict = {"prompt": prompt + VIDEO_SAFETY, "duration": duration, **(variant.params if variant else {})}
     if image is not None:
         data, mime = image
         payload_input["image"] = f"data:{mime or 'image/jpeg'};base64,{base64.b64encode(data).decode()}"

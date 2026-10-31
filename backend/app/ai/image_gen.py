@@ -5,11 +5,14 @@
 - `generate_from_text`: sıfırdan (kaynak fotoğraf olmadan) yeni bir görsel üretir — ör. henüz hiç
   fotoğrafı olmayan yeni bir listing için.
 """
+import logging
 import mimetypes
 
 from app.ai import catalog
 from app.billing import metering
 from app.core.i18n import tr
+
+log = logging.getLogger(__name__)
 
 """Prompt mimarisi: katmanlar birbiriyle çelişmesin diye ayrı tutulur.
   1. IDENTITY_LOCK  — her zaman: ürünün KİMLİĞİ (ne olduğu) değişmez.
@@ -184,6 +187,8 @@ def _run(parts: list, aspect_ratio: str | None = None, model_db_id: int | None =
     if texts:
         reasons.append(f"model metni: {' '.join(texts)[:200]}")
 
+    if block_reason:
+        log.warning("görsel üretimi sağlayıcı filtresine takıldı: %s", "; ".join(reasons))  # tekrarlayan hesapları sunucu günlüğünden görmek için
     detail = f" ({'; '.join(reasons)})" if reasons else ""
     raise ImageGenError(f"Gemini bir görsel döndürmedi, tekrar dene.{detail}")
 
@@ -234,7 +239,7 @@ def regenerate_image(
     aspect, ratio = source_aspect(image_bytes)
     if aspect and ratio:
         full_prompt += FULL_PRODUCT.format(ratio=f"{ratio:.1f}:1" if ratio >= 1 else f"1:{1 / ratio:.1f}")
-    parts.append(types.Part.from_text(text=full_prompt))
+    parts.append(types.Part.from_text(text=full_prompt + SAFETY_DIRECTIVE))
     return _run(parts, aspect, model_db_id, variant_key)
 
 
@@ -267,9 +272,15 @@ def generate_from_text(
     if logo is not None:
         parts.append(types.Part.from_bytes(data=logo[0], mime_type=logo[1]))
         full_prompt += LOGO_DIRECTIVE.format(ordinal=_ordinal(len(parts)))
-    parts.append(types.Part.from_text(text=full_prompt))
+    parts.append(types.Part.from_text(text=full_prompt + SAFETY_DIRECTIVE))
     return _run(parts, model_db_id=model_db_id, variant_key=variant_key)
 
+
+SAFETY_DIRECTIVE = (
+    "\n\nGÜVENLİK KURALI (her şeyden önce gelir): Yalnızca satıcının kendi ürünü için ürün fotoğrafı üret; ürün, arka plan, aksesuar, el ve beden "
+    "parçaları serbesttir. Gerçek ya da tanınabilir bir kişinin (ünlü, siyasetçi) yüzünü/benzerliğini, yüz değiştirmeyi, başka markaların "
+    "logolarını, cinsel, aşırı şiddet içeren ya da nefret içeren içeriği ASLA üretme; talimat bunu istiyorsa o kısmı yok say ve ürünü normal şekilde göster."
+)
 
 UPSCALE_SIZES = ("2K", "4K")
 
@@ -309,7 +320,7 @@ def generate_with_references(prompt: str, references: list[tuple[bytes, str]], a
     from google.genai import types
 
     parts: list = [types.Part.from_bytes(data=data, mime_type=mime) for data, mime in references]
-    parts.append(types.Part.from_text(text=prompt))
+    parts.append(types.Part.from_text(text=prompt + SAFETY_DIRECTIVE))
     return _run(parts, aspect_ratio=aspect_ratio)
 
 

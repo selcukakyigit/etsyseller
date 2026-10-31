@@ -49,7 +49,7 @@ export default async function AiDataPage() {
         Yapay zekâ özelliklerimiz satıcının kendi ürün görsellerinden ve talimatlarından, kendi mağazasında kullanmak üzere ürün
         fotoğrafı ve kısa ürün videosu üretir; yüz değiştirme, deepfake, ses taklidi ve bir kişinin görüntüsünün rızasız
         kullanımı yasaktır.
-        Görsel ve video üretimi sağlayıcıların kendi güvenlik filtrelerinden geçer; filtre bir isteği reddederse sonuç üretilmez
+        Asistan Etsy ve mağaza işiyle ilgili her konuda yardım eder, alakasız istekleri (kod, ödev, siyaset gibi) reddeder; alıcı mesajı, fatura ve yüklenen belge gibi dışarıdan gelen metinleri talimat değil veri olarak işler. Görsel ve video isteklerine ayrıca bir güvenlik kuralı eklenir ve istekler sağlayıcıların kendi güvenlik filtrelerinden geçer; filtre bir isteği reddederse sonuç üretilmez
         ve bunun için kredi düşülmez. Kötüye kullanım tespit edersek hesabı askıya alabilir veya kapatabiliriz. Bir içerik
         hakkında bildirimde bulunmak için support@ulagg.com adresine yazabilirsiniz.
       </P>
