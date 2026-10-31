@@ -1252,7 +1252,7 @@ export type BillingSummary = {
   can_buy: boolean;
 };
 
-export type BillingHistoryRow = { id: number; kind: string; task: string | null; model: string | null; credits: number; platform_credits: number; delta: number; created_at: string | null };
+export type BillingHistoryRow = { id: number; kind: string; task: string | null; model: string | null; credits: number; platform_credits: number; delta: number; note?: string; created_at: string | null };
 
 /** Kredi harcama dökümü: kategori (metin / görsel / video / sistem), model ve gün bazında. Maliyet, gelir ve marj yalnızca yönetici yanıtında vardır. */
 export type CreditCategory = "text" | "image" | "video" | "system";
@@ -1976,6 +1976,7 @@ export const api = {
   billing: {
     summary: () => request<BillingSummary>("/api/billing/summary"),
     history: () => request<BillingHistoryRow[]>("/api/billing/history"),
+    purchases: () => request<BillingHistoryRow[]>("/api/billing/history?purchases=true"),
     usage: (days = 30) => request<CreditUsage>(`/api/billing/usage?days=${days}`),
     checkout: (productId: number, termsVersion: string) =>
       request<{ url: string }>("/api/billing/checkout", { method: "POST", body: JSON.stringify({ product_id: productId, accept_terms: true, terms_version: termsVersion }) }),

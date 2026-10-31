@@ -58,15 +58,22 @@ def usage_breakdown(days: int = Query(30, ge=1, le=usage.MAX_DAYS), user: User =
 
 
 @router.get("/history")
-def history(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def history(purchases: bool = False, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Kredi hareketleri. `purchases=true`: yalnızca satın almalar ve iadeler (kullanım kayıtları arasında kaybolmasın)."""
     ws = primary_workspace(db, user)
+    query = select(CreditLedger).where(CreditLedger.workspace_id == ws.id)
+    if purchases:
+        query = query.where(CreditLedger.kind.in_(("purchase", "refund")))
     try:
-        rows = db.scalars(select(CreditLedger).where(CreditLedger.workspace_id == ws.id).order_by(CreditLedger.id.desc()).limit(HISTORY_ROWS)).all()
+        rows = db.scalars(query.order_by(CreditLedger.id.desc()).limit(HISTORY_ROWS)).all()
     except SQLAlchemyError:
         db.rollback()
         return []
     return [
-        {"id": r.id, "kind": r.kind, "task": r.task, "credits": r.credits, "platform_credits": r.platform_credits, "delta": r.delta, "model": r.model, "created_at": iso(r.created_at)}
+        {
+            "id": r.id, "kind": r.kind, "task": r.task, "credits": r.credits, "platform_credits": r.platform_credits, "delta": r.delta, "model": r.model,
+            "note": r.note if purchases else "", "created_at": iso(r.created_at),
+        }
         for r in rows
     ]
 

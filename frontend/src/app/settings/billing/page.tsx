@@ -44,10 +44,12 @@ function Billing() {
   const { t, locale } = useT();
   const summary = useApiData("billing:summary", api.billing.summary);
   const history = useApiData("billing:history", api.billing.history);
+  const purchases = useApiData("billing:purchases", api.billing.purchases);
   const [buying, setBuying] = useState<number | null>(null);
   const [accepted, setAccepted] = useState(false);
   const { reload: reloadSummary } = summary;
   const { reload: reloadHistory } = history;
+  const { reload: reloadPurchases } = purchases;
 
   // Ödemeden dönüşte (?checkout=done) kredi webhook'la birkaç saniye içinde yüklenir; bir kez bildirip yenileriz.
   useEffect(() => {
@@ -57,6 +59,7 @@ function Billing() {
     const id = setTimeout(() => {
       reloadSummary();
       reloadHistory();
+      reloadPurchases();
     }, 5000);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -117,6 +120,7 @@ function Billing() {
         />
       )}
 
+      <Purchases rows={purchases.data} />
       <Usage />
       <History rows={history.data} />
     </div>
@@ -172,10 +176,80 @@ function ProductList({
   onAccept: (v: boolean) => void;
 }) {
   const { t, locale } = useT();
+  const money = (cents: number, currency: string) => {
+    try {
+      return (cents / 100).toLocaleString(locale, { style: "currency", currency });
+    } catch {
+      return `${(cents / 100).toFixed(2)} ${currency}`;
+    }
+  };
+  // Bonus: paketin kredi/fiyat oranı, en düşük orana göre ne kadar fazla. En çok verilen paket "en popüler" sayılır (ortadaki).
+  const minRate = Math.min(...products.map((p) => p.credits / p.price_cents));
+  const bonus = (p: BillingProductOption) => Math.round((p.credits / p.price_cents / minRate - 1) * 100);
+  const featured = products.length >= 3 ? Math.floor(products.length / 2) : -1;
   return (
     <section className={card}>
-      <h2 className="mb-3 text-sm font-semibold text-neutral-900 dark:text-neutral-100">{title}</h2>
-      <label className="mb-4 flex items-start gap-2 text-xs text-neutral-600 dark:text-neutral-300">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{title}</h2>
+        <p className="text-xs text-neutral-500 dark:text-neutral-400">
+          {t("Abonelik yok · Tek seferlik ödeme · Krediler süresiz", "No subscription · One-time payment · Credits never expire")}
+        </p>
+      </div>
+      <ul className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {products.map((p, i) => {
+          const isFeatured = i === featured;
+          const pct = bonus(p);
+          return (
+            <li
+              key={p.id}
+              className={`relative flex flex-col rounded-xl border p-5 ${
+                isFeatured
+                  ? "border-[#D97757] bg-[#FBF1EA] shadow-[0_12px_32px_-20px_rgba(217,119,87,0.8)] dark:bg-[#2A1D15]"
+                  : "border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900"
+              }`}
+            >
+              {isFeatured && (
+                <span className="absolute -top-2.5 left-5 rounded-full bg-[#D97757] px-2.5 py-0.5 text-[11px] font-semibold text-white">{t("En popüler", "Most popular")}</span>
+              )}
+              {pct >= 3 && (
+                <span className="absolute right-4 top-4 rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-800 dark:bg-green-950 dark:text-green-300">
+                  {t(`%${pct} bonus`, `${pct}% bonus`)}
+                </span>
+              )}
+              <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">{p.name}</p>
+              <p className="mt-2 text-4xl font-semibold tracking-tight tabular-nums text-neutral-900 dark:text-neutral-50">{price(p)}</p>
+              <p className="mt-2 text-lg font-semibold tabular-nums text-[#A9502F] dark:text-[#F48771]">
+                {t(`${p.credits.toLocaleString(locale)} kredi`, `${p.credits.toLocaleString(locale)} credits`)}
+              </p>
+              <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                {t(`1.000 kredi ≈ ${money((p.price_cents / p.credits) * 1000, p.currency)}`, `1,000 credits ≈ ${money((p.price_cents / p.credits) * 1000, p.currency)}`)}
+              </p>
+              <ul className="mt-4 flex-1 space-y-1.5 text-xs text-neutral-600 dark:text-neutral-300">
+                <li className="flex items-center gap-2"><span className="text-[#D97757]">✓</span>{t("Süresiz, yenilenmez", "Never expires, never renews")}</li>
+                <li className="flex items-center gap-2"><span className="text-[#D97757]">✓</span>{t("Her satın alma için fatura", "Invoice for every purchase")}</li>
+              </ul>
+              <button
+                type="button"
+                disabled={disabled || buying !== null}
+                onClick={() => onBuy(p)}
+                className={`mt-5 inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  isFeatured
+                    ? "bg-[#D97757] text-white hover:bg-[#C6613F]"
+                    : "border border-neutral-300 text-neutral-900 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800"
+                }`}
+              >
+                {buying === p.id && <Spinner size={14} />}
+                {t("Satın al", "Buy")}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <label
+        className={`mt-5 flex items-start gap-3 rounded-lg border p-3 text-xs text-neutral-600 dark:text-neutral-300 ${
+          accepted ? "border-[#D97757]/40 bg-[#FBF1EA] dark:bg-[#2A1D15]" : "border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950"
+        }`}
+      >
         <input type="checkbox" checked={accepted} onChange={(e) => onAccept(e.target.checked)} className="mt-0.5" />
         <span>
           {t("", "I accept the ")}
@@ -190,26 +264,42 @@ function ProductList({
           )}
         </span>
       </label>
-      <ul className="grid gap-3 sm:grid-cols-2">
-        {products.map((p) => (
-          <li key={p.id} className="flex flex-col justify-between gap-3 rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
-            <div>
-              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{p.name}</p>
-              <p className="mt-1 text-lg font-semibold text-neutral-900 dark:text-neutral-100">{price(p)}</p>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">{t(`${p.credits.toLocaleString(locale)} kredi`, `${p.credits.toLocaleString(locale)} credits`)}</p>
-            </div>
-            <button
-              type="button"
-              disabled={disabled || buying !== null}
-              onClick={() => onBuy(p)}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#D97757] px-3 py-2 text-sm font-medium text-white transition hover:bg-[#C6613F] disabled:opacity-50"
-            >
-              {buying === p.id && <Spinner size={14} />}
-              {t("Satın al", "Buy")}
-            </button>
-          </li>
-        ))}
-      </ul>
+      {!accepted && <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">{t("Satın al düğmeleri, onay kutusunu işaretleyince açılır.", "The Buy buttons unlock when you tick the box above.")}</p>}
+    </section>
+  );
+}
+
+/** Satın almalar ve iadeler (kullanım kayıtlarından ayrı). Tutar ve fatura ödeme ortağının e-postasında; burada paket, kredi ve tarih görünür. */
+function Purchases({ rows }: { rows: BillingHistoryRow[] | null }) {
+  const { t, locale } = useT();
+  return (
+    <section className={card}>
+      <h2 className="mb-3 text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("Satın alma geçmişi", "Purchase history")}</h2>
+      <div className="max-h-80 overflow-auto">
+        {rows === null ? (
+          <BlockSpinner />
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-neutral-400 dark:text-neutral-500">{t("Henüz satın alma yok. Hediye kredinle başlayabilirsin.", "No purchases yet. You can start with your gift credits.")}</p>
+        ) : (
+          <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
+            {rows.map((r) => (
+              <li key={r.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                <div className="min-w-0">
+                  <p className="truncate text-neutral-800 dark:text-neutral-200">
+                    {r.kind === "refund" ? t("İade", "Refund") : t("Kredi paketi", "Credit pack")}
+                    {r.note ? ` · ${r.note.replace(/^Refund:\s*/, "")}` : ""}
+                  </p>
+                  <p className="text-xs text-neutral-400 dark:text-neutral-500">{r.created_at ? new Date(r.created_at).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" }) : "—"}</p>
+                </div>
+                <span className={`flex-shrink-0 tabular-nums ${r.delta > 0 ? "text-green-700 dark:text-green-400" : "text-neutral-900 dark:text-neutral-100"}`}>
+                  {r.delta > 0 ? "+" : ""}{r.delta.toLocaleString(locale)} {t("kredi", "credits")}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <p className="mt-3 text-xs text-neutral-500 dark:text-neutral-400">{t("Her ödemenin faturası e-postana gönderilir.", "An invoice for each payment is emailed to you.")}</p>
     </section>
   );
 }
