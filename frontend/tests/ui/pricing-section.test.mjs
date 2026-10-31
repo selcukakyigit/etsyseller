@@ -21,7 +21,7 @@ const render = (lang, standalone, data = pricing) => renderToStaticMarkup(h(Pric
 
 // 1) İngilizce, tam sayfa
 let html = render("en", true);
-for (const needle of ["Pay only for what you use.", "Start free with 100 credits", "$9.99", "$24.99", "$27.48", "9% off", "17% off", "Most popular", "per 1,000 credits", "Need a different amount?", "2,750+ credits: 9% off", "What costs how many credits", "How credits work", "Is there a subscription?", "/refunds", "/distance-sales", "/login?mode=register"]) {
+for (const needle of ["Pay only for what you use.", "Start free with 100 credits", "$9.99", "$24.99", "$27.48", "9% off", "17% off", "Most popular", "$8.33 per 1,000 credits", "Need a different amount?", "2,750+ credits: 9% off", "What costs how many credits", "How credits work", "Is there a subscription?", "/refunds", "/distance-sales", "/login?mode=register"]) {
   if (!html.includes(needle)) throw new Error(`EN tam sayfada yok: ${needle}`);
 }
 eq(html.includes("{min}") || html.includes("{pct}") || html.includes("{from}"), false, "yer tutucu açıkta kalmamalı");
@@ -29,7 +29,7 @@ console.log("1 EN tam sayfa OK");
 
 // 2) Türkçe, tam sayfa
 html = render("tr", true);
-for (const needle of ["Yalnızca kullandığın kadar öde.", "%9 indirim", "En popüler", "1.000 kredi başına", "Farklı bir miktar mı lazım?", "2.750+ kredi: %9 indirim", "Abonelik var mı?", "Mesafeli Satış Sözleşmesi"]) {
+for (const needle of ["Yalnızca kullandığın kadar öde.", "%9 indirim", "En popüler", "1.000 kredi başına $8,33", "Farklı bir miktar mı lazım?", "2.750+ kredi: %9 indirim", "Abonelik var mı?", "Mesafeli Satış Sözleşmesi"]) {
   if (!html.includes(needle)) throw new Error(`TR tam sayfada yok: ${needle}`);
 }
 console.log("2 TR tam sayfa OK");

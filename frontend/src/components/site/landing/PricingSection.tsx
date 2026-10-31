@@ -80,7 +80,7 @@ export function Pricing({ lang, c, pricing, standalone }: { lang: Lang; c: Landi
                     {number(pack.credits)} {p.credits}
                   </p>
                   <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-                    {money(Math.round((pack.price_cents / pack.credits) * 1000), pack.currency)} {p.perThousand}
+                    {p.perThousand.replace("{price}", money(Math.round((pack.price_cents / pack.credits) * 1000), pack.currency))}
                   </p>
                   <ul className={`mt-6 flex-1 space-y-2.5 border-t border-black/[0.07] pt-6 text-sm dark:border-white/10 ${muted}`}>
                     {p.perks.map((perk) => (

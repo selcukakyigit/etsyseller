@@ -93,7 +93,7 @@ export default function CustomCalculator({
               )}
             </p>
             <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-              {money((quote.price_cents / quote.credits) * 1000, quote.currency)} {labels.perThousand}
+              {labels.perThousand.replace("{price}", money((quote.price_cents / quote.credits) * 1000, quote.currency))}
             </p>
           </div>
         ) : (
