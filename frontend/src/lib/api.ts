@@ -1250,7 +1250,7 @@ export type BillingProductOption = {
 };
 
 /** Özel kredi miktarı sınırları ve basamaklar (hangi miktardan itibaren yüzde kaç indirim). Paket yoksa null. */
-export type BillingCustomInfo = { min: number; max: number; tiers: { from_credits: number; discount_pct: number }[] };
+export type BillingCustomInfo = { min: number; max: number; tiers: { from_credits: number; discount_pct: number }[]; /** Ödeme sağlayıcıda özel miktar ürünü tanımlı mı; değilse kart görünür ama "Satın al" pasiftir. */ can_buy: boolean };
 export type BillingQuote = { credits: number; price_cents: number; list_price_cents: number; discount_pct: number; currency: string };
 
 export type BillingSummary = {

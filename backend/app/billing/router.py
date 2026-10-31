@@ -48,7 +48,7 @@ def summary(user: User = Depends(get_current_user), db: Session = Depends(get_db
     sorted_products = custom.active_products(db)
     return {
         "enabled": credit_settings.enabled(), "balance": balance, "products": [_product_out(p, sorted_products) for p in products], "can_buy": lemon.configured(),
-        "custom": custom.info(db) if sorted_products and settings.lemonsqueezy_custom_variant_id else None,
+        "custom": {**custom.info(db), "can_buy": bool(settings.lemonsqueezy_custom_variant_id)} if sorted_products else None,
     }
 
 

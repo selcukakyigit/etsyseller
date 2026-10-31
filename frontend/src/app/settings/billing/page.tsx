@@ -256,7 +256,7 @@ function ProductList({
           );
         })}
       </ul>
-      {custom && <CustomCredits info={custom} disabled={disabled} buying={buying === CUSTOM_ID} onBuy={onBuyCustom} />}
+      {custom && <CustomCredits info={custom} disabled={disabled || !custom.can_buy} buying={buying === CUSTOM_ID} onBuy={onBuyCustom} />}
       <label
         className={`mt-5 flex items-start gap-3 rounded-lg border p-3 text-xs text-neutral-600 dark:text-neutral-300 ${
           accepted ? "border-[#D97757]/40 bg-[#FBF1EA] dark:bg-[#2A1D15]" : "border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950"

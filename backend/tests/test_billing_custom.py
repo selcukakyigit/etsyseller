@@ -106,3 +106,21 @@ def test_custom_variant_without_amount_is_refused(db, packs, ws):
     with pytest.raises(service.EventError):
         service.handle_event(db, _order("o6", "9", 5000, ws_id=ws.id))
     assert credits.balance(db, ws.id) == ws.start
+
+
+def test_summary_shows_the_custom_card_even_before_the_provider_is_ready(db, packs, monkeypatch):
+    """Kart (fiyat ve indirim basamaklarıyla) paket varsa her zaman görünür; satın alma yalnızca özel miktar ürünü tanımlıysa açık."""
+    from app.auth.models import User, Workspace, WorkspaceMember
+    from app.billing import router
+
+    user = User(supabase_id="sb-s", email="s@x.co", name="S")
+    workspace = Workspace(name="W")
+    db.add_all([user, workspace])
+    db.flush()
+    db.add(WorkspaceMember(workspace_id=workspace.id, user_id=user.id, role="owner"))
+    db.commit()
+    monkeypatch.setattr(settings, "lemonsqueezy_custom_variant_id", "")
+    out = router.summary(user=user, db=db)
+    assert out["custom"] is not None and out["custom"]["can_buy"] is False and out["custom"]["tiers"]
+    monkeypatch.setattr(settings, "lemonsqueezy_custom_variant_id", "9")
+    assert router.summary(user=user, db=db)["custom"]["can_buy"] is True
