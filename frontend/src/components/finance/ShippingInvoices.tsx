@@ -8,6 +8,7 @@ import { BlockSpinner } from "@/components/ui/Spinner";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import DateRangePicker, { presetOptions } from "@/components/ui/DateRangePicker";
 import DocumentAnalyzer from "@/modules/components/DocumentAnalyzer";
+import HelpTip from "@/components/ui/HelpTip";
 import InvoiceReviewGroup, { CHECK_FROM, Review, STRONG_FROM } from "./InvoiceReviewGroup";
 
 type ReviewFilter = "all" | "sure" | "check" | "weak" | "nomatch";
@@ -38,6 +39,8 @@ export default function ShippingInvoices({
 }) {
   const [confirm, confirmElement] = useConfirm();
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [docVendor, setDocVendor] = useState(""); // belgedeki boş firmalara yazılan ortak firma
+  const lastReviewCount = useRef(0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [q, setQ] = useState("");
@@ -82,7 +85,7 @@ export default function ShippingInvoices({
     setPage(0);
     setSelected(new Set());
   };
-  const DEFAULT_DESC: Record<string, boolean> = { buyer: false, tracking: false, product: false, order_date: true, inv_date: true, lines: true, amount: true, weight: true };
+  const DEFAULT_DESC: Record<string, boolean> = { buyer: false, tracking: false, vendor: false, product: false, order_date: true, inv_date: true, lines: true, amount: true, weight: true };
   const effDesc = desc ?? DEFAULT_DESC[sort] ?? true;
   const onSort = (id: string) => {
     if (id === sort) setDesc(!effDesc);
@@ -231,7 +234,11 @@ export default function ShippingInvoices({
   };
   const counts = { all: groups.length, sure: 0, check: 0, weak: 0, nomatch: 0 };
   for (const g of groups) counts[bandKeyOf(g)]++;
-  const visible = filter === "all" ? groups : groups.filter((g) => bandKeyOf(g) === filter);
+  // Sıra: kesin → kontrol et → zayıf → eşleşmeyen → olası mükerrer (en altta); aynı grupta skoru yüksek olan üstte.
+  const BAND_RANK = { sure: 0, check: 1, weak: 2, nomatch: 3 };
+  const rankOf = (g: Review[]) => (g.some((r) => duplicateOf(r)) ? 4 : BAND_RANK[bandKeyOf(g)]);
+  const scoreForSort = (g: Review[]) => (g[0].receiptId !== null ? scoreOf(g) : (g[0].candidate.matches[0]?.score ?? 0));
+  const visible = (filter === "all" ? groups : groups.filter((g) => bandKeyOf(g) === filter)).slice().sort((a, b) => rankOf(a) - rankOf(b) || scoreForSort(b) - scoreForSort(a));
   // Toplu onaya yalnızca kesin ve "kontrol et" gönderiler girer: zayıf/eşleşmeyen ve olası mükerrer uyarılılar tek tek karar ister.
   const bulkEligible = visible.filter((g) => openLines(g).length > 0 && g[0].receiptId !== null && !g.some((r) => duplicateOf(r)) && ["sure", "check"].includes(bandKeyOf(g)));
   const bulkTotal = bulkEligible.reduce((sum, g) => sum + openLines(g).reduce((n, r) => n + r.candidate.amount, 0), 0);
@@ -304,6 +311,38 @@ export default function ShippingInvoices({
     onSaved();
   }
 
+  // Belgeden okunan firmalar (büyük/küçük harf farkı yok sayılır), en çok geçen başta.
+  const detectedVendors = (() => {
+    const seen = new Map<string, { name: string; n: number }>();
+    for (const r of reviews) {
+      const v = r.candidate.vendor.trim();
+      if (!v) continue;
+      const e = seen.get(v.toLowerCase());
+      if (e) e.n++;
+      else seen.set(v.toLowerCase(), { name: v, n: 1 });
+    }
+    return [...seen.values()].sort((a, b) => b.n - a.n).map((e) => e.name);
+  })();
+  // Yeni belge geldiğinde ortak firma boşsa en çok okunan firma seçilir; sonra firması boş olan her gönderi ortak firmayı alır.
+  useEffect(() => {
+    const added = reviews.length > lastReviewCount.current;
+    lastReviewCount.current = reviews.length;
+    const v = docVendor || (added ? detectedVendors[0] : "") || "";
+    if (v && v !== docVendor) setDocVendor(v);
+    if (v && reviews.some((r) => !r.candidate.vendor.trim())) {
+      setReviews((list) => list.map((r) => (r.candidate.vendor.trim() ? r : { ...r, candidate: { ...r.candidate, vendor: v } })));
+    }
+  }, [reviews, docVendor, detectedVendors]);
+  // Ortak firma değişince: boş olanlar ve eski ortak firmayı taşıyanlar yenisini alır; elle farklı yazılanlara dokunulmaz.
+  const changeDocVendor = (next: string) => {
+    const prev = docVendor.trim().toLowerCase();
+    setDocVendor(next);
+    setReviews((list) => list.map((r) => {
+      const cur = r.candidate.vendor.trim().toLowerCase();
+      return !cur || cur === prev ? { ...r, candidate: { ...r.candidate, vendor: next } } : r;
+    }));
+  };
+
   const patch = (id: number, p: Partial<Review>) => setReviews((list) => list.map((x) => (x.id === id ? { ...x, ...p } : x)));
 
   return (
@@ -348,6 +387,30 @@ export default function ShippingInvoices({
             {noMatchGroups > 0 && ` · ${t(`${noMatchGroups} eşleşmeyen`, `${noMatchGroups} unmatched`)}`}
           </p>
           <div className="mb-3 flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-1.5 text-xs font-medium text-neutral-600 dark:text-neutral-300">
+              {t("Kargo firması", "Carrier")}
+              <input
+                list="invoice-vendors"
+                value={docVendor}
+                onChange={(e) => changeDocVendor(e.target.value)}
+                maxLength={120}
+                placeholder={t("Seç ya da yaz (ör. FedEx)", "Pick or type (e.g. FedEx)")}
+                className={`${filterCtl} w-48`}
+              />
+              <datalist id="invoice-vendors">
+                {[...new Set([...detectedVendors, "ShipEntegra", "FedEx", "DHL", "UPS", "USPS"])].map((v) => (
+                  <option key={v} value={v} />
+                ))}
+              </datalist>
+              <HelpTip>
+                {t(
+                  "Belgeden okunan firma otomatik gelir (birden çoksa en çok geçeni). Firması boş kalan tüm gönderilere bu firma yazılır; değiştirirseniz hepsi güncellenir. Bir gönderiyi kendi kartından ayrıca değiştirebilirsiniz. Firma yalnızca listede ayırt etmek içindir, eşleşmeyi ve maliyeti etkilemez.",
+                  "The carrier read from the document is filled in automatically (the most frequent one if there are several). It is written to every shipment that has none; change it and they all update. You can still change a single shipment on its own card. The carrier only tells shipments apart in the list; it does not affect matching or cost.",
+                )}
+              </HelpTip>
+            </label>
+          </div>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
             {(
               [
                 ["all", t("Tümü", "All")],
@@ -386,6 +449,24 @@ export default function ShippingInvoices({
               </button>
             </span>
           </div>
+          {visible.length > 0 && (
+            <p className="mb-3 text-xs text-neutral-600 dark:text-neutral-300">
+              {t(
+                `Toplam ${money2.format(bulkTotal)} kargo maliyeti eşleşen siparişlere yazılır.`,
+                `A total of ${money2.format(bulkTotal)} shipping cost is written to the matched orders.`,
+              )}
+              {visible.length > bulkEligible.length && (
+                <b className="text-amber-700 dark:text-amber-400">
+                  {" "}
+                  {t(
+                    `${visible.length - bulkEligible.length} gönderi (zayıf/eşleşmeyen/mükerrer uyarılı) dahil değil, onlara tek tek bakmalısın.`,
+                    `${visible.length - bulkEligible.length} shipments (weak, unmatched or possible duplicates) are not included; review them one by one.`,
+                  )}
+                </b>
+              )}{" "}
+              {t("Yanlış olursa “Geri al” ile kaldırabilirsin.", "If something is wrong you can remove it with “Undo”.")}
+            </p>
+          )}
           {batch && (
             <div className="mb-3 flex items-start justify-between gap-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
               <span>✓ {t(`${batch.shipments} gönderi (${batch.reviews.length} kalem) kaydedildi.`, `${batch.shipments} shipments (${batch.reviews.length} lines) saved.`)}</span>
@@ -400,7 +481,7 @@ export default function ShippingInvoices({
             </div>
           )}
           {visible.length === 0 && <p className="text-sm text-neutral-400">{t("Bu süzgeçte gönderi yok.", "No shipments in this filter.")}</p>}
-          <div className="space-y-3">
+          <div className="max-h-[32rem] space-y-3 overflow-y-auto pr-1">
             {visible.map((g) => {
               const ids = new Set(g.map((r) => r.id));
               return (
@@ -504,6 +585,7 @@ export default function ShippingInvoices({
                   <th className="w-5 py-2" />
                   <SortTh label={t("Müşteri", "Customer")} id="buyer" sort={sort} desc={effDesc} onSort={onSort} className="py-2 pr-3" />
                   <SortTh label={t("Takip no", "Tracking no.")} id="tracking" sort={sort} desc={effDesc} onSort={onSort} className="py-2 pr-3" />
+                  <SortTh label={t("Firma", "Carrier")} id="vendor" sort={sort} desc={effDesc} onSort={onSort} className="py-2 pr-3" />
                   <SortTh label={t("Ürün", "Item")} id="product" sort={sort} desc={effDesc} onSort={onSort} className="py-2 pr-3" />
                   <SortTh label={t("Sipariş tarihi", "Order date")} id="order_date" sort={sort} desc={effDesc} onSort={onSort} className="py-2 pr-3" />
                   <SortTh label={t("Son fatura", "Latest invoice")} id="inv_date" sort={sort} desc={effDesc} onSort={onSort} className="py-2 pr-3" />
@@ -525,6 +607,7 @@ export default function ShippingInvoices({
                         <td className="py-2 text-xs text-neutral-400">{open ? "▼" : "▶"}</td>
                         <td className="py-2 pr-3 font-medium">{g.buyer || "—"}</td>
                         <td className="py-2 pr-3 text-xs text-neutral-500">{g.tracking_no || "—"}</td>
+                        <td className="py-2 pr-3 text-xs">{g.vendor || "—"}</td>
                         <td className="py-2 pr-3">
                           <div className="line-clamp-1 max-w-xs">{g.products[0]?.title || titleOf(g.products[0]?.listing_id ?? 0)}</div>
                           {g.products.length > 1 && <div className="text-[11px] text-neutral-400">{t(`+${g.products.length - 1} ürün daha`, `+${g.products.length - 1} more items`)}</div>}
@@ -541,7 +624,7 @@ export default function ShippingInvoices({
                       {open && (
                         <tr className="border-b border-neutral-100 bg-neutral-50/60 dark:border-neutral-800 dark:bg-neutral-950/40">
                           <td colSpan={2} />
-                          <td colSpan={8} className="py-2 pr-3">
+                          <td colSpan={9} className="py-2 pr-3">
                             {g.warnings.length > 0 && (
                               <div className="mb-2 rounded-md bg-amber-50 px-3 py-1.5 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
                                 ⚠ {g.warnings.join(" · ")} — {t("faturaları kontrol edin.", "check the invoices.")}

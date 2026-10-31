@@ -58,8 +58,16 @@ export default function InvoiceReviewGroup({
   const open = lines.filter((l) => !l.candidate.already_saved); // kaydedilecek kalemler
   const dup = lines.map((l) => duplicateOf(l)).find(Boolean) ?? null;
   const total = lines.reduce((sum, l) => sum + l.candidate.amount, 0);
-  const border =
-    band === "weak" ? "border-red-300 dark:border-red-800" : dup || open.length === 0 || band === "check" ? "border-amber-300 dark:border-amber-800" : "border-neutral-200 dark:border-neutral-800";
+  // Dikkat isteyenler dolgu renkle ayrışır: zayıf = kırmızı, eşleşmeyen = turuncu, olası mükerrer = sarı; kesin = yeşil çerçeve.
+  const border = !match
+    ? "border-orange-300 bg-orange-50/70 dark:border-orange-800 dark:bg-orange-950/20"
+    : band === "weak"
+      ? "border-red-300 bg-red-50/70 dark:border-red-800 dark:bg-red-950/20"
+      : dup
+        ? "border-yellow-400 bg-yellow-50/70 dark:border-yellow-700 dark:bg-yellow-950/20"
+        : open.length === 0 || band === "check"
+          ? "border-amber-300 dark:border-amber-800"
+          : "border-emerald-300 dark:border-emerald-800";
 
   return (
     <div className={`rounded-lg border p-3 text-sm ${border}`}>

@@ -13,6 +13,7 @@ import ShippingInvoices from "@/components/finance/ShippingInvoices";
 import { onSyncDone } from "@/lib/syncEvents";
 import TopOrders from "@/components/finance/TopOrders";
 import SortableCards from "@/components/finance/SortableCards";
+import HelpTip from "@/components/ui/HelpTip";
 import { tNow, useT } from "@/lib/i18n-client";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { Popover, menuBox, menuItem } from "@/components/ui/Popover";
@@ -20,7 +21,7 @@ import { useStoredState } from "@/lib/useStoredState";
 import DateRangePicker, { CUSTOM, RangeOption, presetOptions } from "@/components/ui/DateRangePicker";
 import { presetRange, yearRange } from "@/lib/dateRanges";
 
-const countryOf = (code: string) => (code === "??" ? tNow("Bilinmiyor", "Unknown") : countryName(code));
+const countryOf = (code: string) => (code === "??" ? tNow("Ülke bilgisi yok", "No country data") : countryName(code));
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 function rangeFor(period: string): { start: string; end: string } {
@@ -677,7 +678,15 @@ export default function FinancePage() {
                 </section>
 
                 <section className={card}>
-                  <h2 className={h2}>{t("Hangi ülkeye satış yapıldı?", "Sales by country")}</h2>
+                  <div className="mb-3 flex items-center gap-1.5">
+                    <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">{t("Hangi ülkeye satış yapıldı?", "Sales by country")}</h2>
+                    <HelpTip>
+                      {t(
+                        "“Ülke bilgisi yok”: Etsy bu siparişlerin alıcı adresini (ülke dahil) uygulamaya vermiyor; adres yalnızca Etsy'nin ortak programındaki uygulamalara açılıyor. Adres bir kez alınmışsa korunur, bu yüzden eski siparişlerin ülkesi bilinir, yenilerinin çoğu bilinmez. Bu siparişler satış toplamına dahildir, yalnızca ülkeye dağıtılamaz.",
+                        "“No country data”: Etsy does not give the app the buyer's address (including country) for these orders; addresses are only available to apps in Etsy's partner program. An address that was received once is kept, so older orders have a country while many newer ones do not. These orders are included in the sales total; they just cannot be assigned to a country.",
+                      )}
+                    </HelpTip>
+                  </div>
                   <CountryBars rows={displayReport.countries} fmt={fmt} cur={String(baseYear)} prev={cmpLabel} />
                 </section>
               </div>
@@ -756,7 +765,7 @@ function CountryBars({ rows, fmt, cur, prev }: { rows: FinReport["countries"]; f
       </div>
       {rows.map((r) => (
         <div key={r.iso} className="grid grid-cols-[7rem_1fr_9rem] items-center gap-3 text-sm">
-          <span className="truncate font-medium">{r.iso === "??" ? tNow("Bilinmiyor", "Unknown") : countryOf(r.iso)}</span>
+          <span className="truncate font-medium">{countryOf(r.iso)}</span>
           <div className="space-y-1">
             <div className="h-2.5 rounded bg-[#D97757]" style={{ width: `${(r.sales / max) * 100}%` }} />
             <div className="h-2.5 rounded bg-neutral-300 dark:bg-neutral-600" style={{ width: `${(r.prev_sales / max) * 100}%` }} />

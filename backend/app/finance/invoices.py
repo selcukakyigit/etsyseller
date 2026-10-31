@@ -667,6 +667,7 @@ def query_invoices(
         "buyer": (lambda x: x["buyer"].lower(), False),
         "amount": (lambda x: x["total"], True),
         "tracking": (lambda x: (x["tracking_no"] or "").lower(), False),
+        "vendor": (lambda x: (x["vendor"] or "").lower(), False),
         "product": (lambda x: (x["products"][0]["title"] if x["products"] else "").lower(), False),
         "lines": (lambda x: len(x["lines"]), True),
         "weight": (lambda x: x["weight_kg"] or 0, True),
