@@ -77,7 +77,7 @@ class Settings(BaseSettings):
     lemonsqueezy_custom_variant_id: str = ""
 
     # Kayıtta kabul edilen hukuki metin sürümü (frontend src/lib/legal.ts içindeki LEGAL_VERSION ile aynı olmalı).
-    legal_version: str = "2026-10-02"
+    legal_version: str = "2026-10-31"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
