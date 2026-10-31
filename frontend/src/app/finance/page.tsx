@@ -12,6 +12,7 @@ import { ProductCosts, OrderCosts } from "@/components/finance/CostEditors";
 import ShippingInvoices from "@/components/finance/ShippingInvoices";
 import { onSyncDone } from "@/lib/syncEvents";
 import TopOrders from "@/components/finance/TopOrders";
+import SortableCards from "@/components/finance/SortableCards";
 import { tNow, useT } from "@/lib/i18n-client";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { Popover, menuBox, menuItem } from "@/components/ui/Popover";
@@ -230,19 +231,20 @@ export default function FinancePage() {
   );
   const fmt = (n: number) => money.format(n);
 
-  const years = useMemo(() => {
-    const first = displayReport?.first_year ?? new Date().getFullYear();
-    const out: string[] = [];
-    for (let y = new Date().getFullYear() - 1; y >= first; y--) out.push(String(y));
-    return out;
-  }, [displayReport?.first_year]);
-
-  // Dönem seçenekleri: hazır dönemler, geçmiş yıllar ve tüm zamanlar (aralığı ilk siparişten bugüne, `range` hesaplar).
+  // Dönem seçenekleri: hazır dönemler ve tüm zamanlar (aralığı ilk siparişten bugüne, `range` hesaplar). Belirli bir yıl için "Özel aralık".
   const periodOptions: RangeOption[] = [
     ...presetOptions(["today", "yesterday", "month", "last_month", "7d", "30d", "90d", "ytd", "last12"], t),
-    ...years.map((y) => ({ id: y, label: y, range: yearRange(Number(y)) })),
     { id: "all", label: t("Tüm zamanlar", "All time"), range: null },
   ];
+
+  // Eskiden menüde yıllar (2025, 2024…) vardı; bu tarayıcıda yıl saklıysa o yılın aralığına sahip "Özel aralık" olarak devam eder.
+  useEffect(() => {
+    if (!/^\d{4}$/.test(period)) return;
+    const r = yearRange(Number(period));
+    setCustomStart(r.start);
+    setCustomEnd(r.end);
+    setPeriod("custom");
+  }, [period, setPeriod, setCustomStart, setCustomEnd]);
 
   const yearOptions: number[] = [];
   for (let y = baseYear; y >= (displayReport?.first_year ?? baseYear - 1); y--) yearOptions.push(y);
@@ -394,6 +396,128 @@ export default function FinancePage() {
           <div className={loading ? "opacity-60 transition-opacity" : "transition-opacity"}>
             {tab === "overview" && (
               <div className="space-y-5">
+                {displayReport.overhead_excluded && (
+                  <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                    {t(
+                      "Ülke filtresi açık: Etsy Ads, listeleme ve abonelik giderleri ülkeye atanamadığı için bu görünümde hesaba katılmadı. Net kâr ve marj bu yüzden gerçekte olduğundan yüksek görünür.",
+                      "Country filter is on: Etsy Ads, listing and subscription costs cannot be assigned to a country, so they are left out here. Net profit and margin therefore look higher than they really are.",
+                    )}
+                  </p>
+                )}
+                <SortableCards
+                  storageKey="finance.cardOrder"
+                  items={[
+                    { id: "sales", node: (
+                      <Kpi
+                        label={t("Satış (vergi hariç)", "Sales (excl. tax)")}
+                        value={fmt(k.sales)}
+                        sub={<Delta label={cmpLabel} cur={k.sales} prev={pk.sales} />}
+                        extra={t(`${k.orders} sipariş`, `${k.orders} orders`)}
+                      />
+                    ) },
+                    { id: "fees", node: (
+                      <Kpi
+                        label={t("Etsy ücretleri", "Etsy fees")}
+                        value={fmt(k.fees + k.overhead)}
+                        sub={<Delta label={cmpLabel} cur={k.fees + k.overhead} prev={pk.fees + pk.overhead} invert />}
+                        extra={`${t("Sipariş", "Orders")} ${fmt(k.fees)} · ${t("Reklam/diğer", "Ads/other")} ${fmt(k.overhead)}`}
+                      />
+                    ) },
+                    { id: "product", node: (
+                      <Kpi
+                        label={t("Ürün maliyeti", "Product cost")}
+                        value={fmt(k.product_cost)}
+                        sub={
+                          k.cogs === 0 ? (
+                            <span className="text-xs text-amber-600">{t("Maliyet girilmemiş", "No costs entered")}</span>
+                          ) : (
+                            <Delta label={cmpLabel} cur={k.product_cost} prev={pk.product_cost} invert />
+                          )
+                        }
+                        extra={t("Ürün kârlılığı sekmesinden girilir", "Entered on the Product profitability tab")}
+                      />
+                    ) },
+                    { id: "ship", node: (
+                      <Kpi
+                        label={t("Kargo maliyeti", "Shipping cost")}
+                        value={fmt(k.ship_cost)}
+                        sub={<Delta label={cmpLabel} cur={k.ship_cost} prev={pk.ship_cost} invert />}
+                        extra={`${t("Faturalardan", "From invoices")} ${fmt(k.ship_invoice)}`}
+                      />
+                    ) },
+                    { id: "profit", node: (
+                      <Kpi label={t("Net kâr", "Net profit")} value={fmt(k.profit)} sub={<Delta label={cmpLabel} cur={k.profit} prev={pk.profit} />} highlight />
+                    ) },
+                    { id: "margin", node: (
+                      <Kpi
+                        label={t("Kâr marjı", "Profit margin")}
+                        value={`%${k.margin.toFixed(1)}`}
+                        sub={
+                          <span className="text-xs text-neutral-400">
+                            {cmpLabel}: %{pk.margin.toFixed(1)}
+                          </span>
+                        }
+                      />
+                    ) },
+                    { id: "refunds", node: (
+                      <Kpi label={t("İadeler", "Refunds")} value={fmt(k.refunds)} sub={<Delta label={cmpLabel} cur={k.refunds} prev={pk.refunds} invert />} />
+                    ) },
+                    { id: "units", node: (
+                      <Metric
+                        label={t("Satılan ürün adedi", "Units sold")}
+                        value={k.units.toLocaleString(locale)}
+                        sub={<Delta label={cmpLabel} cur={k.units} prev={pk.units} />}
+                      />
+                    ) },
+                    { id: "aov", node: (
+                      <Metric
+                        label={t("Ortalama sipariş değeri", "Average order value")}
+                        value={money2.format(k.aov)}
+                        sub={<Delta label={cmpLabel} cur={k.aov} prev={pk.aov} />}
+                      />
+                    ) },
+                    { id: "share", node: (
+                      <Metric
+                        label={t("Etsy'ye giden pay", "Share paid to Etsy")}
+                        value={`%${k.etsy_share.toFixed(1)}`}
+                        hint={t("Sipariş ücretleri + reklam + yenileme, satışa oranı", "Order fees + ads + renewals, as a share of sales")}
+                        sub={
+                          <span className="text-xs text-neutral-400">
+                            {cmpLabel}: %{pk.etsy_share.toFixed(1)}
+                          </span>
+                        }
+                      />
+                    ) },
+                    { id: "ads", node: (
+                      <Metric
+                        label={t("Reklam harcaması", "Ad spend")}
+                        value={fmt(k.ads)}
+                        hint={t("Etsy Ads + Offsite Ads; satışa oranı", "Etsy Ads + Offsite Ads; as a share of sales")}
+                        sub={
+                          <span className="text-xs text-neutral-400">
+                            {t(`satışın %${k.ads_pct.toFixed(1)}'i`, `${k.ads_pct.toFixed(1)}% of sales`)} · {cmpLabel}: %{pk.ads_pct.toFixed(1)}
+                          </span>
+                        }
+                      />
+                    ) },
+                    { id: "problem", node: (
+                      <Metric
+                        label={t("İade + iptal oranı", "Refund + cancellation rate")}
+                        value={`%${k.problem_pct.toFixed(1)}`}
+                        hint={t(
+                          `${k.canceled} iptal, ${k.refunded_orders} iadeli sipariş / ${k.all_orders} sipariş`,
+                          `${k.canceled} canceled, ${k.refunded_orders} refunded / ${k.all_orders} orders`,
+                        )}
+                        sub={
+                          <span className="text-xs text-neutral-400">
+                            {cmpLabel}: %{pk.problem_pct.toFixed(1)}
+                          </span>
+                        }
+                      />
+                    ) },
+                  ]}
+                />
+
                 <section className={card}>
                   <div className="mb-3 flex flex-wrap gap-1 border-b border-neutral-200 dark:border-neutral-800">
                     {(
@@ -467,104 +591,6 @@ export default function FinancePage() {
                         </table>
                       </div>
                     ))}
-                </section>
-
-                {displayReport.overhead_excluded && (
-                  <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
-                    {t(
-                      "Ülke filtresi açık: Etsy Ads, listeleme ve abonelik giderleri ülkeye atanamadığı için bu görünümde hesaba katılmadı. Net kâr ve marj bu yüzden gerçekte olduğundan yüksek görünür.",
-                      "Country filter is on: Etsy Ads, listing and subscription costs cannot be assigned to a country, so they are left out here. Net profit and margin therefore look higher than they really are.",
-                    )}
-                  </p>
-                )}
-                <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                  <Kpi
-                    label={t("Satış (vergi hariç)", "Sales (excl. tax)")}
-                    value={fmt(k.sales)}
-                    sub={<Delta label={cmpLabel} cur={k.sales} prev={pk.sales} />}
-                    extra={t(`${k.orders} sipariş`, `${k.orders} orders`)}
-                  />
-                  <Kpi
-                    label={t("Etsy ücretleri", "Etsy fees")}
-                    value={fmt(k.fees + k.overhead)}
-                    sub={<Delta label={cmpLabel} cur={k.fees + k.overhead} prev={pk.fees + pk.overhead} invert />}
-                    extra={`${t("Sipariş", "Orders")} ${fmt(k.fees)} · ${t("Reklam/diğer", "Ads/other")} ${fmt(k.overhead)}`}
-                  />
-                  <Kpi
-                    label={t("Ürün maliyeti", "Product cost")}
-                    value={fmt(k.product_cost)}
-                    sub={
-                      k.cogs === 0 ? (
-                        <span className="text-xs text-amber-600">{t("Maliyet girilmemiş", "No costs entered")}</span>
-                      ) : (
-                        <Delta label={cmpLabel} cur={k.product_cost} prev={pk.product_cost} invert />
-                      )
-                    }
-                    extra={t("Ürün kârlılığı sekmesinden girilir", "Entered on the Product profitability tab")}
-                  />
-                  <Kpi
-                    label={t("Kargo maliyeti", "Shipping cost")}
-                    value={fmt(k.ship_cost)}
-                    sub={<Delta label={cmpLabel} cur={k.ship_cost} prev={pk.ship_cost} invert />}
-                    extra={`${t("Faturalardan", "From invoices")} ${fmt(k.ship_invoice)}`}
-                  />
-                  <Kpi label={t("Net kâr", "Net profit")} value={fmt(k.profit)} sub={<Delta label={cmpLabel} cur={k.profit} prev={pk.profit} />} highlight />
-                  <Kpi
-                    label={t("Kâr marjı", "Profit margin")}
-                    value={`%${k.margin.toFixed(1)}`}
-                    sub={
-                      <span className="text-xs text-neutral-400">
-                        {cmpLabel}: %{pk.margin.toFixed(1)}
-                      </span>
-                    }
-                  />
-                  <Kpi label={t("İadeler", "Refunds")} value={fmt(k.refunds)} sub={<Delta label={cmpLabel} cur={k.refunds} prev={pk.refunds} invert />} />
-                </section>
-
-                <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                  <Metric
-                    label={t("Satılan ürün adedi", "Units sold")}
-                    value={k.units.toLocaleString(locale)}
-                    sub={<Delta label={cmpLabel} cur={k.units} prev={pk.units} />}
-                  />
-                  <Metric
-                    label={t("Ortalama sipariş değeri", "Average order value")}
-                    value={money2.format(k.aov)}
-                    sub={<Delta label={cmpLabel} cur={k.aov} prev={pk.aov} />}
-                  />
-                  <Metric
-                    label={t("Etsy'ye giden pay", "Share paid to Etsy")}
-                    value={`%${k.etsy_share.toFixed(1)}`}
-                    hint={t("Sipariş ücretleri + reklam + yenileme, satışa oranı", "Order fees + ads + renewals, as a share of sales")}
-                    sub={
-                      <span className="text-xs text-neutral-400">
-                        {cmpLabel}: %{pk.etsy_share.toFixed(1)}
-                      </span>
-                    }
-                  />
-                  <Metric
-                    label={t("Reklam harcaması", "Ad spend")}
-                    value={fmt(k.ads)}
-                    hint={t("Etsy Ads + Offsite Ads; satışa oranı", "Etsy Ads + Offsite Ads; as a share of sales")}
-                    sub={
-                      <span className="text-xs text-neutral-400">
-                        {t(`satışın %${k.ads_pct.toFixed(1)}'i`, `${k.ads_pct.toFixed(1)}% of sales`)} · {cmpLabel}: %{pk.ads_pct.toFixed(1)}
-                      </span>
-                    }
-                  />
-                  <Metric
-                    label={t("İade + iptal oranı", "Refund + cancellation rate")}
-                    value={`%${k.problem_pct.toFixed(1)}`}
-                    hint={t(
-                      `${k.canceled} iptal, ${k.refunded_orders} iadeli sipariş / ${k.all_orders} sipariş`,
-                      `${k.canceled} canceled, ${k.refunded_orders} refunded / ${k.all_orders} orders`,
-                    )}
-                    sub={
-                      <span className="text-xs text-neutral-400">
-                        {cmpLabel}: %{pk.problem_pct.toFixed(1)}
-                      </span>
-                    }
-                  />
                 </section>
 
                 <section className={card}>
@@ -672,6 +698,7 @@ export default function FinancePage() {
               <OrderCosts
                 shopId={shopId}
                 range={range}
+                country={country}
                 money2={money2}
                 onSaved={scheduleRefresh}
                 onQuery={setOrderQ}

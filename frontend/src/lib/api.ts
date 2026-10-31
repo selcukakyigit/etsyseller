@@ -2360,8 +2360,8 @@ export const api = {
         method: "PUT",
         body: JSON.stringify({ key, unit_cost: unitCost, shipping_cost: shippingCost, cost_pct: costPct }),
       }),
-    orders: (shopId: number, start: string, end: string, q = "", page = 0) =>
-      request<FinOrdersPage>(`/api/shops/${shopId}/finance/orders?start=${start}&end=${end}&q=${encodeURIComponent(q)}&page=${page}`),
+    orders: (shopId: number, start: string, end: string, q = "", page = 0, country = "") =>
+      request<FinOrdersPage>(`/api/shops/${shopId}/finance/orders?start=${start}&end=${end}&q=${encodeURIComponent(q)}&page=${page}&country=${encodeURIComponent(country)}`),
     orderDetail: (shopId: number, receiptId: number) => request<FinOrderDetail>(`/api/shops/${shopId}/finance/orders/${receiptId}`),
     setOrderFixedCost: (shopId: number, amount: number) =>
       request<{ ok: boolean }>(`/api/shops/${shopId}/finance/settings/order-cost`, {

@@ -1100,7 +1100,7 @@ def _order_nets(db: Session, shop: Shop, orders: dict[int, tuple[float, float, f
     return out
 
 
-def orders_costs(db: Session, shop: Shop, start: dt.date, end: dt.date, q: str = "", page: int = 0, per_page: int = 30) -> dict:
+def orders_costs(db: Session, shop: Shop, start: dt.date, end: dt.date, q: str = "", page: int = 0, per_page: int = 30, country: str = "") -> dict:
     """Siparişler ve maliyetleri: otomatik hesap (seçenek/listing maliyetinden) ve elle girilmiş düzeltme."""
     costs = {c.listing_id: c for c in db.scalars(select(ListingCost).where(ListingCost.shop_id == shop.id))}
     vcosts = {(v.listing_id, v.variant_key): v for v in db.scalars(select(VariantCost).where(VariantCost.shop_id == shop.id))}
@@ -1114,6 +1114,8 @@ def orders_costs(db: Session, shop: Shop, start: dt.date, end: dt.date, q: str =
         .where(OrderCache.created_at <= dt.datetime.combine(end, dt.time.max))
         .order_by(OrderCache.created_at.desc())
     )
+    if country:  # Finans'ın ülke filtresi (rapordaki ile aynı kural)
+        stmt = stmt.where(OrderCache.country_iso == country)
     if q.strip():
         stmt = stmt.where(OrderCache.search_text.like(f"%{q.strip().lower()}%"))
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0

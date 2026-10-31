@@ -89,10 +89,11 @@ def orders_costs(
     end: dt.date,
     q: str = "",
     page: int = 0,
+    country: str = "",
     shop: Shop = Depends(get_owned_shop),
     db: Session = Depends(get_db),
 ):
-    return service.orders_costs(db, shop, start, end, q, max(0, page))
+    return service.orders_costs(db, shop, start, end, q, max(0, page), country=country)
 
 
 @router.get("/orders/{receipt_id}")

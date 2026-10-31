@@ -493,9 +493,11 @@ export function OrderCosts({
   onSaved,
   onQuery,
   summary,
+  country = "",
 }: {
   shopId: number;
   range: { start: string; end: string };
+  country?: string;
   money2: Intl.NumberFormat;
   onSaved: () => void;
   onQuery?: (q: string) => void;
@@ -505,7 +507,7 @@ export function OrderCosts({
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(0);
-  const [data, setData] = useCached<FinOrdersPage>(`fin-orders:${shopId}:${range.start}:${range.end}:${q}:${page}`, { keepPrevious: true });
+  const [data, setData] = useCached<FinOrdersPage>(`fin-orders:${shopId}:${range.start}:${range.end}:${country}:${q}:${page}`, { keepPrevious: true });
   const [error, setError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [breakdownId, setBreakdownId] = useState<number | null>(null);
@@ -522,7 +524,7 @@ export function OrderCosts({
   useEffect(() => {
     let cancelled = false;
     api.finance
-      .orders(shopId, range.start, range.end, q, page)
+      .orders(shopId, range.start, range.end, q, page, country)
       .then((d) => {
         if (!cancelled) {
           setData(d);
@@ -535,7 +537,7 @@ export function OrderCosts({
     return () => {
       cancelled = true;
     };
-  }, [shopId, range.start, range.end, q, page, setData]);
+  }, [shopId, range.start, range.end, country, q, page, setData]);
 
   const pages = data ? Math.max(1, Math.ceil(data.total / 30)) : 1;
   return (
