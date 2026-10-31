@@ -37,9 +37,29 @@ class InvoiceError(Exception):
 
 # --------------------------------------------------------------- çıkarım ----
 
+# Firma adı listede/filtrede/renkte tutarlı olsun diye bilinen firmalar tek kısa adla yazılır (faturadaki resmî unvan yerine).
+CANONICAL_VENDORS = (
+    (re.compile(r"shipentegra", re.I), "ShipEntegra"),
+    (re.compile(r"fedex|federal express", re.I), "FedEx"),
+    (re.compile(r"\bdhl\b", re.I), "DHL"),
+    (re.compile(r"navlungo", re.I), "Navlungo"),
+    (re.compile(r"\busps\b|postal service", re.I), "USPS"),
+    (re.compile(r"\bups\b|united parcel", re.I), "UPS"),
+)
+
+
+def normalize_vendor(name: object) -> str:
+    """Firma adını kısa marka adına çevirir ("FedEx Express Turkey Taşımacılık ve Ticaret Ltd. Şti." -> "FedEx"); bilinmeyen firma boşlukları düzeltilerek aynen kalır."""
+    text = re.sub(r"\s+", " ", str(name or "")).strip()
+    for pattern, canonical in CANONICAL_VENDORS:
+        if pattern.search(text):
+            return canonical
+    return text
+
+
 EXTRACT_PROMPT = (
     "Bu bir kargo/nakliye faturası. Faturadan yalnızca şu JSON'u çıkar, başka hiçbir metin ekleme:\n"
-    '{"vendor": "firma (ör. FedEx)", "invoice_number": "fatura no", "invoice_date": "YYYY-MM-DD", '
+    '{"vendor": "kargo firmasının KISA marka adı; şirket unvanı, Ltd/Şti/A.Ş./Inc gibi ekler olmadan (ör. FedEx, DHL, UPS)", "invoice_number": "fatura no", "invoice_date": "YYYY-MM-DD", '
     '"currency": "fatura para birimi kodu (TL için TRY)", '
     '"total_amount_text": "faturanın genel/ödenecek toplam tutarı, faturada yazdığı gibi metin", '
     '"stated_rate": faturada bir döviz kuru yazıyorsa {"base": "USD", "quote": "TRY", "rate": 48.8741} '
@@ -472,7 +492,7 @@ def _candidates(db: Session, shop: Shop, raw: dict, filename: str, report_ccy: s
         for m in matches:
             m["duplicate_of"] = _same_amount_line(saved_by_order.get(m["receipt_id"], []), currency, amount)
         candidates.append({
-            "vendor": raw.get("vendor") or "",
+            "vendor": normalize_vendor(raw.get("vendor")),
             "invoice_number": invoice_no,
             "invoice_date": invoice_date,
             "kind": kind,
@@ -550,7 +570,7 @@ def confirm(db: Session, shop: Shop, receipt_id: int, candidate: dict, allow_dup
             fx_rate=float(candidate.get("fx_rate") or 1.0), fx_source=str(candidate.get("fx_source") or "")[:20],
             invoice_date=dt.date.fromisoformat(candidate["invoice_date"]),
             weight_kg=round(float(candidate["weight_kg"]) * share, 3) if candidate.get("weight_kg") else None,
-            vendor=str(candidate.get("vendor") or "")[:120],
+            vendor=normalize_vendor(candidate.get("vendor"))[:120],
             source_filename=str(candidate.get("source_filename") or "")[:255],
             match_confidence=float(next((m["score"] for m in candidate.get("matches") or [] if m["receipt_id"] == receipt_id), 0.0)),
         )

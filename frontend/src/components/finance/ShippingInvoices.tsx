@@ -32,17 +32,23 @@ export default function ShippingInvoices({
   products,
   money2,
   onSaved,
+  focus = "",
+  onFocusUsed,
 }: {
   shopId: number;
   products: FinProduct[];
   money2: Intl.NumberFormat;
   onSaved: () => void;
+  /** Takip no: verilirse arama kutusuna yazılır, o gönderi açılıp vurgulanır (sipariş penceresinden gelinir). */
+  focus?: string;
+  onFocusUsed?: () => void;
 }) {
   const [confirm, confirmElement] = useConfirm();
   const [reviews, setReviews] = useState<Review[]>([]);
   const [docVendor, setDocVendor] = useState(""); // belgedeki boş firmalara yazılan ortak firma
   const [otherMode, setOtherMode] = useState(false); // listede olmayan firmayı yazmak için
   const lastReviewCount = useRef(0);
+  const [highlight, setHighlight] = useState(""); // vurgulanan gönderinin takip no
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [q, setQ] = useState("");
@@ -312,6 +318,31 @@ export default function ShippingInvoices({
     loadSaved();
     onSaved();
   }
+
+  // Sipariş penceresinden gelindi: aramayı takip no'ya ayarla, süzgeçleri temizle, gönderiyi vurgula (render sırasında, bir kez).
+  const [seenFocus, setSeenFocus] = useState("");
+  if (focus && focus !== seenFocus) {
+    setSeenFocus(focus);
+    setQ(focus);
+    setKind("");
+    setRange("all");
+    setInvStart("");
+    setInvEnd("");
+    setPage(0);
+    setHighlight(focus);
+  } else if (!focus && seenFocus) setSeenFocus("");
+  useEffect(() => {
+    if (focus) onFocusUsed?.();
+  }, [focus, onFocusUsed]);
+  // Vurgulanan gönderi listeye gelince görünür alana kaydırılır (satır zaten açık çizilir); birkaç saniye sonra vurgu söner.
+  useEffect(() => {
+    if (!highlight) return;
+    const hit = list?.items.find((g) => g.tracking_no === highlight);
+    if (!hit) return;
+    document.getElementById(`ship-${shipKey(hit)}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    const timer = setTimeout(() => setHighlight(""), 4000);
+    return () => clearTimeout(timer);
+  }, [highlight, list]);
 
   // Belgeden okunan firmalar (büyük/küçük harf farkı yok sayılır), en çok geçen başta.
   const detectedVendors = (() => {
@@ -612,10 +643,10 @@ export default function ShippingInvoices({
               <tbody>
                 {saved.map((g, idx) => {
                   const key = shipKey(g);
-                  const open = expanded.has(key);
+                  const open = expanded.has(key) || (g.tracking_no !== "" && g.tracking_no === highlight);
                   return (
                     <Fragment key={key}>
-                      <tr onClick={() => setExpanded((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; })} className={`cursor-pointer border-b border-neutral-100 hover:bg-neutral-200/60 dark:border-neutral-800 dark:hover:bg-neutral-800/70 ${idx % 2 === 0 ? "bg-white dark:bg-neutral-900" : "bg-neutral-100/70 dark:bg-neutral-800/40"}`}>
+                      <tr id={`ship-${key}`} onClick={() => setExpanded((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; })} className={`cursor-pointer border-b border-neutral-100 hover:bg-neutral-200/60 dark:border-neutral-800 dark:hover:bg-neutral-800/70 ${g.tracking_no && g.tracking_no === highlight ? "bg-orange-100 outline outline-2 -outline-offset-2 outline-[#D97757] dark:bg-orange-950/40" : idx % 2 === 0 ? "bg-white dark:bg-neutral-900" : "bg-neutral-100/70 dark:bg-neutral-800/40"}`}>
                         <td className="py-2 pr-1" onClick={(e) => e.stopPropagation()}>
                           <input type="checkbox" checked={selected.has(key)} onChange={() => toggleSel(key)} aria-label={t("Gönderiyi seç", "Select shipment")} className="h-4 w-4 accent-[#D97757]" />
                         </td>

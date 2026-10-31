@@ -1580,6 +1580,8 @@ export interface FinOrderCost extends Fulfillment {
   receipt_id: number;
   date: string;
   buyer: string;
+  /** Aynı müşterinin seçili dönemdeki sipariş sayısı. */
+  buyer_orders: number;
   country: string;
   total: number;
   items: { title: string; quantity: number; variant: string; defined: boolean; image?: string }[];

@@ -84,6 +84,7 @@ export default function FinancePage() {
   const autoStarted = useRef<number | null>(null);
   const [exporting, setExporting] = useState(false);
   const [orderQ, setOrderQ] = useState("");
+  const [invFocus, setInvFocus] = useState(""); // sipariş penceresinden gelen takip no: Kargo faturaları o gönderiyi açar
   // Yalnızca aylık satış grafiği için 3 yıl seçici: "" = varsayılan (1. bu yıl, 2. geçen yıl, 3. yok), "none" = boş
   const [chartSel, setChartSel] = useState<string[]>(["", "", ""]);
   const [prodSort, setProdSort] = useState("sales");
@@ -682,8 +683,8 @@ export default function FinancePage() {
                     <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">{t("Hangi ülkeye satış yapıldı?", "Sales by country")}</h2>
                     <HelpTip>
                       {t(
-                        "“Ülke bilgisi yok”: Etsy bu siparişlerin alıcı adresini (ülke dahil) uygulamaya vermiyor; adres yalnızca Etsy'nin ortak programındaki uygulamalara açılıyor. Adres bir kez alınmışsa korunur, bu yüzden eski siparişlerin ülkesi bilinir, yenilerinin çoğu bilinmez. Bu siparişler satış toplamına dahildir, yalnızca ülkeye dağıtılamaz.",
-                        "“No country data”: Etsy does not give the app the buyer's address (including country) for these orders; addresses are only available to apps in Etsy's partner program. An address that was received once is kept, so older orders have a country while many newer ones do not. These orders are included in the sales total; they just cannot be assigned to a country.",
+                        "“Ülke bilgisi yok”: Etsy bu siparişlerin alıcı adresini (ülke dahil) bize iletmedi. Siparişler satış toplamına dahil, yalnızca bir ülkeye yazılamıyor.",
+                        "“No country data”: Etsy did not send us the buyer's address (including country) for these orders. They are included in the sales total; they just cannot be assigned to a country.",
                       )}
                     </HelpTip>
                   </div>
@@ -711,11 +712,15 @@ export default function FinancePage() {
                 money2={money2}
                 onSaved={scheduleRefresh}
                 onQuery={setOrderQ}
+                onOpenInvoice={(tracking) => {
+                  setInvFocus(tracking);
+                  setTab("invoices");
+                }}
                 summary={{ product: k.product_cost, ship: k.ship_cost, invoice: k.ship_invoice }}
               />
             )}
             {tab === "invoices" && shopId !== undefined && (
-              <ShippingInvoices shopId={shopId} products={displayReport.products} money2={money2} onSaved={scheduleRefresh} />
+              <ShippingInvoices shopId={shopId} products={displayReport.products} money2={money2} onSaved={scheduleRefresh} focus={invFocus} onFocusUsed={() => setInvFocus("")} />
             )}
           </div>
         )}

@@ -494,7 +494,9 @@ export function OrderCosts({
   onQuery,
   summary,
   country = "",
+  onOpenInvoice,
 }: {
+  onOpenInvoice?: (tracking: string) => void;
   shopId: number;
   range: { start: string; end: string };
   country?: string;
@@ -592,7 +594,7 @@ export function OrderCosts({
           </thead>
           <tbody>
             {(data?.orders ?? []).map((o) => (
-              <OrderRow key={o.receipt_id} o={o} shopId={shopId} money2={money2} onSaved={onSaved} onOpen={() => setDetailId(o.receipt_id)} onBreakdown={setBreakdownId} currency={data?.currency ?? o.original_currency} />
+              <OrderRow key={o.receipt_id} o={o} shopId={shopId} money2={money2} onSaved={onSaved} onOpen={() => setDetailId(o.receipt_id)} onCustomer={(name) => setQInput(name)} onBreakdown={setBreakdownId} currency={data?.currency ?? o.original_currency} />
             ))}
           </tbody>
         </table>
@@ -612,7 +614,18 @@ export function OrderCosts({
           </button>
         </div>
       )}
-      {detailId !== null && <OrderDetailModal shopId={shopId} receiptId={detailId} onClose={() => setDetailId(null)} />}
+      {detailId !== null && <OrderDetailModal
+          shopId={shopId}
+          receiptId={detailId}
+          onClose={() => setDetailId(null)}
+          onOpenInvoice={
+            onOpenInvoice &&
+            ((tracking) => {
+              setDetailId(null);
+              onOpenInvoice(tracking);
+            })
+          }
+        />}
       {breakdownId !== null && <OrderCostBreakdown shopId={shopId} receiptId={breakdownId} money2={money2} onClose={() => setBreakdownId(null)} />}
     </section>
   );
@@ -636,7 +649,7 @@ function ProfitCell({ o, val, money2 }: { o: FinOrderCost; val: string; money2: 
   );
 }
 
-function OrderRow({ o, shopId, money2, onSaved, onOpen, onBreakdown, currency }: { o: FinOrderCost; shopId: number; money2: Intl.NumberFormat; onSaved: () => void; onOpen: () => void; onBreakdown: (receiptId: number) => void; currency: string }) {
+function OrderRow({ o, shopId, money2, onSaved, onOpen, onCustomer, onBreakdown, currency }: { o: FinOrderCost; shopId: number; money2: Intl.NumberFormat; onSaved: () => void; onOpen: () => void; onCustomer: (name: string) => void; onBreakdown: (receiptId: number) => void; currency: string }) {
   const [val, setVal] = useState(o.override === null ? "" : String(o.override));
   const last = useRef(val);
   const [state, run, message] = useAutoSave(() => api.finance.setOrderCost(shopId, o.receipt_id, val === "" ? null : num(val)), onSaved);
@@ -652,6 +665,20 @@ function OrderRow({ o, shopId, money2, onSaved, onOpen, onBreakdown, currency }:
       <td className="py-2 pr-3">
         <div className="flex items-center gap-1.5 font-medium">
           {o.buyer || "—"}
+          {o.buyer_orders > 1 && (
+            <button
+              type="button"
+              onClick={() => onCustomer(o.buyer)}
+              title={t(`Bu dönemde ${o.buyer_orders} siparişi var — hepsini göster`, `${o.buyer_orders} orders in this period — show them all`)}
+              aria-label={t(`${o.buyer_orders} sipariş, hepsini göster`, `${o.buyer_orders} orders, show them all`)}
+              className="relative inline-flex h-6 w-6 shrink-0 items-center justify-center text-amber-500 hover:text-amber-400"
+            >
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden>
+                <path d="M12 2.5l2.95 6.1 6.55.9-4.8 4.6 1.2 6.6L12 17.6l-5.9 3.1 1.2-6.6-4.8-4.6 6.55-.9L12 2.5z" />
+              </svg>
+              <span className="absolute inset-0 flex items-center justify-center pt-0.5 text-[10px] font-bold leading-none text-neutral-900">{o.buyer_orders}</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={onOpen}

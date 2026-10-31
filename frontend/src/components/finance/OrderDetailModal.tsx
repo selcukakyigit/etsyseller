@@ -20,7 +20,18 @@ function Row({ label, value, bold, muted }: { label: string; value: React.ReactN
 }
 
 /** Etsy'nin sipariş ayrıntı ekranına benzer pencere: "Sipariş detayları" ve "Kazanç" sekmeleri. */
-export default function OrderDetailModal({ shopId, receiptId, onClose }: { shopId: number; receiptId: number; onClose: () => void }) {
+export default function OrderDetailModal({
+  shopId,
+  receiptId,
+  onClose,
+  onOpenInvoice,
+}: {
+  shopId: number;
+  receiptId: number;
+  onClose: () => void;
+  /** Takip numarasına tıklanınca kargo faturalarında o gönderiyi göstermek için. */
+  onOpenInvoice?: (tracking: string) => void;
+}) {
   const [data, setData] = useState<FinOrderDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"details" | "earnings">("earnings");
@@ -206,7 +217,24 @@ export default function OrderDetailModal({ shopId, receiptId, onClose }: { shopI
                 </p>
                 {data.shipments.length > 0 && (
                   <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-300">
-                    {t("Kargo", "Shipping")}: {data.shipments.map((s) => `${s.carrier} ${s.tracking}`.trim()).join(", ")}
+                    {t("Kargo", "Shipping")}:{" "}
+                    {data.shipments.map((s, i) => (
+                      <span key={i}>
+                        {i > 0 && ", "}
+                        {onOpenInvoice && s.tracking ? (
+                          <button
+                            type="button"
+                            onClick={() => onOpenInvoice(s.tracking)}
+                            title={t("Kargo faturasında göster", "Show in shipping invoices")}
+                            className="text-sky-600 underline decoration-dotted underline-offset-2 hover:text-sky-500 dark:text-sky-400"
+                          >
+                            {`${s.carrier} ${s.tracking}`.trim()}
+                          </button>
+                        ) : (
+                          `${s.carrier} ${s.tracking}`.trim()
+                        )}
+                      </span>
+                    ))}
                   </p>
                 )}
               </section>

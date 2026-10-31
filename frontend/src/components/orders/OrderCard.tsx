@@ -270,8 +270,8 @@ export default function OrderCard({
                 {addressHidden ? (
                   <p className="mt-1.5 rounded-lg bg-amber-50 p-2 text-[11px] leading-snug text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
                     {t(
-                      "Etsy bu siparişin adres ayrıntılarını (sokak, şehir, posta kodu) API ile paylaşmıyor; bazı bölgelerde yalnızca Etsy'nin ortak programındaki uygulamalara açık. Adresi Etsy'de görebilirsin.",
-                      "Etsy does not share this order's address details (street, city, postal code) through the API; in some regions they are only available to apps in Etsy's partner program. You can see the address on Etsy.",
+                      "Etsy bu siparişin adresini bize iletmedi. Adresi Etsy'de görebilirsin.",
+                      "Etsy did not send us this order's address. You can see it on Etsy.",
                     )}{" "}
                     <a href={`https://www.etsy.com/your/orders/sold/${order.receipt_id}`} target="_blank" rel="noreferrer" className="font-semibold underline underline-offset-2">
                       {t("Etsy'de aç ↗", "Open on Etsy ↗")}

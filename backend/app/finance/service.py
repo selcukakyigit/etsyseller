@@ -1120,6 +1120,19 @@ def orders_costs(db: Session, shop: Shop, start: dt.date, end: dt.date, q: str =
         stmt = stmt.where(OrderCache.search_text.like(f"%{q.strip().lower()}%"))
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     page_rows = db.scalars(stmt.offset(page * per_page).limit(per_page)).all()
+    # Aynı müşterinin seçili dönemdeki (iptalsiz, ülke filtreli) sipariş sayısı: listede "N sipariş" yıldızı için.
+    buyers = {r.buyer_name for r in page_rows if r.buyer_name}
+    buyer_orders: dict[str, int] = {}
+    if buyers:
+        cnt = (
+            select(OrderCache.buyer_name, func.count())
+            .where(OrderCache.shop_id == shop.id, OrderCache.is_canceled.is_(False), OrderCache.buyer_name.in_(buyers))
+            .where(OrderCache.created_at >= dt.datetime.combine(start, dt.time.min), OrderCache.created_at <= dt.datetime.combine(end, dt.time.max))
+            .group_by(OrderCache.buyer_name)
+        )
+        if country:
+            cnt = cnt.where(OrderCache.country_iso == country)
+        buyer_orders = dict(db.execute(cnt).all())
     parsed = {r.receipt_id: json.loads(r.raw_json) for r in page_rows}
     factors = {rid: _factors(tbl, rid) for rid in parsed}
     nets = _order_nets(db, shop, {rid: (_money(raw.get("grandtotal")), *factors[rid]) for rid, raw in parsed.items()})
@@ -1149,6 +1162,7 @@ def orders_costs(db: Session, shop: Shop, start: dt.date, end: dt.date, q: str =
                 "receipt_id": row.receipt_id,
                 "date": row.created_at.date().isoformat(),
                 "buyer": row.buyer_name,
+                "buyer_orders": buyer_orders.get(row.buyer_name, 1) if row.buyer_name else 1,
                 "country": row.country_iso,
                 "total": grand * kc,
                 "original_currency": tbl["meta"][row.receipt_id][0],
