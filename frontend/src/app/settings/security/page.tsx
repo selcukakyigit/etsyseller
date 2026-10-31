@@ -98,7 +98,7 @@ export default function SecuritySettingsPage() {
             <button
               onClick={handleChangePassword}
               disabled={saving || !currentPassword || !newPassword}
-              className="text-sm font-medium px-3 py-1.5 rounded-lg bg-neutral-900 text-white hover:bg-neutral-700 transition disabled:opacity-50"
+              className="text-sm font-medium px-3 py-1.5 rounded-lg bg-[#D97757] text-white hover:bg-[#C6613F] transition disabled:opacity-50"
             >
               {saving ? t("Kaydediliyor…", "Saving…") : t("Şifreyi Değiştir", "Change password")}
             </button>

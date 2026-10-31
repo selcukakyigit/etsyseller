@@ -192,7 +192,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full text-sm font-medium px-3 py-2 rounded-lg bg-neutral-900 text-white hover:bg-neutral-700 transition disabled:opacity-50"
+            className="w-full text-sm font-medium px-3 py-2 rounded-lg bg-[#D97757] text-white hover:bg-[#C6613F] transition disabled:opacity-50"
           >
             {loading
               ? t.wait

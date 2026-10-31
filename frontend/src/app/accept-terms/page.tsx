@@ -59,7 +59,7 @@ export default function AcceptTermsPage() {
           <button
             onClick={accept}
             disabled={!agreed || busy}
-            className="flex-1 text-sm font-medium px-3 py-2 rounded-lg bg-neutral-900 text-white hover:bg-neutral-700 transition disabled:opacity-50"
+            className="flex-1 text-sm font-medium px-3 py-2 rounded-lg bg-[#D97757] text-white hover:bg-[#C6613F] transition disabled:opacity-50"
           >
             {busy ? t.acceptSaving : t.acceptBtn}
           </button>

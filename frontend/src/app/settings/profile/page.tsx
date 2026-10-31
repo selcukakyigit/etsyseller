@@ -111,7 +111,7 @@ export default function ProfileSettingsPage() {
             <button
               onClick={handleSaveProfile}
               disabled={saving}
-              className="text-sm font-medium px-3 py-1.5 rounded-lg bg-neutral-900 text-white hover:bg-neutral-700 transition disabled:opacity-50"
+              className="text-sm font-medium px-3 py-1.5 rounded-lg bg-[#D97757] text-white hover:bg-[#C6613F] transition disabled:opacity-50"
             >
               {saving ? t("Kaydediliyor…", "Saving…") : t("Profili Kaydet", "Save profile")}
             </button>
