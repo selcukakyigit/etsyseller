@@ -1536,6 +1536,8 @@ export interface InvoiceQuery {
   orderStart?: string;
   orderEnd?: string;
   sort?: string;
+  /** Yön; verilmezse sütunun varsayılanı. */
+  desc?: boolean | null;
   page?: number;
   perPage?: number;
 }
@@ -2393,6 +2395,7 @@ export const api = {
         const params = new URLSearchParams({ sort: f.sort ?? "inv_date", page: String(f.page ?? 0), per_page: String(f.perPage ?? 20) });
         const map: [string, string | undefined][] = [["q", f.q], ["kind", f.kind], ["inv_start", f.invStart], ["inv_end", f.invEnd], ["order_start", f.orderStart], ["order_end", f.orderEnd]];
         for (const [k, v] of map) if (v) params.set(k, v);
+        if (f.desc !== undefined && f.desc !== null) params.set("desc", String(f.desc));
         return request<InvoicePage>(`/api/shops/${shopId}/finance/invoices?${params}`);
       },
       removeMany: (shopId: number, ids: number[]) =>

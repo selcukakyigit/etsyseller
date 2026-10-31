@@ -16,7 +16,8 @@ type ReviewFilter = "all" | "sure" | "check" | "weak" | "nomatch";
 const groupKeyOf = (c: InvoiceCandidate) => c.tracking_no || `${c.recipient}|${c.ship_date ?? c.invoice_date}`;
 
 const card = "rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900";
-const input = "rounded-lg border border-neutral-300 bg-white px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900";
+/** Süzgeç satırındaki kutular: tarih seçiciyle (DateRangePicker) aynı yükseklik ve kenarlık. */
+const filterCtl = "h-9 rounded-lg border border-neutral-200 bg-white px-3 text-sm text-neutral-800 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
 
 
 /**
@@ -45,6 +46,7 @@ export default function ShippingInvoices({
   const [invEnd, setInvEnd] = useState("");
   const [range, setRange] = useState("all");
   const [sort, setSort] = useState("inv_date");
+  const [desc, setDesc] = useState<boolean | null>(null); // null: sütunun varsayılan yönü
   const [page, setPage] = useState(0);
   const PER_PAGE = 20;
   const [saving, setSaving] = useState(false);
@@ -55,7 +57,7 @@ export default function ShippingInvoices({
   const nextId = useRef(1);
   // Kayıtlı faturalar sekme belleğinde tutulur: sekmeye geri dönünce liste beklemeden görünür, arkada tazelenir.
   const [list, setList] = useCached<{ items: InvoiceShipment[]; total: number; total_amount: number }>(
-    `fin-invoices:${shopId}:${q}:${kind}:${invStart}:${invEnd}:${sort}:${page}`,
+    `fin-invoices:${shopId}:${q}:${kind}:${invStart}:${invEnd}:${sort}:${desc}:${page}`,
     { keepPrevious: true },
   );
   const saved = list?.items ?? [];
@@ -65,10 +67,10 @@ export default function ShippingInvoices({
 
   const loadSaved = useCallback(() => {
     api.finance.invoices
-      .list(shopId, { q, kind, invStart, invEnd, sort, page, perPage: PER_PAGE })
+      .list(shopId, { q, kind, invStart, invEnd, sort, desc, page, perPage: PER_PAGE })
       .then((r) => setList({ items: r.items, total: r.total, total_amount: r.total_amount }))
       .catch(() => setList({ items: [], total: 0, total_amount: 0 }));
-  }, [shopId, q, kind, invStart, invEnd, sort, page, setList]);
+  }, [shopId, q, kind, invStart, invEnd, sort, desc, page, setList]);
   // Arama yazılırken her tuşta istek atmamak için kısa bir gecikme; aramasız açılışta beklemeden yükle.
   useEffect(() => {
     const timer = setTimeout(loadSaved, q ? 250 : 0);
@@ -79,6 +81,16 @@ export default function ShippingInvoices({
     set(v);
     setPage(0);
     setSelected(new Set());
+  };
+  const DEFAULT_DESC: Record<string, boolean> = { buyer: false, tracking: false, product: false, order_date: true, inv_date: true, lines: true, amount: true, weight: true };
+  const effDesc = desc ?? DEFAULT_DESC[sort] ?? true;
+  const onSort = (id: string) => {
+    if (id === sort) setDesc(!effDesc);
+    else {
+      setSort(id);
+      setDesc(null);
+    }
+    setPage(0);
   };
   const hasFilter = !!(q || kind || range !== "all");
   const pages = Math.max(1, Math.ceil(total / PER_PAGE));
@@ -418,9 +430,9 @@ export default function ShippingInvoices({
             {t("Toplam", "Total")}: <b className="text-neutral-900 dark:text-neutral-100">{money2.format(totalAmount)}</b>
           </span>
         </div>
-        <div className="mb-3 flex flex-wrap items-end gap-2 text-xs text-neutral-500">
-          <input value={q} onChange={(e) => onFilter(setQ)(e.target.value)} placeholder={t("Müşteri, takip no, ürün ara", "Search customer, tracking no., item")} className={`${input} w-56`} />
-          <select value={kind} onChange={(e) => onFilter(setKind)(e.target.value)} className={input}>
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
+          <input value={q} onChange={(e) => onFilter(setQ)(e.target.value)} placeholder={t("Müşteri, takip no, ürün ara", "Search customer, tracking no., item")} className={`${filterCtl} w-56`} />
+          <select value={kind} onChange={(e) => onFilter(setKind)(e.target.value)} className={filterCtl}>
             <option value="">{t("Tüm türler", "All types")}</option>
             <option value="nakliye">{t("Nakliye", "Freight")}</option>
             <option value="gümrük">{t("Gümrük", "Customs")}</option>
@@ -439,12 +451,6 @@ export default function ShippingInvoices({
               setPage(0);
             }}
           />
-          <select value={sort} onChange={(e) => onFilter(setSort)(e.target.value)} className={input}>
-            <option value="inv_date">{t("Fatura tarihine göre", "By invoice date")}</option>
-            <option value="order_date">{t("Sipariş tarihine göre", "By order date")}</option>
-            <option value="buyer">{t("Müşteri adına göre", "By customer name")}</option>
-            <option value="amount">{t("Tutara göre", "By amount")}</option>
-          </select>
           {hasFilter && (
             <button
               type="button"
@@ -456,7 +462,7 @@ export default function ShippingInvoices({
                 setInvEnd("");
                 setPage(0);
               }}
-              className="pb-1 text-neutral-500 underline"
+              className="text-neutral-500 underline"
             >
               {t("Süzgeçleri temizle", "Clear filters")}
             </button>
@@ -496,14 +502,14 @@ export default function ShippingInvoices({
                     />
                   </th>
                   <th className="w-5 py-2" />
-                  <th className="py-2 pr-3 font-medium">{t("Müşteri", "Customer")}</th>
-                  <th className="py-2 pr-3 font-medium">{t("Takip no", "Tracking no.")}</th>
-                  <th className="py-2 pr-3 font-medium">{t("Ürün", "Item")}</th>
-                  <th className="py-2 pr-3 font-medium">{t("Sipariş tarihi", "Order date")}</th>
-                  <th className="py-2 pr-3 font-medium">{t("Son fatura", "Latest invoice")}</th>
-                  <th className="py-2 pr-3 text-right font-medium">{t("Kalem", "Lines")}</th>
-                  <th className="py-2 pr-3 text-right font-medium">{t("Toplam", "Total")}</th>
-                  <th className="py-2 text-right font-medium">Kg</th>
+                  <SortTh label={t("Müşteri", "Customer")} id="buyer" sort={sort} desc={effDesc} onSort={onSort} className="py-2 pr-3" />
+                  <SortTh label={t("Takip no", "Tracking no.")} id="tracking" sort={sort} desc={effDesc} onSort={onSort} className="py-2 pr-3" />
+                  <SortTh label={t("Ürün", "Item")} id="product" sort={sort} desc={effDesc} onSort={onSort} className="py-2 pr-3" />
+                  <SortTh label={t("Sipariş tarihi", "Order date")} id="order_date" sort={sort} desc={effDesc} onSort={onSort} className="py-2 pr-3" />
+                  <SortTh label={t("Son fatura", "Latest invoice")} id="inv_date" sort={sort} desc={effDesc} onSort={onSort} className="py-2 pr-3" />
+                  <SortTh label={t("Kalem", "Lines")} id="lines" sort={sort} desc={effDesc} onSort={onSort} className="py-2 pr-3 text-right" />
+                  <SortTh label={t("Toplam", "Total")} id="amount" sort={sort} desc={effDesc} onSort={onSort} className="py-2 pr-3 text-right" />
+                  <SortTh label={"Kg"} id="weight" sort={sort} desc={effDesc} onSort={onSort} className="py-2 text-right" />
                 </tr>
               </thead>
               <tbody>
@@ -585,5 +591,18 @@ export default function ShippingInvoices({
       </section>
       {confirmElement}
     </div>
+  );
+}
+
+/** Tıklanınca sıralayan sütun başlığı; aktif sütunda yön oku görünür. */
+function SortTh({ label, id, sort, desc, onSort, className = "" }: { label: string; id: string; sort: string; desc: boolean; onSort: (id: string) => void; className?: string }) {
+  const active = sort === id;
+  return (
+    <th className={`font-medium ${className}`} aria-sort={active ? (desc ? "descending" : "ascending") : "none"}>
+      <button type="button" onClick={() => onSort(id)} className={`inline-flex items-center gap-1 hover:text-neutral-900 dark:hover:text-neutral-100 ${active ? "text-neutral-900 dark:text-neutral-100" : ""}`}>
+        {label}
+        <span className={`text-[10px] ${active ? "" : "opacity-0"}`} aria-hidden>{desc ? "▼" : "▲"}</span>
+      </button>
+    </th>
   );
 }

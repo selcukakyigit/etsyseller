@@ -615,7 +615,7 @@ def _warnings(lines: list[dict]) -> list[str]:
 
 def query_invoices(
     db: Session, shop: Shop, q: str = "", kind: str = "", inv_start: str = "", inv_end: str = "",
-    order_start: str = "", order_end: str = "", sort: str = "inv_date", page: int = 0, per_page: int = 20,
+    order_start: str = "", order_end: str = "", sort: str = "inv_date", page: int = 0, per_page: int = 20, desc: bool | None = None,
 ) -> dict:
     """Kayıtlı faturaları GÖNDERİ başına tek kayıt olarak döner (içinde kalemler: nakliye/gümrük/ek hizmet…). Arama:
     müşteri, takip no, ürün, kalem adı, fatura no. Süzgeçler: tür, fatura/sipariş tarihi. Küçük tablo, bellekte süzülür."""
@@ -666,9 +666,13 @@ def query_invoices(
         "order_date": (lambda x: x["order_date"] or "", True),
         "buyer": (lambda x: x["buyer"].lower(), False),
         "amount": (lambda x: x["total"], True),
+        "tracking": (lambda x: (x["tracking_no"] or "").lower(), False),
+        "product": (lambda x: (x["products"][0]["title"] if x["products"] else "").lower(), False),
+        "lines": (lambda x: len(x["lines"]), True),
+        "weight": (lambda x: x["weight_kg"] or 0, True),
     }
     fn, rev = keys.get(sort, keys["inv_date"])
-    items.sort(key=fn, reverse=rev)
+    items.sort(key=fn, reverse=rev if desc is None else desc)  # desc verilmezse sütunun varsayılan yönü (yazı: A→Z, sayı/tarih: büyükten küçüğe)
     total = len(items)
     per_page = max(1, min(per_page, 200))
     return {
