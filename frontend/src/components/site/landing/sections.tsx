@@ -243,11 +243,14 @@ export function Pricing({ lang, c, pricing, standalone }: { lang: Lang; c: Landi
                 key={pack.id}
                 className={`${card} relative flex flex-col p-7 ${i === featured ? "border-[#D97757] shadow-[0_20px_50px_-28px_rgba(217,119,87,0.7)] dark:border-[#D97757]" : ""}`}
               >
-                {pack.bonus_pct > 0 && (
-                  <span className="absolute right-5 top-5 rounded-full bg-[#D97757] px-2.5 py-1 text-[11px] font-semibold text-white">{p.bonus(pack.bonus_pct)}</span>
+                {pack.discount_pct > 0 && (
+                  <span className="absolute right-5 top-5 rounded-full bg-[#D97757] px-2.5 py-1 text-[11px] font-semibold text-white">{p.bonus(pack.discount_pct)}</span>
                 )}
                 <p className="text-sm font-semibold text-neutral-500 dark:text-neutral-400">{lang === "tr" ? pack.name_tr : pack.name_en}</p>
-                <p className={`${display.className} mt-3 text-5xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50`}>{money(pack.price_cents, pack.currency)}</p>
+                <p className="mt-3 flex items-baseline gap-2">
+                  <span className={`${display.className} text-5xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50`}>{money(pack.price_cents, pack.currency)}</span>
+                  {pack.discount_pct > 0 && <span className="text-base text-neutral-400 line-through dark:text-neutral-500">{money(pack.list_price_cents, pack.currency)}</span>}
+                </p>
                 <p className="mt-2 text-lg font-semibold text-[#A9502F] dark:text-[#F48771]">
                   {number(pack.credits)} {p.credits}
                 </p>
@@ -276,7 +279,8 @@ export function Pricing({ lang, c, pricing, standalone }: { lang: Lang; c: Landi
           </div>
         )}
 
-        <p className="mx-auto mt-8 max-w-3xl text-center text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
+        {pricing.packs.length > 0 && <p className="mx-auto mt-6 max-w-2xl text-center text-sm text-neutral-600 dark:text-neutral-300">{p.custom}</p>}
+        <p className="mx-auto mt-4 max-w-3xl text-center text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
           {p.taxNote}{" "}
           <Link href="/terms" className="underline">{p.termsLink}</Link> · <Link href="/refunds" className="underline">{p.refundLink}</Link>
         </p>

@@ -6,7 +6,8 @@ import { LEGAL_VERSION } from "@/lib/legal";
 import SettingsSubpage from "@/components/SettingsSubpage";
 import { BlockSpinner, Spinner } from "@/components/ui/Spinner";
 import UsageBreakdown from "@/components/billing/UsageBreakdown";
-import { BillingHistoryRow, BillingProductOption, api } from "@/lib/api";
+import CustomCredits from "@/components/billing/CustomCredits";
+import { BillingCustomInfo, BillingHistoryRow, BillingProductOption, api } from "@/lib/api";
 import { useT } from "@/lib/i18n-client";
 import { toast } from "@/lib/toast";
 import { useApiData } from "@/lib/useApiData";
@@ -27,6 +28,7 @@ const TASK_NAMES: Record<string, [string, string]> = {
   image: ["Görsel üretimi", "Image generation"],
   video: ["Video üretimi", "Video generation"],
 };
+const CUSTOM_ID = -1; // `buying` durumunda "özel miktar" satın alma işareti (paket kimlikleri pozitif)
 const card = "rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900";
 
 export default function BillingSettingsPage() {
@@ -65,16 +67,18 @@ function Billing() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function buy(p: BillingProductOption) {
-    setBuying(p.id);
+  async function checkout(id: number, target: { productId: number } | { credits: number }) {
+    setBuying(id);
     try {
-      const { url } = await api.billing.checkout(p.id, LEGAL_VERSION);
+      const { url } = await api.billing.checkout(target, LEGAL_VERSION);
       window.location.assign(url);
     } catch (e) {
       if (e instanceof Error && e.message) toast.error(e.message);
       setBuying(null);
     }
   }
+  const buy = (p: BillingProductOption) => checkout(p.id, { productId: p.id });
+  const buyCustom = (credits: number) => checkout(CUSTOM_ID, { credits });
 
   const data = summary.data;
   if (summary.error && !data) return <p className="text-sm text-red-600 dark:text-red-400">{summary.error}</p>;
@@ -117,6 +121,8 @@ function Billing() {
           onBuy={buy}
           accepted={accepted}
           onAccept={setAccepted}
+          custom={data.custom}
+          onBuyCustom={buyCustom}
         />
       )}
 
@@ -165,7 +171,11 @@ function ProductList({
   onBuy,
   accepted,
   onAccept,
+  custom,
+  onBuyCustom,
 }: {
+  custom: BillingCustomInfo | null;
+  onBuyCustom: (credits: number) => void;
   title: string;
   products: BillingProductOption[];
   price: (p: BillingProductOption) => string;
@@ -183,9 +193,7 @@ function ProductList({
       return `${(cents / 100).toFixed(2)} ${currency}`;
     }
   };
-  // Bonus: paketin kredi/fiyat oranı, en düşük orana göre ne kadar fazla. En çok verilen paket "en popüler" sayılır (ortadaki).
-  const minRate = Math.min(...products.map((p) => p.credits / p.price_cents));
-  const bonus = (p: BillingProductOption) => Math.round((p.credits / p.price_cents / minRate - 1) * 100);
+  // "En popüler": ortadaki paket. İndirim ve liste fiyatı sunucudan gelir (en küçük paketin birim fiyatına göre).
   const featured = products.length >= 3 ? Math.floor(products.length / 2) : -1;
   return (
     <section className={card}>
@@ -198,7 +206,7 @@ function ProductList({
       <ul className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {products.map((p, i) => {
           const isFeatured = i === featured;
-          const pct = bonus(p);
+          const pct = p.discount_pct;
           return (
             <li
               key={p.id}
@@ -211,13 +219,16 @@ function ProductList({
               {isFeatured && (
                 <span className="absolute -top-2.5 left-5 rounded-full bg-[#D97757] px-2.5 py-0.5 text-[11px] font-semibold text-white">{t("En popüler", "Most popular")}</span>
               )}
-              {pct >= 3 && (
+              {pct > 0 && (
                 <span className="absolute right-4 top-4 rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-800 dark:bg-green-950 dark:text-green-300">
-                  {t(`%${pct} bonus`, `${pct}% bonus`)}
+                  {t(`%${pct} indirim`, `${pct}% off`)}
                 </span>
               )}
               <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">{p.name}</p>
-              <p className="mt-2 text-4xl font-semibold tracking-tight tabular-nums text-neutral-900 dark:text-neutral-50">{price(p)}</p>
+              <p className="mt-2 flex items-baseline gap-2">
+                <span className="text-4xl font-semibold tracking-tight tabular-nums text-neutral-900 dark:text-neutral-50">{price(p)}</span>
+                {pct > 0 && <span className="text-sm tabular-nums text-neutral-400 line-through dark:text-neutral-500">{money(p.list_price_cents, p.currency)}</span>}
+              </p>
               <p className="mt-2 text-lg font-semibold tabular-nums text-[#A9502F] dark:text-[#F48771]">
                 {t(`${p.credits.toLocaleString(locale)} kredi`, `${p.credits.toLocaleString(locale)} credits`)}
               </p>
@@ -245,6 +256,7 @@ function ProductList({
           );
         })}
       </ul>
+      {custom && <CustomCredits info={custom} disabled={disabled} buying={buying === CUSTOM_ID} onBuy={onBuyCustom} />}
       <label
         className={`mt-5 flex items-start gap-3 rounded-lg border p-3 text-xs text-neutral-600 dark:text-neutral-300 ${
           accepted ? "border-[#D97757]/40 bg-[#FBF1EA] dark:bg-[#2A1D15]" : "border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950"

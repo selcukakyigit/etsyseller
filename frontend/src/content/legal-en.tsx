@@ -54,7 +54,7 @@ export function TermsEn() {
         <li>Credit pack prices and the credit cost of each action are shown at purchase and before use. Taxes such as VAT are calculated at checkout from your country. We may change prices; a change does not affect the value of credits you already bought.</li>
         <li>Payments are processed by our payment partner. We never see or store your card details. If a payment fails, no credits are added.</li>
         <li>Credits are a digital service and are added to your account immediately after payment. Withdrawal and refunds for spent credits are governed by the Refund Policy.</li>
-        <li>Credits cannot be transferred, exchanged for cash or resold. Gift and bonus credits have no cash value.</li>
+        <li>Credits cannot be transferred, exchanged for cash or resold. Gift and promotional credits have no cash value. You can buy any amount of credits; the price per credit drops as the amount grows.</li>
         <li>If an unjustified chargeback is filed we remove the related credits from your balance and may suspend the account.</li>
       </UL>
       <P>

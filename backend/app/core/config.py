@@ -72,6 +72,9 @@ class Settings(BaseSettings):
     lemonsqueezy_api_key: str = ""
     lemonsqueezy_store_id: str = ""
     lemonsqueezy_webhook_secret: str = ""
+    # "Özel miktar" için ayrı ürünün varyant no.'su (tek varyantlı, fiyatı ödeme sırasında bizim verdiğimiz tutar). Boşsa özel miktar satışı kapalıdır:
+    # paketlerin varyantına özel fiyat uygulamak, müşteri ödeme sayfasında başka paketi seçince eksik ödemeye yol açardı.
+    lemonsqueezy_custom_variant_id: str = ""
 
     # Kayıtta kabul edilen hukuki metin sürümü (frontend src/lib/legal.ts içindeki LEGAL_VERSION ile aynı olmalı).
     legal_version: str = "2026-10-02"

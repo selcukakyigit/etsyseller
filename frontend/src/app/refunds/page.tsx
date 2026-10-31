@@ -56,8 +56,9 @@ export default async function RefundsPage() {
 
         <H2>7. Free and bonus credits</H2>
         <P>
-          Sign-up gifts, promotional credits and bonus credits that come with a pack have no cash value and are not
-          refundable. If a pack is refunded, the bonus credits that came with it are removed from your balance too.
+          Sign-up gifts and promotional credits have no cash value and are not refundable. Larger packs and custom amounts
+          are priced lower per credit; a refund returns what you paid for that purchase, and the credits that purchase added
+          are removed from your balance.
         </P>
 
         <H2>8. Prices, taxes and invoices</H2>
@@ -138,8 +139,9 @@ export default async function RefundsPage() {
 
       <H2>7. Hediye ve bonus krediler</H2>
       <P>
-        Kayıt hediyesi, kampanya kredileri ve pakete eklenen bonus kredilerin nakit değeri yoktur ve iade edilmez. Bir paket
-        iade edilirse, onunla gelen bonus krediler de bakiyenizden düşülür.
+        Kayıt hediyesi ve kampanya kredilerinin nakit değeri yoktur ve iade edilmez. Büyük paketlerde ve özel miktarlarda kredi
+        başına fiyat daha düşüktür; iade, o satın alma için ödediğiniz tutarı geri verir ve o satın almayla yüklenen krediler
+        bakiyenizden düşülür.
       </P>
 
       <H2>8. Fiyat, vergi ve fatura</H2>

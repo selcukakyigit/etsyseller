@@ -71,7 +71,7 @@ export default async function TermsPage() {
         <li>Kredi paketlerinin fiyatı ve her işlemin kredi karşılığı satın alma sırasında ve kullanım öncesinde gösterilir. KDV gibi vergiler ödeme sırasında ülkenize göre hesaplanır. Fiyatları değiştirebiliriz; değişiklik, daha önce satın aldığınız kredilerin değerini etkilemez.</li>
         <li>Ödemeler, ödeme ortağımız tarafından işlenir. Kart bilgilerinizi görmez ve saklamayız. Ödeme başarısız olursa kredi yüklenmez.</li>
         <li>Krediler dijital bir hizmettir ve ödemeden hemen sonra hesabınıza yüklenir. Harcanan kredilerde cayma hakkı ve iade, İade Politikası&apos;ndaki şartlara tabidir.</li>
-        <li>Krediler başkasına devredilemez, nakde çevrilemez ve yeniden satılamaz. Hediye ve bonus kredilerin nakit değeri yoktur.</li>
+        <li>Krediler başkasına devredilemez, nakde çevrilemez ve yeniden satılamaz. Hediye ve kampanya kredilerinin nakit değeri yoktur. İstediğiniz miktarda kredi alabilirsiniz; miktar büyüdükçe kredi başına fiyat düşer.</li>
         <li>Haksız bir ödeme itirazı (chargeback) açılırsa ilgili kredileri bakiyenizden düşeriz, gerekirse hesabı askıya alabiliriz.</li>
       </UL>
       <P>

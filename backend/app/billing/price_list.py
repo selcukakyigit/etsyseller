@@ -5,13 +5,11 @@ Metin işlemlerinin fiyatı çağrının token sayısına bağlıdır; burada he
 ortalamalarından), bu yüzden "yaklaşık" gösterilir. Görsel ve video fiyatı sabittir, üretimden önce kullanıcıya aynen gösterilir."""
 from dataclasses import dataclass
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai import catalog
-from app.billing import pricing
+from app.billing import custom, pricing
 from app.billing import settings as credit_settings
-from app.billing.models import BillingProduct
 
 VIDEO_EXAMPLE_SECONDS = 5
 
@@ -71,16 +69,16 @@ def _variant_actions() -> list[Action]:
 
 
 def _packs(db: Session) -> list[dict]:
-    """Satıştaki kredi paketleri; `bonus_pct` en küçük paketin kredi başına fiyatına göre sağlanan fazladan kredi."""
-    rows = db.scalars(select(BillingProduct).where(BillingProduct.active.is_(True)).order_by(BillingProduct.price_cents, BillingProduct.id)).all()
-    base = next((p.credits / p.price_cents for p in rows if p.price_cents > 0), None)
-    return [
-        {
+    """Satıştaki kredi paketleri; `list_price_cents` en küçük paketin kredi başına fiyatıyla hesaplanan indirimsiz karşılığı, `discount_pct` ona göre indirim."""
+    products = custom.active_products(db)
+    out = []
+    for p in sorted(products, key=lambda x: (x.price_cents, x.id)):
+        list_price, pct = custom.pack_discount(products, p)
+        out.append({
             "id": p.id, "name_tr": p.name_tr, "name_en": p.name_en, "credits": p.credits, "price_cents": p.price_cents, "currency": p.currency,
-            "bonus_pct": round((p.credits / p.price_cents / base - 1) * 100) if base and p.price_cents > 0 and p.credits / p.price_cents > base * 1.005 else 0,
-        }
-        for p in rows
-    ]
+            "list_price_cents": list_price, "discount_pct": pct,
+        })
+    return out
 
 
 def build(db: Session) -> dict:

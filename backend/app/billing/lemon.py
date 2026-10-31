@@ -28,18 +28,22 @@ def _headers() -> dict[str, str]:
     }
 
 
-def create_checkout(variant_id: str, email: str, custom: dict[str, str], redirect_url: str) -> str:
+def create_checkout(variant_id: str, email: str, custom: dict[str, str], redirect_url: str, custom_price: int | None = None) -> str:
     """Bu kullanıcıya özel ödeme sayfası açar, adresini döner. `custom` (çalışma alanı no. vb.) Lemon tarafından her
-    webhook'ta `meta.custom_data` olarak geri gönderilir; kredinin kime yükleneceği buradan bilinir."""
+    webhook'ta `meta.custom_data` olarak geri gönderilir; kredinin kime yükleneceği buradan bilinir. `custom_price` (sent): özel miktar
+    satışında varyantın fiyatı yerine bu tutar alınır."""
     if not configured():
         raise LemonError("Ödeme sistemi yapılandırılmamış.")
+    attributes: dict = {
+        "checkout_data": {"email": email, "custom": {k: str(v) for k, v in custom.items()}},
+        "product_options": {"redirect_url": redirect_url},
+    }
+    if custom_price is not None:
+        attributes["custom_price"] = int(custom_price)
     body = {
         "data": {
             "type": "checkouts",
-            "attributes": {
-                "checkout_data": {"email": email, "custom": {k: str(v) for k, v in custom.items()}},
-                "product_options": {"redirect_url": redirect_url},
-            },
+            "attributes": attributes,
             "relationships": {
                 "store": {"data": {"type": "stores", "id": str(settings.lemonsqueezy_store_id)}},
                 "variant": {"data": {"type": "variants", "id": str(variant_id)}},

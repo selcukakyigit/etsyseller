@@ -1242,7 +1242,14 @@ export type BillingProductOption = {
   credits: number;
   price_cents: number;
   currency: string;
+  /** Aynı kredinin en küçük paketin birim fiyatıyla indirimsiz karşılığı; indirim yoksa fiyatla aynı. */
+  list_price_cents: number;
+  discount_pct: number;
 };
+
+/** Özel kredi miktarı sınırları ve basamaklar (hangi miktardan itibaren yüzde kaç indirim). Paket yoksa null. */
+export type BillingCustomInfo = { min: number; max: number; tiers: { from_credits: number; discount_pct: number }[] };
+export type BillingQuote = { credits: number; price_cents: number; list_price_cents: number; discount_pct: number; currency: string };
 
 export type BillingSummary = {
   /** Kredi sistemi açık mı; kapalıyken AI kullanımı bakiyeden düşmez. */
@@ -1250,6 +1257,7 @@ export type BillingSummary = {
   balance: number;
   products: BillingProductOption[];
   can_buy: boolean;
+  custom: BillingCustomInfo | null;
 };
 
 export type BillingHistoryRow = { id: number; kind: string; task: string | null; model: string | null; credits: number; platform_credits: number; delta: number; note?: string; created_at: string | null };
@@ -1978,8 +1986,13 @@ export const api = {
     history: () => request<BillingHistoryRow[]>("/api/billing/history"),
     purchases: () => request<BillingHistoryRow[]>("/api/billing/history?purchases=true"),
     usage: (days = 30) => request<CreditUsage>(`/api/billing/usage?days=${days}`),
-    checkout: (productId: number, termsVersion: string) =>
-      request<{ url: string }>("/api/billing/checkout", { method: "POST", body: JSON.stringify({ product_id: productId, accept_terms: true, terms_version: termsVersion }) }),
+    quote: (credits: number) => request<BillingQuote>(`/api/billing/quote?credits=${credits}`),
+    /** Paket (`productId`) ya da özel miktar (`credits`) için ödeme sayfası açar; özel miktarın fiyatını sunucu hesaplar. */
+    checkout: (target: { productId: number } | { credits: number }, termsVersion: string) =>
+      request<{ url: string }>("/api/billing/checkout", {
+        method: "POST",
+        body: JSON.stringify({ ...("productId" in target ? { product_id: target.productId } : { credits: target.credits }), accept_terms: true, terms_version: termsVersion }),
+      }),
   },
   shops: {
     list: () => request<Shop[]>("/api/shops"),
