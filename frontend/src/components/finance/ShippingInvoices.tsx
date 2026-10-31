@@ -9,6 +9,7 @@ import { useConfirm } from "@/components/ui/ConfirmDialog";
 import DateRangePicker, { presetOptions } from "@/components/ui/DateRangePicker";
 import DocumentAnalyzer from "@/modules/components/DocumentAnalyzer";
 import HelpTip from "@/components/ui/HelpTip";
+import VendorBadge, { KNOWN_CARRIERS } from "./VendorBadge";
 import InvoiceReviewGroup, { CHECK_FROM, Review, STRONG_FROM } from "./InvoiceReviewGroup";
 
 type ReviewFilter = "all" | "sure" | "check" | "weak" | "nomatch";
@@ -40,6 +41,7 @@ export default function ShippingInvoices({
   const [confirm, confirmElement] = useConfirm();
   const [reviews, setReviews] = useState<Review[]>([]);
   const [docVendor, setDocVendor] = useState(""); // belgedeki boş firmalara yazılan ortak firma
+  const [otherMode, setOtherMode] = useState(false); // listede olmayan firmayı yazmak için
   const lastReviewCount = useRef(0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -333,6 +335,8 @@ export default function ShippingInvoices({
       setReviews((list) => list.map((r) => (r.candidate.vendor.trim() ? r : { ...r, candidate: { ...r.candidate, vendor: v } })));
     }
   }, [reviews, docVendor, detectedVendors]);
+  const OTHER = "__other";
+  const vendorOptions = [...detectedVendors, ...KNOWN_CARRIERS].filter((v, i, all) => all.findIndex((x) => x.toLowerCase() === v.toLowerCase()) === i); // büyük/küçük harf tekrarı yok, okunan ad önde
   // Ortak firma değişince: boş olanlar ve eski ortak firmayı taşıyanlar yenisini alır; elle farklı yazılanlara dokunulmaz.
   const changeDocVendor = (next: string) => {
     const prev = docVendor.trim().toLowerCase();
@@ -389,19 +393,30 @@ export default function ShippingInvoices({
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <label className="flex items-center gap-1.5 text-xs font-medium text-neutral-600 dark:text-neutral-300">
               {t("Kargo firması", "Carrier")}
-              <input
-                list="invoice-vendors"
-                value={docVendor}
-                onChange={(e) => changeDocVendor(e.target.value)}
-                maxLength={120}
-                placeholder={t("Seç ya da yaz (ör. FedEx)", "Pick or type (e.g. FedEx)")}
-                className={`${filterCtl} w-48`}
-              />
-              <datalist id="invoice-vendors">
-                {[...new Set([...detectedVendors, "ShipEntegra", "FedEx", "DHL", "UPS", "USPS"])].map((v) => (
-                  <option key={v} value={v} />
+              <select
+                value={docVendor && vendorOptions.includes(docVendor) ? docVendor : otherMode || docVendor ? OTHER : ""}
+                onChange={(e) => {
+                  if (e.target.value === OTHER) {
+                    setOtherMode(true);
+                    return;
+                  }
+                  setOtherMode(false);
+                  changeDocVendor(e.target.value);
+                }}
+                className={`${filterCtl} w-44`}
+              >
+                <option value="">{t("— Seç —", "— Pick —")}</option>
+                {vendorOptions.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
                 ))}
-              </datalist>
+                <option value={OTHER}>{t("Başka…", "Other…")}</option>
+              </select>
+              {(otherMode || (docVendor && !vendorOptions.includes(docVendor))) && (
+                <input value={docVendor} onChange={(e) => changeDocVendor(e.target.value)} maxLength={120} autoFocus={otherMode} placeholder={t("Firma adı yaz", "Type the carrier")} className={`${filterCtl} w-40`} />
+              )}
+              {docVendor && <VendorBadge name={docVendor} />}
               <HelpTip>
                 {t(
                   "Belgeden okunan firma otomatik gelir (birden çoksa en çok geçeni). Firması boş kalan tüm gönderilere bu firma yazılır; değiştirirseniz hepsi güncellenir. Bir gönderiyi kendi kartından ayrıca değiştirebilirsiniz. Firma yalnızca listede ayırt etmek içindir, eşleşmeyi ve maliyeti etkilemez.",
@@ -595,19 +610,19 @@ export default function ShippingInvoices({
                 </tr>
               </thead>
               <tbody>
-                {saved.map((g) => {
+                {saved.map((g, idx) => {
                   const key = shipKey(g);
                   const open = expanded.has(key);
                   return (
                     <Fragment key={key}>
-                      <tr onClick={() => setExpanded((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; })} className="cursor-pointer border-b border-neutral-100 hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-800/40">
+                      <tr onClick={() => setExpanded((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; })} className={`cursor-pointer border-b border-neutral-100 hover:bg-neutral-200/60 dark:border-neutral-800 dark:hover:bg-neutral-800/70 ${idx % 2 === 0 ? "bg-white dark:bg-neutral-900" : "bg-neutral-100/70 dark:bg-neutral-800/40"}`}>
                         <td className="py-2 pr-1" onClick={(e) => e.stopPropagation()}>
                           <input type="checkbox" checked={selected.has(key)} onChange={() => toggleSel(key)} aria-label={t("Gönderiyi seç", "Select shipment")} className="h-4 w-4 accent-[#D97757]" />
                         </td>
                         <td className="py-2 text-xs text-neutral-400">{open ? "▼" : "▶"}</td>
                         <td className="py-2 pr-3 font-medium">{g.buyer || "—"}</td>
                         <td className="py-2 pr-3 text-xs text-neutral-500">{g.tracking_no || "—"}</td>
-                        <td className="py-2 pr-3 text-xs">{g.vendor || "—"}</td>
+                        <td className="py-2 pr-3"><VendorBadge name={g.vendor} /></td>
                         <td className="py-2 pr-3">
                           <div className="line-clamp-1 max-w-xs">{g.products[0]?.title || titleOf(g.products[0]?.listing_id ?? 0)}</div>
                           {g.products.length > 1 && <div className="text-[11px] text-neutral-400">{t(`+${g.products.length - 1} ürün daha`, `+${g.products.length - 1} more items`)}</div>}

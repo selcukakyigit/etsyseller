@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { InvoiceCandidate } from "@/lib/api";
+import VendorBadge from "./VendorBadge";
 import { tNow as t } from "@/lib/i18n";
 
 export type Review = { id: number; candidate: InvoiceCandidate; receiptId: number | null };
@@ -76,7 +77,7 @@ export default function InvoiceReviewGroup({
           <span className="font-semibold">{first.recipient || t("Alıcı yok", "No recipient")}</span>
           {first.recipient_country && <span className="text-neutral-500"> · {first.recipient_country}</span>}
           <div className="text-xs text-neutral-500">
-            {first.vendor && `${first.vendor} · `}
+            {first.vendor && <><VendorBadge name={first.vendor} /> · </>}
             {t("takip", "tracking")} {first.tracking_no || "—"} · {first.ship_date ?? first.invoice_date}
             {first.weight_kg ? ` · ${first.weight_kg} kg` : ""}
           </div>
