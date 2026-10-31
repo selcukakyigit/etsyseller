@@ -1,7 +1,7 @@
 """Kullanıcının krediler ekranı: bakiye, satın alınabilir kredi paketleri, ödeme sayfası, harcama dökümü ve kullanım geçmişi.
 Bakiye kişisel (ilk) çalışma alanına aittir."""
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -22,6 +22,9 @@ HISTORY_ROWS = 50
 
 class CheckoutIn(BaseModel):
     product_id: int
+    # Ödeme öncesi onay: şartlar + dijital hizmetin hemen başlaması (cayma hakkının sona ermesi). Sürüm, ispat için ödeme kaydına yazılır.
+    accept_terms: bool = False
+    terms_version: str = Field("", max_length=20)
 
 
 def _product_out(p: BillingProduct) -> dict:
@@ -70,13 +73,16 @@ def history(user: User = Depends(get_current_user), db: Session = Depends(get_db
 
 @router.post("/checkout")
 def checkout(body: CheckoutIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not body.accept_terms:
+        raise HTTPException(400, "Ödemeden önce koşulları ve iade politikasını onaylamalısınız")
     product = db.get(BillingProduct, body.product_id)
     if product is None or not product.active:
         raise HTTPException(404, "Ürün bulunamadı")
     ws = primary_workspace(db, user)
     try:
         url = lemon.create_checkout(
-            product.variant_id, user.email, {"workspace_id": ws.id, "user_id": user.id},
+            product.variant_id, user.email,
+            {"workspace_id": ws.id, "user_id": user.id, "terms_version": body.terms_version, "immediate_service_ack": "1"},
             f"{settings.frontend_url}/settings/billing?checkout=done",
         )
     except lemon.LemonError as exc:

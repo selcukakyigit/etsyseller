@@ -65,12 +65,17 @@ export default async function TermsPage() {
         <Link className="underline" href="/ai-data">Yapay Zekâ ve Veri İşleme</Link> sayfasına bakın.
       </P>
 
-      <H2>7. Ücretler</H2>
+      <H2>7. Ücretler ve ödeme</H2>
+      <UL>
+        <li>Hizmetin yapay zekâ özellikleri kredi ile kullanılır. Krediler önceden satın alınır, harcandıkça bakiyenizden düşer ve süresizdir; abonelik yoktur, otomatik yenileme veya otomatik ücret çekimi yapılmaz.</li>
+        <li>Kredi paketlerinin fiyatı ve her işlemin kredi karşılığı satın alma sırasında ve kullanım öncesinde gösterilir. KDV gibi vergiler ödeme sırasında ülkenize göre hesaplanır. Fiyatları değiştirebiliriz; değişiklik, daha önce satın aldığınız kredilerin değerini etkilemez.</li>
+        <li>Ödemeler, ödeme ortağımız tarafından işlenir. Kart bilgilerinizi görmez ve saklamayız. Ödeme başarısız olursa kredi yüklenmez.</li>
+        <li>Krediler dijital bir hizmettir ve ödemeden hemen sonra hesabınıza yüklenir. Harcanan kredilerde cayma hakkı ve iade, İade Politikası&apos;ndaki şartlara tabidir.</li>
+        <li>Krediler başkasına devredilemez, nakde çevrilemez ve yeniden satılamaz. Hediye ve bonus kredilerin nakit değeri yoktur.</li>
+        <li>Haksız bir ödeme itirazı (chargeback) açılırsa ilgili kredileri bakiyenizden düşeriz, gerekirse hesabı askıya alabiliriz.</li>
+      </UL>
       <P>
-        Hizmetin yapay zekâ özellikleri kredi ile kullanılır. Krediler önceden satın alınır, harcandıkça bakiyenizden
-        düşer ve süresizdir; abonelik yoktur. Kredi paketlerinin fiyatı ve her işlemin kredi karşılığı satın alma
-        sırasında ve kullanım öncesinde gösterilir. İade koşulları için{" "}
-        <Link className="underline" href="/refunds">İade Politikası</Link> sayfasına bakın.
+        İade koşulları için <Link className="underline" href="/refunds">İade Politikası</Link> sayfasına bakın.
       </P>
 
       <H2>8. Veriler</H2>

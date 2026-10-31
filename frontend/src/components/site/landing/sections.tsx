@@ -276,6 +276,11 @@ export function Pricing({ lang, c, pricing, standalone }: { lang: Lang; c: Landi
           </div>
         )}
 
+        <p className="mx-auto mt-8 max-w-3xl text-center text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
+          {p.taxNote}{" "}
+          <Link href="/terms" className="underline">{p.termsLink}</Link> · <Link href="/refunds" className="underline">{p.refundLink}</Link>
+        </p>
+
         {groups.length > 0 && (
           <div className="mt-16">
             <h3 className={`${h3} text-center`}>{p.priceListTitle}</h3>

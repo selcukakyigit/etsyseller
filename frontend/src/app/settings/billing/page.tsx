@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { LEGAL_VERSION } from "@/lib/legal";
 import SettingsSubpage from "@/components/SettingsSubpage";
 import { BlockSpinner, Spinner } from "@/components/ui/Spinner";
 import UsageBreakdown from "@/components/billing/UsageBreakdown";
@@ -43,6 +45,7 @@ function Billing() {
   const summary = useApiData("billing:summary", api.billing.summary);
   const history = useApiData("billing:history", api.billing.history);
   const [buying, setBuying] = useState<number | null>(null);
+  const [accepted, setAccepted] = useState(false);
   const { reload: reloadSummary } = summary;
   const { reload: reloadHistory } = history;
 
@@ -62,7 +65,7 @@ function Billing() {
   async function buy(p: BillingProductOption) {
     setBuying(p.id);
     try {
-      const { url } = await api.billing.checkout(p.id);
+      const { url } = await api.billing.checkout(p.id, LEGAL_VERSION);
       window.location.assign(url);
     } catch (e) {
       if (e instanceof Error && e.message) toast.error(e.message);
@@ -102,7 +105,16 @@ function Billing() {
           <p className="text-sm text-neutral-500 dark:text-neutral-400">{t("Kredi satışı yakında açılacak.", "Credit packs are coming soon.")}</p>
         </section>
       ) : (
-        <ProductList title={t("Kredi paketleri", "Credit packs")} products={packs} price={price} buying={buying} disabled={!data.can_buy} onBuy={buy} />
+        <ProductList
+          title={t("Kredi paketleri", "Credit packs")}
+          products={packs}
+          price={price}
+          buying={buying}
+          disabled={!data.can_buy || !accepted}
+          onBuy={buy}
+          accepted={accepted}
+          onAccept={setAccepted}
+        />
       )}
 
       <Usage />
@@ -147,6 +159,8 @@ function ProductList({
   buying,
   disabled,
   onBuy,
+  accepted,
+  onAccept,
 }: {
   title: string;
   products: BillingProductOption[];
@@ -154,11 +168,28 @@ function ProductList({
   buying: number | null;
   disabled: boolean;
   onBuy: (p: BillingProductOption) => void;
+  accepted: boolean;
+  onAccept: (v: boolean) => void;
 }) {
   const { t, locale } = useT();
   return (
     <section className={card}>
       <h2 className="mb-3 text-sm font-semibold text-neutral-900 dark:text-neutral-100">{title}</h2>
+      <label className="mb-4 flex items-start gap-2 text-xs text-neutral-600 dark:text-neutral-300">
+        <input type="checkbox" checked={accepted} onChange={(e) => onAccept(e.target.checked)} className="mt-0.5" />
+        <span>
+          {t("", "I accept the ")}
+          <Link href="/terms" target="_blank" className="underline">{t("Kullanım Koşulları", "Terms of Service")}</Link>
+          {t(", ", ", the ")}
+          <Link href="/refunds" target="_blank" className="underline">{t("İade Politikası", "Refund Policy")}</Link>
+          {t(" ve ", " and the ")}
+          <Link href="/distance-sales" target="_blank" className="underline">{t("Mesafeli Satış Sözleşmesi", "Distance Sales Contract")}</Link>
+          {t(
+            "'ni kabul ediyorum. Kredilerin ödemeden hemen sonra yüklenmesini ve harcanan kredilerde cayma/iade hakkımın kalmayacağını onaylıyorum.",
+            ". I confirm the credits are delivered immediately after payment and that I cannot withdraw from or get a refund for credits I have spent.",
+          )}
+        </span>
+      </label>
       <ul className="grid gap-3 sm:grid-cols-2">
         {products.map((p) => (
           <li key={p.id} className="flex flex-col justify-between gap-3 rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">

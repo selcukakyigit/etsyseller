@@ -46,10 +46,43 @@ export default async function RefundsPage() {
           5 to 10 business days, depending on your bank.
         </P>
 
-        <H2>6. Your legal rights</H2>
+        <H2>6. Digital service and right of withdrawal</H2>
+        <P>
+          Credits are a digital service that is delivered to your balance immediately after payment, and each AI action is
+          performed as soon as you start it. Before you pay, we ask you to confirm that you want the service to start
+          immediately and that you understand that credits you have spent can no longer be withdrawn or refunded. This does
+          not affect the {REFUND_DAYS}-day refund for unused credits in section 2, which we offer on top of any legal right.
+        </P>
+
+        <H2>7. Free and bonus credits</H2>
+        <P>
+          Sign-up gifts, promotional credits and bonus credits that come with a pack have no cash value and are not
+          refundable. If a pack is refunded, the bonus credits that came with it are removed from your balance too.
+        </P>
+
+        <H2>8. Prices, taxes and invoices</H2>
+        <UL>
+          <li>Prices are shown in the currency on the pricing page and at checkout. Taxes such as VAT are calculated at checkout from your country and shown before you pay.</li>
+          <li>You receive an invoice or receipt for every purchase by email. Refunds are made in the currency of the original payment.</li>
+        </UL>
+
+        <H2>9. Disputes and chargebacks</H2>
+        <P>
+          Please contact us before you open a dispute with your bank. We resolve almost every problem within days, and a
+          dispute can freeze the account while it is reviewed. If a payment is reversed, the credits from that payment are
+          removed from your balance.
+        </P>
+
+        <H2>10. Account closure</H2>
+        <UL>
+          <li>If you delete your account, the credits left in it are deleted with it and are not refunded. Ask for a refund of unused credits first if you want one.</li>
+          <li>If we close an account for breaking the Terms of Service, remaining credits can be forfeited. If we shut the service down, we refund the unused paid credits.</li>
+        </UL>
+
+        <H2>11. Your legal rights</H2>
         <P>These rules do not limit any mandatory consumer rights you have under the law where you live.</P>
 
-        <H2>7. Contact</H2>
+        <H2>12. Contact</H2>
         <P>{COMPANY.name} · {COMPANY.email}</P>
       </LegalLayout>
     );
@@ -93,10 +126,45 @@ export default async function RefundsPage() {
         5 ila 10 iş günü içinde hesabınıza ulaşır.
       </P>
 
-      <H2>6. Yasal haklarınız</H2>
+      <H2>6. Dijital hizmet ve cayma hakkı</H2>
+      <P>
+        Krediler, ödemeden hemen sonra bakiyenize yüklenen dijital bir hizmettir ve her yapay zekâ işlemi siz başlatır
+        başlatmaz yerine getirilir. Ödeme öncesinde, hizmetin hemen başlamasını istediğinizi ve harcadığınız kredilerde
+        cayma veya iade hakkınızın kalmayacağını anladığınızı onaylamanızı isteriz (Mesafeli Sözleşmeler Yönetmeliği m.15
+        uyarınca, elektronik ortamda anında ifa edilen hizmetlerde cayma hakkı kullanılamaz). Bu durum, 2. maddedeki
+        kullanılmamış kredilere tanıdığımız {REFUND_DAYS} günlük iadeyi etkilemez; o iade yasal haklarınıza ek olarak
+        sunulur.
+      </P>
+
+      <H2>7. Hediye ve bonus krediler</H2>
+      <P>
+        Kayıt hediyesi, kampanya kredileri ve pakete eklenen bonus kredilerin nakit değeri yoktur ve iade edilmez. Bir paket
+        iade edilirse, onunla gelen bonus krediler de bakiyenizden düşülür.
+      </P>
+
+      <H2>8. Fiyat, vergi ve fatura</H2>
+      <UL>
+        <li>Fiyatlar fiyatlandırma sayfasında ve ödeme sırasında gösterilen para biriminde verilir. KDV gibi vergiler ödeme sırasında ülkenize göre hesaplanır ve ödemeden önce gösterilir.</li>
+        <li>Her satın alma için e-postayla fatura veya makbuz alırsınız. İadeler, ilk ödemenin yapıldığı para biriminde yapılır.</li>
+      </UL>
+
+      <H2>9. İtirazlar ve geri ödeme talepleri (chargeback)</H2>
+      <P>
+        Bankanızda itiraz açmadan önce lütfen bize yazın; sorunların neredeyse tamamını birkaç gün içinde çözeriz. Banka
+        itirazı inceleme süresince hesabın kilitlenmesine yol açabilir. Bir ödeme geri çevrilirse, o ödemeyle yüklenen
+        krediler bakiyenizden düşülür.
+      </P>
+
+      <H2>10. Hesap kapatma</H2>
+      <UL>
+        <li>Hesabınızı silerseniz, içindeki kalan krediler de silinir ve iade edilmez. Kullanılmamış kredilerin iadesini istiyorsanız silmeden önce başvurun.</li>
+        <li>Kullanım Koşulları&apos;nı ihlal ettiği için kapattığımız hesaplarda kalan krediler yanabilir. Hizmeti tamamen kapatırsak kullanılmamış ücretli krediler iade edilir.</li>
+      </UL>
+
+      <H2>11. Yasal haklarınız</H2>
       <P>Bu kurallar, bulunduğunuz ülkenin hukukundan doğan zorunlu tüketici haklarınızı sınırlamaz.</P>
 
-      <H2>7. İletişim</H2>
+      <H2>12. İletişim</H2>
       <P>{COMPANY.name} · {COMPANY.email}</P>
     </LegalLayout>
   );

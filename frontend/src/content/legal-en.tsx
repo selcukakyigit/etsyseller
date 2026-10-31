@@ -48,11 +48,17 @@ export function TermsEn() {
         brand or another person&apos;s work. See <Link className="underline" href="/ai-data">AI &amp; Data Use</Link>.
       </P>
 
-      <H2>7. Fees</H2>
+      <H2>7. Fees and payment</H2>
+      <UL>
+        <li>The AI features of the service are used with credits. Credits are bought in advance, are deducted from your balance as you use them and never expire. There is no subscription, nothing renews and nothing is charged automatically.</li>
+        <li>Credit pack prices and the credit cost of each action are shown at purchase and before use. Taxes such as VAT are calculated at checkout from your country. We may change prices; a change does not affect the value of credits you already bought.</li>
+        <li>Payments are processed by our payment partner. We never see or store your card details. If a payment fails, no credits are added.</li>
+        <li>Credits are a digital service and are added to your account immediately after payment. Withdrawal and refunds for spent credits are governed by the Refund Policy.</li>
+        <li>Credits cannot be transferred, exchanged for cash or resold. Gift and bonus credits have no cash value.</li>
+        <li>If an unjustified chargeback is filed we remove the related credits from your balance and may suspend the account.</li>
+      </UL>
       <P>
-        The AI features of the service are used with credits. Credits are bought in advance, are deducted from your balance as
-        you use them and never expire; there is no subscription. Credit pack prices and the credit cost of each action are shown
-        at purchase and before use. See the <Link className="underline" href="/refunds">Refund Policy</Link> for refund terms.
+        See the <Link className="underline" href="/refunds">Refund Policy</Link> for refund terms.
       </P>
 
       <H2>8. Your data</H2>
@@ -114,6 +120,7 @@ export function PrivacyEn() {
         <li><b>Etsy data</b>, once you authorize it: shop details, listings, images, orders, reviews and performance statistics. Orders include buyer name and shipping address.</li>
         <li><b>What you enter:</b> product costs, drafts, notes, uploaded images, and messages (with any files you attach) sent through the contact form.</li>
         <li><b>Technical data:</b> IP address, browser, session and error logs.</li>
+        <li><b>Purchases:</b> pack bought, amount, date, payment status, tax and invoice details. Card numbers are handled only by the payment partner and are never stored by us.</li>
       </UL>
       <P>We never collect your Etsy password. The connection is made through Etsy&apos;s authorization screen (OAuth).</P>
 
@@ -126,6 +133,12 @@ export function PrivacyEn() {
       <P>
         We do not use Etsy data to train AI models, sell it, build advertising profiles, or show it to anyone other than you
         and the members of your workspace.
+      </P>
+      <P>
+        <b>Your buyers&apos; data:</b> For the buyer names, addresses and notes in your orders, you are the controller and we act as
+        your processor. We process this data only to provide the service, on your instructions, keep it confidential, never use
+        it for other purposes, and share it only with the sub-processors listed in this policy. We help you answer requests from
+        your buyers about their rights. If you need a data processing agreement (DPA), write to {COMPANY.kvkkEmail}.
       </P>
 
       <H2>4. AI features</H2>
@@ -145,7 +158,10 @@ export function PrivacyEn() {
           ["Render", "Application servers and background jobs", "EU / USA"],
           ["Vercel", "Hosting of the web interface", "Global CDN"],
           ["Anthropic, OpenAI, Google", "AI text and image generation, only when you use an AI feature", "USA"],
-          ["Payment provider (when credit sales launch)", "Credit purchases and invoices", "EU / USA"],
+          ["Replicate", "Model infrastructure for AI image and video generation, only when you use those features (the image you pick and your instruction are sent)", "USA"],
+          ["Resend", "Sending account, support and service emails (your email address and the message)", "USA"],
+          ["Payment partner (payment processor)", "Credit purchases, tax calculation, invoices and refunds. The partner collects your name, email, billing address and payment details directly; card details never reach us", "EU / USA"],
+          ["DataForSEO", "Fetching keyword research data (only keywords are sent, no personal data)", "EU / USA"],
         ]}
       />
 
@@ -246,11 +262,21 @@ export function AiDataEn() {
         rows={[
           ["Anthropic", "Text generation, assistant", "The relevant listing text and attributes, and the shop summary the assistant needs to answer"],
           ["OpenAI / Google", "Image generation and editing", "The product image you select and the instruction you write"],
+          ["Replicate", "Model infrastructure for image and video generation", "The product image you select and the instruction you write"],
         ]}
       />
       <P>
-        We aim not to send buyer names or shipping addresses to AI providers and do not include them in a request unless a feature
-        strictly needs them.
+        Street, city, postal code and phone number of a shipping address are never sent to AI providers. If you ask the assistant
+        about your orders, the buyer name, country and, where present, the buyer note and gift message can be sent to answer;
+        none of this is included unless you ask about orders.
+      </P>
+
+      <H2>Content and abuse</H2>
+      <P>
+        Generating content that infringes brands, copyright or personality rights, or that is misleading or illegal, is
+        prohibited by the Terms of Service. Image and video generation passes through the providers&apos; own safety filters; if a
+        filter rejects a request, no result is produced and no credits are charged. If we detect abuse we may suspend or close
+        the account. To report content, write to support@ulagg.com.
       </P>
 
       <H2>Voice typing</H2>

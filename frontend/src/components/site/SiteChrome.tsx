@@ -3,7 +3,7 @@ import Logo from "@/components/Logo";
 import LangSwitch from "@/components/LangSwitch";
 import HeaderAuth from "@/components/site/HeaderAuth";
 import { Lang } from "@/lib/i18n";
-import { BRAND, ETSY_DISCLAIMER, LEGAL_LINKS } from "@/lib/legal";
+import { BRAND, COMPANY, ETSY_DISCLAIMER, LEGAL_LINKS } from "@/lib/legal";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -188,6 +188,9 @@ export async function SiteFooter({ lang }: { lang: Lang }) {
           </div>
         </div>
         <p className="mx-auto mt-8 max-w-3xl text-center text-xs leading-relaxed text-neutral-500 sm:mx-0 sm:mt-10 sm:text-left sm:text-sm sm:text-neutral-600 dark:text-neutral-400 dark:sm:text-neutral-300">{ETSY_DISCLAIMER}</p>
+        <p className="mx-auto mt-4 max-w-3xl text-center text-xs leading-relaxed text-neutral-500 sm:mx-0 sm:text-left dark:text-neutral-400">
+          {COMPANY.name} · {COMPANY.address} · {COMPANY.tax} · MERSİS {COMPANY.mersis} · {lang === "tr" ? "Ticaret Sicil No" : "Trade registry no."} {COMPANY.tradeRegistry} · {COMPANY.email} · {COMPANY.whatsappDisplay}
+        </p>
         <div className="mt-6 flex flex-col-reverse items-center gap-4 border-t border-black/5 pt-6 sm:flex-row sm:justify-between dark:border-white/10">
           <p className="text-center text-xs text-neutral-400 dark:text-neutral-500">© {new Date().getFullYear()} {BRAND}</p>
           {social.length > 0 && (

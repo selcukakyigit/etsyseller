@@ -127,6 +127,10 @@ export const COPY = {
       priceListNote: "Text actions are approximate; image and video prices are fixed and shown before you generate.",
       groups: { text: "Text and documents", image: "Images", video: "Video" },
       perks: ["No subscription, no expiry", "See the price before every image or video", "Invoices for every purchase"],
+      taxNote:
+        "Credit packs are one-time payments; nothing renews and nothing is charged automatically. Taxes such as VAT are calculated at checkout from your country. Payments are handled securely by our payment partner, and we never see or store your card details. Unused credits can be refunded within 14 days.",
+      termsLink: "Terms of Service",
+      refundLink: "Refund Policy",
     },
     meta: {
       pricing: ["Pricing", "Pay-as-you-go credits for AI photos, video and SEO suggestions. No subscription."],
@@ -261,6 +265,10 @@ export const COPY = {
       priceListNote: "Metin işlemleri yaklaşıktır; görsel ve video fiyatları sabittir ve üretmeden önce gösterilir.",
       groups: { text: "Metin ve belgeler", image: "Görseller", video: "Video" },
       perks: ["Abonelik yok, süre sınırı yok", "Her görsel ve videodan önce fiyatı görürsün", "Her satın alma için fatura"],
+      taxNote:
+        "Kredi paketleri tek seferlik ödemedir; hiçbir şey yenilenmez, otomatik ücret çekilmez. KDV gibi vergiler ödeme sırasında bulunduğun ülkeye göre hesaplanır. Ödemeler ödeme ortağımız tarafından güvenle işlenir; kart bilgilerini görmeyiz ve saklamayız. Kullanılmamış krediler 14 gün içinde iade edilebilir.",
+      termsLink: "Kullanım Koşulları",
+      refundLink: "İade Politikası",
     },
     meta: {
       pricing: ["Fiyatlandırma", "Yapay zekâ fotoğraf, video ve SEO önerileri için kullandıkça öde kredileri. Abonelik yok."],

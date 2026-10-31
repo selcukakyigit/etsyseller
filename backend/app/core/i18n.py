@@ -196,6 +196,7 @@ EN_MESSAGES: dict[str, str] = {
     "Hesabın askıya alındı. Destek için iletişim sayfasından bize yazabilirsin.": "Your account is suspended. You can reach us through the contact page.",
     "Hesabın engellendi.": "Your account is blocked.",
     "Ürün bulunamadı": "Product not found",
+    "Ödemeden önce koşulları ve iade politikasını onaylamalısınız": "You must accept the terms and refund policy before paying",
     "Ödeme sistemi yapılandırılmamış.": "Payments are not configured.",
     "Ödeme sağlayıcısına ulaşılamadı.": "Could not reach the payment provider.",
     "Ödeme sayfası açılamadı.": "Could not open the checkout page.",

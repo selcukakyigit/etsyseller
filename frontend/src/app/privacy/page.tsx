@@ -34,6 +34,7 @@ export default async function PrivacyPage() {
         <li><b>Etsy verileri:</b> siz yetki verdiğinizde mağaza bilgileri, listeler, görseller, siparişler, yorumlar ve performans istatistikleri. Siparişlerde alıcı adı ve teslimat adresi bulunur.</li>
         <li><b>Sizin girdiğiniz veriler:</b> maliyetler, taslaklar, notlar, yüklediğiniz görseller ve iletişim formundan gönderdiğiniz mesajlar (eklediğiniz dosyalarla birlikte).</li>
         <li><b>Teknik veriler:</b> IP adresi, tarayıcı, oturum, hata kayıtları.</li>
+        <li><b>Satın almalar:</b> alınan paket, tutar, tarih, ödeme durumu, vergi ve fatura bilgisi. Kart numaranızı yalnızca ödeme ortağı işler; bizde saklanmaz.</li>
       </UL>
       <P>Etsy&apos;de toplamadığımız şey: Etsy şifreniz. Bağlantı, Etsy&apos;nin kendi izin ekranı (OAuth) üzerinden kurulur.</P>
 
@@ -46,6 +47,13 @@ export default async function PrivacyPage() {
       <P>
         Etsy&apos;den aldığımız verileri yapay zekâ modellerini eğitmek, üçüncü kişilere satmak, reklam profili çıkarmak veya
         sizin dışınızda başka bir satıcıya göstermek için kullanmayız.
+      </P>
+      <P>
+        <b>Alıcılarınızın verisi:</b> Siparişlerdeki alıcı adı, adresi ve notları bakımından veri sorumlusu siz, biz sizin
+        adınıza işlem yapan veri işleyeniz. Bu verileri yalnızca size hizmet sunmak için, talimatlarınız doğrultusunda işleriz,
+        gizliliğini koruruz, başka amaçla kullanmaz ve yalnızca bu politikada sayılan alt işleyenlerle paylaşırız. Alıcılarınızın
+        haklarına ilişkin talepleri yanıtlamanıza yardımcı oluruz. Veri işleme sözleşmesi (DPA) isterseniz{" "}
+        {COMPANY.kvkkEmail} adresine yazın.
       </P>
 
       <H2>4. Yapay zekâ</H2>

@@ -34,11 +34,21 @@ export default async function AiDataPage() {
         rows={[
           ["Anthropic", "Metin üretimi, asistan", "İlgili listing metni/özelliği, asistanın cevap için gereken mağaza özeti"],
           ["OpenAI / Google", "Görsel üretimi ve düzenleme", "Seçtiğiniz ürün görseli ve yazdığınız talimat"],
+          ["Replicate", "Görsel ve video üretimi için model altyapısı", "Seçtiğiniz ürün görseli ve yazdığınız talimat"],
         ]}
       />
       <P>
-        Alıcı adı ve teslimat adresi gibi sipariş kişisel verilerini AI sağlayıcılarına göndermemeyi hedefleriz. Bir
-        özellik için gerekmedikçe bu veriler isteğe dahil edilmez.
+        Teslimat adresinin sokak, şehir, posta kodu ve telefon bilgisi AI sağlayıcılarına gönderilmez. Asistana siparişlerinizi
+        sorarsanız cevap için alıcı adı, ülkesi, varsa alıcı notu ve hediye mesajı sağlayıcıya gidebilir; siparişle ilgili bir
+        şey sormadığınız sürece bu veriler isteğe dahil edilmez.
+      </P>
+
+      <H2>İçerik ve kötüye kullanım</H2>
+      <P>
+        Marka, telif veya kişilik hakkı ihlali, yanıltıcı veya yasa dışı içerik üretmek Kullanım Koşulları&apos;nda yasaktır.
+        Görsel ve video üretimi sağlayıcıların kendi güvenlik filtrelerinden geçer; filtre bir isteği reddederse sonuç üretilmez
+        ve bunun için kredi düşülmez. Kötüye kullanım tespit edersek hesabı askıya alabilir veya kapatabiliriz. Bir içerik
+        hakkında bildirimde bulunmak için support@ulagg.com adresine yazabilirsiniz.
       </P>
 
       <H2>Sesle yazma</H2>

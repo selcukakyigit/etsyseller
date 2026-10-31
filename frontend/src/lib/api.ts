@@ -1977,7 +1977,8 @@ export const api = {
     summary: () => request<BillingSummary>("/api/billing/summary"),
     history: () => request<BillingHistoryRow[]>("/api/billing/history"),
     usage: (days = 30) => request<CreditUsage>(`/api/billing/usage?days=${days}`),
-    checkout: (productId: number) => request<{ url: string }>("/api/billing/checkout", { method: "POST", body: JSON.stringify({ product_id: productId }) }),
+    checkout: (productId: number, termsVersion: string) =>
+      request<{ url: string }>("/api/billing/checkout", { method: "POST", body: JSON.stringify({ product_id: productId, accept_terms: true, terms_version: termsVersion }) }),
   },
   shops: {
     list: () => request<Shop[]>("/api/shops"),

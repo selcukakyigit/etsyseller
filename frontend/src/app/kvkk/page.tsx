@@ -40,6 +40,7 @@ export default async function KvkkPage() {
           ["Finansal veriler: maliyetler, ücretler, kargo faturaları", "Kâr/zarar raporları", "Sözleşmenin ifası"],
           ["İşlem güvenliği: IP adresi, oturum ve cihaz bilgisi, işlem kayıtları", "Güvenlik, kötüye kullanımın önlenmesi, hata ayıklama", "Hukuki yükümlülük (m.5/2-ç); meşru menfaat (m.5/2-f)"],
           ["Kullanım ve onay kayıtları: kabul edilen metin sürümü, zaman damgası", "Yasal yükümlülüklerin ispatı", "Hukuki yükümlülük; meşru menfaat"],
+          ["Ödeme ve fatura kayıtları: satın alınan paket, tutar, tarih, ödeme durumu, vergi ve fatura bilgisi (kart numarası saklanmaz)", "Kredi satışı, muhasebe, vergi ve iade işlemleri", "Sözleşmenin ifası; hukuki yükümlülük (vergi ve muhasebe mevzuatı)"],
         ]}
       />
       <P>
@@ -64,7 +65,10 @@ export default async function KvkkPage() {
           ["Render", "Uygulama sunucusu ve arka plan işleri", "AB/ABD"],
           ["Vercel", "Web arayüzünün barındırılması", "Küresel (CDN)"],
           ["Anthropic, OpenAI, Google", "Yapay zekâ ile metin ve görsel üretimi (yalnızca siz bir AI özelliğini kullandığınızda)", "ABD"],
-          ["Ödeme sağlayıcı (kredi satışı başladığında)", "Kredi satın alma ve fatura işlemleri", "AB/ABD"],
+          ["Replicate", "Yapay zekâ ile görsel ve video üretimi için model altyapısı (yalnızca siz bu özelliği kullandığınızda; seçtiğiniz görsel ve yazdığınız talimat gönderilir)", "ABD"],
+          ["Resend", "Hesap, destek ve hizmet e-postalarının gönderimi (e-posta adresiniz ve ileti içeriği)", "ABD"],
+          ["Ödeme ortağı (ödeme kuruluşu)", "Kredi satın alma, vergi hesabı, fatura ve iade işlemleri; ad, e-posta, fatura adresi ve ödeme bilgisini ödeme ortağı doğrudan alır, kart bilgisi bize ulaşmaz", "AB/ABD"],
+          ["DataForSEO", "Anahtar kelime araştırma verisinin alınması (yalnızca anahtar kelime gönderilir, kişisel veri içermez)", "AB/ABD"],
         ]}
       />
       <P>
@@ -85,6 +89,7 @@ export default async function KvkkPage() {
         <li>Hesap ve mağaza verileri: hesabınız açık olduğu sürece.</li>
         <li>Etsy&apos;den alınan veriler: Etsy API şartlarındaki yenileme ve saklama sınırlarına uygun olarak güncel tutulur; Etsy bağlantısını kestiğinizde ilgili veriler silinir.</li>
         <li>Hesap silme talebinden sonra kişisel veriler makul bir süre içinde silinir veya anonim hale getirilir; yasal saklama yükümlülüğü olan kayıtlar (ör. fatura) ilgili süre boyunca tutulur.</li>
+        <li>Ödeme ve fatura kayıtları: vergi ve ticaret mevzuatının öngördüğü süre boyunca; hesabınızı silseniz bile bu süre dolmadan silinmez.</li>
         <li>İletişim formu mesajları ve ekleri: 12 ay sonra otomatik silinir.</li>
         <li>Asistan sohbetleri: Etsy bağlantısı kesildiğinde silinir; sohbete eklenen dosyalar 90 gün, 12 ay boyunca açılmayan sohbetler 12 ay sonra otomatik silinir.</li>
         <li>Asistanın mağaza notları (&quot;hatırladıkları&quot;): siz silene kadar ya da hesap silinene kadar; Ayarlar &gt; Yapay Zekâ&apos;dan yönetilir.</li>
