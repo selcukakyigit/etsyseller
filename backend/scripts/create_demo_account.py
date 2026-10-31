@@ -199,7 +199,9 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--source-shop", type=int, required=True, help="Kopyalanacak mağazanın yerel id'si (shops.id)")
     ap.add_argument("--refresh", action="store_true", help="Yalnızca var olan demo mağazanın verisini yeniden kopyala")
+    ap.add_argument("--email", default=DEMO_EMAIL, help="Demo hesabın e-postası (başka bir incelemeci için ayrı hesap açmak için; varsayılan: demo@ulagg.com)")
     args = ap.parse_args()
+    email = args.email.strip().lower()
 
     db = SessionLocal()
     try:
@@ -207,13 +209,13 @@ def main() -> None:
         if source is None or source.is_demo:
             raise SystemExit("Kaynak mağaza bulunamadı (ya da kendisi demo).")
 
-        user = db.scalars(select(User).where(User.email == DEMO_EMAIL)).first()
+        user = db.scalars(select(User).where(User.email == email)).first()
         password = None
         if user is None:
             if args.refresh:
                 raise SystemExit("Demo hesap yok; --refresh olmadan çalıştır.")
             password = secrets.token_urlsafe(12)
-            user = User(supabase_id=_supabase_upsert_user(DEMO_EMAIL, password), email=DEMO_EMAIL, name="Etsy Reviewer")
+            user = User(supabase_id=_supabase_upsert_user(email, password), email=email, name="Reviewer")
             db.add(user)
             db.flush()
             ws = Workspace(name="Demo workspace")
@@ -233,7 +235,7 @@ def main() -> None:
             db.add(demo)
         db.commit()  # hesap kayıtları veri kopyalamadan bağımsız kalsın
         if password:
-            print(f"Demo hesap oluşturuldu: {DEMO_EMAIL}  şifre: {password}")
+            print(f"Demo hesap oluşturuldu: {email}  şifre: {password}")
 
         copy_demo_data(db, source, demo)
     finally:
