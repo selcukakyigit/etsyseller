@@ -1538,6 +1538,8 @@ export interface InvoiceQuery {
   sort?: string;
   /** Yön; verilmezse sütunun varsayılanı. */
   desc?: boolean | null;
+  /** Yalnızca bu siparişin faturaları. */
+  receiptId?: number | null;
   page?: number;
   perPage?: number;
 }
@@ -2398,6 +2400,7 @@ export const api = {
         const map: [string, string | undefined][] = [["q", f.q], ["kind", f.kind], ["inv_start", f.invStart], ["inv_end", f.invEnd], ["order_start", f.orderStart], ["order_end", f.orderEnd]];
         for (const [k, v] of map) if (v) params.set(k, v);
         if (f.desc !== undefined && f.desc !== null) params.set("desc", String(f.desc));
+        if (f.receiptId) params.set("receipt_id", String(f.receiptId));
         return request<InvoicePage>(`/api/shops/${shopId}/finance/invoices?${params}`);
       },
       removeMany: (shopId: number, ids: number[]) =>

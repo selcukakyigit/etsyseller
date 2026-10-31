@@ -32,15 +32,15 @@ export default function ShippingInvoices({
   products,
   money2,
   onSaved,
-  focus = "",
+  focus = null,
   onFocusUsed,
 }: {
   shopId: number;
   products: FinProduct[];
   money2: Intl.NumberFormat;
   onSaved: () => void;
-  /** Takip no: verilirse arama kutusuna yazılır, o gönderi açılıp vurgulanır (sipariş penceresinden gelinir). */
-  focus?: string;
+  /** Verilirse yalnızca bu siparişin faturaları listelenir, gönderi açılıp vurgulanır (sipariş penceresinden gelinir). */
+  focus?: { receiptId: number; label: string } | null;
   onFocusUsed?: () => void;
 }) {
   const [confirm, confirmElement] = useConfirm();
@@ -48,7 +48,8 @@ export default function ShippingInvoices({
   const [docVendor, setDocVendor] = useState(""); // belgedeki boş firmalara yazılan ortak firma
   const [otherMode, setOtherMode] = useState(false); // listede olmayan firmayı yazmak için
   const lastReviewCount = useRef(0);
-  const [highlight, setHighlight] = useState(""); // vurgulanan gönderinin takip no
+  const [highlight, setHighlight] = useState<number | null>(null); // vurgulanan gönderinin sipariş no
+  const [receiptFilter, setReceiptFilter] = useState<{ id: number; label: string } | null>(null); // tek siparişin faturaları
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [q, setQ] = useState("");
@@ -68,7 +69,7 @@ export default function ShippingInvoices({
   const nextId = useRef(1);
   // Kayıtlı faturalar sekme belleğinde tutulur: sekmeye geri dönünce liste beklemeden görünür, arkada tazelenir.
   const [list, setList] = useCached<{ items: InvoiceShipment[]; total: number; total_amount: number }>(
-    `fin-invoices:${shopId}:${q}:${kind}:${invStart}:${invEnd}:${sort}:${desc}:${page}`,
+    `fin-invoices:${shopId}:${q}:${kind}:${invStart}:${invEnd}:${sort}:${desc}:${receiptFilter?.id ?? ""}:${page}`,
     { keepPrevious: true },
   );
   const saved = list?.items ?? [];
@@ -78,10 +79,10 @@ export default function ShippingInvoices({
 
   const loadSaved = useCallback(() => {
     api.finance.invoices
-      .list(shopId, { q, kind, invStart, invEnd, sort, desc, page, perPage: PER_PAGE })
+      .list(shopId, { q, kind, invStart, invEnd, sort, desc, receiptId: receiptFilter?.id, page, perPage: PER_PAGE })
       .then((r) => setList({ items: r.items, total: r.total, total_amount: r.total_amount }))
       .catch(() => setList({ items: [], total: 0, total_amount: 0 }));
-  }, [shopId, q, kind, invStart, invEnd, sort, desc, page, setList]);
+  }, [shopId, q, kind, invStart, invEnd, sort, desc, receiptFilter, page, setList]);
   // Arama yazılırken her tuşta istek atmamak için kısa bir gecikme; aramasız açılışta beklemeden yükle.
   useEffect(() => {
     const timer = setTimeout(loadSaved, q ? 250 : 0);
@@ -103,7 +104,7 @@ export default function ShippingInvoices({
     }
     setPage(0);
   };
-  const hasFilter = !!(q || kind || range !== "all");
+  const hasFilter = !!(q || kind || range !== "all" || receiptFilter);
   const pages = Math.max(1, Math.ceil(total / PER_PAGE));
   const shipKey = (g: InvoiceShipment) => `${g.receipt_id}-${g.tracking_no}-${g.lines[0]?.id}`;
   const selectedShipments = saved.filter((g) => selected.has(shipKey(g)));
@@ -319,28 +320,29 @@ export default function ShippingInvoices({
     onSaved();
   }
 
-  // Sipariş penceresinden gelindi: aramayı takip no'ya ayarla, süzgeçleri temizle, gönderiyi vurgula (render sırasında, bir kez).
-  const [seenFocus, setSeenFocus] = useState("");
-  if (focus && focus !== seenFocus) {
-    setSeenFocus(focus);
-    setQ(focus);
+  // Sipariş penceresinden gelindi: yalnızca o siparişin faturaları listelenir, süzgeçler temizlenir, gönderi vurgulanır (render sırasında, bir kez).
+  const [seenFocus, setSeenFocus] = useState(0);
+  if (focus && focus.receiptId !== seenFocus) {
+    setSeenFocus(focus.receiptId);
+    setReceiptFilter({ id: focus.receiptId, label: focus.label });
+    setQ("");
     setKind("");
     setRange("all");
     setInvStart("");
     setInvEnd("");
     setPage(0);
-    setHighlight(focus);
-  } else if (!focus && seenFocus) setSeenFocus("");
+    setHighlight(focus.receiptId);
+  } else if (!focus && seenFocus) setSeenFocus(0);
   useEffect(() => {
     if (focus) onFocusUsed?.();
   }, [focus, onFocusUsed]);
   // Vurgulanan gönderi listeye gelince görünür alana kaydırılır (satır zaten açık çizilir); birkaç saniye sonra vurgu söner.
   useEffect(() => {
-    if (!highlight) return;
-    const hit = list?.items.find((g) => g.tracking_no === highlight);
+    if (highlight === null) return;
+    const hit = list?.items.find((g) => g.receipt_id === highlight);
     if (!hit) return;
     document.getElementById(`ship-${shipKey(hit)}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
-    const timer = setTimeout(() => setHighlight(""), 4000);
+    const timer = setTimeout(() => setHighlight(null), 4000);
     return () => clearTimeout(timer);
   }, [highlight, list]);
 
@@ -558,6 +560,18 @@ export default function ShippingInvoices({
           </span>
         </div>
         <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
+          {receiptFilter && (
+            <button
+              type="button"
+              onClick={() => setReceiptFilter(null)}
+              title={t("Süzgeci kaldır", "Remove filter")}
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-orange-300 bg-orange-50 px-3 text-sm font-medium text-orange-800 hover:bg-orange-100 dark:border-orange-800 dark:bg-orange-950/40 dark:text-orange-300"
+            >
+              {t("Sipariş", "Order")} #{receiptFilter.id}
+              {receiptFilter.label && ` · ${receiptFilter.label}`}
+              <span aria-hidden>✕</span>
+            </button>
+          )}
           <input value={q} onChange={(e) => onFilter(setQ)(e.target.value)} placeholder={t("Müşteri, takip no, ürün ara", "Search customer, tracking no., item")} className={`${filterCtl} w-56`} />
           <select value={kind} onChange={(e) => onFilter(setKind)(e.target.value)} className={filterCtl}>
             <option value="">{t("Tüm türler", "All types")}</option>
@@ -584,6 +598,7 @@ export default function ShippingInvoices({
               onClick={() => {
                 setQ("");
                 setKind("");
+                setReceiptFilter(null);
                 setRange("all");
                 setInvStart("");
                 setInvEnd("");
@@ -643,10 +658,10 @@ export default function ShippingInvoices({
               <tbody>
                 {saved.map((g, idx) => {
                   const key = shipKey(g);
-                  const open = expanded.has(key) || (g.tracking_no !== "" && g.tracking_no === highlight);
+                  const open = expanded.has(key) || (highlight !== null && g.receipt_id === highlight);
                   return (
                     <Fragment key={key}>
-                      <tr id={`ship-${key}`} onClick={() => setExpanded((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; })} className={`cursor-pointer border-b border-neutral-100 hover:bg-neutral-200/60 dark:border-neutral-800 dark:hover:bg-neutral-800/70 ${g.tracking_no && g.tracking_no === highlight ? "bg-orange-100 outline outline-2 -outline-offset-2 outline-[#D97757] dark:bg-orange-950/40" : idx % 2 === 0 ? "bg-white dark:bg-neutral-900" : "bg-neutral-100/70 dark:bg-neutral-800/40"}`}>
+                      <tr id={`ship-${key}`} onClick={() => setExpanded((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; })} className={`cursor-pointer border-b border-neutral-100 hover:bg-neutral-200/60 dark:border-neutral-800 dark:hover:bg-neutral-800/70 ${highlight !== null && g.receipt_id === highlight ? "bg-orange-100 outline outline-2 -outline-offset-2 outline-[#D97757] dark:bg-orange-950/40" : idx % 2 === 0 ? "bg-white dark:bg-neutral-900" : "bg-neutral-100/70 dark:bg-neutral-800/40"}`}>
                         <td className="py-2 pr-1" onClick={(e) => e.stopPropagation()}>
                           <input type="checkbox" checked={selected.has(key)} onChange={() => toggleSel(key)} aria-label={t("Gönderiyi seç", "Select shipment")} className="h-4 w-4 accent-[#D97757]" />
                         </td>

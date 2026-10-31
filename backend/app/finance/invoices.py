@@ -635,7 +635,7 @@ def _warnings(lines: list[dict]) -> list[str]:
 
 def query_invoices(
     db: Session, shop: Shop, q: str = "", kind: str = "", inv_start: str = "", inv_end: str = "",
-    order_start: str = "", order_end: str = "", sort: str = "inv_date", page: int = 0, per_page: int = 20, desc: bool | None = None,
+    order_start: str = "", order_end: str = "", sort: str = "inv_date", page: int = 0, per_page: int = 20, desc: bool | None = None, receipt_id: int | None = None,
 ) -> dict:
     """Kayıtlı faturaları GÖNDERİ başına tek kayıt olarak döner (içinde kalemler: nakliye/gümrük/ek hizmet…). Arama:
     müşteri, takip no, ürün, kalem adı, fatura no. Süzgeçler: tür, fatura/sipariş tarihi. Küçük tablo, bellekte süzülür."""
@@ -658,6 +658,8 @@ def query_invoices(
     i0, i1, o0, o1 = d(inv_start), d(inv_end), d(order_start), d(order_end)
     items = []
     for (rid, trk), grp in shipments.items():
+        if receipt_id is not None and rid != receipt_id:  # tek siparişin faturaları (takip no'lar firmaya göre farklı olabilir, sipariş no kesindir)
+            continue
         buyer, odate = order_info.get(rid, ("", None))
         lines = _lines(grp)
         if kind and not any(ln["kind"] == kind for ln in lines):

@@ -116,12 +116,12 @@ def confirm_invoice(payload: ConfirmIn, shop: Shop = Depends(get_owned_shop), db
 @router.get("")
 def list_invoices(
     q: str = "", kind: str = "", inv_start: str = "", inv_end: str = "", order_start: str = "", order_end: str = "",
-    sort: str = "inv_date", desc: bool | None = None, page: int = Query(0, ge=0), per_page: int = Query(20, ge=1, le=200),
+    sort: str = "inv_date", desc: bool | None = None, receipt_id: int | None = None, page: int = Query(0, ge=0), per_page: int = Query(20, ge=1, le=200),
     shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db),
 ):
     """Kayıtlı faturalar: arama (müşteri/takip no/ürün), tür, fatura ve sipariş tarihi süzgeci, sıralama, sayfalama."""
     try:
-        return invoices.query_invoices(db, shop, q, kind, inv_start, inv_end, order_start, order_end, sort, page, per_page, desc)
+        return invoices.query_invoices(db, shop, q, kind, inv_start, inv_end, order_start, order_end, sort, page, per_page, desc, receipt_id)
     except ValueError as exc:
         raise HTTPException(422, "Geçersiz tarih") from exc
 

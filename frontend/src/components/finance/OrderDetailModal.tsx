@@ -29,8 +29,8 @@ export default function OrderDetailModal({
   shopId: number;
   receiptId: number;
   onClose: () => void;
-  /** Takip numarasına tıklanınca kargo faturalarında o gönderiyi göstermek için. */
-  onOpenInvoice?: (tracking: string) => void;
+  /** Kargo bağlantısına tıklanınca bu siparişin kargo faturalarını göstermek için. */
+  onOpenInvoice?: () => void;
 }) {
   const [data, setData] = useState<FinOrderDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -224,7 +224,7 @@ export default function OrderDetailModal({
                         {onOpenInvoice && s.tracking ? (
                           <button
                             type="button"
-                            onClick={() => onOpenInvoice(s.tracking)}
+                            onClick={onOpenInvoice}
                             title={t("Kargo faturasında göster", "Show in shipping invoices")}
                             className="text-sky-600 underline decoration-dotted underline-offset-2 hover:text-sky-500 dark:text-sky-400"
                           >

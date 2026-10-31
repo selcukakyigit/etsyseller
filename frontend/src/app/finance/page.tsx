@@ -84,7 +84,7 @@ export default function FinancePage() {
   const autoStarted = useRef<number | null>(null);
   const [exporting, setExporting] = useState(false);
   const [orderQ, setOrderQ] = useState("");
-  const [invFocus, setInvFocus] = useState(""); // sipariş penceresinden gelen takip no: Kargo faturaları o gönderiyi açar
+  const [invFocus, setInvFocus] = useState<{ receiptId: number; label: string } | null>(null); // sipariş penceresinden gelen sipariş: Kargo faturaları yalnızca onun faturalarını gösterir
   // Yalnızca aylık satış grafiği için 3 yıl seçici: "" = varsayılan (1. bu yıl, 2. geçen yıl, 3. yok), "none" = boş
   const [chartSel, setChartSel] = useState<string[]>(["", "", ""]);
   const [prodSort, setProdSort] = useState("sales");
@@ -712,15 +712,15 @@ export default function FinancePage() {
                 money2={money2}
                 onSaved={scheduleRefresh}
                 onQuery={setOrderQ}
-                onOpenInvoice={(tracking) => {
-                  setInvFocus(tracking);
+                onOpenInvoice={(receiptId, buyer) => {
+                  setInvFocus({ receiptId, label: buyer });
                   setTab("invoices");
                 }}
                 summary={{ product: k.product_cost, ship: k.ship_cost, invoice: k.ship_invoice }}
               />
             )}
             {tab === "invoices" && shopId !== undefined && (
-              <ShippingInvoices shopId={shopId} products={displayReport.products} money2={money2} onSaved={scheduleRefresh} focus={invFocus} onFocusUsed={() => setInvFocus("")} />
+              <ShippingInvoices shopId={shopId} products={displayReport.products} money2={money2} onSaved={scheduleRefresh} focus={invFocus} onFocusUsed={() => setInvFocus(null)} />
             )}
           </div>
         )}

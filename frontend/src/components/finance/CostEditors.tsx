@@ -496,7 +496,7 @@ export function OrderCosts({
   country = "",
   onOpenInvoice,
 }: {
-  onOpenInvoice?: (tracking: string) => void;
+  onOpenInvoice?: (receiptId: number, buyer: string) => void;
   shopId: number;
   range: { start: string; end: string };
   country?: string;
@@ -620,9 +620,10 @@ export function OrderCosts({
           onClose={() => setDetailId(null)}
           onOpenInvoice={
             onOpenInvoice &&
-            ((tracking) => {
+            (() => {
+              const buyer = data?.orders.find((x) => x.receipt_id === detailId)?.buyer ?? "";
               setDetailId(null);
-              onOpenInvoice(tracking);
+              onOpenInvoice(detailId, buyer);
             })
           }
         />}
