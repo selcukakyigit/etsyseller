@@ -21,6 +21,7 @@ import ProductTour from "@/components/tour/ProductTour";
 import { mainTour, markTourSeen, startTour, tourSeen } from "@/components/tour/steps";
 import { api } from "@/lib/api";
 import { Modal } from "@/components/listing-editor/Modal";
+import HistoryChoiceModal from "@/components/shop/HistoryChoiceModal";
 
 export default function AppShell({
   user,
@@ -100,6 +101,7 @@ export default function AppShell({
       </div>
       <BottomNav current={current} onMenu={openMenu} hasShop={shopState === "yes"} />
       <CreditRequiredModal />
+      {!!user && !!activeShop && !activeShop.is_demo && activeShop.history_years === null && <HistoryChoiceModal shopId={activeShop.id} current={null} />}
       {confirmConnect && (
         <Modal
           title={t("Gerçek mağazanı bağla", "Connect your real shop")}

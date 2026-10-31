@@ -25,6 +25,8 @@ export type Shop = {
   connected: boolean;
   /** Etsy incelemesi için kopya mağaza: alıcı bilgileri anonim, Etsy'ye hiçbir istek gitmez. */
   is_demo?: boolean;
+  /** Seçilen geçmiş veri süresi (yıl; 0 = tümü). null = henüz seçilmedi (bağlandıktan sonra sorulur); alan hiç yoksa eski önbellek. */
+  history_years?: number | null;
   /** Elle sabitlenmiş rapor para birimi (ör. "USD"); boşsa finans raporu siparişlerden otomatik seçer. */
   currency: string | null;
   icon_url: string | null;
@@ -1999,6 +2001,8 @@ export const api = {
     connectUrl: () => `${API_URL}/api/shops/connect/start`,
     /** Etsy bağlı değilken ürünü denemek için uydurma örnek mağaza açar (gerçek mağaza bağlanınca kendiliğinden silinir). */
     createSample: () => request<Shop>("/api/shops/sample", { method: "POST" }),
+    /** Etsy'den alınacak geçmiş süresini seçer (1, 2, 3 yıl ya da 0 = tümü) ve indirmeyi başlatır. */
+    setHistory: (shopId: number, years: number) => request<{ history_years: number }>(`/api/shops/${shopId}/history`, { method: "POST", body: JSON.stringify({ years }) }),
     /** Etsy bağlantısını keser, Etsy'den gelen önbellek verisini siler. E-posta yazarak onay ister. */
     disconnect: (shopId: number, email: string) =>
       request<{ ok: boolean }>(`/api/shops/${shopId}/disconnect`, { method: "POST", body: JSON.stringify({ email, confirm: true }) }),

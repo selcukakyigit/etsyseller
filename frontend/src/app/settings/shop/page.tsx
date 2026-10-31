@@ -8,6 +8,7 @@ import DangerConfirmModal from "@/components/settings/DangerConfirmModal";
 import { useT } from "@/lib/i18n-client";
 import { PageSpinner } from "@/components/ui/Spinner";
 import { countryName, RANK_COUNTRIES } from "@/lib/countries";
+import HistoryChoiceModal from "@/components/shop/HistoryChoiceModal";
 
 function CurrencyPicker({ shopId, value }: { shopId: number; value: string | null }) {
   const { t } = useT();
@@ -59,6 +60,25 @@ function CurrencyPicker({ shopId, value }: { shopId: number; value: string | nul
 }
 
 /** Sıra takibinin hangi ülkedeki alıcıya göre ölçüleceği. "Otomatik": son 12 ayda en çok satılan ülke. */
+/** Seçilen geçmiş süresi ve genişletme düğmesi (daha kısaya inilmez; var olan veri silinmez). */
+function HistoryButton({ shopId, years }: { shopId: number; years: number }) {
+  const { t } = useT();
+  const [open, setOpen] = useState(false);
+  const text = years === 0 ? t("tüm geçmiş", "all history") : t(`${years} yıl`, `${years} years`);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-xs font-medium px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
+      >
+        {t("Geçmiş veri", "History")}: {text}
+      </button>
+      {open && <HistoryChoiceModal shopId={shopId} current={years} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
 function RankCountryPicker({ shopId, value }: { shopId: number; value: string | null }) {
   const { t, locale } = useT();
   const [current, setCurrent] = useState(value);
@@ -147,6 +167,7 @@ export default function ShopSettingsPage() {
                 <p className="text-xs text-neutral-400 dark:text-neutral-500">Etsy Shop ID: {shop.etsy_shop_id}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                {shop.connected && !shop.is_demo && typeof shop.history_years === "number" && <HistoryButton shopId={shop.id} years={shop.history_years} />}
                 {shop.connected && <CurrencyPicker shopId={shop.id} value={shop.currency} />}
                 {shop.connected && <RankCountryPicker shopId={shop.id} value={shop.rank_country ?? null} />}
                 {shop.connected ? (

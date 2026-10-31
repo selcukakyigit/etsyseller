@@ -23,8 +23,12 @@ def list_receipts(client: EtsyClient, limit: int = 100, extra_params: dict | Non
     return results[:limit]
 
 
-def count_receipts(client: EtsyClient) -> int:
-    page = client.request("GET", f"/shops/{client.shop.etsy_shop_id}/receipts", params={"limit": 1})
+def count_receipts(client: EtsyClient, min_created: int | None = None) -> int:
+    """Mağazadaki sipariş sayısı; `min_created` (epoch saniye) verilirse yalnızca o tarihten sonrakiler."""
+    params: dict = {"limit": 1}
+    if min_created:
+        params["min_created"] = min_created
+    page = client.request("GET", f"/shops/{client.shop.etsy_shop_id}/receipts", params=params)
     return int(page["count"])
 
 

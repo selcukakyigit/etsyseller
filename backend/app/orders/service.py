@@ -87,7 +87,7 @@ _backfill_state: dict[int, dict] = {}
 
 def sync_status(db: Session, shop: Shop) -> OrdersSyncStatus:
     state = _backfill_state.get(shop.id, {})
-    local = db.scalar(select(func.count()).select_from(OrderCache).where(OrderCache.shop_id == shop.id)) or 0
+    local = _local_in_window(db, shop) if shop.history_years is not None else db.scalar(select(func.count()).select_from(OrderCache).where(OrderCache.shop_id == shop.id)) or 0
     return OrdersSyncStatus(local=local, remote_total=state.get("total"), backfilling=bool(state.get("running")))
 
 
@@ -100,12 +100,12 @@ def _backfill(shop_id: int) -> None:
         shop = db.get(Shop, shop_id)
         client = EtsyClient(db, shop)
         offset = 0
+        since = _since_ts(shop)
         while True:
-            page = client.request(
-                "GET",
-                f"/shops/{shop.etsy_shop_id}/receipts",
-                params={"limit": 100, "offset": offset, "sort_on": "created", "sort_order": "desc"},
-            )
+            params = {"limit": 100, "offset": offset, "sort_on": "created", "sort_order": "desc"}
+            if since:
+                params["min_created"] = since
+            page = client.request("GET", f"/shops/{shop.etsy_shop_id}/receipts", params=params)
             for receipt in page["results"]:
                 _upsert(db, shop, receipt)
             db.commit()
@@ -113,11 +113,55 @@ def _backfill(shop_id: int) -> None:
             _backfill_state[shop_id]["total"] = page["count"]
             if not page["results"] or offset >= page["count"]:
                 break
+        # Geçmiş siparişler geldi: Etsy hesap hareketleri (ücretler) en eski siparişten itibaren yeniden taranır; artımlı senkron eski dönemi doldurmaz.
+        from app.finance import service as finance
+
+        finance.start_sync(shop, full=True)
     except Exception:
         logging.getLogger(__name__).exception("Order backfill failed for shop %s", shop_id)
     finally:
         _backfill_state[shop_id]["running"] = False
         db.close()
+
+
+def history_start(shop: Shop) -> dt.datetime | None:
+    """Seçilen geçmişin başlangıcı (UTC); None = sınır yok (tümü) ya da henüz seçilmedi (`history_years` boş: çağıran ayrıca kontrol eder)."""
+    if not shop.history_years:
+        return None
+    return dt.datetime.utcnow() - dt.timedelta(days=365 * shop.history_years)
+
+
+def _since_ts(shop: Shop) -> int | None:
+    start = history_start(shop)
+    return int(start.replace(tzinfo=dt.timezone.utc).timestamp()) if start else None
+
+
+def _local_in_window(db: Session, shop: Shop) -> int:
+    q = select(func.count()).select_from(OrderCache).where(OrderCache.shop_id == shop.id)
+    start = history_start(shop)
+    if start is not None:
+        q = q.where(OrderCache.created_at >= start)
+    return db.scalar(q) or 0
+
+
+def start_history_sync(shop_id: int) -> None:
+    """Geçmiş seçimi yapılınca: son siparişleri hemen alır, geçmişi arka planda indirir ve finansı başlatır. İstek bu işi beklemesin diye ayrı iş parçacığında çalışır."""
+    from app.core.db import SessionLocal
+
+    def work() -> None:
+        db = SessionLocal()
+        try:
+            shop = db.get(Shop, shop_id)
+            sync_orders(db, shop)
+            from app.finance import service as finance
+
+            finance.start_sync(shop)  # artımlı; geçmiş inince _backfill tam senkronu ayrıca ister
+        except Exception:
+            logging.getLogger(__name__).exception("History sync failed for shop %s", shop_id)
+        finally:
+            db.close()
+
+    threading.Thread(target=work, daemon=True).start()
 
 
 def sync_orders(db: Session, shop: Shop, limit: int = 200, full: bool = False) -> int:
@@ -141,8 +185,11 @@ def sync_orders(db: Session, shop: Shop, limit: int = 200, full: bool = False) -
     db.commit()
     logging.getLogger(__name__).info("Order sync: %s sipariş çekildi (artımlı=%s)", len(receipts), last is not None)
 
-    total = etsy_orders.count_receipts(client)
-    local = db.scalar(select(func.count()).select_from(OrderCache).where(OrderCache.shop_id == shop.id)) or 0
+    if shop.history_years is None:
+        return len(receipts)  # geçmiş süresi henüz seçilmedi: yalnızca son siparişler; geçmiş indirme seçimden sonra başlar
+    # Sayılar seçilen dönemdedir: "yerelde X / Etsy'de Y" ilerleme çubuğu ve eksik uyarısı pencereye göre doğru kalır.
+    total = etsy_orders.count_receipts(client, _since_ts(shop))
+    local = _local_in_window(db, shop)
     state = _backfill_state.setdefault(shop.id, {"running": False, "total": total})
     state["total"] = total
     if local < total and not state["running"]:

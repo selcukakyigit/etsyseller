@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.auth.models import User
 from app.core.config import settings
 from app.core.db import get_db
+from app.core.i18n import tr
 from app.core.deps import get_current_user
 from app.finance import service as fin_service
 from app.shops import reference_cache
@@ -30,7 +31,7 @@ router = APIRouter(prefix="/api/shops", tags=["shops"])
 def list_shops(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     shops = db.query(Shop).filter(Shop.workspace_id.in_(workspace_ids(db, user))).all()
     return [
-        ShopOut(id=s.id, etsy_shop_id=s.etsy_shop_id, shop_name=s.shop_name, connected=(s.oauth_token is not None and s.access_revoked_at is None) or s.is_demo, is_demo=s.is_demo, currency=s.currency, icon_url=s.icon_url, rank_country=s.rank_country)
+        ShopOut(id=s.id, etsy_shop_id=s.etsy_shop_id, shop_name=s.shop_name, connected=(s.oauth_token is not None and s.access_revoked_at is None) or s.is_demo, is_demo=s.is_demo, history_years=s.history_years, currency=s.currency, icon_url=s.icon_url, rank_country=s.rank_country)
         for s in shops
     ]
 
@@ -45,6 +46,26 @@ def create_sample(db: Session = Depends(get_db), user: User = Depends(get_curren
     except SampleError as exc:
         raise HTTPException(409, str(exc)) from exc
     return ShopOut(id=s.id, etsy_shop_id=s.etsy_shop_id, shop_name=s.shop_name, connected=True, is_demo=True, currency=s.currency, icon_url=s.icon_url, rank_country=s.rank_country)
+
+
+class HistoryIn(BaseModel):
+    years: int  # 1, 2, 3 ya da 0 = tüm geçmiş
+
+
+@router.post("/{shop_id}/history")
+def set_history(payload: HistoryIn, shop: Shop = Depends(get_owned_shop), db: Session = Depends(get_db)):
+    """Etsy'den ne kadar geçmiş veri alınacağını seçer (ilk bağlantıda sorulur; sonradan yalnızca genişletmek için de kullanılır) ve indirmeyi başlatır.
+    Daha kısa bir süre seçmek var olan veriyi silmez, yalnızca yeni indirmeyi sınırlar."""
+    if shop.is_demo:
+        raise HTTPException(400, tr("Örnek mağazada geçmiş veri seçilmez.", "History is not selectable in the sample shop."))
+    if payload.years not in (0, 1, 2, 3):
+        raise HTTPException(422, tr("Geçmiş süresi geçersiz.", "Invalid history length."))
+    shop.history_years = payload.years
+    db.commit()
+    from app.orders.service import start_history_sync
+
+    start_history_sync(shop.id)
+    return {"history_years": shop.history_years}
 
 
 class CurrencyIn(BaseModel):

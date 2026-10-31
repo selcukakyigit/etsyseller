@@ -7,6 +7,8 @@ class ShopOut(BaseModel):
     shop_name: str
     connected: bool
     is_demo: bool = False
+    # Seçilen geçmiş süresi (yıl; 0 = tümü); None = henüz seçilmedi (bağlandıktan sonra sorulur).
+    history_years: int | None = None
     # Boşsa (None) finans raporu para birimini siparişlerden otomatik seçer (en çok kullanılan); dolu ise mağaza
     # sahibi elle sabitlemiş demektir (`PUT /api/shops/{id}/currency`), her yerde bu kullanılır.
     currency: str | None = None

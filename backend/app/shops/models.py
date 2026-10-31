@@ -34,6 +34,9 @@ class Shop(Base):
     # Sıra takibinin hangi ülkedeki alıcıya göre ölçüleceği (ISO alpha-2). Boşsa otomatik: son 12 ayda en çok satılan ülke
     # (bkz. insights/rank.py buyer_country).
     rank_country: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    # Bağlanınca kullanıcının seçtiği geçmiş veri süresi (yıl): 1, 2, 3 ya da 0 = tümü. Boşsa (None) henüz seçilmedi: yalnızca son siparişler gelir,
+    # geçmiş indirme başlamaz. Seçim siparişleri, Etsy hesap hareketlerini ve ödemeleri aynı tarihten başlatır (bkz. orders/service.py history_start).
+    history_years: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="shops")
     workspace: Mapped["Workspace"] = relationship(back_populates="shops")

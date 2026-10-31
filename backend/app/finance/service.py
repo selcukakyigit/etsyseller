@@ -236,6 +236,8 @@ _PHASE_EN = {
 def start_sync(shop: Shop, full: bool = False) -> bool:
     st = _state.setdefault(shop.id, {})
     if st.get("running"):
+        if full:
+            st["full_again"] = True  # çalışan senkron bitince tam senkron bir kez daha çalışır (geçmiş siparişler sonradan geldi)
         return False
     st.update(running=True, progress=0.0, phase="Başlıyor", error=None)
     threading.Thread(target=_run, args=(shop.id, full), daemon=True).start()
@@ -268,6 +270,9 @@ def _run(shop_id: int, full: bool) -> None:
     finally:
         st.update(running=False, phase="")
         db.close()
+    if st.pop("full_again", False):
+        st.update(running=True, progress=0.0, phase="Başlıyor", error=None)
+        _run(shop_id, True)
 
 
 def _sync_ledger(db: Session, client: EtsyClient, shop: Shop, st: dict, full: bool) -> None:
