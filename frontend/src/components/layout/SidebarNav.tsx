@@ -60,7 +60,7 @@ export default function SidebarNav({ user, hasShop, shops, activeShop, onSwitchS
     <>
       <nav className={`flex-1 space-y-1 overflow-y-auto px-3 py-4 ${hydrated ? "" : "invisible"}`}>
         {mainNav.map((item) => (
-          <Link key={item.href} href={item.href} onClick={onNavigate} className={linkClass(current === item.href)}>
+          <Link key={item.href} href={item.href} onClick={onNavigate} data-tour={`nav:${item.href}`} className={linkClass(current === item.href)}>
             {t(item.tr, item.en)}
           </Link>
         ))}
@@ -98,7 +98,7 @@ export default function SidebarNav({ user, hasShop, shops, activeShop, onSwitchS
           {t(SETTINGS_NAV.tr, SETTINGS_NAV.en)}
         </Link>
 
-        <Link href={SUPPORT_NAV.href} onClick={onNavigate} className={`${linkClass(current === SUPPORT_NAV.href)} flex items-center justify-between`}>
+        <Link href={SUPPORT_NAV.href} onClick={onNavigate} data-tour="nav:/support" className={`${linkClass(current === SUPPORT_NAV.href)} flex items-center justify-between`}>
           {t(SUPPORT_NAV.tr, SUPPORT_NAV.en)}
           {supportUnread > 0 && (
             <span className="min-w-[1.25rem] rounded-full bg-[#D97757] px-1.5 text-center text-[11px] font-semibold leading-5 text-white" aria-label={t(`${supportUnread} okunmamış yanıt`, `${supportUnread} unread replies`)}>

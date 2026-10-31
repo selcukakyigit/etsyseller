@@ -278,7 +278,7 @@ export default function Topbar({ activeShop, strip }: { activeShop: Shop | null;
       </div>
 
       <div className="hidden items-center lg:flex">
-        <CreditBadge />
+        <span data-tour="credits" className="inline-flex"><CreditBadge /></span>
         <LangSwitch className="mx-1.5" />
         <ThemeToggle />
       </div>

@@ -197,6 +197,7 @@ EN_MESSAGES: dict[str, str] = {
     "Hesabın engellendi.": "Your account is blocked.",
     "Ürün bulunamadı": "Product not found",
     "Kredi miktarı geçersiz": "Invalid credit amount",
+    "Etsy mağazan zaten bağlı": "Your Etsy shop is already connected",
     "Ödemeden önce koşulları ve iade politikasını onaylamalısınız": "You must accept the terms and refund policy before paying",
     "Ödeme sistemi yapılandırılmamış.": "Payments are not configured.",
     "Ödeme sağlayıcısına ulaşılamadı.": "Could not reach the payment provider.",

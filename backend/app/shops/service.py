@@ -83,7 +83,11 @@ def complete_connect(db: Session, code: str, state: str) -> Shop:
         shop.oauth_token.refresh_token = token_set.refresh_token
         shop.oauth_token.expires_at = expires_at
 
+    workspace_id = oauth_state.workspace_id
     db.delete(oauth_state)
     db.commit()
+    from app.demo.service import remove_sample_shops  # gerçek mağaza bağlandı: örnek mağaza (varsa) kalkar
+
+    remove_sample_shops(db, workspace_id)
     db.refresh(shop)
     return shop

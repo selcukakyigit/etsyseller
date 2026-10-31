@@ -10,6 +10,7 @@ import TicketLayout from "@/components/support/TicketLayout";
 import TicketRow from "@/components/support/TicketRow";
 import UserTicketPane from "@/components/support/UserTicketPane";
 import HelpTip from "@/components/ui/HelpTip";
+import { startTour } from "@/components/tour/steps";
 import { BlockSpinner, PageSpinner } from "@/components/ui/Spinner";
 import { useT } from "@/lib/i18n-client";
 import { TicketDetail, TicketSummary, supportApi } from "@/lib/supportApi";
@@ -83,9 +84,12 @@ function SupportPageInner() {
               )}
             </HelpTip>
           </h1>
-          <Button tone="primary" onClick={() => setCreating(true)}>
-            {t("Yeni talep", "New request")}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button onClick={startTour}>{t("Ürün turu", "Product tour")}</Button>
+            <Button tone="primary" onClick={() => setCreating(true)}>
+              {t("Yeni talep", "New request")}
+            </Button>
+          </div>
         </div>
         {bootError && <p className="text-sm text-red-600 dark:text-red-400">{bootError}</p>}
         {!user ? (

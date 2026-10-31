@@ -65,6 +65,11 @@ def _wipe_shops(db: Session, shop_ids: list[int]) -> None:
             shutil.rmtree(UPLOADS / folder / str(sid), ignore_errors=True)
 
 
+def wipe_shops(db: Session, shop_ids: list[int]) -> None:
+    """Verilen mağazaların tüm yerel verisini ve mağaza satırlarını siler (örnek mağazanın kaldırılması gibi diğer modüller için)."""
+    _wipe_shops(db, shop_ids)
+
+
 def _shop_ids(db: Session, user: User) -> list[int]:
     return list(db.scalars(select(Shop.id).where(Shop.workspace_id.in_(workspace_ids(db, user)))))
 

@@ -35,6 +35,18 @@ def list_shops(db: Session = Depends(get_db), user: User = Depends(get_current_u
     ]
 
 
+@router.post("/sample", response_model=ShopOut)
+def create_sample(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Etsy bağlı değilken ürünü denemek için uydurma örnek mağaza açar (bkz. app/demo)."""
+    from app.demo.service import SampleError, create_sample_shop
+
+    try:
+        s = create_sample_shop(db, user)
+    except SampleError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return ShopOut(id=s.id, etsy_shop_id=s.etsy_shop_id, shop_name=s.shop_name, connected=True, is_demo=True, currency=s.currency, icon_url=s.icon_url, rank_country=s.rank_country)
+
+
 class CurrencyIn(BaseModel):
     # None = "Otomatik" (siparişlerde en çok geçen para birimi kullanılır); doluysa 3 harfli ISO kod (USD, EUR…).
     currency: str | None = None

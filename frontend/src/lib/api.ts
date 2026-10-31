@@ -1997,6 +1997,8 @@ export const api = {
   shops: {
     list: () => request<Shop[]>("/api/shops"),
     connectUrl: () => `${API_URL}/api/shops/connect/start`,
+    /** Etsy bağlı değilken ürünü denemek için uydurma örnek mağaza açar (gerçek mağaza bağlanınca kendiliğinden silinir). */
+    createSample: () => request<Shop>("/api/shops/sample", { method: "POST" }),
     /** Etsy bağlantısını keser, Etsy'den gelen önbellek verisini siler. E-posta yazarak onay ister. */
     disconnect: (shopId: number, email: string) =>
       request<{ ok: boolean }>(`/api/shops/${shopId}/disconnect`, { method: "POST", body: JSON.stringify({ email, confirm: true }) }),
