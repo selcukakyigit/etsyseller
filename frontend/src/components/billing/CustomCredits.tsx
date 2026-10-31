@@ -50,7 +50,7 @@ export default function CustomCredits({
   const num = (v: number) => v.toLocaleString(locale);
 
   return (
-    <div className="mt-4 rounded-xl border border-dashed border-neutral-300 bg-white p-5 dark:border-neutral-700 dark:bg-neutral-900">
+    <div className="mt-5 rounded-xl border border-neutral-300 bg-neutral-50 p-5 dark:border-neutral-700 dark:bg-neutral-950">
       <div className="flex items-center gap-2">
         <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("Kendi miktarını seç", "Choose your own amount")}</h3>
         <HelpTip>
@@ -61,24 +61,28 @@ export default function CustomCredits({
         </HelpTip>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-end gap-x-6 gap-y-3">
+      <div className="mt-4 grid items-start gap-5 sm:grid-cols-[minmax(0,15rem)_1fr_auto]">
         <div>
-          <label className="mb-1 block text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("Kredi miktarı", "Credit amount")}</label>
+          <label className="mb-1.5 block text-xs font-medium text-neutral-500 dark:text-neutral-400">{t("Kredi miktarı", "Credit amount")}</label>
           <IntegerInput
             value={text}
             onValue={setText}
             unit={t("kredi", "credits")}
-            className="w-44"
+            className="w-full rounded-lg border-2 border-neutral-300 bg-white px-3 py-2.5 text-lg font-semibold text-neutral-900 outline-none transition focus:border-[#D97757] dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-50"
             aria-label={t("Kredi miktarı", "Credit amount")}
             maxLength={String(info.max).length}
           />
-          <div className="mt-2 flex flex-wrap gap-1.5">
+          <div className="mt-2.5 flex flex-wrap gap-1.5">
             {QUICK.filter((q) => q >= info.min && q <= info.max).map((q) => (
               <button
                 key={q}
                 type="button"
                 onClick={() => setText(String(q))}
-                className="rounded-full border border-neutral-200 px-2.5 py-0.5 text-xs text-neutral-600 transition hover:border-[#D97757] hover:text-[#D97757] dark:border-neutral-700 dark:text-neutral-300"
+                className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition ${
+                  n === q
+                    ? "border-[#D97757] bg-[#FBF1EA] text-[#A9502F] dark:bg-[#2A1D15] dark:text-[#F48771]"
+                    : "border-neutral-300 bg-white text-neutral-600 hover:border-[#D97757] hover:text-[#D97757] dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300"
+                }`}
               >
                 {num(q)}
               </button>
@@ -86,16 +90,16 @@ export default function CustomCredits({
           </div>
         </div>
 
-        <div className="min-h-[3.25rem] min-w-[10rem]">
+        <div className="min-h-[4.5rem]">
           {!inRange ? (
-            <p className="text-xs text-red-600 dark:text-red-400">{t(`${num(info.min)} ile ${num(info.max)} arasında bir miktar yaz.`, `Enter an amount between ${num(info.min)} and ${num(info.max)}.`)}</p>
+            <p className="pt-6 text-xs text-red-600 dark:text-red-400">{t(`${num(info.min)} ile ${num(info.max)} arasında bir miktar yaz.`, `Enter an amount between ${num(info.min)} and ${num(info.max)}.`)}</p>
           ) : quote ? (
-            <div>
-              <p className="flex flex-wrap items-baseline gap-2">
+            <div className="pt-1">
+              <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                 <span className="text-3xl font-semibold tabular-nums text-neutral-900 dark:text-neutral-50">{money(quote.price_cents, quote.currency)}</span>
                 {quote.discount_pct > 0 && (
                   <>
-                    <span className="text-sm text-neutral-400 line-through dark:text-neutral-500">{money(quote.list_price_cents, quote.currency)}</span>
+                    <span className="text-sm tabular-nums text-neutral-400 line-through dark:text-neutral-500">{money(quote.list_price_cents, quote.currency)}</span>
                     <span className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-800 dark:bg-green-950 dark:text-green-300">
                       {t(`%${quote.discount_pct} indirim`, `${quote.discount_pct}% off`)}
                     </span>
@@ -103,11 +107,13 @@ export default function CustomCredits({
                 )}
               </p>
               <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
-                {t(`1.000 kredi ≈ ${money((quote.price_cents / quote.credits) * 1000, quote.currency)}`, `1,000 credits ≈ ${money((quote.price_cents / quote.credits) * 1000, quote.currency)}`)}
+                {t(`1.000 kredi başına ${money((quote.price_cents / quote.credits) * 1000, quote.currency)}`, `${money((quote.price_cents / quote.credits) * 1000, quote.currency)} per 1,000 credits`)}
               </p>
             </div>
           ) : (
-            <div className="flex h-12 items-center"><Spinner size={16} /></div>
+            <div className="flex h-14 items-center">
+              <Spinner size={16} />
+            </div>
           )}
         </div>
 
@@ -115,7 +121,7 @@ export default function CustomCredits({
           type="button"
           disabled={disabled || buying || !quote}
           onClick={() => onBuy(n)}
-          className="inline-flex items-center justify-center gap-2 rounded-lg border border-neutral-300 px-4 py-2.5 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-800"
+          className="inline-flex items-center justify-center gap-2 self-end rounded-lg bg-[#D97757] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#C6613F] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {buying && <Spinner size={14} />}
           {t("Satın al", "Buy")}
@@ -123,7 +129,7 @@ export default function CustomCredits({
       </div>
 
       {info.tiers.length > 0 && (
-        <p className="mt-3 text-xs text-neutral-500 dark:text-neutral-400">
+        <p className="mt-4 border-t border-neutral-200 pt-3 text-xs text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
           {info.tiers.map((x) => t(`${num(x.from_credits)}+ kredi: %${x.discount_pct} indirim`, `${num(x.from_credits)}+ credits: ${x.discount_pct}% off`)).join(" · ")}
         </p>
       )}

@@ -61,7 +61,13 @@ export default function CustomCalculator({
   return (
     <div className="rounded-2xl border border-black/[0.07] bg-[#FBF9F6] p-6 dark:border-white/10 dark:bg-[#0E0D0C]">
       <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">{labels.label}</label>
-      <IntegerInput value={text} onValue={setText} className="w-full" aria-label={labels.label} maxLength={String(max).length} />
+      <IntegerInput
+        value={text}
+        onValue={setText}
+        className="w-full rounded-xl border-2 border-black/15 bg-white px-4 py-3 text-xl font-semibold text-neutral-900 outline-none transition focus:border-[#D97757] dark:border-white/20 dark:bg-[#171513] dark:text-neutral-50"
+        aria-label={labels.label}
+        maxLength={String(max).length}
+      />
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <span className="text-xs text-neutral-500 dark:text-neutral-400">{labels.quick}</span>
         {QUICK.filter((q) => q >= min && q <= max).map((q) => (

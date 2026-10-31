@@ -192,7 +192,7 @@ export function Pricing({ lang, c, pricing, standalone }: { lang: Lang; c: Landi
                       {q}
                       <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-black/15 text-neutral-600 transition group-open:rotate-45 dark:border-white/20 dark:text-neutral-300">+</span>
                     </summary>
-                    <p className={`mt-3 pr-10 ${muted}`}>{a}</p>
+                    <p className={`mt-3 pr-10 ${muted}`}>{a.replace("{min}", number(custom?.min ?? 500))}</p>
                   </details>
                 ))}
               </div>

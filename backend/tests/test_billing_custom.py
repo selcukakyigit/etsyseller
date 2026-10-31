@@ -41,7 +41,7 @@ def test_smallest_pack_has_no_discount_bigger_ones_do(db, packs):
 
 
 def test_quote_uses_the_tier_of_the_largest_pack_not_above_the_amount(db, packs):
-    small = custom.quote(db, 100)
+    small = custom.quote(db, custom.MIN_CREDITS)
     assert small["discount_pct"] == 0 and small["price_cents"] == small["list_price_cents"]
     mid = custom.quote(db, 3000)
     assert mid["discount_pct"] == 9 and mid["price_cents"] < mid["list_price_cents"]

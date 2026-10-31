@@ -2,16 +2,16 @@
  * herkeste aynıdır (`px-4 sm:px-6`). Yapışkan çubuklu sayfalar (`-mx-4 sm:-mx-6` ile kenara taşan) bu yatay boşluğa
  * güvenir; değiştirirsen onları da güncelle.
  *
- * Genişlik:  narrow 2xl (ayar alt sayfaları, şablonlar) · reading 3xl (yorumlar, ayarlar) · form 4xl (kargo, banner) ·
- *            page 6xl (analiz, finans, siparişler, modüller) · wide 7xl (listing tablosu) · dashboard 96rem.
+ * Genişlik:  narrow 3xl (ayar alt sayfaları, şablonlar) · reading 4xl (yorumlar, ayarlar) · form 5xl (kargo, banner, krediler) ·
+ *            page 7xl (analiz, finans, siparişler, modüller) · wide 88rem (listing tablosu) · dashboard 96rem.
  * Boşluk:    normal (çoğu sayfa) · flush (üstü boş: yapışkan filtre çubuğu kendi üst boşluğunu taşır) ·
  *            flushTall (flush + alttaki seçim çubuğuna yer) · compact (ana sayfa: sohbet yüksekliği buna göre hesaplanır). */
 const WIDTH = {
-  narrow: "max-w-2xl",
-  reading: "max-w-3xl",
-  form: "max-w-4xl",
-  page: "max-w-6xl",
-  wide: "max-w-7xl",
+  narrow: "max-w-3xl",
+  reading: "max-w-4xl",
+  form: "max-w-5xl",
+  page: "max-w-7xl",
+  wide: "max-w-[88rem]",
   dashboard: "max-w-[96rem]",
 } as const;
 

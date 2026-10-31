@@ -15,10 +15,10 @@ VIDEO_EXAMPLE_SECONDS = 5
 
 # Görev -> (girdi token, çıktı token): gerçek kullanımdaki ortalama çağrı büyüklüğü.
 TYPICAL_TOKENS = {
-    "assistant": (27_000, 300),
-    "seo": (4_700, 560),
-    "document": (1_600, 460),
-    "vision": (4_900, 90),
+    "assistant": (85_000, 1_700),  # bir KULLANICI mesajı: araç döngüsündeki tüm model çağrılarının toplamı
+    "seo": (2_600, 450),
+    "document": (2_100, 600),
+    "vision": (1_050, 40),
 }
 TEXT_ACTIONS = (
     ("assistant", "Asistan mesajı", "Assistant message"),

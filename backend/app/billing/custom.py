@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 
 from app.billing.models import BillingProduct
 
-MIN_CREDITS = 100
+# Ödeme sağlayıcısının sabit işlem ücreti (ör. 0,50 $) küçük alımları orantısız yer: 100 kredi (~1 $) için komisyon %50'yi aşar, 500 kredi (~5 $) için ~%15.
+MIN_CREDITS = 500
 MAX_CREDITS = 100_000
 # Bu yüzdenin altındaki fark gösterilmez (yuvarlama gürültüsü).
 MIN_SHOWN_DISCOUNT_PCT = 3

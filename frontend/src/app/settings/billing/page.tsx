@@ -35,7 +35,7 @@ export default function BillingSettingsPage() {
   const { user, shops, activeShop, setActiveShopId, error: bootError } = useAuthAndShop();
   const { t } = useT();
   return (
-    <SettingsSubpage user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} title={t("Plan ve krediler", "Plan and credits")}>
+    <SettingsSubpage user={user} shops={shops} activeShop={activeShop} onSwitchShop={setActiveShopId} title={t("Plan ve krediler", "Plan and credits")} width="form">
       {bootError && <p className="text-sm text-red-600 dark:text-red-400">{bootError}</p>}
       {user && <Billing />}
     </SettingsSubpage>
