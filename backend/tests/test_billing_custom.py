@@ -124,3 +124,25 @@ def test_summary_shows_the_custom_card_even_before_the_provider_is_ready(db, pac
     assert out["custom"] is not None and out["custom"]["can_buy"] is False and out["custom"]["tiers"]
     monkeypatch.setattr(settings, "lemonsqueezy_custom_variant_id", "9")
     assert router.summary(user=user, db=db)["custom"]["can_buy"] is True
+
+
+def test_public_price_list_and_quote_need_no_login(db, packs):
+    from fastapi import HTTPException, Response
+
+    from app.billing import price_list
+    from app.site import router as site
+
+    listed = price_list.build(db)
+    assert listed["custom"]["min"] == custom.MIN_CREDITS and listed["custom"]["tiers"]
+    assert [p["discount_pct"] for p in listed["packs"]] == [0, 9, 17]
+    out = site.quote(Response(), 3000, db)
+    assert out["discount_pct"] == 9 and out["price_cents"] < out["list_price_cents"]
+    with pytest.raises(HTTPException) as bad:
+        site.quote(Response(), 5, db)
+    assert bad.value.status_code == 422
+
+
+def test_public_price_list_has_no_custom_without_packs(db):
+    from app.billing import price_list
+
+    assert price_list.build(db)["custom"] is None

@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SRC = path.join(ROOT, "src");
-const MOCKS = { "@/lib/i18n-client": "tests/ui/mock-i18n.mjs", "@/lib/api": "tests/ui/mock-api.mjs", "@/lib/toast": "tests/ui/mock-toast.mjs", "next/link": "tests/ui/mock-link.mjs", "next/navigation": "tests/ui/mock-nav.mjs" };
+const MOCKS = { "@/lib/i18n-client": "tests/ui/mock-i18n.mjs", "@/lib/api": "tests/ui/mock-api.mjs", "@/lib/toast": "tests/ui/mock-toast.mjs", "next/link": "tests/ui/mock-link.mjs", "@/components/site/fonts": "tests/ui/mock-fonts.mjs", "next/navigation": "tests/ui/mock-nav.mjs" };
 const EXT = ["", ".ts", ".tsx", "/index.ts", "/index.tsx"];
 const find = (base) => EXT.map((e) => base + e).find((f) => fs.existsSync(f) && fs.statSync(f).isFile());
 

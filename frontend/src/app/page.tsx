@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { COPY } from "@/components/site/landing/copy";
-import { Hero, Highlights, Pricing, Problem, SitePage } from "@/components/site/landing/sections";
+import { Pricing } from "@/components/site/landing/PricingSection";
+import { Hero, Highlights, Problem, SitePage } from "@/components/site/landing/sections";
 import { getLang } from "@/lib/i18n-server";
 import { loadPriceList } from "@/lib/pricing";
 

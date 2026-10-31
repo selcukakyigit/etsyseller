@@ -86,6 +86,7 @@ def build(db: Session) -> dict:
         "enabled": credit_settings.enabled(),
         "welcome_credits": int(credit_settings.setting("signup_credits")),
         "packs": _packs(db),
+        "custom": custom.info(db) if custom.active_products(db) else None,
         "actions": [
             {"key": a.key, "kind": a.kind, "label_tr": a.label_tr, "label_en": a.label_en, "credits": a.credits}
             for a in (*_text_actions(), *_variant_actions())
